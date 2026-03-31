@@ -3,6 +3,8 @@ packages:
   - packages/*
   - tools/*
 allowBuilds:
+  "@parcel/watcher": false
+  esbuild: false
   msgpackr-extract: false
 
 catalog:

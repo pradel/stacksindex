@@ -31,6 +31,7 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
+    "@effect/platform-node": "0.106.0",
     "@effect/sql-pg": "0.52.1",
     "drizzle-orm": "0.45.2",
     "effect": "3.21.0",
