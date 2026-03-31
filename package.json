@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "ready": "vp fmt && vp lint && vp run -r test && vp run -r build",
+    "prepare": "vp config"
+  },
+  "devDependencies": {
+    "vite-plus": "0.1.15"
+  },
+  "packageManager": "pnpm@10.33.0"
+}
