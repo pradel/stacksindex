@@ -30,9 +30,20 @@
     "check": "vp check",
     "prepublishOnly": "vp run build"
   },
+  "dependencies": {
+    "@effect/platform": "0.96.0",
+    "@effect/platform-node": "0.106.0",
+    "@effect/sql-pg": "0.52.1",
+    "drizzle-orm": "0.45.2",
+    "effect": "3.21.0",
+    "pg": "8.20.0"
+  },
   "devDependencies": {
+    "@effect/language-service": "0.84.2",
     "@types/node": "25.5.0",
+    "@types/pg": "8.20.0",
     "@typescript/native-preview": "7.0.0-dev.20260328.1",
+    "drizzle-kit": "0.31.10",
     "publint": "0.3.18",
     "typescript": "6.0.2",
     "vite-plus": "0.1.15"

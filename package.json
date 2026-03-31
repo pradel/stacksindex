@@ -6,6 +6,7 @@
     "prepare": "vp config"
   },
   "devDependencies": {
+    "effect-solutions": "0.5.2",
     "vite-plus": "0.1.15"
   },
   "packageManager": "pnpm@10.33.0"
