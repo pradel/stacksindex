@@ -33,16 +33,14 @@ const makeStacksApiService = (
 
     const fetchBlock = (height: bigint): Effect.Effect<Block, StacksApiError> => {
       const request = Effect.flatMap(
-        client.execute(HttpClientRequest.get(`/v2.blocks/${height}`)),
+        client.execute(HttpClientRequest.get(`/extended/v2/blocks/${height}`)),
         (response) => HttpClientResponse.schemaBodyJson(BlockSchema)(response),
       );
 
       return Effect.mapError(
         request,
         (error): StacksApiError =>
-          error instanceof ParseError
-            ? fromParseError(error)
-            : fromHttpClientError(error as Parameters<typeof fromHttpClientError>[0]),
+          error instanceof ParseError ? fromParseError(error) : fromHttpClientError(error),
       );
     };
 

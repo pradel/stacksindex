@@ -6,10 +6,10 @@ export interface Block {
   readonly timestamp: number;
 }
 
-export const BlockSchema = Schema.Struct({
+const RawBlockSchema = Schema.Struct({
   hash: Schema.String,
   height: Schema.Number,
-  timestamp: Schema.Number,
-});
+  block_time: Schema.Number,
+}).pipe(Schema.rename({ block_time: "timestamp" }));
 
-export const Blockfields = BlockSchema.fields;
+export const BlockSchema = RawBlockSchema;
