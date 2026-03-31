@@ -27,6 +27,9 @@ importers:
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
+      effect:
+        specifier: 3.21.0
+        version: 3.21.0
       pg:
         specifier: 8.20.0
         version: 8.20.0
@@ -46,9 +49,6 @@ importers:
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10
-      effect:
-        specifier: 3.21.0
-        version: 3.21.0
       publint:
         specifier: 0.3.18
         version: 0.3.18
