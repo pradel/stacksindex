@@ -4,9 +4,9 @@ import { request } from "undici";
 import { StacksApiResponseError, StacksApiParseError } from "./errors.ts";
 
 export const datasourceStacksApi = {
-  async getStacks() {
+  async getBlockByHash(hash: string) {
     return Result.tryPromise(async () => {
-      const { statusCode, body } = await request("https://stacksindex.com/api/v1/stacks");
+      const { statusCode, body } = await request(`https://api.hiro.so/extended/v2/blocks/${hash}`);
 
       if (statusCode !== 200) {
         // TODO add more info to the error to help debugging
