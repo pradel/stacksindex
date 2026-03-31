@@ -6,10 +6,10 @@ import { StacksApiResponseError, StacksApiParseError } from "./errors.ts";
 export const datasourceStacksApi = {
   async _request(path: string) {
     return Result.tryPromise(async () => {
-      const { statusCode, body } = await request(`https://api.hiro.so${path}`);
+      const { statusCode, statusText, body } = await request(`https://api.hiro.so${path}`);
 
       if (statusCode !== 200) {
-        return new StacksApiResponseError({ status: statusCode });
+        return new StacksApiResponseError({ status: statusCode, path, statusText });
       }
 
       try {
