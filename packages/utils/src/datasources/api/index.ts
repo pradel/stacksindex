@@ -1,10 +1,10 @@
-import { Result } from "better-result";
+import { Result, UnhandledException } from "better-result";
 import { request } from "undici";
 
-import { StacksApiResponseError, StacksApiParseError } from "./errors.ts";
+import { StacksApiResponseError, StacksApiParseError, type StacksApiError } from "./errors.ts";
 
 export const datasourceStacksApi = {
-  async _request(path: string) {
+  async _request(path: string): Promise<Result<unknown, StacksApiError | UnhandledException>> {
     return Result.tryPromise(async () => {
       const { statusCode, statusText, body } = await request(`https://api.hiro.so${path}`);
 
