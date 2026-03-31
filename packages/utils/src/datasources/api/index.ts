@@ -9,7 +9,8 @@ export const datasourceStacksApi = {
       const { statusCode, statusText, body } = await request(`https://api.hiro.so${path}`);
 
       if (statusCode !== 200) {
-        return new StacksApiResponseError({ status: statusCode, path, statusText });
+        const errorData = await body.json().catch(() => null);
+        return new StacksApiResponseError({ status: statusCode, path, statusText, errorData });
       }
 
       try {
@@ -18,16 +19,32 @@ export const datasourceStacksApi = {
       } catch (error) {
         return new StacksApiParseError({
           message: error instanceof Error ? error.message : String(error),
+          cause: error,
         });
       }
     });
   },
 
   getBlockByHash(hash: string) {
-    return this._request(`/extended/v2/blocks/${hash}`);
+    return this._request(`/extended/v2/blocks/${hash}`) as Promise<
+      Result<
+        {
+          hash: string;
+          block_height: number;
+        },
+        StacksApiError
+      >
+    >;
   },
 
   getTransaction(txId: string) {
-    return this._request(`/extended/v1/tx/${txId}`);
+    return this._request(`/extended/v1/tx/${txId}`) as Promise<
+      Result<
+        {
+          tx_id: string;
+        },
+        StacksApiError
+      >
+    >;
   },
 };
