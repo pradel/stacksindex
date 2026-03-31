@@ -7,7 +7,12 @@ export default defineConfig({
   fmt: {
     sortImports: true,
   },
-  lint: { options: { typeAware: true, typeCheck: true } },
+  lint: {
+    categories: {
+      correctness: "error",
+    },
+    options: { typeAware: true, typeCheck: true },
+  },
   run: {
     cache: true,
   },

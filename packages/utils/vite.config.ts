@@ -6,12 +6,6 @@ export default defineConfig({
       tsgo: true,
     },
     exports: true,
+    publint: true,
   },
-  lint: {
-    options: {
-      typeAware: true,
-      typeCheck: true,
-    },
-  },
-  fmt: {},
 });
