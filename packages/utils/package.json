@@ -30,6 +30,9 @@
     "check": "vp check",
     "prepublishOnly": "vp run build"
   },
+  "dependencies": {
+    "better-result": "2.7.0"
+  },
   "devDependencies": {
     "@types/node": "25.5.0",
     "@typescript/native-preview": "7.0.0-dev.20260328.1",
