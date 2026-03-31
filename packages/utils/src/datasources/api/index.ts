@@ -4,12 +4,11 @@ import { request } from "undici";
 import { StacksApiResponseError, StacksApiParseError } from "./errors.ts";
 
 export const datasourceStacksApi = {
-  async getBlockByHash(hash: string) {
+  async _request(path: string) {
     return Result.tryPromise(async () => {
-      const { statusCode, body } = await request(`https://api.hiro.so/extended/v2/blocks/${hash}`);
+      const { statusCode, body } = await request(`https://api.hiro.so${path}`);
 
       if (statusCode !== 200) {
-        // TODO add more info to the error to help debugging
         return new StacksApiResponseError({ status: statusCode });
       }
 
@@ -24,22 +23,11 @@ export const datasourceStacksApi = {
     });
   },
 
-  async getTransaction(txId: string) {
-    return Result.tryPromise(async () => {
-      const { statusCode, body } = await request(`https://api.hiro.so/extended/v1/tx/${txId}`);
+  getBlockByHash(hash: string) {
+    return this._request(`/extended/v2/blocks/${hash}`);
+  },
 
-      if (statusCode !== 200) {
-        return new StacksApiResponseError({ status: statusCode });
-      }
-
-      try {
-        const data = await body.json();
-        return data;
-      } catch (error) {
-        return new StacksApiParseError({
-          message: error instanceof Error ? error.message : String(error),
-        });
-      }
-    });
+  getTransaction(txId: string) {
+    return this._request(`/extended/v1/tx/${txId}`);
   },
 };
