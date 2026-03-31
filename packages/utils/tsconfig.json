@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    "incremental": true,
+    "composite": true,
     "target": "esnext",
     "lib": ["es2023"],
     "moduleDetection": "force",
@@ -8,14 +10,23 @@
     "resolveJsonModule": true,
     "types": ["node"],
     "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
     "noUnusedLocals": true,
     "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service"
+      }
+    ]
   },
   "include": ["src"]
 }

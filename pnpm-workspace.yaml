@@ -2,6 +2,8 @@ packages:
   - apps/*
   - packages/*
   - tools/*
+allowBuilds:
+  msgpackr-extract: false
 
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@latest
