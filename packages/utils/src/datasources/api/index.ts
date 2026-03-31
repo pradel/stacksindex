@@ -9,7 +9,7 @@ export const datasourceStacksApi = {
       const { statusCode, statusText, body } = await request(`https://api.hiro.so${path}`);
 
       if (statusCode !== 200) {
-        const errorData = await body.json().catch(() => null);
+        let errorData = await body.json().catch(() => body.text().catch(() => null));
         return new StacksApiResponseError({ status: statusCode, path, statusText, errorData });
       }
 
