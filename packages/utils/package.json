@@ -31,7 +31,8 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "better-result": "2.7.0"
+    "better-result": "2.7.0",
+    "undici": "7.24.6"
   },
   "devDependencies": {
     "@types/node": "25.5.0",
