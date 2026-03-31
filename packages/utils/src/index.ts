@@ -10,7 +10,10 @@ import {
 import { StacksApiService } from "./datasources/api/StacksApiService.ts";
 
 const program = Effect.flatMap(StacksApiService, (api) =>
-  Effect.flatMap(api.fetchBlock(100n), (block) => Console.log({ block })),
+  Effect.flatMap(
+    api.fetchBlock("0xe690efd6ba4eaef6ae236bf1e20866175641e1dbf9d26218c08f5eb1698834f5"),
+    (block) => Console.log({ block }),
+  ),
 ).pipe(
   Effect.catchAll((error) => {
     if (error instanceof StacksApiRequestError) {

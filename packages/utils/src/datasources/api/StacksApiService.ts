@@ -10,7 +10,7 @@ export interface StacksApiServiceConfig {
 }
 
 export interface StacksApiService {
-  readonly fetchBlock: (height: bigint) => Effect.Effect<Block, StacksApiError>;
+  readonly fetchBlock: (hash: string) => Effect.Effect<Block, StacksApiError>;
 }
 
 export const StacksApiService = Context.GenericTag<StacksApiService>(

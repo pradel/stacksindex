@@ -31,9 +31,9 @@ const makeStacksApiService = (
       }),
     );
 
-    const fetchBlock = (height: bigint): Effect.Effect<Block, StacksApiError> => {
+    const fetchBlock = (hash: string): Effect.Effect<Block, StacksApiError> => {
       const request = Effect.flatMap(
-        client.execute(HttpClientRequest.get(`/extended/v2/blocks/${height}`)),
+        client.execute(HttpClientRequest.get(`/extended/v2/blocks/${hash}`)),
         (response) => HttpClientResponse.schemaBodyJson(BlockSchema)(response),
       );
 
