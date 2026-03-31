@@ -1,5 +1,11 @@
 import { TaggedError } from "better-result";
 
+export class StacksApiUnexpectedError extends TaggedError("StacksApiResponseError")<{
+  message: string;
+  cause: unknown;
+  path: string;
+}>() {}
+
 export class StacksApiResponseError extends TaggedError("StacksApiResponseError")<{
   status: number;
   path: string;
@@ -12,4 +18,7 @@ export class StacksApiParseError extends TaggedError("StacksApiParseError")<{
   cause: unknown;
 }>() {}
 
-export type StacksApiError = StacksApiResponseError | StacksApiParseError;
+export type StacksApiError =
+  | StacksApiUnexpectedError
+  | StacksApiResponseError
+  | StacksApiParseError;
