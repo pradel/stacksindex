@@ -18,8 +18,9 @@ jobs:
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: ".node-version"
+          cache: true
 
-      - name: Check formatting and linting
+      - name: Check formatting, linting and type checks.
         run: vp check
 
       - name: Run tests
