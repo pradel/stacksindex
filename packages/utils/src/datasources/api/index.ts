@@ -23,4 +23,23 @@ export const datasourceStacksApi = {
       }
     });
   },
+
+  async getTransaction(txId: string) {
+    return Result.tryPromise(async () => {
+      const { statusCode, body } = await request(`https://api.hiro.so/extended/v1/tx/${txId}`);
+
+      if (statusCode !== 200) {
+        return new StacksApiResponseError({ status: statusCode });
+      }
+
+      try {
+        const data = await body.json();
+        return data;
+      } catch (error) {
+        return new StacksApiParseError({
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+  },
 };
