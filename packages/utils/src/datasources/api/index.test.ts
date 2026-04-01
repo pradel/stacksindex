@@ -40,21 +40,21 @@ describe("API DataSource", () => {
       mockRequest.mockImplementation(async () => {
         return {
           statusCode: 404,
+          statusText: "Not Found",
           body: mockBody({ error: "Not found" }),
         };
       });
 
       const result = await datasourceStacksApi.getTransaction("404");
 
-      expect(result).toEqual(
-        Result.err(
-          new StacksApiResponseError({
-            errorData: { error: "Not found" },
-            status: 404,
-            path: "test",
-            statusText: "test",
-          }),
-        ),
+      expect(result.isErr()).toBe(true);
+      expect((result as any).error).toEqual(
+        new StacksApiResponseError({
+          status: 404,
+          statusText: "Not Found",
+          path: "/extended/v1/tx/404",
+          errorData: { error: "Not found" },
+        }),
       );
     });
   });
