@@ -1,6 +1,6 @@
 import { TaggedError } from "better-result";
 
-export class StacksApiUnexpectedError extends TaggedError("StacksApiResponseError")<{
+export class StacksApiUnexpectedError extends TaggedError("StacksApiUnexpectedError")<{
   message: string;
   cause: unknown;
   path: string;

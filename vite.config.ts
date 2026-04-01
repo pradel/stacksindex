@@ -28,11 +28,13 @@ export default defineConfig({
       "require-await": "off",
       "no-ternary": "off",
       "no-magic-numbers": "off",
+      "no-warning-comments": "off",
       "new-cap": "off",
       "oxc/no-async-await": "off",
       "typescript/promise-function-async": "off",
       "typescript/explicit-function-return-type": "off",
       "typescript/explicit-module-boundary-types": "off",
+      "typescript/prefer-readonly-parameter-types": "off",
       "unicorn/no-null": "off",
 
       "sort-keys": "off",

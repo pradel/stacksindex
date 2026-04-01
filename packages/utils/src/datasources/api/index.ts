@@ -8,6 +8,18 @@ import {
   StacksApiUnexpectedError,
 } from "./errors.ts";
 
+export interface BlockApiResponse {
+  hash: string;
+  block_height: number;
+  height: number;
+  burn_block_time: number;
+  burn_block_height: number;
+}
+
+export interface TransactionApiResponse {
+  tx_id: string;
+}
+
 export const datasourceStacksApi = {
   async _request<ResponseT>(path: string): Promise<Result<ResponseT, StacksApiError>> {
     return Result.tryPromise({
@@ -42,10 +54,10 @@ export const datasourceStacksApi = {
   },
 
   getBlockByHash(hash: string) {
-    return this._request<{ hash: string; block_height: number }>(`/extended/v2/blocks/${hash}`);
+    return this._request<BlockApiResponse>(`/extended/v2/blocks/${hash}`);
   },
 
   getTransaction(txId: string) {
-    return this._request<{ tx_id: string }>(`/extended/v1/tx/${txId}`);
+    return this._request<TransactionApiResponse>(`/extended/v1/tx/${txId}`);
   },
 };
