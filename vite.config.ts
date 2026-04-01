@@ -17,6 +17,7 @@ export default defineConfig({
       restriction: "error",
       style: "error",
     },
+    plugins: ["node", "typescript", "vitest"],
     options: { typeAware: true, typeCheck: true },
     rules: {
       // Handled by oxfmt already
