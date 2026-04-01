@@ -2,26 +2,27 @@ import { Result } from "better-result";
 import { request } from "undici";
 
 import {
-  StacksApiResponseError,
-  StacksApiParseError,
   type StacksApiError,
+  StacksApiParseError,
+  StacksApiResponseError,
   StacksApiUnexpectedError,
 } from "./errors.ts";
 
 export const datasourceStacksApi = {
-  async _request<T>(path: string): Promise<Result<T, StacksApiError>> {
+  async _request<ResponseT>(path: string): Promise<Result<ResponseT, StacksApiError>> {
     return Result.tryPromise({
       try: async () => {
         const { statusCode, statusText, body } = await request(`https://api.hiro.so${path}`);
 
         if (statusCode !== 200) {
-          let errorData = await body.json().catch(() => body.text().catch(() => null));
+          const errorData = await body.json().catch(() => body.text().catch(() => null));
           throw new StacksApiResponseError({ status: statusCode, path, statusText, errorData });
         }
 
         try {
           const data = await body.json();
-          return data as T;
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          return data as ResponseT;
         } catch (error) {
           throw new StacksApiParseError({
             message: error instanceof Error ? error.message : String(error),

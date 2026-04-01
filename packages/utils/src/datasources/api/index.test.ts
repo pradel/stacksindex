@@ -1,7 +1,10 @@
+// oxlint-disable typescript/no-unsafe-member-access
+// oxlint-disable typescript/no-unsafe-type-assertion
+// oxlint-disable typescript/no-explicit-any
 import { Result } from "better-result";
-import { describe, test, expect, vi, beforeEach, afterAll } from "vite-plus/test";
+import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { StacksApiUnexpectedError, StacksApiParseError, StacksApiResponseError } from "./errors.ts";
+import { StacksApiParseError, StacksApiResponseError, StacksApiUnexpectedError } from "./errors.ts";
 import { datasourceStacksApi } from "./index.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -11,7 +14,7 @@ vi.mock("undici", () => ({
 }));
 
 const mockBody = (data: unknown) => ({
-  json: async () => data,
+  json: () => Promise.resolve(data),
 });
 
 describe("API DataSource", () => {
@@ -25,24 +28,20 @@ describe("API DataSource", () => {
 
   describe("_request", () => {
     test("returns data on 200", async () => {
-      mockRequest.mockImplementation(async () => {
-        return {
-          statusCode: 200,
-          body: mockBody({ hash: "0xabc123", block_height: 123456 }),
-        };
+      mockRequest.mockReturnValue({
+        statusCode: 200,
+        body: mockBody({ hash: "0xabc123", block_height: 123_456 }),
       });
 
       const result = await datasourceStacksApi.getTransaction("0xabc123");
-      expect(result).toEqual(Result.ok({ hash: "0xabc123", block_height: 123456 }));
+      expect(result).toEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
     });
 
     test("returns StacksApiResponseError on 404", async () => {
-      mockRequest.mockImplementation(async () => {
-        return {
-          statusCode: 404,
-          statusText: "Not Found",
-          body: mockBody({ error: "Not found" }),
-        };
+      mockRequest.mockReturnValue({
+        statusCode: 404,
+        statusText: "Not Found",
+        body: mockBody({ error: "Not found" }),
       });
 
       const result = await datasourceStacksApi.getTransaction("404");
@@ -59,12 +58,10 @@ describe("API DataSource", () => {
     });
 
     test("returns StacksApiResponseError on 500", async () => {
-      mockRequest.mockImplementation(async () => {
-        return {
-          statusCode: 500,
-          statusText: "Internal Server Error",
-          body: mockBody({ error: "Internal server error" }),
-        };
+      mockRequest.mockReturnValue({
+        statusCode: 500,
+        statusText: "Internal Server Error",
+        body: mockBody({ error: "Internal server error" }),
       });
 
       const result = await datasourceStacksApi.getTransaction("500");
@@ -81,15 +78,13 @@ describe("API DataSource", () => {
     });
 
     test("returns StacksApiParseError on invalid JSON", async () => {
-      mockRequest.mockImplementation(async () => {
-        return {
-          statusCode: 200,
-          body: {
-            json: async () => {
-              throw new Error("Unexpected end of JSON input");
-            },
+      mockRequest.mockReturnValue({
+        statusCode: 200,
+        body: {
+          json: () => {
+            throw new Error("Unexpected end of JSON input");
           },
-        };
+        },
       });
 
       const result = await datasourceStacksApi.getTransaction("parse-error");
@@ -104,17 +99,13 @@ describe("API DataSource", () => {
     });
 
     test("returns StacksApiResponseError with text error data when JSON fails on error response", async () => {
-      mockRequest.mockImplementation(async () => {
-        return {
-          statusCode: 500,
-          statusText: "Internal Server Error",
-          body: {
-            json: async () => {
-              throw new Error("parse error");
-            },
-            text: async () => "Internal Server Error",
-          },
-        };
+      mockRequest.mockReturnValue({
+        statusCode: 500,
+        statusText: "Internal Server Error",
+        body: {
+          json: () => Promise.reject(new Error("parse error")),
+          text: () => Promise.resolve("Internal Server Error"),
+        },
       });
 
       const result = await datasourceStacksApi.getTransaction("500");
@@ -131,19 +122,13 @@ describe("API DataSource", () => {
     });
 
     test("returns StacksApiResponseError with null error data when both JSON and text fail", async () => {
-      mockRequest.mockImplementation(async () => {
-        return {
-          statusCode: 500,
-          statusText: "Internal Server Error",
-          body: {
-            json: async () => {
-              throw new Error("parse error");
-            },
-            text: async () => {
-              throw new Error("text error");
-            },
-          },
-        };
+      mockRequest.mockReturnValue({
+        statusCode: 500,
+        statusText: "Internal Server Error",
+        body: {
+          json: () => Promise.reject(new Error("parse error")),
+          text: () => Promise.reject(new Error("text error")),
+        },
       });
 
       const result = await datasourceStacksApi.getTransaction("500");
@@ -160,7 +145,7 @@ describe("API DataSource", () => {
     });
 
     test("returns StacksApiUnexpectedError when request throws unexpected error", async () => {
-      mockRequest.mockImplementation(async () => {
+      mockRequest.mockImplementation(() => {
         throw new Error("Network error");
       });
 
@@ -179,32 +164,32 @@ describe("API DataSource", () => {
 
   describe("getBlockByHash", () => {
     test("returns block data on 200", async () => {
-      mockRequest.mockImplementation(async (url: string) => {
+      mockRequest.mockImplementation((url: string) => {
         expect(url).toBe("https://api.hiro.so/extended/v2/blocks/0xabc123");
         return {
           statusCode: 200,
-          body: mockBody({ hash: "0xabc123", block_height: 123456 }),
+          body: mockBody({ hash: "0xabc123", block_height: 123_456 }),
         };
       });
 
       const result = await datasourceStacksApi.getBlockByHash("0xabc123");
-      expect(result).toEqual(Result.ok({ hash: "0xabc123", block_height: 123456 }));
+      expect(result).toEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
     });
   });
 
   describe("getTransaction", () => {
     test("returns transaction data on 200", async () => {
-      mockRequest.mockImplementation(async (url: string) => {
+      mockRequest.mockImplementation((url: string) => {
         expect(url).toBe("https://api.hiro.so/extended/v1/tx/0xtx123");
         return {
           statusCode: 200,
-          body: mockBody({ tx_id: "0xtx123", tx_status: "success", block_height: 123456 }),
+          body: mockBody({ tx_id: "0xtx123", tx_status: "success", block_height: 123_456 }),
         };
       });
 
       const result = await datasourceStacksApi.getTransaction("0xtx123");
       expect(result).toEqual(
-        Result.ok({ tx_id: "0xtx123", tx_status: "success", block_height: 123456 }),
+        Result.ok({ tx_id: "0xtx123", tx_status: "success", block_height: 123_456 }),
       );
     });
   });
