@@ -1,7 +1,7 @@
 import { Result } from "better-result";
 import { describe, test, expect, vi, beforeEach, afterAll } from "vite-plus/test";
 
-import { StacksApiParseError, StacksApiResponseError } from "./errors.ts";
+import { StacksApiUnexpectedError, StacksApiParseError, StacksApiResponseError } from "./errors.ts";
 import { datasourceStacksApi } from "./index.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -99,6 +99,79 @@ describe("API DataSource", () => {
         new StacksApiParseError({
           message: "Unexpected end of JSON input",
           cause: new Error("Unexpected end of JSON input"),
+        }),
+      );
+    });
+
+    test("returns StacksApiResponseError with text error data when JSON fails on error response", async () => {
+      mockRequest.mockImplementation(async () => {
+        return {
+          statusCode: 500,
+          statusText: "Internal Server Error",
+          body: {
+            json: async () => {
+              throw new Error("parse error");
+            },
+            text: async () => "Internal Server Error",
+          },
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction("500");
+
+      expect(result.isErr()).toBe(true);
+      expect((result as any).error).toEqual(
+        new StacksApiResponseError({
+          status: 500,
+          statusText: "Internal Server Error",
+          path: "/extended/v1/tx/500",
+          errorData: "Internal Server Error",
+        }),
+      );
+    });
+
+    test("returns StacksApiResponseError with null error data when both JSON and text fail", async () => {
+      mockRequest.mockImplementation(async () => {
+        return {
+          statusCode: 500,
+          statusText: "Internal Server Error",
+          body: {
+            json: async () => {
+              throw new Error("parse error");
+            },
+            text: async () => {
+              throw new Error("text error");
+            },
+          },
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction("500");
+
+      expect(result.isErr()).toBe(true);
+      expect((result as any).error).toEqual(
+        new StacksApiResponseError({
+          status: 500,
+          statusText: "Internal Server Error",
+          path: "/extended/v1/tx/500",
+          errorData: null,
+        }),
+      );
+    });
+
+    test("returns StacksApiUnexpectedError when request throws unexpected error", async () => {
+      mockRequest.mockImplementation(async () => {
+        throw new Error("Network error");
+      });
+
+      const result = await datasourceStacksApi.getTransaction("network-error");
+
+      expect(result.isErr()).toBe(true);
+      expect((result as any).error).toEqual(
+        new StacksApiUnexpectedError({
+          path: "/extended/v1/tx/network-error",
+          message: "Unexpected Stacks API error",
+          cause: new Error("Network error"),
         }),
       );
     });

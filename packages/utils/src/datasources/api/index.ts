@@ -32,7 +32,11 @@ export const datasourceStacksApi = {
       catch: (error) =>
         StacksApiResponseError.is(error) || StacksApiParseError.is(error)
           ? error
-          : new StacksApiUnexpectedError({ message: "Unexpected error", cause: error, path }),
+          : new StacksApiUnexpectedError({
+              message: "Unexpected Stacks API error",
+              cause: error,
+              path,
+            }),
     });
   },
 
