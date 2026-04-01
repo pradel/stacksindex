@@ -1,7 +1,7 @@
 import { Result } from "better-result";
 import { describe, test, expect, vi, beforeEach, afterAll } from "vite-plus/test";
 
-import { StacksApiResponseError } from "./errors.ts";
+import { StacksApiParseError, StacksApiResponseError } from "./errors.ts";
 import { datasourceStacksApi } from "./index.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -32,7 +32,7 @@ describe("API DataSource", () => {
         };
       });
 
-      const result = await datasourceStacksApi.getBlockByHash("0xabc123");
+      const result = await datasourceStacksApi.getTransaction("0xabc123");
       expect(result).toEqual(Result.ok({ hash: "0xabc123", block_height: 123456 }));
     });
 
@@ -54,6 +54,51 @@ describe("API DataSource", () => {
           statusText: "Not Found",
           path: "/extended/v1/tx/404",
           errorData: { error: "Not found" },
+        }),
+      );
+    });
+
+    test("returns StacksApiResponseError on 500", async () => {
+      mockRequest.mockImplementation(async () => {
+        return {
+          statusCode: 500,
+          statusText: "Internal Server Error",
+          body: mockBody({ error: "Internal server error" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction("500");
+
+      expect(result.isErr()).toBe(true);
+      expect((result as any).error).toEqual(
+        new StacksApiResponseError({
+          status: 500,
+          statusText: "Internal Server Error",
+          path: "/extended/v1/tx/500",
+          errorData: { error: "Internal server error" },
+        }),
+      );
+    });
+
+    test("returns StacksApiParseError on invalid JSON", async () => {
+      mockRequest.mockImplementation(async () => {
+        return {
+          statusCode: 200,
+          body: {
+            json: async () => {
+              throw new Error("Unexpected end of JSON input");
+            },
+          },
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction("parse-error");
+
+      expect(result.isErr()).toBe(true);
+      expect((result as any).error).toEqual(
+        new StacksApiParseError({
+          message: "Unexpected end of JSON input",
+          cause: new Error("Unexpected end of JSON input"),
         }),
       );
     });

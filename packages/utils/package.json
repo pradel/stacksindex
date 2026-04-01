@@ -37,6 +37,7 @@
   "devDependencies": {
     "@types/node": "25.5.0",
     "@typescript/native-preview": "7.0.0-dev.20260328.1",
+    "@vitest/coverage-v8": "4.1.2",
     "msw": "2.12.14",
     "publint": "0.3.18",
     "typescript": "6.0.2",
