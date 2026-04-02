@@ -20,6 +20,27 @@ export interface TransactionApiResponse {
   tx_id: string;
 }
 
+export interface ContractLogsResponse {
+  results: ContractLog[];
+  limit: number;
+  offset: number;
+  total: number;
+  next_cursor: string | null;
+  prev_cursor: string | null;
+}
+
+export interface ContractLog {
+  tx_id: string;
+  event_index: number;
+  event_type: string;
+  contract_id: string;
+  topic: string;
+  value: {
+    hex: string;
+    repr: string;
+  };
+}
+
 export const datasourceStacksApi = {
   async _request<ResponseT>(path: string): Promise<Result<ResponseT, StacksApiError>> {
     return Result.tryPromise({
@@ -59,5 +80,13 @@ export const datasourceStacksApi = {
 
   getTransaction(txId: string) {
     return this._request<TransactionApiResponse>(`/extended/v1/tx/${txId}`);
+  },
+
+  getContractLogs(contractId: string, cursor?: string | null) {
+    const limit = 50;
+    const cursorParam =
+      cursor !== null && cursor !== undefined && cursor !== "" ? `&cursor=${cursor}` : "";
+    const path = `/extended/v2/smart-contracts/${contractId}/logs?limit=${limit}${cursorParam}`;
+    return this._request<ContractLogsResponse>(path);
   },
 };

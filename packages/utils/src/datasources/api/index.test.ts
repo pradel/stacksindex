@@ -195,7 +195,7 @@ describe("API DataSource", () => {
   });
 
   describe("getContractLogs", () => {
-    test("returns contract logs on 200", async () => {
+    test("returns contract logs on 200 with limit=50", async () => {
       const contractId = "SP123.token";
       const mockLogs = {
         results: [
@@ -212,7 +212,9 @@ describe("API DataSource", () => {
       };
 
       mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe(`https://api.hiro.so/extended/v2/smart-contracts/${contractId}/logs`);
+        expect(url).toBe(
+          `https://api.hiro.so/extended/v2/smart-contracts/${contractId}/logs?limit=50`,
+        );
         return {
           statusCode: 200,
           body: mockBody(mockLogs),
