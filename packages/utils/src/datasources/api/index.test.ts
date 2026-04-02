@@ -193,4 +193,48 @@ describe("API DataSource", () => {
       );
     });
   });
+
+  describe("getContractLogs", () => {
+    test("returns contract logs on 200", async () => {
+      const contractId = "SP123.token";
+      const mockLogs = {
+        results: [
+          {
+            tx_id: "0xtx123",
+            event_index: 0,
+            event_type: "smart_contract_log",
+            contract_id: contractId,
+            topic: "print",
+            value: { hex: "0x01", repr: "123" },
+          },
+        ],
+        next_cursor: "abc123",
+      };
+
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe(`https://api.hiro.so/extended/v2/smart-contracts/${contractId}/logs`);
+        return {
+          statusCode: 200,
+          body: mockBody(mockLogs),
+        };
+      });
+
+      const result = await datasourceStacksApi.getContractLogs(contractId);
+      expect(result).toEqual(
+        Result.ok({
+          results: [
+            {
+              tx_id: "0xtx123",
+              event_index: 0,
+              event_type: "smart_contract_log",
+              contract_id: contractId,
+              topic: "print",
+              value: { hex: "0x01", repr: "123" },
+            },
+          ],
+          next_cursor: "abc123",
+        }),
+      );
+    });
+  });
 });
