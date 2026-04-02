@@ -1,6 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
 
 export interface TestDatabase {
   db: PgliteDatabase;
@@ -14,16 +15,14 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   const client = new PGlite();
   const db = drizzle({ client });
 
-  // TODO apply migrations
+  await migrate(db, { migrationsFolder: "drizzle" });
 
   return {
     db,
     client,
 
     async cleanup() {
-      await db.execute(sql`drop schema if exists public cascade`);
-      await db.execute(sql`create schema public`);
-      await db.execute(sql`drop schema if exists drizzle cascade`);
+      await db.execute(sql`truncate table "blocks" cascade`);
     },
 
     async close() {

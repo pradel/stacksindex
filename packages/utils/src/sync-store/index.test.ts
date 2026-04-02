@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, beforeEach, describe, test } from "vite-plus/test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { syncStore } from "./index.ts";
+import { blocksTable } from "./schema.ts";
 
 const block = {
   canonical: true,
@@ -50,6 +51,17 @@ describe("syncStore", () => {
         },
         { db: testDb.db },
       );
+
+      const result = await testDb.db.select().from(blocksTable);
+      expect(result).toStrictEqual([
+        {
+          blockTime: 1775125322n,
+          chainId: 1n,
+          hash: "0xa7a68bdbb6048b0b614733c9c49410956a8df3e6bc6b55b336a4020b8d6770ee",
+          height: 7443118n,
+          tenureHeight: 943342n,
+        },
+      ]);
     });
   });
 });
