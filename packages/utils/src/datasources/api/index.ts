@@ -1,6 +1,8 @@
 import { Result } from "better-result";
 import { request } from "undici";
 
+import { startClock } from "../../lib/timer.ts";
+import type { Logger } from "../../logger/index.ts";
 import {
   type StacksApiError,
   StacksApiParseError,
@@ -95,10 +97,22 @@ export interface ContractLog {
   };
 }
 
+interface DatasourceStacksApiContext {
+  logger: Logger;
+}
+
 export const datasourceStacksApi = {
-  async _request<ResponseT>(path: string): Promise<Result<ResponseT, StacksApiError>> {
+  async _request<ResponseT>(
+    context: DatasourceStacksApiContext,
+    path: string,
+  ): Promise<Result<ResponseT, StacksApiError>> {
     return Result.tryPromise({
       try: async () => {
+        const stopClock = startClock();
+        context.logger.trace({
+          service: "datasourceStacksApi",
+          msg: `${path} request`,
+        });
         const { statusCode, statusText, body } = await request(`https://api.hiro.so${path}`);
 
         if (statusCode !== 200) {
@@ -108,6 +122,14 @@ export const datasourceStacksApi = {
 
         try {
           const data = await body.json();
+
+          const duration = stopClock();
+          context.logger.trace({
+            service: "datasourceStacksApi",
+            msg: `${path} response`,
+            duration,
+          });
+
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
           return data as ResponseT;
         } catch (error) {
@@ -128,19 +150,18 @@ export const datasourceStacksApi = {
     });
   },
 
-  getBlockByHash(hash: string) {
-    return this._request<BlockApiResponse>(`/extended/v2/blocks/${hash}`);
+  getBlockByHash(context: DatasourceStacksApiContext, hash: string) {
+    return this._request<BlockApiResponse>(context, `/extended/v2/blocks/${hash}`);
   },
 
-  getTransaction(txId: string) {
-    return this._request<TransactionApiResponse>(`/extended/v1/tx/${txId}`);
+  getTransaction(context: DatasourceStacksApiContext, txId: string) {
+    return this._request<TransactionApiResponse>(context, `/extended/v1/tx/${txId}`);
   },
 
-  getContractLogs(contractId: string, cursor?: string | null) {
-    const limit = 50;
-    const cursorParam =
-      cursor !== null && cursor !== undefined && cursor !== "" ? `&cursor=${cursor}` : "";
+  getContractLogs(context: DatasourceStacksApiContext, contractId: string, cursor?: string | null) {
+    const limit = 100;
+    const cursorParam = cursor ? `&cursor=${cursor}` : "";
     const path = `/extended/v2/smart-contracts/${contractId}/logs?limit=${limit}${cursorParam}`;
-    return this._request<ContractLogsResponse>(path);
+    return this._request<ContractLogsResponse>(context, path);
   },
 };

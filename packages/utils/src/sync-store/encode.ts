@@ -1,8 +1,4 @@
-import type {
-  BlockApiResponse,
-  TransactionApiResponse,
-  ContractLog,
-} from "../datasources/api/index.ts";
+import type { BlockApiResponse, TransactionApiResponse } from "../datasources/api/index.ts";
 import type * as ponderSyncSchema from "./schema.js";
 
 export const encodeBlock = ({
@@ -37,18 +33,4 @@ export const encodeTransaction = ({
   nonce: BigInt(transaction.nonce),
   txStatus: transaction.tx_status,
   canonical: transaction.canonical,
-});
-
-export const encodeEvent = ({
-  event,
-}: {
-  event: ContractLog;
-}): typeof ponderSyncSchema.eventsTable.$inferInsert => ({
-  txId: event.tx_id,
-  eventIndex: event.event_index,
-  eventType: event.event_type,
-  contractId: event.contract_id,
-  topic: event.topic,
-  valueHex: event.value.hex,
-  valueRepr: event.value.repr,
 });

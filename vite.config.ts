@@ -20,12 +20,10 @@ export default defineConfig({
     plugins: ["node", "typescript", "vitest"],
     options: { typeAware: true, typeCheck: true },
     rules: {
-      // Handled by oxfmt already
       "sort-imports": "off",
       "max-lines-per-function": "off",
       "max-classes-per-file": "off",
       "max-statements": "off",
-      // Disabled in favor of typescript/require-await
       "require-await": "off",
       "no-ternary": "off",
       "no-magic-numbers": "off",
@@ -38,7 +36,9 @@ export default defineConfig({
       "typescript/explicit-module-boundary-types": "off",
       "typescript/prefer-readonly-parameter-types": "off",
       "typescript/strict-boolean-expressions": "off",
+      "typescript/consistent-indexed-object-style": "off",
       "unicorn/no-null": "off",
+      "func-style": "off",
 
       "sort-keys": "off",
     },
