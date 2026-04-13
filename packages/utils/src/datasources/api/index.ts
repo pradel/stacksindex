@@ -1,6 +1,8 @@
 import { Result } from "better-result";
 import { request } from "undici";
 
+import { startClock } from "../../lib/timer.ts";
+import type { Logger } from "../../logger/index.ts";
 import {
   type StacksApiError,
   StacksApiParseError,
@@ -9,21 +11,108 @@ import {
 } from "./errors.ts";
 
 export interface BlockApiResponse {
-  hash: string;
-  block_height: number;
+  canonical: boolean;
   height: number;
+  hash: string;
+  block_time: number;
+  block_time_iso: string;
+  tenure_height: number;
+  index_block_hash: string;
+  parent_block_hash: string;
+  parent_index_block_hash: string;
   burn_block_time: number;
+  burn_block_time_iso: string;
+  burn_block_hash: string;
   burn_block_height: number;
+  miner_txid: string;
+  tx_count: number;
+  execution_cost_read_count: number;
+  execution_cost_read_length: number;
+  execution_cost_runtime: number;
+  execution_cost_write_count: number;
+  execution_cost_write_length: number;
 }
 
 export interface TransactionApiResponse {
   tx_id: string;
+  nonce: number;
+  fee_rate: string;
+  sender_address: string;
+  sponsored: boolean;
+  post_condition_mode: string;
+  // oxlint-disable-next-line typescript/no-explicit-any
+  post_conditions: any[];
+  anchor_mode: string;
+  block_hash: string;
+  block_height: number;
+  block_time: number;
+  block_time_iso: string;
+  burn_block_time: number;
+  burn_block_height: number;
+  burn_block_time_iso: string;
+  parent_burn_block_time: number;
+  parent_burn_block_time_iso: string;
+  canonical: boolean;
+  tx_index: number;
+  tx_status: string;
+  tx_result: {
+    hex: string;
+    repr: string;
+  } | null;
+  event_count: number;
+  parent_block_hash: string;
+  is_unanchored: boolean;
+  microblock_hash: string;
+  microblock_sequence: number;
+  microblock_canonical: boolean;
+  execution_cost_read_count: number;
+  execution_cost_read_length: number;
+  execution_cost_runtime: number;
+  execution_cost_write_count: number;
+  execution_cost_write_length: number;
+  vm_error: null | string;
+  // oxlint-disable-next-line typescript/no-explicit-any
+  events: any[];
+  tx_type: string;
+}
+
+export interface ContractLogsResponse {
+  results: ContractLog[];
+  limit: number;
+  offset: number;
+  total: number;
+  next_cursor: string | null;
+  prev_cursor: string | null;
+}
+
+export interface ContractLog {
+  tx_id: string;
+  event_index: number;
+  event_type: string;
+  contract_id: string;
+  topic: string;
+  value: {
+    hex: string;
+    repr: string;
+  };
+}
+
+interface DatasourceStacksApiContext {
+  logger: Logger;
 }
 
 export const datasourceStacksApi = {
-  async _request<ResponseT>(path: string): Promise<Result<ResponseT, StacksApiError>> {
+  async _request<ResponseT>(
+    context: DatasourceStacksApiContext,
+    path: string,
+  ): Promise<Result<ResponseT, StacksApiError>> {
     return Result.tryPromise({
       try: async () => {
+        const stopClock = startClock();
+        context.logger.trace({
+          service: "datasourceStacksApi",
+          msg: `${path} request`,
+        });
         const { statusCode, statusText, body } = await request(`https://api.hiro.so${path}`);
 
         if (statusCode !== 200) {
@@ -33,6 +122,14 @@ export const datasourceStacksApi = {
 
         try {
           const data = await body.json();
+
+          const duration = stopClock();
+          context.logger.trace({
+            service: "datasourceStacksApi",
+            msg: `${path} response`,
+            duration,
+          });
+
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
           return data as ResponseT;
         } catch (error) {
@@ -53,11 +150,18 @@ export const datasourceStacksApi = {
     });
   },
 
-  getBlockByHash(hash: string) {
-    return this._request<BlockApiResponse>(`/extended/v2/blocks/${hash}`);
+  getBlockByHash(context: DatasourceStacksApiContext, hash: string) {
+    return this._request<BlockApiResponse>(context, `/extended/v2/blocks/${hash}`);
   },
 
-  getTransaction(txId: string) {
-    return this._request<TransactionApiResponse>(`/extended/v1/tx/${txId}`);
+  getTransaction(context: DatasourceStacksApiContext, txId: string) {
+    return this._request<TransactionApiResponse>(context, `/extended/v1/tx/${txId}`);
+  },
+
+  getContractLogs(context: DatasourceStacksApiContext, contractId: string, cursor?: string | null) {
+    const limit = 100;
+    const cursorParam = cursor ? `&cursor=${cursor}` : "";
+    const path = `/extended/v2/smart-contracts/${contractId}/logs?limit=${limit}${cursorParam}`;
+    return this._request<ContractLogsResponse>(context, path);
   },
 };

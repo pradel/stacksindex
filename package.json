@@ -3,10 +3,12 @@
   "type": "module",
   "scripts": {
     "ready": "vp fmt && vp lint && vp run -r test && vp run -r build",
+    "test": "vp run -r test",
+    "build": "vp run -r build",
     "prepare": "vp config"
   },
   "devDependencies": {
-    "vite-plus": "0.1.15"
+    "vite-plus": "0.1.16"
   },
   "packageManager": "pnpm@10.33.0"
 }

@@ -2,6 +2,9 @@ packages:
   - apps/*
   - packages/*
   - tools/*
+allowBuilds:
+  esbuild: false
+  msw: false
 
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@latest
@@ -17,3 +20,6 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
     vitest: "*"
+blockExoticSubdeps: true
+minimumReleaseAge: 1440 # 1 day
+strictDepBuilds: true

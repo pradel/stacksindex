@@ -4,6 +4,7 @@
 import { Result } from "better-result";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import { createLogger } from "../../logger/index.ts";
 import { StacksApiParseError, StacksApiResponseError, StacksApiUnexpectedError } from "./errors.ts";
 import { datasourceStacksApi } from "./index.ts";
 
@@ -16,6 +17,10 @@ vi.mock("undici", () => ({
 const mockBody = (data: unknown) => ({
   json: () => Promise.resolve(data),
 });
+
+const context = {
+  logger: createLogger({ level: 0 }),
+};
 
 describe("API DataSource", () => {
   beforeEach(() => {
@@ -33,7 +38,7 @@ describe("API DataSource", () => {
         body: mockBody({ hash: "0xabc123", block_height: 123_456 }),
       });
 
-      const result = await datasourceStacksApi.getTransaction("0xabc123");
+      const result = await datasourceStacksApi.getTransaction(context, "0xabc123");
       expect(result).toEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
     });
 
@@ -44,7 +49,7 @@ describe("API DataSource", () => {
         body: mockBody({ error: "Not found" }),
       });
 
-      const result = await datasourceStacksApi.getTransaction("404");
+      const result = await datasourceStacksApi.getTransaction(context, "404");
 
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toEqual(
@@ -64,7 +69,7 @@ describe("API DataSource", () => {
         body: mockBody({ error: "Internal server error" }),
       });
 
-      const result = await datasourceStacksApi.getTransaction("500");
+      const result = await datasourceStacksApi.getTransaction(context, "500");
 
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toEqual(
@@ -87,7 +92,7 @@ describe("API DataSource", () => {
         },
       });
 
-      const result = await datasourceStacksApi.getTransaction("parse-error");
+      const result = await datasourceStacksApi.getTransaction(context, "parse-error");
 
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toEqual(
@@ -108,7 +113,7 @@ describe("API DataSource", () => {
         },
       });
 
-      const result = await datasourceStacksApi.getTransaction("500");
+      const result = await datasourceStacksApi.getTransaction(context, "500");
 
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toEqual(
@@ -131,7 +136,7 @@ describe("API DataSource", () => {
         },
       });
 
-      const result = await datasourceStacksApi.getTransaction("500");
+      const result = await datasourceStacksApi.getTransaction(context, "500");
 
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toEqual(
@@ -149,7 +154,7 @@ describe("API DataSource", () => {
         throw new Error("Network error");
       });
 
-      const result = await datasourceStacksApi.getTransaction("network-error");
+      const result = await datasourceStacksApi.getTransaction(context, "network-error");
 
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toEqual(
@@ -172,7 +177,7 @@ describe("API DataSource", () => {
         };
       });
 
-      const result = await datasourceStacksApi.getBlockByHash("0xabc123");
+      const result = await datasourceStacksApi.getBlockByHash(context, "0xabc123");
       expect(result).toEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
     });
   });
@@ -187,9 +192,55 @@ describe("API DataSource", () => {
         };
       });
 
-      const result = await datasourceStacksApi.getTransaction("0xtx123");
+      const result = await datasourceStacksApi.getTransaction(context, "0xtx123");
       expect(result).toEqual(
         Result.ok({ tx_id: "0xtx123", tx_status: "success", block_height: 123_456 }),
+      );
+    });
+  });
+
+  describe("getContractLogs", () => {
+    test("returns contract logs on 200 with limit=100", async () => {
+      const contractId = "SP123.token";
+      const mockLogs = {
+        results: [
+          {
+            tx_id: "0xtx123",
+            event_index: 0,
+            event_type: "smart_contract_log",
+            contract_id: contractId,
+            topic: "print",
+            value: { hex: "0x01", repr: "123" },
+          },
+        ],
+        next_cursor: "abc123",
+      };
+
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe(
+          `https://api.hiro.so/extended/v2/smart-contracts/${contractId}/logs?limit=100`,
+        );
+        return {
+          statusCode: 200,
+          body: mockBody(mockLogs),
+        };
+      });
+
+      const result = await datasourceStacksApi.getContractLogs(context, contractId);
+      expect(result).toEqual(
+        Result.ok({
+          results: [
+            {
+              tx_id: "0xtx123",
+              event_index: 0,
+              event_type: "smart_contract_log",
+              contract_id: contractId,
+              topic: "print",
+              value: { hex: "0x01", repr: "123" },
+            },
+          ],
+          next_cursor: "abc123",
+        }),
       );
     });
   });
