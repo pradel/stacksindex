@@ -76,6 +76,13 @@ export interface TransactionApiResponse {
   tx_type: string;
 }
 
+export interface AddressTransactionsResponse {
+  limit: number;
+  offset: number;
+  total: number;
+  results: TransactionApiResponse[];
+}
+
 export interface ContractLogsResponse {
   results: ContractLog[];
   limit: number;
@@ -156,6 +163,17 @@ export const datasourceStacksApi = {
 
   getTransaction(context: DatasourceStacksApiContext, txId: string) {
     return this._request<TransactionApiResponse>(context, `/extended/v1/tx/${txId}`);
+  },
+
+  // oxlint-disable-next-line max-params
+  getAddressTransactions(
+    context: DatasourceStacksApiContext,
+    address: string,
+    limit = 50,
+    offset = 0,
+  ) {
+    const path = `/extended/v1/address/${address}/transactions?limit=${limit}&offset=${offset}`;
+    return this._request<AddressTransactionsResponse>(context, path);
   },
 
   getContractLogs(context: DatasourceStacksApiContext, contractId: string, cursor?: string | null) {
