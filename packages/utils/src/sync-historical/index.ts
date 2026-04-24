@@ -73,7 +73,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
 
       const txs = pageResult.value.results;
       // Iterate from oldest to newest within the page.
-      for (const tx of txs) {
+      for (const tx of txs.slice().reverse()) {
         // Skip transactions with no events.
         if (tx.event_count > 0) {
           // oxlint-disable-next-line no-await-in-loop
