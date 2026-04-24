@@ -6,6 +6,7 @@ import {
   type ContractLog,
   type TransactionApiResponse,
 } from "../datasources/api/index.ts";
+import { startClock } from "../lib/timer.ts";
 import type { Logger } from "../logger/index.ts";
 
 interface HistoricalSyncContext {
@@ -45,6 +46,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
   async getContractEventsFirstCursor(
     contractId: string,
   ): Promise<Result<string | null, StacksApiError>> {
+    const stopClock = startClock();
     const ADDRESS_TX_LIMIT = 50;
     const countResult = await datasourceStacksApi.getAddressTransactions(context, contractId, 1, 0);
     if (countResult.isErr()) {
@@ -84,14 +86,19 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
 
           const firstEvent = findFirstContractEvent(txResult.value, contractId);
           if (firstEvent) {
-            return Result.ok(
-              buildCursor({
-                blockHeight: txResult.value.block_height,
-                microblockSequence: txResult.value.microblock_sequence,
-                txIndex: txResult.value.tx_index,
-                eventIndex: firstEvent.event_index,
-              }),
-            );
+            const cursor = buildCursor({
+              blockHeight: txResult.value.block_height,
+              microblockSequence: txResult.value.microblock_sequence,
+              txIndex: txResult.value.tx_index,
+              eventIndex: firstEvent.event_index,
+            });
+            const duration = stopClock();
+            context.logger.debug({
+              service: "getContractEventsFirstCursor",
+              msg: `First cursor found ${cursor}`,
+              duration,
+            });
+            return Result.ok(cursor);
           }
         }
       }
@@ -102,6 +109,12 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       offset = Math.max(0, offset - ADDRESS_TX_LIMIT);
     }
 
+    const duration = stopClock();
+    context.logger.debug({
+      service: "getContractEventsFirstCursor",
+      msg: `No cursor found for ${contractId}`,
+      duration,
+    });
     return Result.ok(null);
   },
 
