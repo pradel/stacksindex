@@ -74,9 +74,8 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       const txs = pageResult.value.results;
       // Iterate from oldest to newest within the page.
       for (const tx of txs) {
-        if (tx.event_count === 0) {
-          // Skip transactions with no events.
-        } else {
+        // Skip transactions with no events.
+        if (tx.event_count > 0) {
           // oxlint-disable-next-line no-await-in-loop
           const txResult = await datasourceStacksApi.getTransaction(context, tx.tx_id);
           if (txResult.isErr()) {
