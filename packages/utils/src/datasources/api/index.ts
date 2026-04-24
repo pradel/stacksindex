@@ -71,8 +71,13 @@ export interface TransactionApiResponse {
   execution_cost_write_count: number;
   execution_cost_write_length: number;
   vm_error: null | string;
-  // oxlint-disable-next-line typescript/no-explicit-any
-  events: any[];
+  events: {
+    event_index: number;
+    event_type: string;
+    contract_log?: {
+      contract_id: string;
+    };
+  }[];
   tx_type: string;
 }
 

@@ -26,37 +26,16 @@ export const buildCursor = ({
   eventIndex,
 }: BuildCursorParams): string => `${blockHeight}:${microblockSequence}:${txIndex}:${eventIndex}`;
 
-interface TxEvent {
-  event_index: number;
-  event_type: string;
-  contract_log?: {
-    contract_id: string;
-  };
-}
-
-function isTxEvent(event: unknown): event is TxEvent {
-  return (
-    typeof event === "object" &&
-    event !== null &&
-    "event_index" in event &&
-    typeof (event as Record<string, unknown>).event_index === "number" &&
-    "event_type" in event &&
-    typeof (event as Record<string, unknown>).event_type === "string"
-  );
-}
-
 function findFirstContractEvent(
   tx: TransactionApiResponse,
   contractId: string,
 ): { event_index: number } | null {
   for (const event of tx.events) {
-    if (isTxEvent(event)) {
-      if (
-        event.event_type === "smart_contract_log" &&
-        event.contract_log?.contract_id === contractId
-      ) {
-        return { event_index: event.event_index };
-      }
+    if (
+      event.event_type === "smart_contract_log" &&
+      event.contract_log?.contract_id === contractId
+    ) {
+      return { event_index: event.event_index };
     }
   }
   return null;
