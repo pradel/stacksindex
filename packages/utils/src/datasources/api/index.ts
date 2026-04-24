@@ -170,14 +170,13 @@ export const datasourceStacksApi = {
     return this._request<TransactionApiResponse>(context, `/extended/v1/tx/${txId}`);
   },
 
-  // oxlint-disable-next-line max-params
   getAddressTransactions(
     context: DatasourceStacksApiContext,
     address: string,
-    limit = 50,
-    offset = 0,
+    options: { limit?: number; offset?: number; exclude_function_args?: boolean } = {},
   ) {
-    const path = `/extended/v1/address/${address}/transactions?limit=${limit}&offset=${offset}`;
+    const { limit = 50, offset = 0, exclude_function_args = true } = options;
+    const path = `/extended/v1/address/${address}/transactions?limit=${limit}&offset=${offset}&exclude_function_args=${exclude_function_args}`;
     return this._request<AddressTransactionsResponse>(context, path);
   },
 

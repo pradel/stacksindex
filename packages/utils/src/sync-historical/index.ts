@@ -48,7 +48,10 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
   ): Promise<Result<string | null, StacksApiError>> {
     const stopClock = startClock();
     const ADDRESS_TX_LIMIT = 50;
-    const countResult = await datasourceStacksApi.getAddressTransactions(context, contractId, 1, 0);
+    const countResult = await datasourceStacksApi.getAddressTransactions(context, contractId, {
+      limit: 1,
+      offset: 0,
+    });
     if (countResult.isErr()) {
       return Result.err(countResult.error);
     }
@@ -63,12 +66,10 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
 
     while (offset >= 0) {
       // oxlint-disable-next-line no-await-in-loop
-      const pageResult = await datasourceStacksApi.getAddressTransactions(
-        context,
-        contractId,
-        ADDRESS_TX_LIMIT,
+      const pageResult = await datasourceStacksApi.getAddressTransactions(context, contractId, {
+        limit: ADDRESS_TX_LIMIT,
         offset,
-      );
+      });
       if (pageResult.isErr()) {
         return Result.err(pageResult.error);
       }

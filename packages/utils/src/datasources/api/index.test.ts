@@ -212,7 +212,7 @@ describe("aPI DataSource", () => {
 
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe(
-          `https://api.hiro.so/extended/v1/address/${address}/transactions?limit=50&offset=100`,
+          `https://api.hiro.so/extended/v1/address/${address}/transactions?limit=50&offset=100&exclude_function_args=true`,
         );
         return {
           statusCode: 200,
@@ -220,7 +220,10 @@ describe("aPI DataSource", () => {
         };
       });
 
-      const result = await datasourceStacksApi.getAddressTransactions(context, address, 50, 100);
+      const result = await datasourceStacksApi.getAddressTransactions(context, address, {
+        limit: 50,
+        offset: 100,
+      });
       expect(result).toStrictEqual(Result.ok(mockResponse));
     });
   });
