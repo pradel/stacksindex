@@ -43,7 +43,6 @@ export function createLogger({ level }: { level: LogLevel }) {
           // oxlint-disable-next-line typescript/no-non-null-assertion
           const levelObject = levels[log.level] ?? levels[2]!;
           const levelLabel = levelObject.colorLabel;
-          let prettyLog: string[] = [];
           let keyText = "";
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
           const args: Log = log.args[0] as Log;
@@ -59,7 +58,7 @@ export function createLogger({ level }: { level: LogLevel }) {
           if (args.duration) {
             durationText = ` ${colors.gray(`(${formatEta(args.duration)})`)}`;
           }
-          prettyLog = [
+          const prettyLog = [
             `${colors.dim(time)} ${levelLabel} ${args.msg}${colors.dim(keyText)}${durationText}`,
           ];
           if (args.error) {

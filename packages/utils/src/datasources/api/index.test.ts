@@ -10,6 +10,7 @@ import { datasourceStacksApi } from "./index.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
 
+// oxlint-disable-next-line jest/no-untyped-mock-factory
 vi.mock("undici", () => ({
   request: mockRequest,
 }));
@@ -22,7 +23,7 @@ const context = {
   logger: createLogger({ level: 0 }),
 };
 
-describe("API DataSource", () => {
+describe("aPI DataSource", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -39,7 +40,7 @@ describe("API DataSource", () => {
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "0xabc123");
-      expect(result).toEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
+      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
     });
 
     test("returns StacksApiResponseError on 404", async () => {
@@ -52,7 +53,7 @@ describe("API DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "404");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toEqual(
+      expect((result as any).error).toStrictEqual(
         new StacksApiResponseError({
           status: 404,
           statusText: "Not Found",
@@ -72,7 +73,7 @@ describe("API DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toEqual(
+      expect((result as any).error).toStrictEqual(
         new StacksApiResponseError({
           status: 500,
           statusText: "Internal Server Error",
@@ -95,7 +96,7 @@ describe("API DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "parse-error");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toEqual(
+      expect((result as any).error).toStrictEqual(
         new StacksApiParseError({
           message: "Unexpected end of JSON input",
           cause: new Error("Unexpected end of JSON input"),
@@ -116,7 +117,7 @@ describe("API DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toEqual(
+      expect((result as any).error).toStrictEqual(
         new StacksApiResponseError({
           status: 500,
           statusText: "Internal Server Error",
@@ -139,7 +140,7 @@ describe("API DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toEqual(
+      expect((result as any).error).toStrictEqual(
         new StacksApiResponseError({
           status: 500,
           statusText: "Internal Server Error",
@@ -157,7 +158,7 @@ describe("API DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "network-error");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toEqual(
+      expect((result as any).error).toStrictEqual(
         new StacksApiUnexpectedError({
           path: "/extended/v1/tx/network-error",
           message: "Unexpected Stacks API error",
@@ -178,7 +179,7 @@ describe("API DataSource", () => {
       });
 
       const result = await datasourceStacksApi.getBlockByHash(context, "0xabc123");
-      expect(result).toEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
+      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
     });
   });
 
@@ -193,7 +194,7 @@ describe("API DataSource", () => {
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "0xtx123");
-      expect(result).toEqual(
+      expect(result).toStrictEqual(
         Result.ok({ tx_id: "0xtx123", tx_status: "success", block_height: 123_456 }),
       );
     });
@@ -227,7 +228,7 @@ describe("API DataSource", () => {
       });
 
       const result = await datasourceStacksApi.getContractLogs(context, contractId);
-      expect(result).toEqual(
+      expect(result).toStrictEqual(
         Result.ok({
           results: [
             {

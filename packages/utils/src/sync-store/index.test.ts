@@ -73,6 +73,7 @@ const transaction = {
   },
 };
 
+// oxlint-disable-next-line vitest/prefer-describe-function-title
 describe("syncStore", () => {
   // oxlint-disable-next-line init-declarations
   let testDb: TestDatabase;

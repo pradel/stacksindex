@@ -33,6 +33,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => {
           return Result.err(eventsPage.error);
         }
         events = events.concat(eventsPage.value.results);
+        // oxlint-disable-next-line no-useless-assignment
         cursor = nextCursor;
         nextCursor = eventsPage.value.next_cursor;
       }
