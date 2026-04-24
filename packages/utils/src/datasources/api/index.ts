@@ -71,9 +71,21 @@ export interface TransactionApiResponse {
   execution_cost_write_count: number;
   execution_cost_write_length: number;
   vm_error: null | string;
-  // oxlint-disable-next-line typescript/no-explicit-any
-  events: any[];
+  events: {
+    event_index: number;
+    event_type: string;
+    contract_log?: {
+      contract_id: string;
+    };
+  }[];
   tx_type: string;
+}
+
+export interface AddressTransactionsResponse {
+  limit: number;
+  offset: number;
+  total: number;
+  results: TransactionApiResponse[];
 }
 
 export interface ContractLogsResponse {
@@ -156,6 +168,16 @@ export const datasourceStacksApi = {
 
   getTransaction(context: DatasourceStacksApiContext, txId: string) {
     return this._request<TransactionApiResponse>(context, `/extended/v1/tx/${txId}`);
+  },
+
+  getAddressTransactions(
+    context: DatasourceStacksApiContext,
+    address: string,
+    options: { limit?: number; offset?: number; exclude_function_args?: boolean } = {},
+  ) {
+    const { limit = 50, offset = 0, exclude_function_args = true } = options;
+    const path = `/extended/v1/address/${address}/transactions?limit=${limit}&offset=${offset}&exclude_function_args=${exclude_function_args}`;
+    return this._request<AddressTransactionsResponse>(context, path);
   },
 
   getContractLogs(context: DatasourceStacksApiContext, contractId: string, cursor?: string | null) {

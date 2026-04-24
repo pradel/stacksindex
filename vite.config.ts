@@ -39,8 +39,16 @@ export default defineConfig({
       "typescript/consistent-indexed-object-style": "off",
       "unicorn/no-null": "off",
       "func-style": "off",
+      "vitest/require-test-timeout": "off",
+      "vitest/require-mock-type-parameters": "off",
+      "vitest/prefer-to-be-truthy": "off",
+      "vitest/no-hooks": "off",
+      "vitest/prefer-import-in-mock": "off",
+      "jest/consistent-test-it": "off",
+      "jest/prefer-ending-with-an-expect": "off",
 
       "sort-keys": "off",
+      "vitest/prefer-importing-vitest-globals": "off",
     },
   },
   run: {

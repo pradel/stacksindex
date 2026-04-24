@@ -6,4 +6,4 @@ const logger = createLogger({
   level: 5,
 });
 
-await createHistoricalSync({ logger }).run();
+await createHistoricalSync({ logger }).run("SPGDS0Y17973EN5TCHNHGJJ9B31XWQ5YX8A36C9B.usdcx-poolv1");
