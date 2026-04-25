@@ -1,8 +1,16 @@
+// oxlint-disable max-lines
+
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { syncStore } from "./index.ts";
-import { blocksTable, syncProgressTable, transactionsTable } from "./schema.ts";
+import {
+  blocksTable,
+  checkpointsTable,
+  eventsTable,
+  syncProgressTable,
+  transactionsTable,
+} from "./schema.ts";
 
 const block = {
   canonical: true,
@@ -268,6 +276,268 @@ describe("syncStore", () => {
         { db: testDb.db },
       );
       expect(result).toStrictEqual(["block-1"]);
+    });
+  });
+
+  describe("insertEvents", () => {
+    test("inserts events", async () => {
+      await syncStore.insertEvents(
+        {
+          events: [
+            {
+              event: {
+                tx_id: "tx-1",
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_id: "SP123.token",
+                topic: "print",
+                value: { hex: "0x01", repr: "(ok true)" },
+              },
+              blockHeight: 100,
+            },
+          ],
+        },
+        { db: testDb.db },
+      );
+
+      const result = await testDb.db.select().from(eventsTable);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        txId: "tx-1",
+        contractId: "SP123.token",
+        eventType: "smart_contract_log",
+        valueHex: "0x01",
+        valueRepr: "(ok true)",
+      });
+      expect(Number(result[0].blockHeight)).toBe(100);
+    });
+
+    test("ignores duplicate events", async () => {
+      const event = {
+        tx_id: "tx-1",
+        event_index: 0,
+        event_type: "smart_contract_log",
+        contract_id: "SP123.token",
+        topic: "print",
+        value: { hex: "0x01", repr: "(ok true)" },
+      };
+
+      await syncStore.insertEvents({ events: [{ event, blockHeight: 100 }] }, { db: testDb.db });
+      await syncStore.insertEvents({ events: [{ event, blockHeight: 100 }] }, { db: testDb.db });
+
+      const result = await testDb.db.select().from(eventsTable);
+      expect(result).toHaveLength(1);
+    });
+  });
+
+  describe("getEvents", () => {
+    test("returns events ordered by block height, tx index, event index", async () => {
+      // Seed blocks and transactions
+      await testDb.db.insert(blocksTable).values({
+        chainId: 1n,
+        height: 100n,
+        hash: "block-100",
+        blockTime: 1000n,
+        tenureHeight: 100n,
+      });
+      await testDb.db.insert(blocksTable).values({
+        chainId: 1n,
+        height: 200n,
+        hash: "block-200",
+        blockTime: 2000n,
+        tenureHeight: 200n,
+      });
+      await testDb.db.insert(transactionsTable).values({
+        chainId: 1n,
+        txId: "tx-1",
+        blockHeight: 100n,
+        blockHash: "block-100",
+        txIndex: 1,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+        canonical: true,
+      });
+      await testDb.db.insert(transactionsTable).values({
+        chainId: 1n,
+        txId: "tx-2",
+        blockHeight: 100n,
+        blockHash: "block-100",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+        canonical: true,
+      });
+      await testDb.db.insert(transactionsTable).values({
+        chainId: 1n,
+        txId: "tx-3",
+        blockHeight: 200n,
+        blockHash: "block-200",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+        canonical: true,
+      });
+
+      // Seed events out of order
+      await testDb.db.insert(eventsTable).values({
+        chainId: 1n,
+        contractId: "SP123.token",
+        txId: "tx-1",
+        eventIndex: 0,
+        eventType: "smart_contract_log",
+        topic: "print",
+        valueHex: "0x01",
+        valueRepr: "(ok true)",
+        blockHeight: 100n,
+      });
+      await testDb.db.insert(eventsTable).values({
+        chainId: 1n,
+        contractId: "SP123.token",
+        txId: "tx-3",
+        eventIndex: 0,
+        eventType: "smart_contract_log",
+        topic: "print",
+        valueHex: "0x02",
+        valueRepr: "(ok false)",
+        blockHeight: 200n,
+      });
+      await testDb.db.insert(eventsTable).values({
+        chainId: 1n,
+        contractId: "SP123.token",
+        txId: "tx-2",
+        eventIndex: 0,
+        eventType: "smart_contract_log",
+        topic: "print",
+        valueHex: "0x03",
+        valueRepr: "(ok 1)",
+        blockHeight: 100n,
+      });
+
+      const result = await syncStore.getEvents(
+        { chainId: 1, fromBlockHeight: 0, toBlockHeight: 9999 },
+        { db: testDb.db },
+      );
+
+      expect(result).toHaveLength(3);
+      // Should be ordered by blockHeight, txIndex, eventIndex
+      // Block 100, txIndex 0
+      expect(result[0].txId).toBe("tx-2");
+      // Block 100, txIndex 1
+      expect(result[1].txId).toBe("tx-1");
+      // Block 200, txIndex 0
+      expect(result[2].txId).toBe("tx-3");
+    });
+
+    test("filters by block height range", async () => {
+      await testDb.db.insert(blocksTable).values({
+        chainId: 1n,
+        height: 100n,
+        hash: "block-100",
+        blockTime: 1000n,
+        tenureHeight: 100n,
+      });
+      await testDb.db.insert(transactionsTable).values({
+        chainId: 1n,
+        txId: "tx-1",
+        blockHeight: 100n,
+        blockHash: "block-100",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+        canonical: true,
+      });
+      await testDb.db.insert(eventsTable).values({
+        chainId: 1n,
+        contractId: "SP123.token",
+        txId: "tx-1",
+        eventIndex: 0,
+        eventType: "smart_contract_log",
+        topic: "print",
+        valueHex: "0x01",
+        valueRepr: "(ok true)",
+        blockHeight: 100n,
+      });
+
+      const result = await syncStore.getEvents(
+        { chainId: 1, fromBlockHeight: 200, toBlockHeight: 300 },
+        { db: testDb.db },
+      );
+
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe("getCheckpoint", () => {
+    test("returns null when no checkpoint exists", async () => {
+      const result = await syncStore.getCheckpoint({ chainId: 1 }, { db: testDb.db });
+      expect(result).toBeNull();
+    });
+
+    test("returns saved checkpoint", async () => {
+      await testDb.db.insert(checkpointsTable).values({
+        chainId: 1n,
+        blockHeight: 100n,
+        blockTime: 1000n,
+      });
+
+      const result = await syncStore.getCheckpoint({ chainId: 1 }, { db: testDb.db });
+      expect(result).toStrictEqual({
+        chainId: 1n,
+        blockHeight: 100n,
+        blockTime: 1000n,
+      });
+    });
+  });
+
+  describe("upsertCheckpoint", () => {
+    test("inserts new checkpoint", async () => {
+      await syncStore.upsertCheckpoint(
+        { chainId: 1, blockHeight: 100, blockTime: 1000 },
+        { db: testDb.db },
+      );
+
+      const result = await testDb.db.select().from(checkpointsTable);
+      expect(result).toStrictEqual([
+        {
+          chainId: 1n,
+          blockHeight: 100n,
+          blockTime: 1000n,
+        },
+      ]);
+    });
+
+    test("updates existing checkpoint", async () => {
+      await testDb.db.insert(checkpointsTable).values({
+        chainId: 1n,
+        blockHeight: 100n,
+        blockTime: 1000n,
+      });
+
+      await syncStore.upsertCheckpoint(
+        { chainId: 1, blockHeight: 200, blockTime: 2000 },
+        { db: testDb.db },
+      );
+
+      const result = await testDb.db.select().from(checkpointsTable);
+      expect(result).toStrictEqual([
+        {
+          chainId: 1n,
+          blockHeight: 200n,
+          blockTime: 2000n,
+        },
+      ]);
     });
   });
 });

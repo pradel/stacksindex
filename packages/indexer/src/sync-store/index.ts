@@ -1,9 +1,19 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import type { BlockApiResponse, TransactionApiResponse } from "../datasources/api/index.ts";
-import { encodeBlock, encodeTransaction } from "./encode.js";
-import { blocksTable, syncProgressTable, transactionsTable } from "./schema.js";
+import type {
+  BlockApiResponse,
+  ContractLog,
+  TransactionApiResponse,
+} from "../datasources/api/index.ts";
+import { encodeBlock, encodeEvent, encodeTransaction } from "./encode.js";
+import {
+  blocksTable,
+  checkpointsTable,
+  eventsTable,
+  syncProgressTable,
+  transactionsTable,
+} from "./schema.js";
 
 interface Context {
   db: NodePgDatabase;
@@ -122,6 +132,118 @@ export const syncStore = {
         set: {
           cursor,
           lastBlockHeight: BigInt(lastBlockHeight),
+        },
+      });
+  },
+
+  insertEvents: async (
+    { events }: { events: { event: ContractLog; blockHeight: number }[] },
+    context: Context,
+  ) => {
+    if (events.length === 0) {
+      return;
+    }
+
+    const chainId = 1;
+
+    await context.db
+      .insert(eventsTable)
+      .values(events.map(({ event, blockHeight }) => encodeEvent({ event, chainId, blockHeight })))
+      .onConflictDoNothing({
+        target: [eventsTable.chainId, eventsTable.txId, eventsTable.eventIndex],
+      });
+  },
+
+  getEvents: async (
+    {
+      chainId,
+      fromBlockHeight,
+      toBlockHeight,
+    }: {
+      chainId: number;
+      fromBlockHeight: number;
+      toBlockHeight?: number;
+    },
+    context: Context,
+  ) => {
+    const conditions = [
+      eq(eventsTable.chainId, BigInt(chainId)),
+      gte(eventsTable.blockHeight, BigInt(fromBlockHeight)),
+    ];
+    if (toBlockHeight !== undefined) {
+      conditions.push(lte(eventsTable.blockHeight, BigInt(toBlockHeight)));
+    }
+
+    return context.db
+      .select({
+        eventIndex: eventsTable.eventIndex,
+        eventType: eventsTable.eventType,
+        txId: eventsTable.txId,
+        contractId: eventsTable.contractId,
+        topic: eventsTable.topic,
+        valueHex: eventsTable.valueHex,
+        valueRepr: eventsTable.valueRepr,
+        blockHeight: eventsTable.blockHeight,
+        blockTime: blocksTable.blockTime,
+        txIndex: transactionsTable.txIndex,
+        senderAddress: transactionsTable.senderAddress,
+      })
+      .from(eventsTable)
+      .innerJoin(
+        transactionsTable,
+        and(
+          eq(eventsTable.chainId, transactionsTable.chainId),
+          eq(eventsTable.txId, transactionsTable.txId),
+        ),
+      )
+      .innerJoin(
+        blocksTable,
+        and(
+          eq(transactionsTable.chainId, blocksTable.chainId),
+          eq(transactionsTable.blockHeight, blocksTable.height),
+        ),
+      )
+      .where(and(...conditions))
+      .orderBy(eventsTable.blockHeight, transactionsTable.txIndex, eventsTable.eventIndex);
+  },
+
+  getCheckpoint: async (
+    { chainId }: { chainId: number },
+    context: Context,
+  ): Promise<typeof checkpointsTable.$inferSelect | null> => {
+    const result = await context.db
+      .select()
+      .from(checkpointsTable)
+      .where(eq(checkpointsTable.chainId, BigInt(chainId)))
+      .limit(1);
+
+    return result[0] ?? null;
+  },
+
+  upsertCheckpoint: async (
+    {
+      chainId,
+      blockHeight,
+      blockTime,
+    }: {
+      chainId: number;
+      blockHeight: number;
+      blockTime: number;
+    },
+    context: Context,
+  ) => {
+    await context.db
+      .insert(checkpointsTable)
+      .values({
+        chainId: BigInt(chainId),
+        blockHeight: BigInt(blockHeight),
+        blockTime: BigInt(blockTime),
+      })
+      .onConflictDoUpdate({
+        target: [checkpointsTable.chainId],
+        set: {
+          blockHeight: BigInt(blockHeight),
+          blockTime: BigInt(blockTime),
         },
       });
   },

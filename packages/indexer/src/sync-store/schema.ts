@@ -55,3 +55,39 @@ export const syncProgressTable = pgTable(
     }),
   ],
 );
+
+export const eventsTable = pgTable(
+  "events",
+  (table) => ({
+    chainId: table.bigint({ mode: "bigint" }).notNull(),
+    contractId: text("contract_id").notNull(),
+    txId: text("tx_id").notNull(),
+    eventIndex: integer("event_index").notNull(),
+    eventType: text("event_type").notNull(),
+    topic: text("topic").notNull(),
+    valueHex: text("value_hex").notNull(),
+    valueRepr: text("value_repr").notNull(),
+    blockHeight: table.bigint({ mode: "bigint" }).notNull(),
+  }),
+  (table) => [
+    primaryKey({
+      name: "events_pkey",
+      columns: [table.chainId, table.txId, table.eventIndex],
+    }),
+  ],
+);
+
+export const checkpointsTable = pgTable(
+  "checkpoints",
+  (table) => ({
+    chainId: table.bigint({ mode: "bigint" }).notNull(),
+    blockHeight: table.bigint({ mode: "bigint" }).notNull(),
+    blockTime: table.bigint({ mode: "bigint" }).notNull(),
+  }),
+  (table) => [
+    primaryKey({
+      name: "checkpoints_pkey",
+      columns: [table.chainId],
+    }),
+  ],
+);
