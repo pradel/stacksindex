@@ -129,8 +129,19 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => ({
 
       // Batch fetch transactions (deduplicated by tx_id) in chunks of 5
       const txIds = [...new Set(events.map((event) => event.tx_id))];
+      // oxlint-disable-next-line no-await-in-loop
+      const existingTxIds = await syncStore.getExistingTransactions(
+        { txIds, chainId: 1 },
+        { db: context.db },
+      );
+      const missingTxIds = txIds.filter((txId) => !existingTxIds.includes(txId));
+      context.logger.debug({
+        service: "historicalRuntime",
+        msg: `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
+      });
+
       const transactions: TransactionApiResponse[] = [];
-      for (const chunk of chunkArray(txIds, BATCH_SIZE)) {
+      for (const chunk of chunkArray(missingTxIds, BATCH_SIZE)) {
         // oxlint-disable-next-line no-await-in-loop
         const txResults = await Promise.all(
           chunk.map((txId) => datasourceStacksApi.getTransaction(context, txId)),
@@ -145,8 +156,19 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => ({
 
       // Batch fetch blocks (deduplicated by block_hash) in chunks of 5
       const blockHashes = [...new Set(transactions.map((transaction) => transaction.block_hash))];
+      // oxlint-disable-next-line no-await-in-loop
+      const existingBlockHashes = await syncStore.getExistingBlocks(
+        { blockHashes, chainId: 1 },
+        { db: context.db },
+      );
+      const missingBlockHashes = blockHashes.filter((hash) => !existingBlockHashes.includes(hash));
+      context.logger.debug({
+        service: "historicalRuntime",
+        msg: `Blocks: ${blockHashes.length} total, ${missingBlockHashes.length} missing`,
+      });
+
       const blocks: BlockApiResponse[] = [];
-      for (const chunk of chunkArray(blockHashes, BATCH_SIZE)) {
+      for (const chunk of chunkArray(missingBlockHashes, BATCH_SIZE)) {
         // oxlint-disable-next-line no-await-in-loop
         const blockResults = await Promise.all(
           chunk.map((hash) => datasourceStacksApi.getBlockByHash(context, hash)),

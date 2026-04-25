@@ -212,4 +212,62 @@ describe("syncStore", () => {
       ]);
     });
   });
+
+  describe("getExistingTransactions", () => {
+    test("returns empty array when no transactions exist", async () => {
+      const result = await syncStore.getExistingTransactions(
+        { txIds: ["tx-1", "tx-2"], chainId: 1 },
+        { db: testDb.db },
+      );
+      expect(result).toStrictEqual([]);
+    });
+
+    test("returns only existing transaction ids", async () => {
+      await testDb.db.insert(transactionsTable).values({
+        chainId: 1n,
+        txId: "tx-1",
+        blockHeight: 100n,
+        blockHash: "block-1",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+        canonical: true,
+      });
+
+      const result = await syncStore.getExistingTransactions(
+        { txIds: ["tx-1", "tx-2"], chainId: 1 },
+        { db: testDb.db },
+      );
+      expect(result).toStrictEqual(["tx-1"]);
+    });
+  });
+
+  describe("getExistingBlocks", () => {
+    test("returns empty array when no blocks exist", async () => {
+      const result = await syncStore.getExistingBlocks(
+        { blockHashes: ["block-1", "block-2"], chainId: 1 },
+        { db: testDb.db },
+      );
+      expect(result).toStrictEqual([]);
+    });
+
+    test("returns only existing block hashes", async () => {
+      await testDb.db.insert(blocksTable).values({
+        chainId: 1n,
+        height: 100n,
+        hash: "block-1",
+        blockTime: 1n,
+        tenureHeight: 1n,
+      });
+
+      const result = await syncStore.getExistingBlocks(
+        { blockHashes: ["block-1", "block-2"], chainId: 1 },
+        { db: testDb.db },
+      );
+      expect(result).toStrictEqual(["block-1"]);
+    });
+  });
 });

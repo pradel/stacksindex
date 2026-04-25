@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import type { BlockApiResponse, TransactionApiResponse } from "../datasources/api/index.ts";
@@ -41,6 +41,40 @@ export const syncStore = {
       .onConflictDoNothing({
         target: [transactionsTable.chainId, transactionsTable.txId],
       });
+  },
+
+  getExistingTransactions: async (
+    { txIds, chainId }: { txIds: string[]; chainId: number },
+    context: Context,
+  ) => {
+    if (txIds.length === 0) {
+      return [];
+    }
+
+    const result = await context.db
+      .select({ txId: transactionsTable.txId })
+      .from(transactionsTable)
+      .where(
+        and(eq(transactionsTable.chainId, BigInt(chainId)), inArray(transactionsTable.txId, txIds)),
+      );
+
+    return result.map((row) => row.txId);
+  },
+
+  getExistingBlocks: async (
+    { blockHashes, chainId }: { blockHashes: string[]; chainId: number },
+    context: Context,
+  ) => {
+    if (blockHashes.length === 0) {
+      return [];
+    }
+
+    const result = await context.db
+      .select({ hash: blocksTable.hash })
+      .from(blocksTable)
+      .where(and(eq(blocksTable.chainId, BigInt(chainId)), inArray(blocksTable.hash, blockHashes)));
+
+    return result.map((row) => row.hash);
   },
 
   getSyncProgress: async (

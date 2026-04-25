@@ -645,6 +645,80 @@ describe("historical runtime", () => {
     expect(blocks).toHaveLength(1);
   });
 
+  test("skips API calls for transactions and blocks already in database", async () => {
+    const contractId = "SP123.token";
+
+    // Pre-seed sync progress, transaction, and block
+    await syncStore.upsertSyncProgress(
+      { contractId, chainId: 1, cursor: "100:0:0:0", lastBlockHeight: 100 },
+      { db: testDb.db },
+    );
+    await testDb.db.insert(transactionsTable).values({
+      chainId: 1n,
+      txId: "tx-1",
+      blockHeight: 100n,
+      blockHash: "block-1",
+      txIndex: 0,
+      txType: "contract_call",
+      senderAddress: "SP sender",
+      feeRate: 1000n,
+      nonce: 0n,
+      txStatus: "success",
+      canonical: true,
+    });
+    await testDb.db.insert(blocksTable).values({
+      chainId: 1n,
+      height: 100n,
+      hash: "block-1",
+      blockTime: 1n,
+      tenureHeight: 1n,
+    });
+
+    mockRequest.mockImplementation((url: string) => {
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            results: [
+              {
+                tx_id: "tx-1",
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_id: contractId,
+                topic: "print",
+                value: { hex: "", repr: "" },
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 1,
+            next_cursor: null,
+            prev_cursor: null,
+          }),
+        };
+      }
+      // If we reach here, an unexpected API call was made
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const result = await runtime.run([{ contractId }]);
+
+    expect(result.isOk()).toBe(true);
+
+    // Verify no getTransaction or getBlockByHash calls were made
+    const txCalls = mockRequest.mock.calls.filter((call: any) =>
+      (call[0] as string).includes("/extended/v1/tx/"),
+    );
+    const blockCalls = mockRequest.mock.calls.filter((call: any) =>
+      (call[0] as string).includes("/extended/v2/blocks/"),
+    );
+    expect(txCalls).toHaveLength(0);
+    expect(blockCalls).toHaveLength(0);
+  });
+
   test("returns error when getContractLogs fails", async () => {
     const contractId = "SP123.token";
 
