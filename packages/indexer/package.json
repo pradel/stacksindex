@@ -1,5 +1,5 @@
 {
-  "name": "utils",
+  "name": "indexer",
   "version": "0.0.0",
   "description": "A starter for creating a TypeScript package.",
   "homepage": "https://github.com/author/library#readme",
@@ -46,6 +46,7 @@
     "vite-plus": "0.1.19"
   },
   "peerDependencies": {
+    "@electric-sql/pglite": "0.4.4",
     "drizzle-orm": "^0.45.2"
   }
 }
