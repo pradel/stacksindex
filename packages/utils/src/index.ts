@@ -1,9 +1,17 @@
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
+
 import { createLogger } from "./logger/index.ts";
-import { createHistoricalSync } from "./sync-historical/index.ts";
-export { datasourceStacksApi } from "./datasources/api/index.ts";
+import { createHistoricalRuntime } from "./runtime/historical.ts";
+
+const client = new PGlite();
+const db = drizzle({ client });
+
+await migrate(db, { migrationsFolder: "drizzle" });
 
 const logger = createLogger({
   level: 5,
 });
-
-await createHistoricalSync({ logger }).run("SPGDS0Y17973EN5TCHNHGJJ9B31XWQ5YX8A36C9B.usdcx-poolv1");
+const runtime = createHistoricalRuntime({ logger, db });
+await runtime.run([{ contractId: "SPGDS0Y17973EN5TCHNHGJJ9B31XWQ5YX8A36C9B.usdcx-poolv1" }]);

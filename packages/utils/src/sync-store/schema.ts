@@ -39,3 +39,19 @@ export const transactionsTable = pgTable(
     }),
   ],
 );
+
+export const syncProgressTable = pgTable(
+  "sync_progress",
+  (table) => ({
+    chainId: table.bigint({ mode: "bigint" }).notNull(),
+    contractId: text("contract_id").notNull(),
+    cursor: text("cursor").notNull(),
+    lastBlockHeight: table.bigint({ mode: "bigint" }).notNull(),
+  }),
+  (table) => [
+    primaryKey({
+      name: "sync_progress_pkey",
+      columns: [table.chainId, table.contractId],
+    }),
+  ],
+);
