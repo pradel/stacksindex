@@ -8,7 +8,7 @@ import {
   type TransactionApiResponse,
 } from "../datasources/api/index.ts";
 import type { Logger } from "../logger/index.ts";
-import { parseCursor } from "../sync-historical/index.ts";
+import { createHistoricalSync, parseCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 
 const BATCH_SIZE = 5;
@@ -52,12 +52,9 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => ({
       );
 
       if (saved === null) {
+        const historicalSync = createHistoricalSync(context);
         // oxlint-disable-next-line no-await-in-loop
-        const sync = await import("../sync-historical/index.ts").then((mod) =>
-          mod.createHistoricalSync(context),
-        );
-        // oxlint-disable-next-line no-await-in-loop
-        const cursorResult = await sync.getContractEventsFirstCursor(filter.contractId);
+        const cursorResult = await historicalSync.getContractEventsFirstCursor(filter.contractId);
         if (cursorResult.isErr()) {
           return Result.err(cursorResult.error);
         }
