@@ -1,15 +1,11 @@
 import { Result } from "better-result";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
-import {
-  datasourceStacksApi,
-  type ContractLog,
-  type TransactionApiResponse,
-} from "../datasources/api/index.ts";
+import { datasourceStacksApi, type TransactionApiResponse } from "../datasources/api/index.ts";
 import { startClock } from "../lib/timer.ts";
 import type { Logger } from "../logger/index.ts";
 
-interface HistoricalSyncContext {
+export interface HistoricalSyncContext {
   logger: Logger;
 }
 
@@ -26,6 +22,19 @@ export const buildCursor = ({
   txIndex,
   eventIndex,
 }: BuildCursorParams): string => `${blockHeight}:${microblockSequence}:${txIndex}:${eventIndex}`;
+
+export const parseCursor = (cursor: string): BuildCursorParams => {
+  const parts = cursor.split(":");
+  if (parts.length !== 4) {
+    throw new Error(`Invalid cursor format: ${cursor}`);
+  }
+  return {
+    blockHeight: Number(parts[0]),
+    microblockSequence: Number(parts[1]),
+    txIndex: Number(parts[2]),
+    eventIndex: Number(parts[3]),
+  };
+};
 
 function findFirstContractEvent(
   tx: TransactionApiResponse,
@@ -117,37 +126,5 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       duration,
     });
     return Result.ok(null);
-  },
-
-  async run(contractId: string): Promise<Result<void, StacksApiError>> {
-    const cursorResult = await this.getContractEventsFirstCursor(contractId);
-    if (cursorResult.isErr()) {
-      return Result.err(cursorResult.error);
-    }
-    let cursor = cursorResult.value;
-    if (!cursor) {
-      return Result.ok(undefined);
-    }
-
-    let eventsPage = await datasourceStacksApi.getContractLogs(context, contractId, cursor);
-    if (eventsPage.isErr()) {
-      return Result.err(eventsPage.error);
-    }
-    let nextCursor = eventsPage.value.next_cursor;
-    let events: ContractLog[] = eventsPage.value.results;
-
-    while (nextCursor) {
-      // oxlint-disable-next-line no-await-in-loop
-      eventsPage = await datasourceStacksApi.getContractLogs(context, contractId, nextCursor);
-      if (eventsPage.isErr()) {
-        return Result.err(eventsPage.error);
-      }
-      events = events.concat(eventsPage.value.results);
-      // oxlint-disable-next-line no-useless-assignment
-      cursor = nextCursor;
-      nextCursor = eventsPage.value.next_cursor;
-    }
-
-    return Result.ok(undefined);
   },
 });

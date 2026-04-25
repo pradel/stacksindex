@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-pl
 
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { syncStore } from "./index.ts";
-import { blocksTable, transactionsTable } from "./schema.ts";
+import { blocksTable, syncProgressTable, transactionsTable } from "./schema.ts";
 
 const block = {
   canonical: true,
@@ -137,6 +137,137 @@ describe("syncStore", () => {
           txType: "token_transfer",
         },
       ]);
+    });
+  });
+
+  describe("getSyncProgress", () => {
+    test("returns null when no progress exists", async () => {
+      const result = await syncStore.getSyncProgress(
+        { contractId: "SP123.token", chainId: 1 },
+        { db: testDb.db },
+      );
+      expect(result).toBeNull();
+    });
+
+    test("returns saved progress", async () => {
+      await testDb.db.insert(syncProgressTable).values({
+        chainId: 1n,
+        contractId: "SP123.token",
+        cursor: "100:0:5:2",
+        lastBlockHeight: 100n,
+      });
+
+      const result = await syncStore.getSyncProgress(
+        { contractId: "SP123.token", chainId: 1 },
+        { db: testDb.db },
+      );
+      expect(result).toStrictEqual({
+        chainId: 1n,
+        contractId: "SP123.token",
+        cursor: "100:0:5:2",
+        lastBlockHeight: 100n,
+      });
+    });
+  });
+
+  describe("upsertSyncProgress", () => {
+    test("inserts new progress", async () => {
+      await syncStore.upsertSyncProgress(
+        { contractId: "SP123.token", chainId: 1, cursor: "200:0:3:1", lastBlockHeight: 200 },
+        { db: testDb.db },
+      );
+
+      const result = await testDb.db.select().from(syncProgressTable);
+      expect(result).toStrictEqual([
+        {
+          chainId: 1n,
+          contractId: "SP123.token",
+          cursor: "200:0:3:1",
+          lastBlockHeight: 200n,
+        },
+      ]);
+    });
+
+    test("updates existing progress", async () => {
+      await testDb.db.insert(syncProgressTable).values({
+        chainId: 1n,
+        contractId: "SP123.token",
+        cursor: "100:0:5:2",
+        lastBlockHeight: 100n,
+      });
+
+      await syncStore.upsertSyncProgress(
+        { contractId: "SP123.token", chainId: 1, cursor: "300:0:1:0", lastBlockHeight: 300 },
+        { db: testDb.db },
+      );
+
+      const result = await testDb.db.select().from(syncProgressTable);
+      expect(result).toStrictEqual([
+        {
+          chainId: 1n,
+          contractId: "SP123.token",
+          cursor: "300:0:1:0",
+          lastBlockHeight: 300n,
+        },
+      ]);
+    });
+  });
+
+  describe("getExistingTransactions", () => {
+    test("returns empty array when no transactions exist", async () => {
+      const result = await syncStore.getExistingTransactions(
+        { txIds: ["tx-1", "tx-2"], chainId: 1 },
+        { db: testDb.db },
+      );
+      expect(result).toStrictEqual([]);
+    });
+
+    test("returns only existing transaction ids", async () => {
+      await testDb.db.insert(transactionsTable).values({
+        chainId: 1n,
+        txId: "tx-1",
+        blockHeight: 100n,
+        blockHash: "block-1",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+        canonical: true,
+      });
+
+      const result = await syncStore.getExistingTransactions(
+        { txIds: ["tx-1", "tx-2"], chainId: 1 },
+        { db: testDb.db },
+      );
+      expect(result).toStrictEqual(["tx-1"]);
+    });
+  });
+
+  describe("getExistingBlocks", () => {
+    test("returns empty array when no blocks exist", async () => {
+      const result = await syncStore.getExistingBlocks(
+        { blockHashes: ["block-1", "block-2"], chainId: 1 },
+        { db: testDb.db },
+      );
+      expect(result).toStrictEqual([]);
+    });
+
+    test("returns only existing block hashes", async () => {
+      await testDb.db.insert(blocksTable).values({
+        chainId: 1n,
+        height: 100n,
+        hash: "block-1",
+        blockTime: 1n,
+        tenureHeight: 1n,
+      });
+
+      const result = await syncStore.getExistingBlocks(
+        { blockHashes: ["block-1", "block-2"], chainId: 1 },
+        { db: testDb.db },
+      );
+      expect(result).toStrictEqual(["block-1"]);
     });
   });
 });
