@@ -1,7 +1,6 @@
 // oxlint-disable typescript/no-unsafe-member-access
 // oxlint-disable typescript/no-unsafe-type-assertion
 // oxlint-disable typescript/no-explicit-any
-// oxlint-disable max-lines
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable jest/max-expects
 // oxlint-disable vitest/prefer-called-once, vitest/prefer-called-times
@@ -785,8 +784,8 @@ describe("historical runtime", () => {
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
         return {
-          statusCode: 500,
-          statusText: "Internal Server Error",
+          statusCode: 400,
+          statusText: "Bad Request",
           body: mockBody({ error: "Logs API error" }),
         };
       }

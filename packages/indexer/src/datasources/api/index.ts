@@ -6,6 +6,7 @@ import type { Logger } from "../../logger/index.ts";
 import {
   type StacksApiError,
   StacksApiParseError,
+  StacksApiRateLimitError,
   StacksApiResponseError,
   StacksApiUnexpectedError,
 } from "./errors.ts";
@@ -118,48 +119,83 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     path: string,
   ): Promise<Result<ResponseT, StacksApiError>> {
-    return Result.tryPromise({
-      try: async () => {
-        const stopClock = startClock();
-        context.logger.trace({
-          service: "datasourceStacksApi",
-          msg: `${path} request`,
-        });
-        const { statusCode, statusText, body } = await request(`https://api.hiro.so${path}`);
-
-        if (statusCode !== 200) {
-          const errorData = await body.json().catch(() => body.text().catch(() => null));
-          throw new StacksApiResponseError({ status: statusCode, path, statusText, errorData });
-        }
-
-        try {
-          const data = await body.json();
-
-          const duration = stopClock();
+    return Result.tryPromise(
+      {
+        try: async () => {
+          const stopClock = startClock();
           context.logger.trace({
             service: "datasourceStacksApi",
-            msg: `${path} response`,
-            duration,
+            msg: `${path} request`,
           });
+          const { statusCode, statusText, body, headers } = await request(
+            `https://api.hiro.so${path}`,
+          );
 
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          return data as ResponseT;
-        } catch (error) {
-          throw new StacksApiParseError({
-            message: error instanceof Error ? error.message : String(error),
-            cause: error,
-          });
-        }
-      },
-      catch: (error) =>
-        StacksApiResponseError.is(error) || StacksApiParseError.is(error)
-          ? error
-          : new StacksApiUnexpectedError({
-              message: "Unexpected Stacks API error",
+          if (statusCode !== 200) {
+            // oxlint-disable-next-line init-declarations
+            let errorData: unknown;
+            const contentType = headers["content-type"] ?? "";
+            if (contentType.includes("application/json")) {
+              errorData = await body.json().catch(() => body.text().catch(() => null));
+            } else {
+              errorData = await body.text().catch(() => null);
+            }
+
+            const duration = stopClock();
+            context.logger.trace({
+              service: "datasourceStacksApi",
+              msg: `${path} error response ${statusCode}`,
+              duration,
+            });
+
+            if (statusCode === 429) {
+              const retryAfter = Number(headers["retry-after"] ?? 1);
+              throw new StacksApiRateLimitError({ path, retryAfter });
+            }
+
+            throw new StacksApiResponseError({ status: statusCode, path, statusText, errorData });
+          }
+
+          try {
+            const data = await body.json();
+
+            const duration = stopClock();
+            context.logger.trace({
+              service: "datasourceStacksApi",
+              msg: `${path} response`,
+              duration,
+            });
+
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+            return data as ResponseT;
+          } catch (error) {
+            throw new StacksApiParseError({
+              message: error instanceof Error ? error.message : String(error),
               cause: error,
-              path,
-            }),
-    });
+            });
+          }
+        },
+        catch: (error) =>
+          StacksApiResponseError.is(error) ||
+          StacksApiRateLimitError.is(error) ||
+          StacksApiParseError.is(error)
+            ? error
+            : new StacksApiUnexpectedError({
+                message: "Unexpected Stacks API error",
+                cause: error,
+                path,
+              }),
+      },
+      {
+        retry: {
+          times: 3,
+          delayMs: 1000,
+          backoff: "exponential",
+          shouldRetry: (error) =>
+            StacksApiResponseError.is(error) && (error.status === 500 || error.status === 502),
+        },
+      },
+    );
   },
 
   getBlockByHash(context: DatasourceStacksApiContext, hash: string) {

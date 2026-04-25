@@ -1,7 +1,6 @@
-// oxlint-disable max-lines
-
 import { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
@@ -10,20 +9,14 @@ import {
   type TransactionApiResponse,
 } from "../datasources/api/index.ts";
 import { createIndexing } from "../indexing/index.ts";
+import { chunkArray } from "../lib/array.ts";
+import type { HandlerExecutionError } from "../lib/errors.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 import { createHistoricalSync, parseCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 
 const BATCH_SIZE = 5;
-
-function chunkArray<Item>(array: Item[], size: number): Item[][] {
-  const chunks: Item[][] = [];
-  for (let index = 0; index < array.length; index += size) {
-    chunks.push(array.slice(index, index + size));
-  }
-  return chunks;
-}
 
 export interface Filter {
   contractId: string;
@@ -32,7 +25,7 @@ export interface Filter {
 
 export interface HistoricalRuntimeContext {
   logger: Logger;
-  db: NodePgDatabase;
+  db: NodePgDatabase | PgliteDatabase;
 }
 
 interface ContractSyncState {
@@ -60,11 +53,55 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
   return minHeight - 1;
 }
 
+async function initializeContractStates(
+  filters: Filter[],
+  context: HistoricalRuntimeContext,
+): Promise<Result<ContractSyncState[], StacksApiError>> {
+  const states: ContractSyncState[] = [];
+  for (const filter of filters) {
+    // oxlint-disable-next-line no-await-in-loop
+    const saved = await syncStore.getSyncProgress(
+      { contractId: filter.contractId, chainId: 1 },
+      { db: context.db },
+    );
+
+    if (saved === null) {
+      const historicalSync = createHistoricalSync(context);
+      // oxlint-disable-next-line no-await-in-loop
+      const cursorResult = await historicalSync.getContractEventsFirstCursor(filter.contractId);
+      if (cursorResult.isErr()) {
+        return Result.err(cursorResult.error);
+      }
+      const cursor = cursorResult.value;
+      if (cursor) {
+        context.logger.debug({
+          service: "historicalRuntime",
+          msg: `Starting sync for ${filter.contractId} from cursor ${cursor}`,
+        });
+        states.push({ contractId: filter.contractId, cursor, done: false });
+      } else {
+        context.logger.debug({
+          service: "historicalRuntime",
+          msg: `No events found for ${filter.contractId}`,
+        });
+        states.push({ contractId: filter.contractId, cursor: null, done: true });
+      }
+    } else {
+      context.logger.debug({
+        service: "historicalRuntime",
+        msg: `Resuming sync for ${filter.contractId} from cursor ${saved.cursor}`,
+      });
+      states.push({ contractId: filter.contractId, cursor: saved.cursor, done: false });
+    }
+  }
+  return Result.ok(states);
+}
+
 export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
   async function processEventsUpTo(
     toBlockHeight: number,
     indexing: ReturnType<typeof createIndexing>,
-  ): Promise<Result<void, unknown>> {
+  ): Promise<Result<void, StacksApiError | HandlerExecutionError>> {
     const checkpoint = await syncStore.getCheckpoint({ chainId: 1 }, { db: context.db });
     const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
 
@@ -117,8 +154,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
   }
 
   return {
-    // oxlint-disable-next-line complexity
-    async run(filters: Filter[]): Promise<Result<void, StacksApiError>> {
+    async run(filters: Filter[]): Promise<Result<void, StacksApiError | HandlerExecutionError>> {
       if (filters.length === 0) {
         return Result.ok(undefined);
       }
@@ -133,56 +169,11 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         handlers,
       });
 
-      // Initialize per-contract state
-      const states: ContractSyncState[] = [];
-      for (const filter of filters) {
-        // oxlint-disable-next-line no-await-in-loop
-        const saved = await syncStore.getSyncProgress(
-          { contractId: filter.contractId, chainId: 1 },
-          { db: context.db },
-        );
-
-        if (saved === null) {
-          const historicalSync = createHistoricalSync(context);
-          // oxlint-disable-next-line no-await-in-loop
-          const cursorResult = await historicalSync.getContractEventsFirstCursor(filter.contractId);
-          if (cursorResult.isErr()) {
-            return Result.err(cursorResult.error);
-          }
-          const cursor = cursorResult.value;
-          if (cursor) {
-            context.logger.debug({
-              service: "historicalRuntime",
-              msg: `Starting sync for ${filter.contractId} from cursor ${cursor}`,
-            });
-            states.push({
-              contractId: filter.contractId,
-              cursor,
-              done: false,
-            });
-          } else {
-            context.logger.debug({
-              service: "historicalRuntime",
-              msg: `No events found for ${filter.contractId}`,
-            });
-            states.push({
-              contractId: filter.contractId,
-              cursor: null,
-              done: true,
-            });
-          }
-        } else {
-          context.logger.debug({
-            service: "historicalRuntime",
-            msg: `Resuming sync for ${filter.contractId} from cursor ${saved.cursor}`,
-          });
-          states.push({
-            contractId: filter.contractId,
-            cursor: saved.cursor,
-            done: false,
-          });
-        }
+      const statesResult = await initializeContractStates(filters, context);
+      if (statesResult.isErr()) {
+        return Result.err(statesResult.error);
       }
+      const states = statesResult.value;
 
       // Main loop: pick lowest cursor block height, fetch one page
       while (states.some((state) => !state.done)) {
@@ -281,11 +272,13 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         });
 
         // oxlint-disable-next-line no-await-in-loop
-        await Promise.all([
-          syncStore.insertBlocks({ blocks }, { db: context.db }),
-          syncStore.insertTransactions({ transactions }, { db: context.db }),
-          syncStore.insertEvents({ events: eventsWithBlockHeight }, { db: context.db }),
-        ]);
+        await context.db.transaction(async (tx) => {
+          await Promise.all([
+            syncStore.insertBlocks({ blocks }, { db: tx }),
+            syncStore.insertTransactions({ transactions }, { db: tx }),
+            syncStore.insertEvents({ events: eventsWithBlockHeight }, { db: tx }),
+          ]);
+        });
 
         // Update progress or mark done
         if (nextCursor) {
@@ -311,8 +304,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           // oxlint-disable-next-line no-await-in-loop
           const indexResult = await processEventsUpTo(safeHeight, indexing);
           if (indexResult.isErr()) {
-            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-            return Result.err(indexResult.error as StacksApiError);
+            return Result.err(indexResult.error);
           }
         }
       }
@@ -321,8 +313,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       // oxlint-disable-next-line no-await-in-loop
       const finalIndexResult = await processEventsUpTo(Number.MAX_SAFE_INTEGER, indexing);
       if (finalIndexResult.isErr()) {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        return Result.err(finalIndexResult.error as StacksApiError);
+        return Result.err(finalIndexResult.error);
       }
 
       return Result.ok(undefined);

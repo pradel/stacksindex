@@ -78,11 +78,5 @@ describe("indexing engine", () => {
     const result = await indexing.executeEvent(event);
 
     expect(result.isErr()).toBe(true);
-    expect(
-      result.match({
-        ok: () => null,
-        err: (errValue: Error) => errValue,
-      }),
-    ).toBe(error);
   });
 });

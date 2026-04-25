@@ -1,4 +1,5 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 export interface LogEvent {
   type: "log";
@@ -21,7 +22,7 @@ export interface HandlerEvent {
 }
 
 export interface HandlerContext {
-  db: NodePgDatabase;
+  db: NodePgDatabase | PgliteDatabase;
 }
 
 export type EventHandler = (event: HandlerEvent, context: HandlerContext) => Promise<void>;

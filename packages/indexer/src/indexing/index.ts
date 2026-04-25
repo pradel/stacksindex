@@ -1,20 +1,22 @@
 import { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgliteDatabase } from "drizzle-orm/pglite";
 
+import { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
 import type { HandlerEvent, Handlers } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 
 interface IndexingContext {
   logger: Logger;
-  db: NodePgDatabase;
+  db: NodePgDatabase | PgliteDatabase;
   handlers: Handlers;
 }
 
 // oxlint-disable-next-line arrow-body-style
 export const createIndexing = (context: IndexingContext) => {
   return {
-    async executeEvent(event: HandlerEvent): Promise<Result<void, Error>> {
+    async executeEvent(event: HandlerEvent): Promise<Result<void, HandlerExecutionError>> {
       const endClock = startClock();
       const handler = context.handlers[event.contract_id];
 
@@ -51,7 +53,12 @@ export const createIndexing = (context: IndexingContext) => {
           error: err,
           duration,
         });
-        return Result.err(err instanceof Error ? err : new Error(String(err)));
+        return Result.err(
+          new HandlerExecutionError({
+            cause: err instanceof Error ? err : new Error(String(err)),
+            contractId: event.contract_id,
+          }),
+        );
       }
 
       const duration = endClock();

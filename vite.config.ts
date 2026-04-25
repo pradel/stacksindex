@@ -21,6 +21,7 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
     rules: {
       "sort-imports": "off",
+      "max-lines": "off",
       "max-lines-per-function": "off",
       "max-classes-per-file": "off",
       "max-statements": "off",

@@ -1,5 +1,3 @@
-// oxlint-disable max-lines
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";

@@ -265,8 +265,8 @@ describe("getContractEventsFirstCursor", () => {
 
   test("returns error when getAddressTransactions fails", async () => {
     mockRequest.mockReturnValue({
-      statusCode: 500,
-      statusText: "Internal Server Error",
+      statusCode: 400,
+      statusText: "Bad Request",
       body: mockBody({ error: "API error" }),
     });
 
@@ -288,8 +288,8 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     mockRequest.mockReturnValueOnce({
-      statusCode: 500,
-      statusText: "Internal Server Error",
+      statusCode: 400,
+      statusText: "Bad Request",
       body: mockBody({ error: "Tx API error" }),
     });
 

@@ -48,6 +48,7 @@ describe("aPI DataSource", () => {
         statusCode: 404,
         statusText: "Not Found",
         body: mockBody({ error: "Not found" }),
+        headers: { "content-type": "application/json" },
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "404");
@@ -65,9 +66,10 @@ describe("aPI DataSource", () => {
 
     test("returns StacksApiResponseError on 500", async () => {
       mockRequest.mockReturnValue({
-        statusCode: 500,
-        statusText: "Internal Server Error",
-        body: mockBody({ error: "Internal server error" }),
+        statusCode: 400,
+        statusText: "Bad Request",
+        body: mockBody({ error: "Bad request" }),
+        headers: { "content-type": "application/json" },
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
@@ -75,10 +77,10 @@ describe("aPI DataSource", () => {
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toStrictEqual(
         new StacksApiResponseError({
-          status: 500,
-          statusText: "Internal Server Error",
+          status: 400,
+          statusText: "Bad Request",
           path: "/extended/v1/tx/500",
-          errorData: { error: "Internal server error" },
+          errorData: { error: "Bad request" },
         }),
       );
     });
@@ -91,6 +93,7 @@ describe("aPI DataSource", () => {
             throw new Error("Unexpected end of JSON input");
           },
         },
+        headers: { "content-type": "application/json" },
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "parse-error");
@@ -106,12 +109,13 @@ describe("aPI DataSource", () => {
 
     test("returns StacksApiResponseError with text error data when JSON fails on error response", async () => {
       mockRequest.mockReturnValue({
-        statusCode: 500,
-        statusText: "Internal Server Error",
+        statusCode: 400,
+        statusText: "Bad Request",
         body: {
           json: () => Promise.reject(new Error("parse error")),
-          text: () => Promise.resolve("Internal Server Error"),
+          text: () => Promise.resolve("Bad Request"),
         },
+        headers: { "content-type": "application/json" },
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
@@ -119,22 +123,23 @@ describe("aPI DataSource", () => {
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toStrictEqual(
         new StacksApiResponseError({
-          status: 500,
-          statusText: "Internal Server Error",
+          status: 400,
+          statusText: "Bad Request",
           path: "/extended/v1/tx/500",
-          errorData: "Internal Server Error",
+          errorData: "Bad Request",
         }),
       );
     });
 
     test("returns StacksApiResponseError with null error data when both JSON and text fail", async () => {
       mockRequest.mockReturnValue({
-        statusCode: 500,
-        statusText: "Internal Server Error",
+        statusCode: 400,
+        statusText: "Bad Request",
         body: {
           json: () => Promise.reject(new Error("parse error")),
           text: () => Promise.reject(new Error("text error")),
         },
+        headers: { "content-type": "application/json" },
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
@@ -142,8 +147,8 @@ describe("aPI DataSource", () => {
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toStrictEqual(
         new StacksApiResponseError({
-          status: 500,
-          statusText: "Internal Server Error",
+          status: 400,
+          statusText: "Bad Request",
           path: "/extended/v1/tx/500",
           errorData: null,
         }),
