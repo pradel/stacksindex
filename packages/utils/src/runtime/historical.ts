@@ -11,6 +11,16 @@ import type { Logger } from "../logger/index.ts";
 import { parseCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 
+const BATCH_SIZE = 5;
+
+function chunkArray<Item>(array: Item[], size: number): Item[][] {
+  const chunks: Item[][] = [];
+  for (let index = 0; index < array.length; index += size) {
+    chunks.push(array.slice(index, index + size));
+  }
+  return chunks;
+}
+
 export interface Filter {
   contractId: string;
 }
@@ -120,32 +130,36 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => ({
 
       const { results: events, next_cursor: nextCursor } = logsResult.value;
 
-      // Batch fetch transactions (deduplicated by tx_id)
+      // Batch fetch transactions (deduplicated by tx_id) in chunks of 5
       const txIds = [...new Set(events.map((event) => event.tx_id))];
-      // oxlint-disable-next-line no-await-in-loop
-      const txResults = await Promise.all(
-        txIds.map((txId) => datasourceStacksApi.getTransaction(context, txId)),
-      );
       const transactions: TransactionApiResponse[] = [];
-      for (const txResult of txResults) {
-        if (txResult.isErr()) {
-          return Result.err(txResult.error);
+      for (const chunk of chunkArray(txIds, BATCH_SIZE)) {
+        // oxlint-disable-next-line no-await-in-loop
+        const txResults = await Promise.all(
+          chunk.map((txId) => datasourceStacksApi.getTransaction(context, txId)),
+        );
+        for (const txResult of txResults) {
+          if (txResult.isErr()) {
+            return Result.err(txResult.error);
+          }
+          transactions.push(txResult.value);
         }
-        transactions.push(txResult.value);
       }
 
-      // Batch fetch blocks (deduplicated by block_hash)
+      // Batch fetch blocks (deduplicated by block_hash) in chunks of 5
       const blockHashes = [...new Set(transactions.map((transaction) => transaction.block_hash))];
-      // oxlint-disable-next-line no-await-in-loop
-      const blockResults = await Promise.all(
-        blockHashes.map((hash) => datasourceStacksApi.getBlockByHash(context, hash)),
-      );
       const blocks: BlockApiResponse[] = [];
-      for (const blockResult of blockResults) {
-        if (blockResult.isErr()) {
-          return Result.err(blockResult.error);
+      for (const chunk of chunkArray(blockHashes, BATCH_SIZE)) {
+        // oxlint-disable-next-line no-await-in-loop
+        const blockResults = await Promise.all(
+          chunk.map((hash) => datasourceStacksApi.getBlockByHash(context, hash)),
+        );
+        for (const blockResult of blockResults) {
+          if (blockResult.isErr()) {
+            return Result.err(blockResult.error);
+          }
+          blocks.push(blockResult.value);
         }
-        blocks.push(blockResult.value);
       }
 
       // Store blocks and transactions
