@@ -10,7 +10,7 @@ import {
   type TransactionApiResponse,
 } from "../datasources/api/index.ts";
 import { createIndexing } from "../indexing/index.ts";
-import type { Handlers, HandlerEvent } from "../lib/types.ts";
+import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 import { createHistoricalSync, parseCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -27,12 +27,12 @@ function chunkArray<Item>(array: Item[], size: number): Item[][] {
 
 export interface Filter {
   contractId: string;
+  handler?: EventHandler;
 }
 
 export interface HistoricalRuntimeContext {
   logger: Logger;
   db: NodePgDatabase;
-  handlers?: Handlers;
 }
 
 interface ContractSyncState {
@@ -61,14 +61,10 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
 }
 
 export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
-  const handlers = context.handlers ?? {};
-  const indexing = createIndexing({
-    logger: context.logger,
-    db: context.db,
-    handlers,
-  });
-
-  async function processEventsUpTo(toBlockHeight: number): Promise<Result<void, unknown>> {
+  async function processEventsUpTo(
+    toBlockHeight: number,
+    indexing: ReturnType<typeof createIndexing>,
+  ): Promise<Result<void, unknown>> {
     const checkpoint = await syncStore.getCheckpoint({ chainId: 1 }, { db: context.db });
     const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
 
@@ -126,6 +122,18 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       if (filters.length === 0) {
         return Result.ok(undefined);
       }
+
+      const handlers: Record<string, EventHandler | undefined> = {};
+      for (const filter of filters) {
+        if (filter.handler) {
+          handlers[filter.contractId] = filter.handler;
+        }
+      }
+      const indexing = createIndexing({
+        logger: context.logger,
+        db: context.db,
+        handlers,
+      });
 
       // Initialize per-contract state
       const states: ContractSyncState[] = [];
@@ -303,7 +311,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         const safeHeight = getSafeBlockHeight(states);
         if (safeHeight !== undefined) {
           // oxlint-disable-next-line no-await-in-loop
-          const indexResult = await processEventsUpTo(safeHeight);
+          const indexResult = await processEventsUpTo(safeHeight, indexing);
           if (indexResult.isErr()) {
             // oxlint-disable-next-line typescript/no-unsafe-type-assertion
             return Result.err(indexResult.error as StacksApiError);
@@ -313,7 +321,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
 
       // Final indexing pass: process all remaining events
       // oxlint-disable-next-line no-await-in-loop
-      const finalIndexResult = await processEventsUpTo(Number.MAX_SAFE_INTEGER);
+      const finalIndexResult = await processEventsUpTo(Number.MAX_SAFE_INTEGER, indexing);
       if (finalIndexResult.isErr()) {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         return Result.err(finalIndexResult.error as StacksApiError);

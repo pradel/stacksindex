@@ -26,4 +26,4 @@ export interface HandlerContext {
 
 export type EventHandler = (event: HandlerEvent, context: HandlerContext) => Promise<void>;
 
-export type Handlers = Record<string, Record<string, EventHandler[]> | undefined>;
+export type Handlers = Record<string, EventHandler | undefined>;

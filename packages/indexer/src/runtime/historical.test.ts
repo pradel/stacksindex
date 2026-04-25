@@ -1071,12 +1071,11 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
-      handlers: {
-        [contractA]: { smart_contract_log: [handlerA] },
-        [contractB]: { smart_contract_log: [handlerB] },
-      },
     });
-    const result = await runtime.run([{ contractId: contractA }, { contractId: contractB }]);
+    const result = await runtime.run([
+      { contractId: contractA, handler: handlerA },
+      { contractId: contractB, handler: handlerB },
+    ]);
 
     expect(result.isOk()).toBe(true);
 
@@ -1207,11 +1206,8 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
-      handlers: {
-        [contractId]: { smart_contract_log: [handler] },
-      },
     });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler }]);
 
     expect(result.isOk()).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
@@ -1290,11 +1286,8 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
-      handlers: {
-        [contractId]: { smart_contract_log: [handler] },
-      },
     });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler }]);
 
     expect(result.isOk()).toBe(true);
     // Handler should NOT be called because the event is at block 100 which is already checkpointed
@@ -1415,11 +1408,8 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
-      handlers: {
-        [contractId]: { smart_contract_log: [handler] },
-      },
     });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler }]);
 
     expect(result.isErr()).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);

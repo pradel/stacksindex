@@ -29,9 +29,7 @@ describe("indexing engine", () => {
   test("calls matching handler with event and context", async () => {
     const handler = vi.fn().mockResolvedValue(undefined);
     const handlers: Handlers = {
-      "SP123.token": {
-        smart_contract_log: [handler],
-      },
+      "SP123.token": handler,
     };
 
     const indexing = createIndexing({
@@ -48,30 +46,7 @@ describe("indexing engine", () => {
     expect(handler).toHaveBeenCalledWith(event, { db: mockDb });
   });
 
-  test("calls multiple handlers for the same event type", async () => {
-    const handlerA = vi.fn().mockResolvedValue(undefined);
-    const handlerB = vi.fn().mockResolvedValue(undefined);
-    const handlers: Handlers = {
-      "SP123.token": {
-        smart_contract_log: [handlerA, handlerB],
-      },
-    };
-
-    const indexing = createIndexing({
-      logger: createLogger({ level: 0 }),
-      db: mockDb,
-      handlers,
-    });
-
-    const event = createMockEvent();
-    const result = await indexing.executeEvent(event);
-
-    expect(result.isOk()).toBe(true);
-    expect(handlerA).toHaveBeenCalledTimes(1);
-    expect(handlerB).toHaveBeenCalledTimes(1);
-  });
-
-  test("returns ok when no handlers match contract", async () => {
+  test("returns ok when no handler matches contract", async () => {
     const handlers: Handlers = {};
 
     const indexing = createIndexing({
@@ -86,34 +61,11 @@ describe("indexing engine", () => {
     expect(result.isOk()).toBe(true);
   });
 
-  test("returns ok when no handlers match event type", async () => {
-    const handler = vi.fn().mockResolvedValue(undefined);
-    const handlers: Handlers = {
-      "SP123.token": {
-        stx_transfer: [handler],
-      },
-    };
-
-    const indexing = createIndexing({
-      logger: createLogger({ level: 0 }),
-      db: mockDb,
-      handlers,
-    });
-
-    const event = createMockEvent({ event_type: "smart_contract_log" });
-    const result = await indexing.executeEvent(event);
-
-    expect(result.isOk()).toBe(true);
-    expect(handler).not.toHaveBeenCalled();
-  });
-
   test("returns err when handler throws", async () => {
     const error = new Error("Handler failed");
     const handler = vi.fn().mockRejectedValue(error);
     const handlers: Handlers = {
-      "SP123.token": {
-        smart_contract_log: [handler],
-      },
+      "SP123.token": handler,
     };
 
     const indexing = createIndexing({
@@ -132,28 +84,5 @@ describe("indexing engine", () => {
         err: (errValue: Error) => errValue,
       }),
     ).toBe(error);
-  });
-
-  test("stops calling subsequent handlers after one throws", async () => {
-    const handlerA = vi.fn().mockRejectedValue(new Error("Handler A failed"));
-    const handlerB = vi.fn().mockResolvedValue(undefined);
-    const handlers: Handlers = {
-      "SP123.token": {
-        smart_contract_log: [handlerA, handlerB],
-      },
-    };
-
-    const indexing = createIndexing({
-      logger: createLogger({ level: 0 }),
-      db: mockDb,
-      handlers,
-    });
-
-    const event = createMockEvent();
-    const result = await indexing.executeEvent(event);
-
-    expect(result.isErr()).toBe(true);
-    expect(handlerA).toHaveBeenCalledTimes(1);
-    expect(handlerB).not.toHaveBeenCalled();
   });
 });
