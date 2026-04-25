@@ -25,6 +25,8 @@ const context = {
   logger: createLogger({ level: 0 }),
 };
 
+const noopHandler = () => Promise.resolve();
+
 const mockBody = (data: unknown) => ({
   json: () => Promise.resolve(data),
 });
@@ -230,7 +232,7 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
 
@@ -519,7 +521,10 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId: contractA }, { contractId: contractB }]);
+    const result = await runtime.run([
+      { contractId: contractA, handler: noopHandler },
+      { contractId: contractB, handler: noopHandler },
+    ]);
 
     expect(result.isOk()).toBe(true);
 
@@ -631,7 +636,7 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
 
@@ -705,7 +710,7 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
 
@@ -789,7 +794,7 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isErr()).toBe(true);
   });
@@ -808,7 +813,7 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
 

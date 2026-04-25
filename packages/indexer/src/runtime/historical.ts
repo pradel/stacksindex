@@ -27,7 +27,7 @@ function chunkArray<Item>(array: Item[], size: number): Item[][] {
 
 export interface Filter {
   contractId: string;
-  handler?: EventHandler;
+  handler: EventHandler;
 }
 
 export interface HistoricalRuntimeContext {
@@ -125,9 +125,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
 
       const handlers: Record<string, EventHandler | undefined> = {};
       for (const filter of filters) {
-        if (filter.handler) {
-          handlers[filter.contractId] = filter.handler;
-        }
+        handlers[filter.contractId] = filter.handler;
       }
       const indexing = createIndexing({
         logger: context.logger,
