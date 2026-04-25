@@ -5,7 +5,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { createLogger } from "./logger/index.ts";
 import { createHistoricalRuntime } from "./runtime/historical.ts";
 
-const client = new PGlite();
+const client = new PGlite("./data/indexer.db");
 const db = drizzle({ client });
 
 await migrate(db, { migrationsFolder: "drizzle" });
