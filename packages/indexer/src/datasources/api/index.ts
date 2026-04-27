@@ -104,7 +104,7 @@ export interface ContractLog {
   event_type: string;
   contract_id: string;
   topic: string;
-  value: {
+  value?: {
     hex: string;
     repr: string;
   };

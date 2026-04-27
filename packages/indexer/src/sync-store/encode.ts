@@ -54,7 +54,7 @@ export const encodeEvent = ({
   eventIndex: event.event_index,
   eventType: event.event_type,
   topic: event.topic,
-  valueHex: event.value.hex,
-  valueRepr: event.value.repr,
+  valueHex: event.value?.hex ?? "",
+  valueRepr: event.value?.repr ?? "",
   blockHeight: BigInt(blockHeight),
 });

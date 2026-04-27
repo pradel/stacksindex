@@ -266,7 +266,11 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         }
 
         // Store blocks, transactions, and events
-        const eventsWithBlockHeight = events.map((event) => {
+        // Only smart_contract_log events have a `value` field; skip other event types.
+        const smartContractLogs = events.filter(
+          (event) => event.event_type === "smart_contract_log",
+        );
+        const eventsWithBlockHeight = smartContractLogs.map((event) => {
           const tx = transactions.find((transaction) => transaction.tx_id === event.tx_id);
           return { event, blockHeight: tx?.block_height ?? 0 };
         });

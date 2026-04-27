@@ -9,7 +9,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vit
 import { createLogger } from "../logger/index.ts";
 import { parseCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
-import { blocksTable, checkpointsTable, transactionsTable } from "../sync-store/schema.ts";
+import {
+  blocksTable,
+  checkpointsTable,
+  eventsTable,
+  transactionsTable,
+} from "../sync-store/schema.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createHistoricalRuntime } from "./historical.ts";
 
@@ -819,6 +824,144 @@ describe("historical runtime", () => {
     // Nothing should be stored
     const blocks = await testDb.db.select().from(blocksTable);
     expect(blocks).toHaveLength(0);
+  });
+
+  test("skips non-smart_contract_log events without crashing", async () => {
+    const contractId = "SP123.token";
+
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 1,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-1", event_count: 2 }],
+          }),
+        };
+      }
+      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-1", event_count: 2 }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v1/tx/tx-1")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-1",
+            block_height: 100,
+            block_hash: "block-1",
+            microblock_sequence: 0,
+            tx_index: 0,
+            sender_address: "SP sender",
+            fee_rate: "1000",
+            nonce: 0,
+            tx_status: "success",
+            tx_type: "contract_call",
+            canonical: true,
+            event_count: 2,
+            events: [
+              {
+                event_index: 0,
+                event_type: "stx_asset",
+              },
+              {
+                event_index: 1,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "0x01", repr: "123" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:1`)
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            results: [
+              {
+                tx_id: "tx-1",
+                event_index: 0,
+                event_type: "stx_asset",
+                contract_id: contractId,
+                topic: "stx",
+                // No `value` property here
+              },
+              {
+                tx_id: "tx-1",
+                event_index: 1,
+                event_type: "smart_contract_log",
+                contract_id: contractId,
+                topic: "print",
+                value: { hex: "0x01", repr: "123" },
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 2,
+            next_cursor: null,
+            prev_cursor: null,
+          }),
+        };
+      }
+      if (url.includes("/extended/v2/blocks/block-1")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            canonical: true,
+            height: 100,
+            hash: "block-1",
+            block_time: 1000,
+            block_time_iso: "",
+            tenure_height: 100,
+            index_block_hash: "",
+            parent_block_hash: "",
+            parent_index_block_hash: "",
+            burn_block_time: 1000,
+            burn_block_time_iso: "",
+            burn_block_hash: "",
+            burn_block_height: 100,
+            miner_txid: "",
+            tx_count: 1,
+            execution_cost_read_count: 0,
+            execution_cost_read_length: 0,
+            execution_cost_runtime: 0,
+            execution_cost_write_count: 0,
+            execution_cost_write_length: 0,
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+
+    expect(result.isOk()).toBe(true);
+
+    const storedEvents = await testDb.db.select().from(eventsTable);
+    expect(storedEvents).toHaveLength(1);
+    expect(storedEvents[0]).toMatchObject({
+      eventType: "smart_contract_log",
+      txId: "tx-1",
+      eventIndex: 1,
+      valueHex: "0x01",
+      valueRepr: "123",
+    });
   });
 });
 
