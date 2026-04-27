@@ -5,7 +5,12 @@ import { Result } from "better-result";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createLogger } from "../../logger/index.ts";
-import { StacksApiParseError, StacksApiResponseError, StacksApiUnexpectedError } from "./errors.ts";
+import {
+  StacksApiParseError,
+  StacksApiRateLimitError,
+  StacksApiResponseError,
+  StacksApiUnexpectedError,
+} from "./errors.ts";
 import { datasourceStacksApi } from "./index.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -170,6 +175,85 @@ describe("aPI DataSource", () => {
           cause: new Error("Network error"),
         }),
       );
+    });
+
+    test("retries on 429 after retryAfter seconds and eventually succeeds", async () => {
+      vi.useFakeTimers();
+      mockRequest
+        .mockReturnValueOnce({
+          statusCode: 429,
+          statusText: "Too Many Requests",
+          body: mockBody({ error: "Rate limited" }),
+          headers: { "content-type": "application/json", "retry-after": "2" },
+        })
+        .mockReturnValueOnce({
+          statusCode: 200,
+          body: mockBody({ hash: "0xabc123", block_height: 123_456 }),
+        });
+
+      const promise = datasourceStacksApi.getTransaction(context, "0xabc123");
+
+      await vi.advanceTimersByTimeAsync(2000);
+
+      const result = await promise;
+
+      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
+    });
+
+    test("returns StacksApiRateLimitError after exhausting retries on 429", async () => {
+      vi.useFakeTimers();
+      mockRequest.mockReturnValue({
+        statusCode: 429,
+        statusText: "Too Many Requests",
+        body: mockBody({ error: "Rate limited" }),
+        headers: { "content-type": "application/json", "retry-after": "1" },
+      });
+
+      const promise = datasourceStacksApi.getTransaction(context, "0xabc123");
+
+      await vi.advanceTimersByTimeAsync(4000);
+
+      const result = await promise;
+
+      expect(result.isErr()).toBe(true);
+      expect((result as any).error).toStrictEqual(
+        new StacksApiRateLimitError({
+          path: "/extended/v1/tx/0xabc123",
+          retryAfter: 1,
+        }),
+      );
+      expect(mockRequest).toHaveBeenCalledTimes(4);
+
+      vi.useRealTimers();
+    });
+
+    test("retries on 429 with retry-after 0 without delay", async () => {
+      vi.useFakeTimers();
+      mockRequest
+        .mockReturnValueOnce({
+          statusCode: 429,
+          statusText: "Too Many Requests",
+          body: mockBody({ error: "Rate limited" }),
+          headers: { "content-type": "application/json", "retry-after": "0" },
+        })
+        .mockReturnValueOnce({
+          statusCode: 200,
+          body: mockBody({ hash: "0xabc123", block_height: 123_456 }),
+        });
+
+      const promise = datasourceStacksApi.getTransaction(context, "0xabc123");
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      const result = await promise;
+
+      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
     });
   });
 

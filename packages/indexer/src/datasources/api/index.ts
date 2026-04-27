@@ -1,7 +1,7 @@
 import { Result } from "better-result";
 import { request } from "undici";
 
-import { startClock } from "../../lib/timer.ts";
+import { sleep, startClock } from "../../lib/timer.ts";
 import type { Logger } from "../../logger/index.ts";
 import {
   type StacksApiError,
@@ -119,7 +119,17 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     path: string,
   ): Promise<Result<ResponseT, StacksApiError>> {
-    return Result.tryPromise(
+    return this._requestWithRetry(context, path, 0);
+  },
+
+  async _requestWithRetry<ResponseT>(
+    context: DatasourceStacksApiContext,
+    path: string,
+    attempt: number,
+  ): Promise<Result<ResponseT, StacksApiError>> {
+    const maxRateLimitRetries = 3;
+
+    const result = await Result.tryPromise(
       {
         try: async () => {
           const stopClock = startClock();
@@ -196,6 +206,22 @@ export const datasourceStacksApi = {
         },
       },
     );
+
+    if (result.isOk()) {
+      return result;
+    }
+
+    if (StacksApiRateLimitError.is(result.error) && attempt < maxRateLimitRetries) {
+      const delayMs = result.error.retryAfter * 1000;
+      context.logger.trace({
+        service: "datasourceStacksApi",
+        msg: `${path} rate limited, retrying after ${result.error.retryAfter}s`,
+      });
+      await sleep(delayMs);
+      return this._requestWithRetry(context, path, attempt + 1);
+    }
+
+    return result;
   },
 
   getBlockByHash(context: DatasourceStacksApiContext, hash: string) {

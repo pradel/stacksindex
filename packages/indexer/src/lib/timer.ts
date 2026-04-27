@@ -24,3 +24,10 @@ export function startClock() {
   // oxlint-disable-next-line no-undef
   return () => performance.now() - start;
 }
+
+export const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    globalThis.setTimeout(() => {
+      resolve();
+    }, ms);
+  });
