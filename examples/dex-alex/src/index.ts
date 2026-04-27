@@ -1,2 +1,31 @@
-// oxlint-disable-next-line jest/require-hook no-console no-undef
-console.log("Hello, tsdown!");
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
+import { createHistoricalRuntime, createLogger } from "indexer";
+
+const client = new PGlite("./data/indexer.db");
+const indexerDb = drizzle({ client });
+
+await migrate(indexerDb, { migrationsFolder: "drizzle" });
+
+const logger = createLogger({
+  level: 5,
+});
+
+const runtime = createHistoricalRuntime({ logger, db: indexerDb });
+
+const result = await runtime.run([
+  {
+    contractId: "SPGDS0Y17973EN5TCHNHGJJ9B31XWQ5YX8A36C9B.usdcx-poolv1",
+    handler: (event, { db: _db }) => {
+      logger.info({ msg: "Handler called", event });
+      return Promise.resolve();
+    },
+  },
+]);
+
+if (result.isErr()) {
+  logger.error({ msg: "Error running historical sync", error: result.error });
+  // oxlint-disable-next-line no-undef
+  process.exit(1);
+}
