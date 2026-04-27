@@ -18,6 +18,12 @@ importers:
 
   examples/dex-alex:
     dependencies:
+      '@electric-sql/pglite':
+        specifier: 0.4.4
+        version: 0.4.4
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(@electric-sql/pglite@0.4.4)
       indexer:
         specifier: workspace:*
         version: link:../../packages/indexer

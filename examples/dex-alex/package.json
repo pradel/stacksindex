@@ -8,6 +8,8 @@
     "test": "vp test"
   },
   "dependencies": {
+    "@electric-sql/pglite": "0.4.4",
+    "drizzle-orm": "0.45.2",
     "indexer": "workspace:*"
   },
   "devDependencies": {
