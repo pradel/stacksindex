@@ -18,13 +18,13 @@ export const createIndexing = (context: IndexingContext) => {
   return {
     async executeEvent(event: HandlerEvent): Promise<Result<void, HandlerExecutionError>> {
       const endClock = startClock();
-      const handler = context.handlers[event.contract_id];
+      const handler = context.handlers[event.contract_log.contract_id];
 
       if (handler === undefined) {
         const duration = endClock();
         context.logger.debug({
           msg: "No handler found for event",
-          contractId: event.contract_id,
+          contractId: event.contract_log.contract_id,
           eventType: event.event_type,
           blockHeight: event.block_height,
           duration,
@@ -38,7 +38,7 @@ export const createIndexing = (context: IndexingContext) => {
         const duration = handlerClock();
         context.logger.debug({
           msg: "Executed event handler",
-          contractId: event.contract_id,
+          contractId: event.contract_log.contract_id,
           eventType: event.event_type,
           blockHeight: event.block_height,
           duration,
@@ -47,7 +47,7 @@ export const createIndexing = (context: IndexingContext) => {
         const duration = handlerClock();
         context.logger.error({
           msg: "Error executing event handler",
-          contractId: event.contract_id,
+          contractId: event.contract_log.contract_id,
           eventType: event.event_type,
           blockHeight: event.block_height,
           error: err,
@@ -56,7 +56,7 @@ export const createIndexing = (context: IndexingContext) => {
         return Result.err(
           new HandlerExecutionError({
             cause: err instanceof Error ? err : new Error(String(err)),
-            contractId: event.contract_id,
+            contractId: event.contract_log.contract_id,
           }),
         );
       }
@@ -64,7 +64,7 @@ export const createIndexing = (context: IndexingContext) => {
       const duration = endClock();
       context.logger.debug({
         msg: "Executed event",
-        contractId: event.contract_id,
+        contractId: event.contract_log.contract_id,
         eventType: event.event_type,
         blockHeight: event.block_height,
         duration,

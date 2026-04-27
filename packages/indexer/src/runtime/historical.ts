@@ -121,12 +121,17 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     for (const row of rows) {
       const event: HandlerEvent = {
         event_index: row.eventIndex,
-        event_type: row.eventType,
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        event_type: row.eventType as "smart_contract_log",
         tx_id: row.txId,
-        contract_id: row.contractId,
-        topic: row.topic,
-        value_hex: row.valueHex,
-        value_repr: row.valueRepr,
+        contract_log: {
+          contract_id: row.contractId,
+          topic: row.topic,
+          value: {
+            hex: row.valueHex,
+            repr: row.valueRepr,
+          },
+        },
         block_height: Number(row.blockHeight),
         block_time: Number(row.blockTime),
         tx_index: row.txIndex,
