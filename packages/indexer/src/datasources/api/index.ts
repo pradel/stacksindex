@@ -72,13 +72,7 @@ export interface TransactionApiResponse {
   execution_cost_write_count: number;
   execution_cost_write_length: number;
   vm_error: null | string;
-  events: {
-    event_index: number;
-    event_type: string;
-    contract_log?: {
-      contract_id: string;
-    };
-  }[];
+  events: ContractEvent[];
   tx_type: string;
 }
 
