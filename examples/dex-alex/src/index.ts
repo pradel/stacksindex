@@ -21,7 +21,7 @@ const runtime = createHistoricalRuntime({ logger, db: indexerDb });
 
 const result = await runtime.run([
   {
-    contractId: "SPGDS0Y17973EN5TCHNHGJJ9B31XWQ5YX8A36C9B.usdcx-poolv1",
+    contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.swap-helper-v1-01",
     handler: (event, { db: _db }) => {
       logger.info({ msg: "Handler called", event });
       return Promise.resolve();

@@ -257,7 +257,8 @@ export const datasourceStacksApi = {
           delayMs: 1000,
           backoff: "exponential",
           shouldRetry: (error) =>
-            StacksApiResponseError.is(error) && (error.status === 500 || error.status === 502),
+            StacksApiResponseError.is(error) &&
+            (error.status === 500 || error.status === 502 || error.status === 503),
         },
       },
     );
