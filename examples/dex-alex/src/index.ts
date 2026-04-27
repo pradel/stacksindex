@@ -1,12 +1,11 @@
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
-import { createHistoricalRuntime, createLogger } from "indexer";
+import { createHistoricalRuntime, createLogger, migrate } from "indexer";
 
 const client = new PGlite("./data/indexer.db");
 const indexerDb = drizzle({ client });
 
-await migrate(indexerDb, { migrationsFolder: "drizzle" });
+await migrate(indexerDb);
 
 const logger = createLogger({
   level: 5,
