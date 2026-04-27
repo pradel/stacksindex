@@ -298,8 +298,12 @@ export const datasourceStacksApi = {
     return this._request<AddressTransactionsResponse>(context, path);
   },
 
-  getContractLogs(context: DatasourceStacksApiContext, contractId: string, cursor?: string | null) {
-    const limit = 100;
+  getContractLogs(
+    context: DatasourceStacksApiContext,
+    contractId: string,
+    options: { limit?: number; cursor?: string | null } = {},
+  ) {
+    const { limit = 100, cursor } = options;
     const cursorParam = cursor ? `&cursor=${cursor}` : "";
     const path = `/extended/v2/smart-contracts/${contractId}/logs?limit=${limit}${cursorParam}`;
     return this._request<ContractLogsResponse>(context, path);

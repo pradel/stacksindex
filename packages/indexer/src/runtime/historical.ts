@@ -206,7 +206,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         const logsResult = await datasourceStacksApi.getContractLogs(
           context,
           lowestState.contractId,
-          lowestState.cursor,
+          { cursor: lowestState.cursor },
         );
         if (logsResult.isErr()) {
           return Result.err(logsResult.error);
