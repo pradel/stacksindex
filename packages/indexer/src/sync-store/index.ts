@@ -5,7 +5,7 @@ import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 import type {
   BlockApiResponse,
-  ContractLog,
+  SmartContractLogEvent,
   TransactionApiResponse,
 } from "../datasources/api/index.ts";
 import { encodeBlock, encodeEvent, encodeTransaction } from "./encode.js";
@@ -145,7 +145,7 @@ export const syncStore = {
   },
 
   insertEvents: async (
-    { events }: { events: { event: ContractLog; blockHeight: number }[] },
+    { events }: { events: { event: SmartContractLogEvent; blockHeight: number }[] },
     context: Context,
   ) => {
     if (events.length === 0) {

@@ -43,7 +43,7 @@ function findFirstContractEvent(
   for (const event of tx.events) {
     if (
       event.event_type === "smart_contract_log" &&
-      event.contract_log?.contract_id === contractId
+      event.contract_log.contract_id === contractId
     ) {
       return { event_index: event.event_index };
     }

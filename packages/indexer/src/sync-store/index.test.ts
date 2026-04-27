@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
+import type { SmartContractLogEvent } from "../datasources/api/index.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { syncStore } from "./index.ts";
 import {
@@ -286,11 +287,13 @@ describe("syncStore", () => {
               event: {
                 tx_id: "tx-1",
                 event_index: 0,
-                event_type: "smart_contract_log",
-                contract_id: "SP123.token",
-                topic: "print",
-                value: { hex: "0x01", repr: "(ok true)" },
-              },
+                event_type: "smart_contract_log" as const,
+                contract_log: {
+                  contract_id: "SP123.token",
+                  topic: "print",
+                  value: { hex: "0x01", repr: "(ok true)" },
+                },
+              } satisfies SmartContractLogEvent,
               blockHeight: 100,
             },
           ],
@@ -314,11 +317,13 @@ describe("syncStore", () => {
       const event = {
         tx_id: "tx-1",
         event_index: 0,
-        event_type: "smart_contract_log",
-        contract_id: "SP123.token",
-        topic: "print",
-        value: { hex: "0x01", repr: "(ok true)" },
-      };
+        event_type: "smart_contract_log" as const,
+        contract_log: {
+          contract_id: "SP123.token",
+          topic: "print",
+          value: { hex: "0x01", repr: "(ok true)" },
+        },
+      } satisfies SmartContractLogEvent;
 
       await syncStore.insertEvents({ events: [{ event, blockHeight: 100 }] }, { db: testDb.db });
       await syncStore.insertEvents({ events: [{ event, blockHeight: 100 }] }, { db: testDb.db });
