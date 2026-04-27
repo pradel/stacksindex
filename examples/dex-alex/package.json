@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm build && node dist/index.mjs",
-    "build": "vp pack",
-    "test": "vp test"
+    "build": "vp pack"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.4.4",
