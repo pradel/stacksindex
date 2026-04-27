@@ -90,25 +90,86 @@ export interface AddressTransactionsResponse {
 }
 
 export interface ContractLogsResponse {
-  results: ContractLog[];
   limit: number;
   offset: number;
   total: number;
   next_cursor: string | null;
   prev_cursor: string | null;
+  results: ContractEvent[];
 }
 
-export interface ContractLog {
-  tx_id: string;
+interface AbstractTransactionEvent {
   event_index: number;
-  event_type: string;
-  contract_id: string;
-  topic: string;
-  value?: {
-    hex: string;
-    repr: string;
+}
+
+export interface SmartContractLogEvent extends AbstractTransactionEvent {
+  event_type: "smart_contract_log";
+  tx_id: string;
+  contract_log: {
+    contract_id: string;
+    topic: string;
+    value: {
+      hex: string;
+      repr: string;
+    };
   };
 }
+
+export interface StxLockEvent extends AbstractTransactionEvent {
+  event_type: "stx_lock";
+  tx_id: string;
+  stx_lock_event: {
+    locked_amount: string;
+    unlock_height: number;
+    locked_address: string;
+  };
+}
+
+export interface StxAssetEvent extends AbstractTransactionEvent {
+  event_type: "stx_asset";
+  tx_id: string;
+  asset: {
+    asset_event_type: "transfer" | "mint" | "burn";
+    sender: string;
+    recipient: string;
+    amount: string;
+    memo?: string;
+  };
+}
+
+export interface FungibleTokenAssetEvent extends AbstractTransactionEvent {
+  event_type: "fungible_token_asset";
+  tx_id: string;
+  asset: {
+    asset_event_type: "transfer" | "mint" | "burn";
+    asset_id: string;
+    sender: string;
+    recipient: string;
+    amount: string;
+  };
+}
+
+export interface NonFungibleTokenAssetEvent extends AbstractTransactionEvent {
+  event_type: "non_fungible_token_asset";
+  tx_id: string;
+  asset: {
+    asset_event_type: "transfer" | "mint" | "burn";
+    asset_id: string;
+    sender: string;
+    recipient: string;
+    value: {
+      hex: string;
+      repr: string;
+    };
+  };
+}
+
+export type ContractEvent =
+  | SmartContractLogEvent
+  | StxLockEvent
+  | StxAssetEvent
+  | FungibleTokenAssetEvent
+  | NonFungibleTokenAssetEvent;
 
 interface DatasourceStacksApiContext {
   logger: Logger;
