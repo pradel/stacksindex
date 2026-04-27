@@ -5,7 +5,12 @@ import { Result } from "better-result";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createLogger } from "../../logger/index.ts";
-import { StacksApiParseError, StacksApiResponseError, StacksApiUnexpectedError } from "./errors.ts";
+import {
+  StacksApiParseError,
+  StacksApiRateLimitError,
+  StacksApiResponseError,
+  StacksApiUnexpectedError,
+} from "./errors.ts";
 import { datasourceStacksApi } from "./index.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -48,6 +53,7 @@ describe("aPI DataSource", () => {
         statusCode: 404,
         statusText: "Not Found",
         body: mockBody({ error: "Not found" }),
+        headers: { "content-type": "application/json" },
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "404");
@@ -65,9 +71,10 @@ describe("aPI DataSource", () => {
 
     test("returns StacksApiResponseError on 500", async () => {
       mockRequest.mockReturnValue({
-        statusCode: 500,
-        statusText: "Internal Server Error",
-        body: mockBody({ error: "Internal server error" }),
+        statusCode: 400,
+        statusText: "Bad Request",
+        body: mockBody({ error: "Bad request" }),
+        headers: { "content-type": "application/json" },
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
@@ -75,10 +82,10 @@ describe("aPI DataSource", () => {
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toStrictEqual(
         new StacksApiResponseError({
-          status: 500,
-          statusText: "Internal Server Error",
+          status: 400,
+          statusText: "Bad Request",
           path: "/extended/v1/tx/500",
-          errorData: { error: "Internal server error" },
+          errorData: { error: "Bad request" },
         }),
       );
     });
@@ -91,6 +98,7 @@ describe("aPI DataSource", () => {
             throw new Error("Unexpected end of JSON input");
           },
         },
+        headers: { "content-type": "application/json" },
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "parse-error");
@@ -106,12 +114,13 @@ describe("aPI DataSource", () => {
 
     test("returns StacksApiResponseError with text error data when JSON fails on error response", async () => {
       mockRequest.mockReturnValue({
-        statusCode: 500,
-        statusText: "Internal Server Error",
+        statusCode: 400,
+        statusText: "Bad Request",
         body: {
           json: () => Promise.reject(new Error("parse error")),
-          text: () => Promise.resolve("Internal Server Error"),
+          text: () => Promise.resolve("Bad Request"),
         },
+        headers: { "content-type": "application/json" },
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
@@ -119,22 +128,23 @@ describe("aPI DataSource", () => {
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toStrictEqual(
         new StacksApiResponseError({
-          status: 500,
-          statusText: "Internal Server Error",
+          status: 400,
+          statusText: "Bad Request",
           path: "/extended/v1/tx/500",
-          errorData: "Internal Server Error",
+          errorData: "Bad Request",
         }),
       );
     });
 
     test("returns StacksApiResponseError with null error data when both JSON and text fail", async () => {
       mockRequest.mockReturnValue({
-        statusCode: 500,
-        statusText: "Internal Server Error",
+        statusCode: 400,
+        statusText: "Bad Request",
         body: {
           json: () => Promise.reject(new Error("parse error")),
           text: () => Promise.reject(new Error("text error")),
         },
+        headers: { "content-type": "application/json" },
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
@@ -142,8 +152,8 @@ describe("aPI DataSource", () => {
       expect(result.isErr()).toBe(true);
       expect((result as any).error).toStrictEqual(
         new StacksApiResponseError({
-          status: 500,
-          statusText: "Internal Server Error",
+          status: 400,
+          statusText: "Bad Request",
           path: "/extended/v1/tx/500",
           errorData: null,
         }),
@@ -165,6 +175,85 @@ describe("aPI DataSource", () => {
           cause: new Error("Network error"),
         }),
       );
+    });
+
+    test("retries on 429 after retryAfter seconds and eventually succeeds", async () => {
+      vi.useFakeTimers();
+      mockRequest
+        .mockReturnValueOnce({
+          statusCode: 429,
+          statusText: "Too Many Requests",
+          body: mockBody({ error: "Rate limited" }),
+          headers: { "content-type": "application/json", "retry-after": "2" },
+        })
+        .mockReturnValueOnce({
+          statusCode: 200,
+          body: mockBody({ hash: "0xabc123", block_height: 123_456 }),
+        });
+
+      const promise = datasourceStacksApi.getTransaction(context, "0xabc123");
+
+      await vi.advanceTimersByTimeAsync(2000);
+
+      const result = await promise;
+
+      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
+    });
+
+    test("returns StacksApiRateLimitError after exhausting retries on 429", async () => {
+      vi.useFakeTimers();
+      mockRequest.mockReturnValue({
+        statusCode: 429,
+        statusText: "Too Many Requests",
+        body: mockBody({ error: "Rate limited" }),
+        headers: { "content-type": "application/json", "retry-after": "1" },
+      });
+
+      const promise = datasourceStacksApi.getTransaction(context, "0xabc123");
+
+      await vi.advanceTimersByTimeAsync(4000);
+
+      const result = await promise;
+
+      expect(result.isErr()).toBe(true);
+      expect((result as any).error).toStrictEqual(
+        new StacksApiRateLimitError({
+          path: "/extended/v1/tx/0xabc123",
+          retryAfter: 1,
+        }),
+      );
+      expect(mockRequest).toHaveBeenCalledTimes(4);
+
+      vi.useRealTimers();
+    });
+
+    test("retries on 429 with retry-after 0 without delay", async () => {
+      vi.useFakeTimers();
+      mockRequest
+        .mockReturnValueOnce({
+          statusCode: 429,
+          statusText: "Too Many Requests",
+          body: mockBody({ error: "Rate limited" }),
+          headers: { "content-type": "application/json", "retry-after": "0" },
+        })
+        .mockReturnValueOnce({
+          statusCode: 200,
+          body: mockBody({ hash: "0xabc123", block_height: 123_456 }),
+        });
+
+      const promise = datasourceStacksApi.getTransaction(context, "0xabc123");
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      const result = await promise;
+
+      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
     });
   });
 
@@ -237,9 +326,11 @@ describe("aPI DataSource", () => {
             tx_id: "0xtx123",
             event_index: 0,
             event_type: "smart_contract_log",
-            contract_id: contractId,
-            topic: "print",
-            value: { hex: "0x01", repr: "123" },
+            contract_log: {
+              contract_id: contractId,
+              topic: "print",
+              value: { hex: "0x01", repr: "123" },
+            },
           },
         ],
         next_cursor: "abc123",
@@ -263,9 +354,11 @@ describe("aPI DataSource", () => {
               tx_id: "0xtx123",
               event_index: 0,
               event_type: "smart_contract_log",
-              contract_id: contractId,
-              topic: "print",
-              value: { hex: "0x01", repr: "123" },
+              contract_log: {
+                contract_id: contractId,
+                topic: "print",
+                value: { hex: "0x01", repr: "123" },
+              },
             },
           ],
           next_cursor: "abc123",

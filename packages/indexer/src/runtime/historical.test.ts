@@ -1,15 +1,20 @@
 // oxlint-disable typescript/no-unsafe-member-access
 // oxlint-disable typescript/no-unsafe-type-assertion
 // oxlint-disable typescript/no-explicit-any
-// oxlint-disable max-lines
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable jest/max-expects
+// oxlint-disable vitest/prefer-called-once, vitest/prefer-called-times
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createLogger } from "../logger/index.ts";
 import { parseCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
-import { blocksTable, transactionsTable } from "../sync-store/schema.ts";
+import {
+  blocksTable,
+  checkpointsTable,
+  eventsTable,
+  transactionsTable,
+} from "../sync-store/schema.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createHistoricalRuntime } from "./historical.ts";
 
@@ -23,6 +28,8 @@ vi.mock("undici", () => ({
 const context = {
   logger: createLogger({ level: 0 }),
 };
+
+const noopHandler = () => Promise.resolve();
 
 const mockBody = (data: unknown) => ({
   json: () => Promise.resolve(data),
@@ -114,9 +121,11 @@ describe("historical runtime", () => {
                 tx_id: "tx-1",
                 event_index: 0,
                 event_type: "smart_contract_log",
-                contract_id: contractId,
-                topic: "print",
-                value: { hex: "", repr: "" },
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
               },
             ],
             limit: 100,
@@ -138,9 +147,11 @@ describe("historical runtime", () => {
                 tx_id: "tx-2",
                 event_index: 0,
                 event_type: "smart_contract_log",
-                contract_id: contractId,
-                topic: "print",
-                value: { hex: "", repr: "" },
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
               },
             ],
             limit: 100,
@@ -229,7 +240,7 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
 
@@ -404,9 +415,11 @@ describe("historical runtime", () => {
               tx_id: "tx-a-1",
               event_index: 0,
               event_type: "smart_contract_log",
-              contract_id: contractA,
-              topic: "print",
-              value: { hex: "", repr: "" },
+              contract_log: {
+                contract_id: contractA,
+                topic: "print",
+                value: { hex: "", repr: "" },
+              },
             },
           ],
           "200:0:0:0",
@@ -434,9 +447,11 @@ describe("historical runtime", () => {
               tx_id: "tx-b-1",
               event_index: 0,
               event_type: "smart_contract_log",
-              contract_id: contractB,
-              topic: "print",
-              value: { hex: "", repr: "" },
+              contract_log: {
+                contract_id: contractB,
+                topic: "print",
+                value: { hex: "", repr: "" },
+              },
             },
           ],
           "150:0:0:0",
@@ -464,9 +479,11 @@ describe("historical runtime", () => {
               tx_id: "tx-a-2",
               event_index: 0,
               event_type: "smart_contract_log",
-              contract_id: contractA,
-              topic: "print",
-              value: { hex: "", repr: "" },
+              contract_log: {
+                contract_id: contractA,
+                topic: "print",
+                value: { hex: "", repr: "" },
+              },
             },
           ],
           null,
@@ -494,9 +511,11 @@ describe("historical runtime", () => {
               tx_id: "tx-b-2",
               event_index: 0,
               event_type: "smart_contract_log",
-              contract_id: contractB,
-              topic: "print",
-              value: { hex: "", repr: "" },
+              contract_log: {
+                contract_id: contractB,
+                topic: "print",
+                value: { hex: "", repr: "" },
+              },
             },
           ],
           null,
@@ -518,7 +537,10 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId: contractA }, { contractId: contractB }]);
+    const result = await runtime.run([
+      { contractId: contractA, handler: noopHandler },
+      { contractId: contractB, handler: noopHandler },
+    ]);
 
     expect(result.isOk()).toBe(true);
 
@@ -566,9 +588,11 @@ describe("historical runtime", () => {
                 tx_id: "tx-1",
                 event_index: 0,
                 event_type: "smart_contract_log",
-                contract_id: contractId,
-                topic: "print",
-                value: { hex: "", repr: "" },
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
               },
             ],
             limit: 100,
@@ -630,7 +654,7 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
 
@@ -686,9 +710,11 @@ describe("historical runtime", () => {
                 tx_id: "tx-1",
                 event_index: 0,
                 event_type: "smart_contract_log",
-                contract_id: contractId,
-                topic: "print",
-                value: { hex: "", repr: "" },
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
               },
             ],
             limit: 100,
@@ -704,7 +730,7 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
 
@@ -779,8 +805,8 @@ describe("historical runtime", () => {
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
         return {
-          statusCode: 500,
-          statusText: "Internal Server Error",
+          statusCode: 400,
+          statusText: "Bad Request",
           body: mockBody({ error: "Logs API error" }),
         };
       }
@@ -788,7 +814,7 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isErr()).toBe(true);
   });
@@ -807,13 +833,153 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId }]);
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
 
     // Nothing should be stored
     const blocks = await testDb.db.select().from(blocksTable);
     expect(blocks).toHaveLength(0);
+  });
+
+  test("skips non-smart_contract_log events without crashing", async () => {
+    const contractId = "SP123.token";
+
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 1,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-1", event_count: 2 }],
+          }),
+        };
+      }
+      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-1", event_count: 2 }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v1/tx/tx-1")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-1",
+            block_height: 100,
+            block_hash: "block-1",
+            microblock_sequence: 0,
+            tx_index: 0,
+            sender_address: "SP sender",
+            fee_rate: "1000",
+            nonce: 0,
+            tx_status: "success",
+            tx_type: "contract_call",
+            canonical: true,
+            event_count: 2,
+            events: [
+              {
+                event_index: 0,
+                event_type: "stx_asset",
+              },
+              {
+                event_index: 1,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "0x01", repr: "123" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:1`)
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            results: [
+              {
+                tx_id: "tx-1",
+                event_index: 0,
+                event_type: "stx_asset",
+                contract_id: contractId,
+                topic: "stx",
+                // No `value` property here
+              },
+              {
+                tx_id: "tx-1",
+                event_index: 1,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "0x01", repr: "123" },
+                },
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 2,
+            next_cursor: null,
+            prev_cursor: null,
+          }),
+        };
+      }
+      if (url.includes("/extended/v2/blocks/block-1")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            canonical: true,
+            height: 100,
+            hash: "block-1",
+            block_time: 1000,
+            block_time_iso: "",
+            tenure_height: 100,
+            index_block_hash: "",
+            parent_block_hash: "",
+            parent_index_block_hash: "",
+            burn_block_time: 1000,
+            burn_block_time_iso: "",
+            burn_block_hash: "",
+            burn_block_height: 100,
+            miner_txid: "",
+            tx_count: 1,
+            execution_cost_read_count: 0,
+            execution_cost_read_length: 0,
+            execution_cost_runtime: 0,
+            execution_cost_write_count: 0,
+            execution_cost_write_length: 0,
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+
+    expect(result.isOk()).toBe(true);
+
+    const storedEvents = await testDb.db.select().from(eventsTable);
+    expect(storedEvents).toHaveLength(1);
+    expect(storedEvents[0]).toMatchObject({
+      eventType: "smart_contract_log",
+      txId: "tx-1",
+      eventIndex: 1,
+      valueHex: "0x01",
+      valueRepr: "123",
+    });
   });
 });
 
@@ -831,5 +997,596 @@ describe("parseCursor helper", () => {
   test("throws on invalid cursor format", () => {
     expect(() => parseCursor("invalid")).toThrow("Invalid cursor format: invalid");
     expect(() => parseCursor("100:0:5")).toThrow("Invalid cursor format: 100:0:5");
+  });
+});
+
+describe("historical runtime with handlers", () => {
+  // oxlint-disable-next-line init-declarations
+  let testDb: TestDatabase;
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase();
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockRequest.mockReset();
+    await testDb.cleanup();
+  });
+
+  afterAll(async () => {
+    vi.restoreAllMocks();
+    await testDb.close();
+  });
+
+  test("calls handlers in global chronological order across contracts", async () => {
+    const contractA = "SP123.token-a";
+    const contractB = "SP456.token-b";
+    const handlerA = vi.fn().mockResolvedValue(undefined);
+    const handlerB = vi.fn().mockResolvedValue(undefined);
+
+    const makeTxResponse = ({
+      txId,
+      blockHeight,
+      blockHash,
+      contractId,
+    }: {
+      txId: string;
+      blockHeight: number;
+      blockHash: string;
+      contractId: string;
+    }) => ({
+      statusCode: 200,
+      body: mockBody({
+        tx_id: txId,
+        block_height: blockHeight,
+        block_hash: blockHash,
+        microblock_sequence: 0,
+        tx_index: 0,
+        sender_address: "SP sender",
+        fee_rate: "1000",
+        nonce: 0,
+        tx_status: "success",
+        tx_type: "contract_call",
+        canonical: true,
+        event_count: 1,
+        events: [
+          {
+            event_index: 0,
+            event_type: "smart_contract_log",
+            contract_log: { contract_id: contractId, topic: "print", value: { hex: "", repr: "" } },
+          },
+        ],
+      }),
+    });
+
+    const makeBlockResponse = (height: number, hash: string) => ({
+      statusCode: 200,
+      body: mockBody({
+        canonical: true,
+        height,
+        hash,
+        block_time: height,
+        block_time_iso: "",
+        tenure_height: height,
+        index_block_hash: "",
+        parent_block_hash: "",
+        parent_index_block_hash: "",
+        burn_block_time: height,
+        burn_block_time_iso: "",
+        burn_block_hash: "",
+        burn_block_height: height,
+        miner_txid: "",
+        tx_count: 1,
+        execution_cost_read_count: 0,
+        execution_cost_read_length: 0,
+        execution_cost_runtime: 0,
+        execution_cost_write_count: 0,
+        execution_cost_write_length: 0,
+      }),
+    });
+
+    const makeLogsResponse = (results: any[], nextCursor: string | null) => ({
+      statusCode: 200,
+      body: mockBody({
+        results,
+        limit: 100,
+        offset: 0,
+        total: results.length,
+        next_cursor: nextCursor,
+        prev_cursor: null,
+      }),
+    });
+
+    mockRequest.mockImplementation((url: string) => {
+      // Contract A initialization
+      if (url.includes(`/extended/v1/address/${contractA}/transactions?limit=1`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 1,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-a-init", event_count: 1 }],
+          }),
+        };
+      }
+      if (url.includes(`/extended/v1/address/${contractA}/transactions?limit=50`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-a-init", event_count: 1 }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v1/tx/tx-a-init")) {
+        return makeTxResponse({
+          txId: "tx-a-init",
+          blockHeight: 100,
+          blockHash: "block-a-init",
+          contractId: contractA,
+        });
+      }
+
+      // Contract B initialization
+      if (url.includes(`/extended/v1/address/${contractB}/transactions?limit=1`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 1,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-b-init", event_count: 1 }],
+          }),
+        };
+      }
+      if (url.includes(`/extended/v1/address/${contractB}/transactions?limit=50`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-b-init", event_count: 1 }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v1/tx/tx-b-init")) {
+        return makeTxResponse({
+          txId: "tx-b-init",
+          blockHeight: 50,
+          blockHash: "block-b-init",
+          contractId: contractB,
+        });
+      }
+
+      // Contract A page 1 (cursor 100)
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractA}/logs?limit=100&cursor=100:0:0:0`)
+      ) {
+        return makeLogsResponse(
+          [
+            {
+              tx_id: "tx-a-1",
+              event_index: 0,
+              event_type: "smart_contract_log",
+              contract_log: {
+                contract_id: contractA,
+                topic: "print",
+                value: { hex: "", repr: "" },
+              },
+            },
+          ],
+          null,
+        );
+      }
+      if (url.includes("/extended/v1/tx/tx-a-1")) {
+        return makeTxResponse({
+          txId: "tx-a-1",
+          blockHeight: 100,
+          blockHash: "block-a-1",
+          contractId: contractA,
+        });
+      }
+      if (url.includes("/extended/v2/blocks/block-a-1")) {
+        return makeBlockResponse(100, "block-a-1");
+      }
+
+      // Contract B page 1 (cursor 50)
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractB}/logs?limit=100&cursor=50:0:0:0`)
+      ) {
+        return makeLogsResponse(
+          [
+            {
+              tx_id: "tx-b-1",
+              event_index: 0,
+              event_type: "smart_contract_log",
+              contract_log: {
+                contract_id: contractB,
+                topic: "print",
+                value: { hex: "", repr: "" },
+              },
+            },
+          ],
+          null,
+        );
+      }
+      if (url.includes("/extended/v1/tx/tx-b-1")) {
+        return makeTxResponse({
+          txId: "tx-b-1",
+          blockHeight: 50,
+          blockHash: "block-b-1",
+          contractId: contractB,
+        });
+      }
+      if (url.includes("/extended/v2/blocks/block-b-1")) {
+        return makeBlockResponse(50, "block-b-1");
+      }
+
+      if (url.includes("/extended/v2/blocks/block-a-init")) {
+        return makeBlockResponse(100, "block-a-init");
+      }
+      if (url.includes("/extended/v2/blocks/block-b-init")) {
+        return makeBlockResponse(50, "block-b-init");
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({
+      logger: context.logger,
+      db: testDb.db,
+    });
+    const result = await runtime.run([
+      { contractId: contractA, handler: handlerA },
+      { contractId: contractB, handler: handlerB },
+    ]);
+
+    expect(result.isOk()).toBe(true);
+
+    // Both handlers should be called
+    expect(handlerA).toHaveBeenCalledTimes(1);
+    expect(handlerB).toHaveBeenCalledTimes(1);
+
+    // B's event is at block 50, A's at block 100
+    // B should be called first because its block is lower
+    expect(handlerB).toHaveBeenCalledBefore(handlerA);
+
+    // Verify the events have correct block heights
+    expect(handlerB.mock.calls[0][0].block_height).toBe(50);
+    expect(handlerA.mock.calls[0][0].block_height).toBe(100);
+  });
+
+  test("updates checkpoint after processing events", async () => {
+    const contractId = "SP123.token";
+    const handler = vi.fn().mockResolvedValue(undefined);
+
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 1,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-1", event_count: 1 }],
+          }),
+        };
+      }
+      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-1", event_count: 1 }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v1/tx/tx-1")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-1",
+            block_height: 100,
+            block_hash: "block-1",
+            microblock_sequence: 0,
+            tx_index: 0,
+            sender_address: "SP sender",
+            fee_rate: "1000",
+            nonce: 0,
+            tx_status: "success",
+            tx_type: "contract_call",
+            canonical: true,
+            event_count: 1,
+            events: [
+              {
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            results: [
+              {
+                tx_id: "tx-1",
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 1,
+            next_cursor: null,
+            prev_cursor: null,
+          }),
+        };
+      }
+      if (url.includes("/extended/v2/blocks/block-1")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            canonical: true,
+            height: 100,
+            hash: "block-1",
+            block_time: 1000,
+            block_time_iso: "",
+            tenure_height: 100,
+            index_block_hash: "",
+            parent_block_hash: "",
+            parent_index_block_hash: "",
+            burn_block_time: 1000,
+            burn_block_time_iso: "",
+            burn_block_hash: "",
+            burn_block_height: 100,
+            miner_txid: "",
+            tx_count: 1,
+            execution_cost_read_count: 0,
+            execution_cost_read_length: 0,
+            execution_cost_runtime: 0,
+            execution_cost_write_count: 0,
+            execution_cost_write_length: 0,
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({
+      logger: context.logger,
+      db: testDb.db,
+    });
+    const result = await runtime.run([{ contractId, handler }]);
+
+    expect(result.isOk()).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    // Verify checkpoint was updated
+    const checkpoint = await testDb.db.select().from(checkpointsTable);
+    expect(checkpoint).toHaveLength(1);
+    expect(Number(checkpoint[0].blockHeight)).toBe(100);
+    expect(Number(checkpoint[0].blockTime)).toBe(1000);
+  });
+
+  test("does not re-process events below checkpoint on restart", async () => {
+    const contractId = "SP123.token";
+    const handler = vi.fn().mockResolvedValue(undefined);
+
+    // Pre-seed checkpoint so block 100 is already processed
+    await syncStore.upsertCheckpoint(
+      { chainId: 1, blockHeight: 100, blockTime: 1000 },
+      { db: testDb.db },
+    );
+    // Pre-seed sync progress so it skips first cursor discovery
+    await syncStore.upsertSyncProgress(
+      { contractId, chainId: 1, cursor: "100:0:0:0", lastBlockHeight: 100 },
+      { db: testDb.db },
+    );
+    // Pre-seed block, transaction, and event
+    await testDb.db.insert(blocksTable).values({
+      chainId: 1n,
+      height: 100n,
+      hash: "block-1",
+      blockTime: 1000n,
+      tenureHeight: 100n,
+    });
+    await testDb.db.insert(transactionsTable).values({
+      chainId: 1n,
+      txId: "tx-1",
+      blockHeight: 100n,
+      blockHash: "block-1",
+      txIndex: 0,
+      txType: "contract_call",
+      senderAddress: "SP sender",
+      feeRate: 1000n,
+      nonce: 0n,
+      txStatus: "success",
+      canonical: true,
+    });
+
+    mockRequest.mockImplementation((url: string) => {
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            results: [
+              {
+                tx_id: "tx-1",
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 1,
+            next_cursor: null,
+            prev_cursor: null,
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({
+      logger: context.logger,
+      db: testDb.db,
+    });
+    const result = await runtime.run([{ contractId, handler }]);
+
+    expect(result.isOk()).toBe(true);
+    // Handler should NOT be called because the event is at block 100 which is already checkpointed
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  test("returns error when handler throws", async () => {
+    const contractId = "SP123.token";
+    const handler = vi.fn().mockRejectedValue(new Error("Handler failed"));
+
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 1,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-1", event_count: 1 }],
+          }),
+        };
+      }
+      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            offset: 0,
+            total: 1,
+            results: [{ tx_id: "tx-1", event_count: 1 }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v1/tx/tx-1")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-1",
+            block_height: 100,
+            block_hash: "block-1",
+            microblock_sequence: 0,
+            tx_index: 0,
+            sender_address: "SP sender",
+            fee_rate: "1000",
+            nonce: 0,
+            tx_status: "success",
+            tx_type: "contract_call",
+            canonical: true,
+            event_count: 1,
+            events: [
+              {
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            results: [
+              {
+                tx_id: "tx-1",
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 1,
+            next_cursor: null,
+            prev_cursor: null,
+          }),
+        };
+      }
+      if (url.includes("/extended/v2/blocks/block-1")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            canonical: true,
+            height: 100,
+            hash: "block-1",
+            block_time: 1000,
+            block_time_iso: "",
+            tenure_height: 100,
+            index_block_hash: "",
+            parent_block_hash: "",
+            parent_index_block_hash: "",
+            burn_block_time: 1000,
+            burn_block_time_iso: "",
+            burn_block_hash: "",
+            burn_block_height: 100,
+            miner_txid: "",
+            tx_count: 1,
+            execution_cost_read_count: 0,
+            execution_cost_read_length: 0,
+            execution_cost_runtime: 0,
+            execution_cost_write_count: 0,
+            execution_cost_write_length: 0,
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({
+      logger: context.logger,
+      db: testDb.db,
+    });
+    const result = await runtime.run([{ contractId, handler }]);
+
+    expect(result.isErr()).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });

@@ -13,6 +13,11 @@ export class StacksApiResponseError extends TaggedError("StacksApiResponseError"
   errorData: unknown;
 }>() {}
 
+export class StacksApiRateLimitError extends TaggedError("StacksApiRateLimitError")<{
+  path: string;
+  retryAfter: number;
+}>() {}
+
 export class StacksApiParseError extends TaggedError("StacksApiParseError")<{
   message: string;
   cause: unknown;
@@ -21,4 +26,5 @@ export class StacksApiParseError extends TaggedError("StacksApiParseError")<{
 export type StacksApiError =
   | StacksApiUnexpectedError
   | StacksApiResponseError
+  | StacksApiRateLimitError
   | StacksApiParseError;

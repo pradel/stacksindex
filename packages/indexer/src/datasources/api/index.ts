@@ -1,11 +1,12 @@
 import { Result } from "better-result";
 import { request } from "undici";
 
-import { startClock } from "../../lib/timer.ts";
+import { sleep, startClock } from "../../lib/timer.ts";
 import type { Logger } from "../../logger/index.ts";
 import {
   type StacksApiError,
   StacksApiParseError,
+  StacksApiRateLimitError,
   StacksApiResponseError,
   StacksApiUnexpectedError,
 } from "./errors.ts";
@@ -71,13 +72,7 @@ export interface TransactionApiResponse {
   execution_cost_write_count: number;
   execution_cost_write_length: number;
   vm_error: null | string;
-  events: {
-    event_index: number;
-    event_type: string;
-    contract_log?: {
-      contract_id: string;
-    };
-  }[];
+  events: ContractEvent[];
   tx_type: string;
 }
 
@@ -89,25 +84,86 @@ export interface AddressTransactionsResponse {
 }
 
 export interface ContractLogsResponse {
-  results: ContractLog[];
   limit: number;
   offset: number;
   total: number;
   next_cursor: string | null;
   prev_cursor: string | null;
+  results: ContractEvent[];
 }
 
-export interface ContractLog {
-  tx_id: string;
+interface AbstractTransactionEvent {
   event_index: number;
-  event_type: string;
-  contract_id: string;
-  topic: string;
-  value: {
-    hex: string;
-    repr: string;
+}
+
+export interface SmartContractLogEvent extends AbstractTransactionEvent {
+  event_type: "smart_contract_log";
+  tx_id: string;
+  contract_log: {
+    contract_id: string;
+    topic: string;
+    value: {
+      hex: string;
+      repr: string;
+    };
   };
 }
+
+export interface StxLockEvent extends AbstractTransactionEvent {
+  event_type: "stx_lock";
+  tx_id: string;
+  stx_lock_event: {
+    locked_amount: string;
+    unlock_height: number;
+    locked_address: string;
+  };
+}
+
+export interface StxAssetEvent extends AbstractTransactionEvent {
+  event_type: "stx_asset";
+  tx_id: string;
+  asset: {
+    asset_event_type: "transfer" | "mint" | "burn";
+    sender: string;
+    recipient: string;
+    amount: string;
+    memo?: string;
+  };
+}
+
+export interface FungibleTokenAssetEvent extends AbstractTransactionEvent {
+  event_type: "fungible_token_asset";
+  tx_id: string;
+  asset: {
+    asset_event_type: "transfer" | "mint" | "burn";
+    asset_id: string;
+    sender: string;
+    recipient: string;
+    amount: string;
+  };
+}
+
+export interface NonFungibleTokenAssetEvent extends AbstractTransactionEvent {
+  event_type: "non_fungible_token_asset";
+  tx_id: string;
+  asset: {
+    asset_event_type: "transfer" | "mint" | "burn";
+    asset_id: string;
+    sender: string;
+    recipient: string;
+    value: {
+      hex: string;
+      repr: string;
+    };
+  };
+}
+
+export type ContractEvent =
+  | SmartContractLogEvent
+  | StxLockEvent
+  | StxAssetEvent
+  | FungibleTokenAssetEvent
+  | NonFungibleTokenAssetEvent;
 
 interface DatasourceStacksApiContext {
   logger: Logger;
@@ -118,48 +174,109 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     path: string,
   ): Promise<Result<ResponseT, StacksApiError>> {
-    return Result.tryPromise({
-      try: async () => {
-        const stopClock = startClock();
-        context.logger.trace({
-          service: "datasourceStacksApi",
-          msg: `${path} request`,
-        });
-        const { statusCode, statusText, body } = await request(`https://api.hiro.so${path}`);
+    return this._requestWithRetry(context, path, 0);
+  },
 
-        if (statusCode !== 200) {
-          const errorData = await body.json().catch(() => body.text().catch(() => null));
-          throw new StacksApiResponseError({ status: statusCode, path, statusText, errorData });
-        }
+  async _requestWithRetry<ResponseT>(
+    context: DatasourceStacksApiContext,
+    path: string,
+    attempt: number,
+  ): Promise<Result<ResponseT, StacksApiError>> {
+    const maxRateLimitRetries = 3;
 
-        try {
-          const data = await body.json();
-
-          const duration = stopClock();
+    const result = await Result.tryPromise(
+      {
+        try: async () => {
+          const stopClock = startClock();
           context.logger.trace({
             service: "datasourceStacksApi",
-            msg: `${path} response`,
-            duration,
+            msg: `${path} request`,
           });
+          const { statusCode, statusText, body, headers } = await request(
+            `https://api.hiro.so${path}`,
+          );
 
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          return data as ResponseT;
-        } catch (error) {
-          throw new StacksApiParseError({
-            message: error instanceof Error ? error.message : String(error),
-            cause: error,
-          });
-        }
-      },
-      catch: (error) =>
-        StacksApiResponseError.is(error) || StacksApiParseError.is(error)
-          ? error
-          : new StacksApiUnexpectedError({
-              message: "Unexpected Stacks API error",
+          if (statusCode !== 200) {
+            // oxlint-disable-next-line init-declarations
+            let errorData: unknown;
+            const contentType = headers["content-type"] ?? "";
+            if (contentType.includes("application/json")) {
+              errorData = await body.json().catch(() => body.text().catch(() => null));
+            } else {
+              errorData = await body.text().catch(() => null);
+            }
+
+            const duration = stopClock();
+            context.logger.trace({
+              service: "datasourceStacksApi",
+              msg: `${path} error response ${statusCode}`,
+              duration,
+            });
+
+            if (statusCode === 429) {
+              const retryAfter = Number(headers["retry-after"] ?? 1);
+              throw new StacksApiRateLimitError({ path, retryAfter });
+            }
+
+            throw new StacksApiResponseError({ status: statusCode, path, statusText, errorData });
+          }
+
+          try {
+            const data = await body.json();
+
+            const duration = stopClock();
+            context.logger.trace({
+              service: "datasourceStacksApi",
+              msg: `${path} response`,
+              duration,
+            });
+
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+            return data as ResponseT;
+          } catch (error) {
+            throw new StacksApiParseError({
+              message: error instanceof Error ? error.message : String(error),
               cause: error,
-              path,
-            }),
-    });
+            });
+          }
+        },
+        catch: (error) =>
+          StacksApiResponseError.is(error) ||
+          StacksApiRateLimitError.is(error) ||
+          StacksApiParseError.is(error)
+            ? error
+            : new StacksApiUnexpectedError({
+                message: "Unexpected Stacks API error",
+                cause: error,
+                path,
+              }),
+      },
+      {
+        retry: {
+          times: 3,
+          delayMs: 1000,
+          backoff: "exponential",
+          shouldRetry: (error) =>
+            StacksApiResponseError.is(error) && (error.status === 500 || error.status === 502),
+        },
+      },
+    );
+
+    if (result.isOk()) {
+      return result;
+    }
+
+    if (StacksApiRateLimitError.is(result.error) && attempt < maxRateLimitRetries) {
+      const delayMs = result.error.retryAfter * 1000;
+      context.logger.debug({
+        service: "datasourceStacksApi",
+        msg: `${path} rate limited, retrying after ${result.error.retryAfter}s, attempt ${attempt + 1}`,
+      });
+      await sleep(delayMs);
+      return this._requestWithRetry(context, path, attempt + 1);
+    }
+
+    return result;
   },
 
   getBlockByHash(context: DatasourceStacksApiContext, hash: string) {
