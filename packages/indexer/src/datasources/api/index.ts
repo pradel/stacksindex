@@ -213,9 +213,9 @@ export const datasourceStacksApi = {
 
     if (StacksApiRateLimitError.is(result.error) && attempt < maxRateLimitRetries) {
       const delayMs = result.error.retryAfter * 1000;
-      context.logger.trace({
+      context.logger.debug({
         service: "datasourceStacksApi",
-        msg: `${path} rate limited, retrying after ${result.error.retryAfter}s`,
+        msg: `${path} rate limited, retrying after ${result.error.retryAfter}s, attempt ${attempt + 1}`,
       });
       await sleep(delayMs);
       return this._requestWithRetry(context, path, attempt + 1);
