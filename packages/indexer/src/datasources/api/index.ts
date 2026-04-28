@@ -92,6 +92,10 @@ export interface ContractLogsResponse {
   results: ContractEvent[];
 }
 
+export type BatchTransactionResult =
+  | { found: true; result: TransactionApiResponse }
+  | { found: false; tx_id: string };
+
 interface AbstractTransactionEvent {
   event_index: number;
 }
@@ -295,6 +299,36 @@ export const datasourceStacksApi = {
 
   getTransaction(context: DatasourceStacksApiContext, txId: string) {
     return this._request<TransactionApiResponse>(context, `/extended/v1/tx/${txId}`);
+  },
+
+  async getTransactions(
+    context: DatasourceStacksApiContext,
+    txIds: string[],
+  ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
+    if (txIds.length === 0) {
+      return Result.ok([]);
+    }
+
+    const params = txIds.map((id) => `tx_id=${encodeURIComponent(id)}`).join("&");
+    const mapResult = await this._request<Record<string, BatchTransactionResult>>(
+      context,
+      `/extended/v1/tx/multiple?${params}`,
+    );
+    if (mapResult.isErr()) {
+      return Result.err(mapResult.error);
+    }
+
+    const results = txIds
+      .map((txId) => {
+        const entry = mapResult.value[txId];
+        if (entry.found) {
+          return entry.result;
+        }
+        return null;
+      })
+      .filter((entry) => entry !== null);
+
+    return Result.ok(results);
   },
 
   getAddressTransactions(
