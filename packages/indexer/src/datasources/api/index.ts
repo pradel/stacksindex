@@ -196,6 +196,15 @@ export const datasourceStacksApi = {
             `https://api.hiro.so${path}`,
           );
 
+          let duration = stopClock();
+          if (duration > 15000) {
+            context.logger.warn({
+              service: "datasourceStacksApi",
+              msg: `Slow API call ${path}`,
+              duration,
+            });
+          }
+
           if (statusCode !== 200) {
             // oxlint-disable-next-line init-declarations
             let errorData: unknown;
@@ -206,7 +215,7 @@ export const datasourceStacksApi = {
               errorData = await body.text().catch(() => null);
             }
 
-            const duration = stopClock();
+            duration = stopClock();
             context.logger.trace({
               service: "datasourceStacksApi",
               msg: `${path} error response ${statusCode}`,
@@ -224,7 +233,7 @@ export const datasourceStacksApi = {
           try {
             const data = await body.json();
 
-            const duration = stopClock();
+            duration = stopClock();
             context.logger.trace({
               service: "datasourceStacksApi",
               msg: `${path} response`,

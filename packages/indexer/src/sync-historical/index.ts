@@ -80,10 +80,16 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
     let offset = Math.max(0, total - ADDRESS_TX_LIMIT);
 
     while (offset >= 0) {
+      context.logger.debug({
+        service: "getContractEventsFirstCursor",
+        msg: `Scanning page for ${contractId}`,
+        offset,
+      });
       // oxlint-disable-next-line no-await-in-loop
       const pageResult = await datasourceStacksApi.getAddressTransactions(context, contractId, {
         limit: ADDRESS_TX_LIMIT,
         offset,
+        exclude_function_args: true,
       });
       if (pageResult.isErr()) {
         return Result.err(pageResult.error);
@@ -92,7 +98,6 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       const txs = pageResult.value.results;
       // Iterate from oldest to newest within the page.
       for (const tx of txs.slice().reverse()) {
-        // Skip transactions with no events.
         if (tx.event_count > 0) {
           // oxlint-disable-next-line no-await-in-loop
           const txResult = await datasourceStacksApi.getTransaction(context, tx.tx_id);
