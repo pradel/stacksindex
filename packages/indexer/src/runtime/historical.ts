@@ -176,6 +176,21 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     return Result.ok(undefined);
   }
 
+  async function fetchMissingTransactions(
+    txIds: string[],
+  ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
+    const transactions: TransactionApiResponse[] = [];
+    for (const chunk of chunkArray(txIds, 50)) {
+      // oxlint-disable-next-line no-await-in-loop
+      const txsResult = await datasourceStacksApi.getTransactions(context, chunk);
+      if (txsResult.isErr()) {
+        return Result.err(txsResult.error);
+      }
+      transactions.push(...txsResult.value);
+    }
+    return Result.ok(transactions);
+  }
+
   return {
     async run(filters: Filter[]): Promise<Result<void, StacksApiError | HandlerExecutionError>> {
       if (filters.length === 0) {
@@ -259,19 +274,12 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           msg: `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
         });
 
-        const transactions: TransactionApiResponse[] = [];
-        for (const chunk of chunkArray(missingTxIds, BATCH_SIZE)) {
-          // oxlint-disable-next-line no-await-in-loop
-          const txResults = await Promise.all(
-            chunk.map((txId) => datasourceStacksApi.getTransaction(context, txId)),
-          );
-          for (const txResult of txResults) {
-            if (txResult.isErr()) {
-              return Result.err(txResult.error);
-            }
-            transactions.push(txResult.value);
-          }
+        // oxlint-disable-next-line no-await-in-loop
+        const txResult = await fetchMissingTransactions(missingTxIds);
+        if (txResult.isErr()) {
+          return Result.err(txResult.error);
         }
+        const transactions = txResult.value;
 
         // Batch fetch blocks (deduplicated by block_hash) in chunks of 5
         const blockHashes = [...new Set(transactions.map((transaction) => transaction.block_hash))];
