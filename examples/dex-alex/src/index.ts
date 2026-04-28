@@ -14,14 +14,14 @@ const indexerDb = drizzle({ client: indexerClient });
 await migrateIndexer(indexerDb);
 
 const logger = createLogger({
-  level: 5,
+  level: 2,
 });
 
 const runtime = createHistoricalRuntime({ logger, db: indexerDb });
 
 const result = await runtime.run([
   {
-    contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.swap-helper-v1-01",
+    contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01",
     handler: (event, { db: _db }) => {
       logger.info({ msg: "Handler called", event });
       return Promise.resolve();
