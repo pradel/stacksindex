@@ -179,27 +179,26 @@ export interface CallReadResponse {
 }
 
 interface RequestOptions {
-  method?: string;
+  path: string;
+  method: "GET" | "POST";
   body?: unknown;
 }
 
 export const datasourceStacksApi = {
   async _request<ResponseT>(
     context: DatasourceStacksApiContext,
-    path: string,
-    options?: RequestOptions,
+    options: { path: string; method: "GET" | "POST"; body?: unknown },
   ): Promise<Result<ResponseT, StacksApiError>> {
-    return this._requestWithRetry(context, path, 0, options);
+    return this._requestWithRetry(context, options, 0);
   },
 
-  // eslint-disable-next-line max-params
   async _requestWithRetry<ResponseT>(
     context: DatasourceStacksApiContext,
-    path: string,
+    options: RequestOptions,
     attempt: number,
-    options?: RequestOptions,
   ): Promise<Result<ResponseT, StacksApiError>> {
     const maxRateLimitRetries = 3;
+    const { path, method } = options;
 
     const result = await Result.tryPromise(
       {
@@ -207,14 +206,11 @@ export const datasourceStacksApi = {
           const stopClock = startClock();
           context.logger.trace({
             service: "datasourceStacksApi",
-            msg: `${path} request`,
+            msg: `${method} ${path} request`,
           });
 
-          const requestInit: Record<string, unknown> = {};
-          if (options?.method) {
-            requestInit.method = options.method;
-          }
-          if (options?.body !== undefined) {
+          const requestInit: Record<string, unknown> = { method };
+          if (options.body !== undefined) {
             requestInit.headers = { "content-type": "application/json" };
             requestInit.body = JSON.stringify(options.body);
           }
@@ -311,18 +307,24 @@ export const datasourceStacksApi = {
         msg: `${path} rate limited, retrying after ${result.error.retryAfter}s, attempt ${attempt + 1}`,
       });
       await sleep(delayMs);
-      return this._requestWithRetry(context, path, attempt + 1);
+      return this._requestWithRetry(context, options, attempt + 1);
     }
 
     return result;
   },
 
   getBlockByHash(context: DatasourceStacksApiContext, hash: string) {
-    return this._request<BlockApiResponse>(context, `/extended/v2/blocks/${hash}`);
+    return this._request<BlockApiResponse>(context, {
+      path: `/extended/v2/blocks/${hash}`,
+      method: "GET",
+    });
   },
 
   getTransaction(context: DatasourceStacksApiContext, txId: string) {
-    return this._request<TransactionApiResponse>(context, `/extended/v1/tx/${txId}`);
+    return this._request<TransactionApiResponse>(context, {
+      path: `/extended/v1/tx/${txId}`,
+      method: "GET",
+    });
   },
 
   async getTransactions(
@@ -334,10 +336,10 @@ export const datasourceStacksApi = {
     }
 
     const params = txIds.map((id) => `tx_id=${encodeURIComponent(id)}`).join("&");
-    const mapResult = await this._request<Record<string, BatchTransactionResult>>(
-      context,
-      `/extended/v1/tx/multiple?${params}`,
-    );
+    const mapResult = await this._request<Record<string, BatchTransactionResult>>(context, {
+      path: `/extended/v1/tx/multiple?${params}`,
+      method: "GET",
+    });
     if (mapResult.isErr()) {
       return Result.err(mapResult.error);
     }
@@ -362,7 +364,7 @@ export const datasourceStacksApi = {
   ) {
     const { limit = 50, offset = 0, exclude_function_args = true } = options;
     const path = `/extended/v1/address/${address}/transactions?limit=${limit}&offset=${offset}&exclude_function_args=${exclude_function_args}`;
-    return this._request<AddressTransactionsResponse>(context, path);
+    return this._request<AddressTransactionsResponse>(context, { path, method: "GET" });
   },
 
   getContractLogs(
@@ -373,7 +375,7 @@ export const datasourceStacksApi = {
     const { limit = 100, cursor } = options;
     const cursorParam = cursor ? `&cursor=${cursor}` : "";
     const path = `/extended/v2/smart-contracts/${contractId}/logs?limit=${limit}${cursorParam}`;
-    return this._request<ContractLogsResponse>(context, path);
+    return this._request<ContractLogsResponse>(context, { path, method: "GET" });
   },
 
   // eslint-disable-next-line max-params
@@ -385,7 +387,8 @@ export const datasourceStacksApi = {
   ) {
     const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM" } = options;
     const path = `/v2/contracts/call-read/${contractId}/${functionName}`;
-    return this._request<CallReadResponse>(context, path, {
+    return this._request<CallReadResponse>(context, {
+      path,
       method: "POST",
       body: {
         sender,
