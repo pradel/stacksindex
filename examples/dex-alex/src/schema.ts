@@ -20,8 +20,16 @@ export const poolTable = pgTable(
   (table) => ({
     address: table.text("address").notNull(),
     chainId: table.bigint({ mode: "bigint" }).notNull(),
-    baseToken: table.text("base_token").notNull(),
-    quoteToken: table.text("quote_token").notNull(),
+    tokenX: table.text("token_x"),
+    tokenY: table.text("token_y"),
+    balanceX: table.bigint({ mode: "bigint" }).notNull(),
+    balanceY: table.bigint({ mode: "bigint" }).notNull(),
+    totalSupply: table.bigint({ mode: "bigint" }).notNull(),
+    feeRateX: table.bigint({ mode: "bigint" }).notNull(),
+    feeRateY: table.bigint({ mode: "bigint" }).notNull(),
+    feeToAddress: table.text("fee_to_address").notNull(),
+    oracleEnabled: table.boolean("oracle_enabled").notNull(),
+    createdAt: table.bigint({ mode: "bigint" }).notNull(),
   }),
   (table) => [
     primaryKey({
@@ -35,12 +43,17 @@ export const swapTable = pgTable(
   (table) => ({
     txId: table.text("tx_id").notNull(),
     chainId: table.bigint({ mode: "bigint" }).notNull(),
+    eventIndex: table.integer("event_index").notNull(),
+    poolAddress: table.text("pool_address").notNull(),
+    action: table.text("action").notNull(),
     amountIn: table.bigint({ mode: "bigint" }).notNull(),
     amountOut: table.bigint({ mode: "bigint" }).notNull(),
+    blockHeight: table.bigint({ mode: "bigint" }).notNull(),
+    blockTime: table.bigint({ mode: "bigint" }).notNull(),
   }),
   (table) => [
     primaryKey({
-      columns: [table.txId, table.chainId],
+      columns: [table.txId, table.chainId, table.eventIndex],
     }),
   ],
 );

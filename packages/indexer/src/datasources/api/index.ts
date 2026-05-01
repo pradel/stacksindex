@@ -173,18 +173,31 @@ interface DatasourceStacksApiContext {
   logger: Logger;
 }
 
+export interface CallReadResponse {
+  okay: boolean;
+  result: string;
+}
+
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+}
+
 export const datasourceStacksApi = {
   async _request<ResponseT>(
     context: DatasourceStacksApiContext,
     path: string,
+    options?: RequestOptions,
   ): Promise<Result<ResponseT, StacksApiError>> {
-    return this._requestWithRetry(context, path, 0);
+    return this._requestWithRetry(context, path, 0, options);
   },
 
+  // eslint-disable-next-line max-params
   async _requestWithRetry<ResponseT>(
     context: DatasourceStacksApiContext,
     path: string,
     attempt: number,
+    options?: RequestOptions,
   ): Promise<Result<ResponseT, StacksApiError>> {
     const maxRateLimitRetries = 3;
 
@@ -196,8 +209,19 @@ export const datasourceStacksApi = {
             service: "datasourceStacksApi",
             msg: `${path} request`,
           });
+
+          const requestInit: Record<string, unknown> = {};
+          if (options?.method) {
+            requestInit.method = options.method;
+          }
+          if (options?.body !== undefined) {
+            requestInit.headers = { "content-type": "application/json" };
+            requestInit.body = JSON.stringify(options.body);
+          }
+
           const { statusCode, statusText, body, headers } = await request(
             `https://api.hiro.so${path}`,
+            requestInit,
           );
 
           let duration = stopClock();
@@ -350,5 +374,27 @@ export const datasourceStacksApi = {
     const cursorParam = cursor ? `&cursor=${cursor}` : "";
     const path = `/extended/v2/smart-contracts/${contractId}/logs?limit=${limit}${cursorParam}`;
     return this._request<ContractLogsResponse>(context, path);
+  },
+
+  // eslint-disable-next-line max-params
+  callReadFunction(
+    context: DatasourceStacksApiContext,
+    contractId: string,
+    functionName: string,
+    options: { args?: string[]; sender?: string } = {},
+  ) {
+    const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM" } = options;
+    const path = `/v2/contracts/call-read/${contractId}/${functionName}`;
+    return this._request<CallReadResponse>(context, path, {
+      method: "POST",
+      body: {
+        sender,
+        arguments: args,
+      },
+    });
+  },
+
+  getTokenDecimals(context: DatasourceStacksApiContext, contractId: string) {
+    return this.callReadFunction(context, contractId, "get-decimals");
   },
 };

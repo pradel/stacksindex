@@ -1,9 +1,99 @@
 {
-  "id": "b441e322-30ea-4e5a-b2d8-b1daf4c6bf7f",
+  "id": "9c11dbf1-e3cd-4da8-aace-f4f28bdf3956",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "public.pool": {
+      "name": "pool",
+      "schema": "",
+      "columns": {
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chainId": {
+          "name": "chainId",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_x": {
+          "name": "token_x",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "token_y": {
+          "name": "token_y",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "balanceX": {
+          "name": "balanceX",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "balanceY": {
+          "name": "balanceY",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "totalSupply": {
+          "name": "totalSupply",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feeRateX": {
+          "name": "feeRateX",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feeRateY": {
+          "name": "feeRateY",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fee_to_address": {
+          "name": "fee_to_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "oracle_enabled": {
+          "name": "oracle_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "pool_address_chainId_pk": {
+          "name": "pool_address_chainId_pk",
+          "columns": ["address", "chainId"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.swap": {
       "name": "swap",
       "schema": "",
@@ -20,6 +110,24 @@
           "primaryKey": false,
           "notNull": true
         },
+        "event_index": {
+          "name": "event_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pool_address": {
+          "name": "pool_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "amountIn": {
           "name": "amountIn",
           "type": "bigint",
@@ -31,14 +139,26 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
+        },
+        "blockHeight": {
+          "name": "blockHeight",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blockTime": {
+          "name": "blockTime",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "swap_tx_id_chainId_pk": {
-          "name": "swap_tx_id_chainId_pk",
-          "columns": ["tx_id", "chainId"]
+        "swap_tx_id_chainId_event_index_pk": {
+          "name": "swap_tx_id_chainId_event_index_pk",
+          "columns": ["tx_id", "chainId", "event_index"]
         }
       },
       "uniqueConstraints": {},
