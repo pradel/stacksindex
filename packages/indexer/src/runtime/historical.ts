@@ -11,6 +11,7 @@ import {
 import { createIndexing } from "../indexing/index.ts";
 import { chunkArray } from "../lib/array.ts";
 import type { HandlerExecutionError } from "../lib/errors.ts";
+import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 import { createHistoricalSync, parseCursor } from "../sync-historical/index.ts";
@@ -74,22 +75,22 @@ async function initializeContractStates(
       }
       const cursor = cursorResult.value;
       if (cursor) {
-        context.logger.debug({
+        context.logger.info({
           service: "historicalRuntime",
-          msg: `Starting sync for ${filter.contractId} from cursor ${cursor}`,
+          msg: `Starting sync for ${filter.contractId} from block ${parseCursor(cursor).blockHeight}`,
         });
         states.push({ contractId: filter.contractId, cursor, done: false });
       } else {
-        context.logger.debug({
+        context.logger.info({
           service: "historicalRuntime",
-          msg: `No events found for ${filter.contractId}`,
+          msg: `No events found for ${filter.contractId}, skipping`,
         });
         states.push({ contractId: filter.contractId, cursor: null, done: true });
       }
     } else {
-      context.logger.debug({
+      context.logger.info({
         service: "historicalRuntime",
-        msg: `Resuming sync for ${filter.contractId} from cursor ${saved.cursor}`,
+        msg: `Resuming sync for ${filter.contractId} from block ${parseCursor(saved.cursor).blockHeight}`,
       });
       states.push({ contractId: filter.contractId, cursor: saved.cursor, done: false });
     }
@@ -117,6 +118,15 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     if (rows.length === 0) {
       return Result.ok(undefined);
     }
+
+    const toLabel = toBlockHeight === Number.MAX_SAFE_INTEGER ? "latest" : String(toBlockHeight);
+    context.logger.info({
+      service: "historicalRuntime",
+      msg: `Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`,
+      count: rows.length,
+    });
+
+    const batchClock = startClock();
 
     for (const row of rows) {
       const event: HandlerEvent = {
@@ -155,7 +165,30 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       { db: context.db },
     );
 
+    const batchDuration = batchClock();
+    context.logger.info({
+      service: "historicalRuntime",
+      msg: `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
+      block: Number(lastRow.blockHeight),
+      duration: batchDuration,
+    });
+
     return Result.ok(undefined);
+  }
+
+  async function fetchMissingTransactions(
+    txIds: string[],
+  ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
+    const transactions: TransactionApiResponse[] = [];
+    for (const chunk of chunkArray(txIds, 50)) {
+      // oxlint-disable-next-line no-await-in-loop
+      const txsResult = await datasourceStacksApi.getTransactions(context, chunk);
+      if (txsResult.isErr()) {
+        return Result.err(txsResult.error);
+      }
+      transactions.push(...txsResult.value);
+    }
+    return Result.ok(transactions);
   }
 
   return {
@@ -163,6 +196,13 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       if (filters.length === 0) {
         return Result.ok(undefined);
       }
+
+      const runClock = startClock();
+
+      context.logger.info({
+        service: "historicalRuntime",
+        msg: `Starting historical indexer for ${filters.length} contract(s)`,
+      });
 
       const handlers: Record<string, EventHandler | undefined> = {};
       for (const filter of filters) {
@@ -206,13 +246,20 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         const logsResult = await datasourceStacksApi.getContractLogs(
           context,
           lowestState.contractId,
-          lowestState.cursor,
+          { cursor: lowestState.cursor },
         );
         if (logsResult.isErr()) {
           return Result.err(logsResult.error);
         }
 
         const { results: events, next_cursor: nextCursor } = logsResult.value;
+        const currentHeight = parseCursor(lowestState.cursor).blockHeight;
+        context.logger.info({
+          service: "historicalRuntime",
+          msg: `Syncing ${lowestState.contractId}`,
+          block: currentHeight,
+          events: events.length,
+        });
 
         // Batch fetch transactions (deduplicated by tx_id) in chunks of 5
         const txIds = [...new Set(events.map((event) => event.tx_id))];
@@ -227,19 +274,12 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           msg: `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
         });
 
-        const transactions: TransactionApiResponse[] = [];
-        for (const chunk of chunkArray(missingTxIds, BATCH_SIZE)) {
-          // oxlint-disable-next-line no-await-in-loop
-          const txResults = await Promise.all(
-            chunk.map((txId) => datasourceStacksApi.getTransaction(context, txId)),
-          );
-          for (const txResult of txResults) {
-            if (txResult.isErr()) {
-              return Result.err(txResult.error);
-            }
-            transactions.push(txResult.value);
-          }
+        // oxlint-disable-next-line no-await-in-loop
+        const txResult = await fetchMissingTransactions(missingTxIds);
+        if (txResult.isErr()) {
+          return Result.err(txResult.error);
         }
+        const transactions = txResult.value;
 
         // Batch fetch blocks (deduplicated by block_hash) in chunks of 5
         const blockHashes = [...new Set(transactions.map((transaction) => transaction.block_hash))];
@@ -304,6 +344,10 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           );
           lowestState.cursor = nextCursor;
         } else {
+          context.logger.info({
+            service: "historicalRuntime",
+            msg: `Sync complete for ${lowestState.contractId}`,
+          });
           lowestState.done = true;
         }
 
@@ -324,6 +368,13 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       if (finalIndexResult.isErr()) {
         return Result.err(finalIndexResult.error);
       }
+
+      const runDuration = runClock();
+      context.logger.info({
+        service: "historicalRuntime",
+        msg: "Historical indexing complete",
+        duration: runDuration,
+      });
 
       return Result.ok(undefined);
     },

@@ -1,0 +1,223 @@
+{
+  "id": "9c11dbf1-e3cd-4da8-aace-f4f28bdf3956",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.pool": {
+      "name": "pool",
+      "schema": "",
+      "columns": {
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chainId": {
+          "name": "chainId",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_x": {
+          "name": "token_x",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "token_y": {
+          "name": "token_y",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "balanceX": {
+          "name": "balanceX",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "balanceY": {
+          "name": "balanceY",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "totalSupply": {
+          "name": "totalSupply",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feeRateX": {
+          "name": "feeRateX",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feeRateY": {
+          "name": "feeRateY",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fee_to_address": {
+          "name": "fee_to_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "oracle_enabled": {
+          "name": "oracle_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "pool_address_chainId_pk": {
+          "name": "pool_address_chainId_pk",
+          "columns": ["address", "chainId"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.swap": {
+      "name": "swap",
+      "schema": "",
+      "columns": {
+        "tx_id": {
+          "name": "tx_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chainId": {
+          "name": "chainId",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_index": {
+          "name": "event_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pool_address": {
+          "name": "pool_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amountIn": {
+          "name": "amountIn",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amountOut": {
+          "name": "amountOut",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blockHeight": {
+          "name": "blockHeight",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blockTime": {
+          "name": "blockTime",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "swap_tx_id_chainId_event_index_pk": {
+          "name": "swap_tx_id_chainId_event_index_pk",
+          "columns": ["tx_id", "chainId", "event_index"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.token": {
+      "name": "token",
+      "schema": "",
+      "columns": {
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chainId": {
+          "name": "chainId",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "symbol": {
+          "name": "symbol",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decimals": {
+          "name": "decimals",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "token_address_chainId_pk": {
+          "name": "token_address_chainId_pk",
+          "columns": ["address", "chainId"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
