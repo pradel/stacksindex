@@ -77,7 +77,7 @@ async function discoverTokens(
   const decimalsResults = await Promise.all(
     missingTokens.map((tokenAddress) =>
       datasourceStacksApi
-        .getTokenDecimals({ logger }, tokenAddress)
+        .callReadFunction({ logger }, tokenAddress, "get-decimals")
         .then((res) => ({ tokenAddress, result: res })),
     ),
   );

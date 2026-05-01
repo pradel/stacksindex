@@ -181,13 +181,14 @@ export interface CallReadResponse {
 interface RequestOptions {
   path: string;
   method: "GET" | "POST";
+  query?: Record<string, string | string[] | number | number[] | bigint | bigint[] | null>;
   body?: unknown;
 }
 
 export const datasourceStacksApi = {
   async _request<ResponseT>(
     context: DatasourceStacksApiContext,
-    options: { path: string; method: "GET" | "POST"; body?: unknown },
+    options: RequestOptions,
   ): Promise<Result<ResponseT, StacksApiError>> {
     return this._requestWithRetry(context, options, 0);
   },
@@ -199,6 +200,23 @@ export const datasourceStacksApi = {
   ): Promise<Result<ResponseT, StacksApiError>> {
     const maxRateLimitRetries = 3;
     const { path, method } = options;
+
+    let url = `https://api.hiro.so${path}`;
+    if (options.query) {
+      const parts: string[] = [];
+      for (const [key, value] of Object.entries(options.query)) {
+        const vals = Array.isArray(value) ? value : [value];
+        for (const entry of vals) {
+          if (entry !== null) {
+            const str = typeof entry === "string" ? entry : entry.toString();
+            parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(str)}`);
+          }
+        }
+      }
+      if (parts.length > 0) {
+        url += `?${parts.join("&")}`;
+      }
+    }
 
     const result = await Result.tryPromise(
       {
@@ -215,10 +233,7 @@ export const datasourceStacksApi = {
             requestInit.body = JSON.stringify(options.body);
           }
 
-          const { statusCode, statusText, body, headers } = await request(
-            `https://api.hiro.so${path}`,
-            requestInit,
-          );
+          const { statusCode, statusText, body, headers } = await request(url, requestInit);
 
           let duration = stopClock();
           if (duration > 15000) {
@@ -335,10 +350,10 @@ export const datasourceStacksApi = {
       return Result.ok([]);
     }
 
-    const params = txIds.map((id) => `tx_id=${encodeURIComponent(id)}`).join("&");
     const mapResult = await this._request<Record<string, BatchTransactionResult>>(context, {
-      path: `/extended/v1/tx/multiple?${params}`,
+      path: "/extended/v1/tx/multiple",
       method: "GET",
+      query: { tx_id: txIds },
     });
     if (mapResult.isErr()) {
       return Result.err(mapResult.error);
@@ -363,8 +378,12 @@ export const datasourceStacksApi = {
     options: { limit?: number; offset?: number; exclude_function_args?: boolean } = {},
   ) {
     const { limit = 50, offset = 0, exclude_function_args = true } = options;
-    const path = `/extended/v1/address/${address}/transactions?limit=${limit}&offset=${offset}&exclude_function_args=${exclude_function_args}`;
-    return this._request<AddressTransactionsResponse>(context, { path, method: "GET" });
+    const path = `/extended/v1/address/${address}/transactions`;
+    return this._request<AddressTransactionsResponse>(context, {
+      path,
+      method: "GET",
+      query: { limit, offset, exclude_function_args: String(exclude_function_args) },
+    });
   },
 
   getContractLogs(
@@ -373,9 +392,12 @@ export const datasourceStacksApi = {
     options: { limit?: number; cursor?: string | null } = {},
   ) {
     const { limit = 100, cursor } = options;
-    const cursorParam = cursor ? `&cursor=${cursor}` : "";
-    const path = `/extended/v2/smart-contracts/${contractId}/logs?limit=${limit}${cursorParam}`;
-    return this._request<ContractLogsResponse>(context, { path, method: "GET" });
+    const path = `/extended/v2/smart-contracts/${contractId}/logs`;
+    return this._request<ContractLogsResponse>(context, {
+      path,
+      method: "GET",
+      query: { limit, cursor: cursor ?? null },
+    });
   },
 
   // eslint-disable-next-line max-params
@@ -395,9 +417,5 @@ export const datasourceStacksApi = {
         arguments: args,
       },
     });
-  },
-
-  getTokenDecimals(context: DatasourceStacksApiContext, contractId: string) {
-    return this.callReadFunction(context, contractId, "get-decimals");
   },
 };
