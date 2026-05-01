@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm build && node dist/index.mjs",
-    "build": "vp pack"
+    "build": "vp pack",
+    "studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.4.5",
