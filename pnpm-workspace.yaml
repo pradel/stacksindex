@@ -1,7 +1,7 @@
 packages:
   - apps/*
+  - examples/*
   - packages/*
-  - tools/*
 allowBuilds:
   esbuild: false
   msw: false

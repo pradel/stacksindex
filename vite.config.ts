@@ -45,11 +45,14 @@ export default defineConfig({
       "vitest/prefer-to-be-truthy": "off",
       "vitest/no-hooks": "off",
       "vitest/prefer-import-in-mock": "off",
+      "vitest/prefer-expect-assertions": "off",
       "jest/consistent-test-it": "off",
       "jest/prefer-ending-with-an-expect": "off",
 
       "sort-keys": "off",
       "vitest/prefer-importing-vitest-globals": "off",
+      "vitest/consistent-test-it": "off",
+      "no-underscore-dangle": "off",
     },
   },
   run: {

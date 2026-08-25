@@ -70,14 +70,26 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       return Result.ok(null);
     }
 
+    context.logger.info({
+      service: "getContractEventsFirstCursor",
+      msg: `Looking for first event of ${contractId}`,
+      totalTransactions: total,
+    });
+
     // Walk backwards through pages so we process oldest transactions first.
     let offset = Math.max(0, total - ADDRESS_TX_LIMIT);
 
     while (offset >= 0) {
+      context.logger.debug({
+        service: "getContractEventsFirstCursor",
+        msg: `Scanning page for ${contractId}`,
+        offset,
+      });
       // oxlint-disable-next-line no-await-in-loop
       const pageResult = await datasourceStacksApi.getAddressTransactions(context, contractId, {
         limit: ADDRESS_TX_LIMIT,
         offset,
+        exclude_function_args: true,
       });
       if (pageResult.isErr()) {
         return Result.err(pageResult.error);
@@ -86,7 +98,6 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       const txs = pageResult.value.results;
       // Iterate from oldest to newest within the page.
       for (const tx of txs.slice().reverse()) {
-        // Skip transactions with no events.
         if (tx.event_count > 0) {
           // oxlint-disable-next-line no-await-in-loop
           const txResult = await datasourceStacksApi.getTransaction(context, tx.tx_id);
@@ -103,9 +114,10 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
               eventIndex: firstEvent.event_index,
             });
             const duration = stopClock();
-            context.logger.debug({
+            context.logger.info({
               service: "getContractEventsFirstCursor",
-              msg: `First cursor found ${cursor}`,
+              msg: `Found first cursor for ${contractId} at block ${txResult.value.block_height}`,
+              block: txResult.value.block_height,
               duration,
             });
             return Result.ok(cursor);
@@ -120,9 +132,9 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
     }
 
     const duration = stopClock();
-    context.logger.debug({
+    context.logger.info({
       service: "getContractEventsFirstCursor",
-      msg: `No cursor found for ${contractId}`,
+      msg: `No events found for ${contractId}`,
       duration,
     });
     return Result.ok(null);
