@@ -400,7 +400,6 @@ export const datasourceStacksApi = {
     });
   },
 
-  // eslint-disable-next-line max-params
   callReadFunction(
     context: DatasourceStacksApiContext,
     contractId: string,

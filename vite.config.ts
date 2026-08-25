@@ -25,6 +25,7 @@ export default defineConfig({
       "max-lines-per-function": "off",
       "max-classes-per-file": "off",
       "max-statements": "off",
+      "max-params": "off",
       "require-await": "off",
       "no-ternary": "off",
       "no-magic-numbers": "off",
