@@ -26,9 +26,11 @@ export {
 export { HandlerExecutionError } from "./lib/errors.ts";
 
 export { migrate } from "./sync-store/migrate.ts";
+export { syncStore } from "./sync-store/index.ts";
 export {
   decodeClarityValue,
   decodeClarityValueUnwrapped,
   formatPrincipal,
 } from "./indexing/clarity.ts";
+export { ClarityTypeID, decodeStacksAddress } from "@stacks/codec";
 export type { ClarityValue } from "@stacks/codec";

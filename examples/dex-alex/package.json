@@ -4,15 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm build && node dist/index.mjs",
+    "dev": "pnpm build && node --env-file-if-exists=.env dist/index.mjs",
     "build": "vp pack",
+    "test": "vp test",
     "studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.4.5",
-    "@stacks/codec": "1.7.0",
+    "better-result": "2.9.0",
     "drizzle-orm": "0.45.2",
-    "indexer": "workspace:*"
+    "stacksindex": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "26.2.0",
