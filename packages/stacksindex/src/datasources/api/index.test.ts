@@ -6,6 +6,7 @@ import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test
 
 import { createLogger } from "../../logger/index.ts";
 import {
+  type StacksApiError,
   StacksApiParseError,
   StacksApiRateLimitError,
   StacksApiResponseError,
@@ -27,6 +28,28 @@ const mockBody = (data: unknown) => ({
 const context = {
   logger: createLogger({ level: 0 }),
 };
+
+// Deep-equality on TaggedError instances trips better-result's iterator panic,
+// So compare the tag and fields instead.
+interface TaggedErrorFields {
+  _tag: string;
+}
+
+function expectTaggedError(
+  result: Result<unknown, StacksApiError>,
+  expected: TaggedErrorFields,
+): void {
+  expect(result.isErr()).toBe(true);
+  if (!result.isErr()) {
+    throw new Error("expected error result");
+  }
+  const error = result.error as unknown as Record<string, unknown>;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const expectedFields = expected as unknown as Record<string, unknown>;
+  for (const [key, value] of Object.entries(expectedFields)) {
+    expect(error[key]).toStrictEqual(value);
+  }
+}
 
 describe("aPI DataSource", () => {
   beforeEach(() => {
@@ -58,8 +81,8 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "404");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
+      expectTaggedError(
+        result,
         new StacksApiResponseError({
           status: 404,
           statusText: "Not Found",
@@ -79,8 +102,8 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
+      expectTaggedError(
+        result,
         new StacksApiResponseError({
           status: 400,
           statusText: "Bad Request",
@@ -103,8 +126,8 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "parse-error");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
+      expectTaggedError(
+        result,
         new StacksApiParseError({
           message: "Unexpected end of JSON input",
           cause: new Error("Unexpected end of JSON input"),
@@ -125,8 +148,8 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
+      expectTaggedError(
+        result,
         new StacksApiResponseError({
           status: 400,
           statusText: "Bad Request",
@@ -149,8 +172,8 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
+      expectTaggedError(
+        result,
         new StacksApiResponseError({
           status: 400,
           statusText: "Bad Request",
@@ -167,8 +190,8 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "network-error");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
+      expectTaggedError(
+        result,
         new StacksApiUnexpectedError({
           path: "/extended/v1/tx/network-error",
           message: "Unexpected Stacks API error",
@@ -218,8 +241,8 @@ describe("aPI DataSource", () => {
 
       const result = await promise;
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
+      expectTaggedError(
+        result,
         new StacksApiRateLimitError({
           path: "/extended/v1/tx/0xabc123",
           retryAfter: 1,
@@ -364,6 +387,78 @@ describe("aPI DataSource", () => {
           next_cursor: "abc123",
         }),
       );
+    });
+  });
+
+  describe("custom baseUrl and apiKey", () => {
+    test("uses custom baseUrl when provided", async () => {
+      mockRequest.mockImplementation((url: string, init: Record<string, unknown>) => {
+        expect(url).toBe("https://api.testnet.hiro.so/extended/v1/tx/0xtx123");
+        expect(init.headers).toBeUndefined();
+        return {
+          statusCode: 200,
+          body: mockBody({ tx_id: "0xtx123" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction(
+        { logger: context.logger, baseUrl: "https://api.testnet.hiro.so" },
+        "0xtx123",
+      );
+      expect(result.isOk()).toBe(true);
+    });
+
+    test("defaults to mainnet api.hiro.so", async () => {
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe("https://api.hiro.so/extended/v1/tx/0xtx123");
+        return {
+          statusCode: 200,
+          body: mockBody({ tx_id: "0xtx123" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction(
+        { logger: context.logger },
+        "0xtx123",
+      );
+      expect(result.isOk()).toBe(true);
+    });
+
+    test("sends x-api-key header when apiKey provided", async () => {
+      mockRequest.mockImplementation((url: string, init: Record<string, unknown>) => {
+        expect(init.headers).toStrictEqual({ "x-api-key": "test-key" });
+        return {
+          statusCode: 200,
+          body: mockBody({ tx_id: "0xtx123" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction(
+        { logger: context.logger, apiKey: "test-key" },
+        "0xtx123",
+      );
+      expect(result.isOk()).toBe(true);
+    });
+
+    test("sends content-type and x-api-key together on POST", async () => {
+      mockRequest.mockImplementation((url: string, init: Record<string, unknown>) => {
+        expect(init.method).toBe("POST");
+        expect(init.headers).toStrictEqual({
+          "content-type": "application/json",
+          "x-api-key": "test-key",
+        });
+        return {
+          statusCode: 200,
+          body: mockBody({ okay: true, result: "0x03" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.callReadFunction(
+        { logger: context.logger, apiKey: "test-key" },
+        "SP123.token",
+        "get-decimals",
+      );
+      expect(result.isOk()).toBe(true);
     });
   });
 });

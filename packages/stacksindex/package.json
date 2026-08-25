@@ -1,19 +1,17 @@
 {
-  "name": "indexer",
+  "name": "stacksindex",
   "version": "0.0.0",
-  "description": "A starter for creating a TypeScript package.",
-  "homepage": "https://github.com/author/library#readme",
-  "bugs": {
-    "url": "https://github.com/author/library/issues"
-  },
+  "description": "Lightweight Stacks smart contract event indexer.",
+  "homepage": "https://github.com/pradel/stacksindex#readme",
   "license": "MIT",
-  "author": "Author Name <author.name@mail.com>",
+  "author": "Léo Pradel",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/author/library.git"
+    "url": "git+https://github.com/pradel/stacksindex.git"
   },
   "files": [
-    "dist"
+    "dist",
+    "drizzle"
   ],
   "type": "module",
   "exports": {
@@ -31,6 +29,7 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
+    "@stacks/codec": "1.7.0",
     "better-result": "2.9.0",
     "consola": "3.4.2",
     "undici": "8.10.0"
@@ -46,7 +45,7 @@
     "vite-plus": "0.1.24"
   },
   "peerDependencies": {
-    "@electric-sql/pglite": "0.4.4",
+    "@electric-sql/pglite": "0.4.5",
     "drizzle-orm": "^0.45.2"
   }
 }

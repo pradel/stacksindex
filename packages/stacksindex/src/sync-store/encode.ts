@@ -3,7 +3,7 @@ import type {
   SmartContractLogEvent,
   TransactionApiResponse,
 } from "../datasources/api/index.ts";
-import type * as ponderSyncSchema from "./schema.js";
+import type * as syncSchema from "./schema.js";
 
 export const encodeBlock = ({
   block,
@@ -11,12 +11,12 @@ export const encodeBlock = ({
 }: {
   block: BlockApiResponse;
   chainId: number;
-}): typeof ponderSyncSchema.blocksTable.$inferInsert => ({
+}): typeof syncSchema.blocksTable.$inferInsert => ({
   chainId: BigInt(chainId),
   height: BigInt(block.height),
   hash: block.hash,
-  blockTime: BigInt(block.burn_block_time),
-  tenureHeight: BigInt(block.burn_block_height),
+  blockTime: BigInt(block.block_time),
+  tenureHeight: BigInt(block.tenure_height),
 });
 
 export const encodeTransaction = ({
@@ -25,7 +25,7 @@ export const encodeTransaction = ({
 }: {
   transaction: TransactionApiResponse;
   chainId: number;
-}): typeof ponderSyncSchema.transactionsTable.$inferInsert => ({
+}): typeof syncSchema.transactionsTable.$inferInsert => ({
   txId: transaction.tx_id,
   chainId: BigInt(chainId),
   blockHeight: BigInt(transaction.block_height),
@@ -47,7 +47,7 @@ export const encodeEvent = ({
   event: SmartContractLogEvent;
   chainId: number;
   blockHeight: number;
-}): typeof ponderSyncSchema.eventsTable.$inferInsert => ({
+}): typeof syncSchema.eventsTable.$inferInsert => ({
   chainId: BigInt(chainId),
   contractId: event.contract_log.contract_id,
   txId: event.tx_id,

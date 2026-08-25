@@ -169,9 +169,15 @@ export type ContractEvent =
   | FungibleTokenAssetEvent
   | NonFungibleTokenAssetEvent;
 
-interface DatasourceStacksApiContext {
+export interface DatasourceStacksApiContext {
   logger: Logger;
+  /** Base URL of the Stacks API. Defaults to `https://api.hiro.so`. */
+  baseUrl?: string;
+  /** Optional Hiro API key, sent as the `x-api-key` header. */
+  apiKey?: string;
 }
+
+const DEFAULT_BASE_URL = "https://api.hiro.so";
 
 export interface CallReadResponse {
   okay: boolean;
@@ -201,15 +207,17 @@ export const datasourceStacksApi = {
     const maxRateLimitRetries = 3;
     const { path, method } = options;
 
-    let url = `https://api.hiro.so${path}`;
+    let url = `${context.baseUrl ?? DEFAULT_BASE_URL}${path}`;
     if (options.query) {
       const parts: string[] = [];
       for (const [key, value] of Object.entries(options.query)) {
         const vals = Array.isArray(value) ? value : [value];
         for (const entry of vals) {
           if (entry !== null) {
+            // Values are known-safe identifiers (tx ids, principals, numeric
+            // Cursors); colons must remain literal for cursor pagination.
             const str = typeof entry === "string" ? entry : entry.toString();
-            parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(str)}`);
+            parts.push(`${key}=${str}`);
           }
         }
       }
@@ -228,9 +236,16 @@ export const datasourceStacksApi = {
           });
 
           const requestInit: Record<string, unknown> = { method };
+          const requestHeaders: Record<string, string> = {};
           if (options.body !== undefined) {
-            requestInit.headers = { "content-type": "application/json" };
+            requestHeaders["content-type"] = "application/json";
             requestInit.body = JSON.stringify(options.body);
+          }
+          if (context.apiKey !== undefined) {
+            requestHeaders["x-api-key"] = context.apiKey;
+          }
+          if (Object.keys(requestHeaders).length > 0) {
+            requestInit.headers = requestHeaders;
           }
 
           const { statusCode, statusText, body, headers } = await request(url, requestInit);

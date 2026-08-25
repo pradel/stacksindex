@@ -102,6 +102,7 @@ describe("syncStore", () => {
       await syncStore.insertBlocks(
         {
           blocks: [block],
+          chainId: 1,
         },
         { db: testDb.db },
       );
@@ -109,11 +110,11 @@ describe("syncStore", () => {
       const result = await testDb.db.select().from(blocksTable);
       expect(result).toStrictEqual([
         {
-          blockTime: 1775125322n,
+          blockTime: 1775126085n,
           chainId: 1n,
           hash: "0xa7a68bdbb6048b0b614733c9c49410956a8df3e6bc6b55b336a4020b8d6770ee",
           height: 7443118n,
-          tenureHeight: 943342n,
+          tenureHeight: 237303n,
         },
       ]);
     });
@@ -124,6 +125,7 @@ describe("syncStore", () => {
       await syncStore.insertTransactions(
         {
           transactions: [transaction],
+          chainId: 1,
         },
         { db: testDb.db },
       );
@@ -297,6 +299,7 @@ describe("syncStore", () => {
               blockHeight: 100,
             },
           ],
+          chainId: 1,
         },
         { db: testDb.db },
       );
@@ -325,8 +328,14 @@ describe("syncStore", () => {
         },
       } satisfies SmartContractLogEvent;
 
-      await syncStore.insertEvents({ events: [{ event, blockHeight: 100 }] }, { db: testDb.db });
-      await syncStore.insertEvents({ events: [{ event, blockHeight: 100 }] }, { db: testDb.db });
+      await syncStore.insertEvents(
+        { events: [{ event, blockHeight: 100 }], chainId: 1 },
+        { db: testDb.db },
+      );
+      await syncStore.insertEvents(
+        { events: [{ event, blockHeight: 100 }], chainId: 1 },
+        { db: testDb.db },
+      );
 
       const result = await testDb.db.select().from(eventsTable);
       expect(result).toHaveLength(1);
