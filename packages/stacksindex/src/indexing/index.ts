@@ -2,15 +2,20 @@ import { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
+import { datasourceStacksApi } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
-import type { HandlerEvent, Handlers } from "../lib/types.ts";
+import type { HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 
 interface IndexingContext {
   logger: Logger;
   db: NodePgDatabase | PgliteDatabase;
   handlers: Handlers;
+  api?: {
+    baseUrl?: string;
+    apiKey?: string;
+  };
 }
 
 export const createIndexing = (context: IndexingContext) => ({
@@ -32,7 +37,24 @@ export const createIndexing = (context: IndexingContext) => ({
 
     const handlerClock = startClock();
     try {
-      await handler(event, { db: context.db });
+      const client: IndexingClient = {
+        callReadOnly(contractId, functionName, options) {
+          return datasourceStacksApi.callReadFunction(
+            {
+              logger: context.logger,
+              api: context.api,
+            },
+            contractId,
+            functionName,
+            {
+              ...options,
+              tip: options?.tip ?? event.block_height,
+            },
+          );
+        },
+      };
+
+      await handler(event, { db: context.db, client });
       const duration = handlerClock();
       context.logger.debug({
         msg: "Executed event handler",

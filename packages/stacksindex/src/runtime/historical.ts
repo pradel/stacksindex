@@ -216,6 +216,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         logger: context.logger,
         db: context.db,
         handlers,
+        api: context.api,
       });
 
       const statesResult = await initializeContractStates(filters, context);
