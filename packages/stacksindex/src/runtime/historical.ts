@@ -6,6 +6,7 @@ import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
   datasourceStacksApi,
   type BlockApiResponse,
+  type SmartContractLogEvent,
   type TransactionApiResponse,
 } from "../datasources/api/index.ts";
 import { createIndexing } from "../indexing/index.ts";
@@ -318,7 +319,8 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         // Store blocks, transactions, and events
         // Only smart_contract_log events have a `value` field; skip other event types.
         const smartContractLogs = events.filter(
-          (event) => event.event_type === "smart_contract_log",
+          // oxlint-disable-next-line typescript/no-unnecessary-condition
+          (event): event is SmartContractLogEvent => event.event_type === "smart_contract_log",
         );
         const eventsWithBlockHeight = smartContractLogs.map((event) => {
           const tx = transactions.find((transaction) => transaction.tx_id === event.tx_id);

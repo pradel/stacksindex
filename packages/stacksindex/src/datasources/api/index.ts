@@ -37,169 +37,44 @@ export type GetPrincipalTransactionsQuery =
 
 export type GetAddressTransactionsQuery = GetPrincipalTransactionsQuery;
 
-export interface TransactionApiResponse {
-  tx_id: string;
-  type: string;
-  status: string;
-  fee_rate: string;
-  sender: {
-    address: string;
-    nonce: number;
-  };
-  sponsor?: {
-    address: string;
-    nonce: number;
-  } | null;
-  block: {
-    hash: string;
-    height: number;
-    time: number;
-    tx_index: number;
-    index_hash?: string;
-  };
-  bitcoin_block?: {
-    height: number;
-    time: number;
-    hash?: string;
-  };
-  parent_block?: {
-    hash: string;
-  };
-  execution_cost?: {
-    read_count: number;
-    read_length: number;
-    runtime: number;
-    write_count: number;
-    write_length: number;
-  };
-  result?: {
-    hex: string;
-    repr: string;
-  } | null;
-  vm_error?: null | string;
+export type TransactionApiResponse = Extract<
+  paths["/extended/v3/transactions/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
+  { block: unknown }
+> & {
   events?: ContractEvent[];
-  // oxlint-disable-next-line typescript/no-explicit-any
-  post_conditions?: any[];
-  [key: string]: unknown;
-}
-
-export interface CursorPagination {
-  next: string | null;
-  previous: string | null;
-  current: string;
-}
-
-export interface PrincipalTransactionItem {
-  transaction: TransactionApiResponse;
-  involvement: "sender" | "sponsor" | "affected";
-  balance_changes?: {
-    stx?: {
-      sent: string;
-      received: string;
-      net: string;
-    };
-  };
-  affected_balances?: {
-    stx: boolean;
-    ft: boolean;
-    nft: boolean;
-  };
-}
-
-export interface PrincipalTransactionsResponse {
-  limit: number;
-  total: number;
-  cursor: CursorPagination;
-  results: PrincipalTransactionItem[];
-}
-
-export type AddressTransactionsResponse = PrincipalTransactionsResponse;
-
-export interface ContractLogsResponse {
-  limit: number;
-  offset: number;
-  total: number;
-  next_cursor: string | null;
-  prev_cursor: string | null;
-  results: ContractEvent[];
-}
+  canonical?: boolean;
+};
 
 export type BatchTransactionResult =
   | { found: true; result: TransactionApiResponse }
-  | { found: false; tx_id: string };
+  | { found: false; tx_id?: string; result?: { tx_id: string } };
 
-interface AbstractTransactionEvent {
-  event_index: number;
-}
+export type PrincipalTransactionsResponse =
+  paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export interface SmartContractLogEvent extends AbstractTransactionEvent {
-  event_type: "smart_contract_log";
-  tx_id: string;
-  contract_log: {
-    contract_id: string;
-    topic: string;
-    value: {
-      hex: string;
-      repr: string;
-    };
-  };
-}
+export type AddressTransactionsResponse = PrincipalTransactionsResponse;
 
-export interface StxLockEvent extends AbstractTransactionEvent {
-  event_type: "stx_lock";
-  tx_id: string;
-  stx_lock_event: {
-    locked_amount: string;
-    unlock_height: number;
-    locked_address: string;
-  };
-}
+export type ContractLogsResponse =
+  paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export interface StxAssetEvent extends AbstractTransactionEvent {
-  event_type: "stx_asset";
-  tx_id: string;
-  asset: {
-    asset_event_type: "transfer" | "mint" | "burn";
-    sender: string;
-    recipient: string;
-    amount: string;
-    memo?: string;
-  };
-}
+type MinedV1Transaction = Extract<
+  paths["/extended/v1/tx/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
+  { block_height: number }
+>;
 
-export interface FungibleTokenAssetEvent extends AbstractTransactionEvent {
-  event_type: "fungible_token_asset";
-  tx_id: string;
-  asset: {
-    asset_event_type: "transfer" | "mint" | "burn";
-    asset_id: string;
-    sender: string;
-    recipient: string;
-    amount: string;
-  };
-}
+export type ContractEvent = MinedV1Transaction["events"][number];
 
-export interface NonFungibleTokenAssetEvent extends AbstractTransactionEvent {
-  event_type: "non_fungible_token_asset";
-  tx_id: string;
-  asset: {
-    asset_event_type: "transfer" | "mint" | "burn";
-    asset_id: string;
-    sender: string;
-    recipient: string;
-    value: {
-      hex: string;
-      repr: string;
-    };
-  };
-}
-
-export type ContractEvent =
-  | SmartContractLogEvent
-  | StxLockEvent
-  | StxAssetEvent
-  | FungibleTokenAssetEvent
-  | NonFungibleTokenAssetEvent;
+export type SmartContractLogEvent = Extract<ContractEvent, { event_type: "smart_contract_log" }>;
+export type StxLockEvent = Extract<ContractEvent, { event_type: "stx_lock" }>;
+export type StxAssetEvent = Extract<ContractEvent, { event_type: "stx_asset" }>;
+export type FungibleTokenAssetEvent = Extract<
+  ContractEvent,
+  { event_type: "fungible_token_asset" }
+>;
+export type NonFungibleTokenAssetEvent = Extract<
+  ContractEvent,
+  { event_type: "non_fungible_token_asset" }
+>;
 
 export interface DatasourceStacksApiContext {
   logger: Logger;
