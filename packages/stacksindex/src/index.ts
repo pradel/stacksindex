@@ -3,8 +3,9 @@ import { migrate as drizzleMgirate } from "drizzle-orm/pglite/migrator";
 
 export { createLogger } from "./logger/index.ts";
 export { createHistoricalRuntime } from "./runtime/historical.ts";
+export type { HistoricalRuntimeContext } from "./runtime/historical.ts";
 export { datasourceStacksApi } from "./datasources/api/index.ts";
-export type { CallReadResponse } from "./datasources/api/index.ts";
+export type { CallReadResponse, DatasourceStacksApiContext } from "./datasources/api/index.ts";
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";

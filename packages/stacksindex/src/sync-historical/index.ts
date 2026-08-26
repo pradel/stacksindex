@@ -7,6 +7,10 @@ import type { Logger } from "../logger/index.ts";
 
 export interface HistoricalSyncContext {
   logger: Logger;
+  api?: {
+    baseUrl?: string;
+    apiKey?: string;
+  };
 }
 
 interface BuildCursorParams {

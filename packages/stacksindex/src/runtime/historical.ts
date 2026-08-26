@@ -27,6 +27,10 @@ export interface Filter {
 export interface HistoricalRuntimeContext {
   logger: Logger;
   db: NodePgDatabase | PgliteDatabase;
+  api?: {
+    baseUrl?: string;
+    apiKey?: string;
+  };
 }
 
 interface ContractSyncState {

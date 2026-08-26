@@ -169,8 +169,12 @@ export type ContractEvent =
   | FungibleTokenAssetEvent
   | NonFungibleTokenAssetEvent;
 
-interface DatasourceStacksApiContext {
+export interface DatasourceStacksApiContext {
   logger: Logger;
+  api?: {
+    baseUrl?: string;
+    apiKey?: string;
+  };
 }
 
 export interface CallReadResponse {
@@ -201,7 +205,8 @@ export const datasourceStacksApi = {
     const maxRateLimitRetries = 3;
     const { path, method } = options;
 
-    let url = `https://api.hiro.so${path}`;
+    const baseUrl = context.api?.baseUrl ?? "https://api.hiro.so";
+    let url = `${baseUrl}${path}`;
     if (options.query) {
       const parts: string[] = [];
       for (const [key, value] of Object.entries(options.query)) {
@@ -229,6 +234,9 @@ export const datasourceStacksApi = {
 
           const requestInit: Record<string, unknown> = { method };
           const requestHeaders: Record<string, string> = {};
+          if (context.api?.apiKey) {
+            requestHeaders["x-api-key"] = context.api.apiKey;
+          }
           if (options.body !== undefined) {
             requestHeaders["content-type"] = "application/json";
             requestInit.body = JSON.stringify(options.body);
