@@ -59,14 +59,13 @@ describe("aPI DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "404");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
-        new StacksApiResponseError({
-          status: 404,
-          statusText: "Not Found",
-          path: "/extended/v1/tx/404",
-          errorData: { error: "Not found" },
-        }),
-      );
+      expect((result as any).error).toBeInstanceOf(StacksApiResponseError);
+      expect((result as any).error).toMatchObject({
+        status: 404,
+        statusText: "Not Found",
+        path: "/extended/v1/tx/404",
+        errorData: { error: "Not found" },
+      });
     });
 
     test("returns StacksApiResponseError on 500", async () => {
@@ -80,14 +79,13 @@ describe("aPI DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
-        new StacksApiResponseError({
-          status: 400,
-          statusText: "Bad Request",
-          path: "/extended/v1/tx/500",
-          errorData: { error: "Bad request" },
-        }),
-      );
+      expect((result as any).error).toBeInstanceOf(StacksApiResponseError);
+      expect((result as any).error).toMatchObject({
+        status: 400,
+        statusText: "Bad Request",
+        path: "/extended/v1/tx/500",
+        errorData: { error: "Bad request" },
+      });
     });
 
     test("returns StacksApiParseError on invalid JSON", async () => {
@@ -104,12 +102,11 @@ describe("aPI DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "parse-error");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
-        new StacksApiParseError({
-          message: "Unexpected end of JSON input",
-          cause: new Error("Unexpected end of JSON input"),
-        }),
-      );
+      expect((result as any).error).toBeInstanceOf(StacksApiParseError);
+      expect((result as any).error).toMatchObject({
+        message: "Unexpected end of JSON input",
+        cause: new Error("Unexpected end of JSON input"),
+      });
     });
 
     test("returns StacksApiResponseError with text error data when JSON fails on error response", async () => {
@@ -126,14 +123,13 @@ describe("aPI DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
-        new StacksApiResponseError({
-          status: 400,
-          statusText: "Bad Request",
-          path: "/extended/v1/tx/500",
-          errorData: "Bad Request",
-        }),
-      );
+      expect((result as any).error).toBeInstanceOf(StacksApiResponseError);
+      expect((result as any).error).toMatchObject({
+        status: 400,
+        statusText: "Bad Request",
+        path: "/extended/v1/tx/500",
+        errorData: "Bad Request",
+      });
     });
 
     test("returns StacksApiResponseError with null error data when both JSON and text fail", async () => {
@@ -150,14 +146,13 @@ describe("aPI DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
-        new StacksApiResponseError({
-          status: 400,
-          statusText: "Bad Request",
-          path: "/extended/v1/tx/500",
-          errorData: null,
-        }),
-      );
+      expect((result as any).error).toBeInstanceOf(StacksApiResponseError);
+      expect((result as any).error).toMatchObject({
+        status: 400,
+        statusText: "Bad Request",
+        path: "/extended/v1/tx/500",
+        errorData: null,
+      });
     });
 
     test("returns StacksApiUnexpectedError when request throws unexpected error", async () => {
@@ -168,13 +163,12 @@ describe("aPI DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "network-error");
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
-        new StacksApiUnexpectedError({
-          path: "/extended/v1/tx/network-error",
-          message: "Unexpected Stacks API error",
-          cause: new Error("Network error"),
-        }),
-      );
+      expect((result as any).error).toBeInstanceOf(StacksApiUnexpectedError);
+      expect((result as any).error).toMatchObject({
+        path: "/extended/v1/tx/network-error",
+        message: "Unexpected Stacks API error",
+        cause: new Error("Network error"),
+      });
     });
 
     test("retries on 429 after retryAfter seconds and eventually succeeds", async () => {
@@ -219,12 +213,11 @@ describe("aPI DataSource", () => {
       const result = await promise;
 
       expect(result.isErr()).toBe(true);
-      expect((result as any).error).toStrictEqual(
-        new StacksApiRateLimitError({
-          path: "/extended/v1/tx/0xabc123",
-          retryAfter: 1,
-        }),
-      );
+      expect((result as any).error).toBeInstanceOf(StacksApiRateLimitError);
+      expect((result as any).error).toMatchObject({
+        path: "/extended/v1/tx/0xabc123",
+        retryAfter: 1,
+      });
       expect(mockRequest).toHaveBeenCalledTimes(4);
 
       vi.useRealTimers();
