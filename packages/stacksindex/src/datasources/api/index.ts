@@ -228,10 +228,12 @@ export const datasourceStacksApi = {
           });
 
           const requestInit: Record<string, unknown> = { method };
+          const requestHeaders: Record<string, string> = {};
           if (options.body !== undefined) {
-            requestInit.headers = { "content-type": "application/json" };
+            requestHeaders["content-type"] = "application/json";
             requestInit.body = JSON.stringify(options.body);
           }
+          requestInit.headers = requestHeaders;
 
           const { statusCode, statusText, body, headers } = await request(url, requestInit);
 
@@ -404,13 +406,14 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     contractId: string,
     functionName: string,
-    options: { args?: string[]; sender?: string } = {},
+    options: { args?: string[]; sender?: string; tip?: number } = {},
   ) {
-    const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM" } = options;
+    const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip } = options;
     const path = `/v2/contracts/call-read/${contractId}/${functionName}`;
     return this._request<CallReadResponse>(context, {
       path,
       method: "POST",
+      query: { tip: tip ?? null },
       body: {
         sender,
         arguments: args,
