@@ -1,3 +1,4 @@
+import type { paths } from "@stacks/blockchain-api-client";
 import { Result } from "better-result";
 import { request } from "undici";
 
@@ -11,28 +12,8 @@ import {
   StacksApiUnexpectedError,
 } from "./errors.ts";
 
-export interface BlockApiResponse {
-  canonical: boolean;
-  height: number;
-  hash: string;
-  block_time: number;
-  block_time_iso: string;
-  tenure_height: number;
-  index_block_hash: string;
-  parent_block_hash: string;
-  parent_index_block_hash: string;
-  burn_block_time: number;
-  burn_block_time_iso: string;
-  burn_block_hash: string;
-  burn_block_height: number;
-  miner_txid: string;
-  tx_count: number;
-  execution_cost_read_count: number;
-  execution_cost_read_length: number;
-  execution_cost_runtime: number;
-  execution_cost_write_count: number;
-  execution_cost_write_length: number;
-}
+export type BlockApiResponse =
+  paths["/extended/v2/blocks/{height_or_hash}"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export interface TransactionApiResponse {
   tx_id: string;
