@@ -8,7 +8,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import {
   createHistoricalRuntime,
   createLogger,
-  datasourceStacksApi,
+  type IndexingClient,
   migrate as migrateIndexer,
 } from "indexer";
 
@@ -57,6 +57,7 @@ function decodeCallReadResult(hex: string) {
 }
 
 async function discoverTokens(
+  client: IndexingClient,
   // oxlint-disable-next-line typescript/no-explicit-any
   poolContracts: any,
 ): Promise<void> {
@@ -80,8 +81,8 @@ async function discoverTokens(
 
   const decimalsResults = await Promise.all(
     missingTokens.map((tokenAddress) =>
-      datasourceStacksApi
-        .callReadFunction({ logger, api: { apiKey } }, tokenAddress, "get-decimals")
+      client
+        .callReadOnly(tokenAddress, "get-decimals")
         .then((res) => ({ tokenAddress, result: res })),
     ),
   );
@@ -125,7 +126,7 @@ const runtime = createHistoricalRuntime({ logger, db: indexerDb, api: { apiKey }
 const result = await runtime.run([
   {
     contractId: POOL_CONTRACT,
-    handler: async (event) => {
+    handler: async (event, { client }) => {
       /* eslint-disable typescript-eslint/no-unsafe-type-assertion, typescript-eslint/no-unsafe-member-access, typescript-eslint/no-unsafe-argument */
       const decoded = decodeClarityValue(event.contract_log.value.hex) as {
         type_id: number;
@@ -185,11 +186,7 @@ const result = await runtime.run([
           });
 
         try {
-          const countResult = await datasourceStacksApi.callReadFunction(
-            { logger, api: { apiKey } },
-            POOL_CONTRACT,
-            "get-pool-count",
-          );
+          const countResult = await client.callReadOnly(POOL_CONTRACT, "get-pool-count");
           if (countResult.isOk() && countResult.value.okay) {
             const decodedCount = decodeCallReadResult(countResult.value.result) as {
               type_id: number;
@@ -197,12 +194,9 @@ const result = await runtime.run([
             };
             const poolId = BigInt(decodedCount.value);
 
-            const contractsResult = await datasourceStacksApi.callReadFunction(
-              { logger, api: { apiKey } },
-              POOL_CONTRACT,
-              "get-pool-contracts",
-              { args: [encodeUint(poolId)] },
-            );
+            const contractsResult = await client.callReadOnly(POOL_CONTRACT, "get-pool-contracts", {
+              args: [encodeUint(poolId)],
+            });
             if (contractsResult.isOk() && contractsResult.value.okay) {
               const inner = decodeCallReadResult(contractsResult.value.result) as {
                 type_id: number;
@@ -210,7 +204,7 @@ const result = await runtime.run([
                 data: Record<string, any>;
               };
               const poolContracts = inner.data;
-              await discoverTokens(poolContracts);
+              await discoverTokens(client, poolContracts);
 
               const tokenX = formatContractId(poolContracts["token-x"]);
               const tokenY = formatContractId(poolContracts["token-y"]);
