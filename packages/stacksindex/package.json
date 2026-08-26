@@ -31,6 +31,7 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
+    "@stacks/blockchain-api-client": "9.0.2",
     "better-result": "3.0.1",
     "consola": "3.4.2",
     "undici": "8.10.0"
