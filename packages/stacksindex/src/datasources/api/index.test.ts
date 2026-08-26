@@ -359,4 +359,96 @@ describe("aPI DataSource", () => {
       );
     });
   });
+
+  describe("baseUrl and apiKey configuration", () => {
+    test("uses custom baseUrl", async () => {
+      const customContext = {
+        ...context,
+        api: {
+          baseUrl: "https://custom-stacks-node.example.com",
+        },
+      };
+
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe("https://custom-stacks-node.example.com/extended/v1/tx/0xtx123");
+        return {
+          statusCode: 200,
+          body: mockBody({ tx_id: "0xtx123", block_height: 123_456 }),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction(customContext, "0xtx123");
+      expect(result).toStrictEqual(Result.ok({ tx_id: "0xtx123", block_height: 123_456 }));
+    });
+
+    test("sends x-api-key header when apiKey is provided", async () => {
+      const apiKeyContext = {
+        ...context,
+        api: {
+          apiKey: "my-test-api-key",
+        },
+      };
+
+      mockRequest.mockImplementation((url: string, init: { headers: Record<string, string> }) => {
+        expect(url).toBe("https://api.hiro.so/extended/v1/tx/0xtx123");
+        expect(init.headers["x-api-key"]).toBe("my-test-api-key");
+        return {
+          statusCode: 200,
+          body: mockBody({ tx_id: "0xtx123", block_height: 123_456 }),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction(apiKeyContext, "0xtx123");
+      expect(result).toStrictEqual(Result.ok({ tx_id: "0xtx123", block_height: 123_456 }));
+    });
+
+    test("does not send x-api-key header when apiKey is not provided", async () => {
+      mockRequest.mockImplementation((_url: string, init: { headers: Record<string, string> }) => {
+        expect(init.headers["x-api-key"]).toBeUndefined();
+        return {
+          statusCode: 200,
+          body: mockBody({ tx_id: "0xtx123", block_height: 123_456 }),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction(context, "0xtx123");
+      expect(result).toStrictEqual(Result.ok({ tx_id: "0xtx123", block_height: 123_456 }));
+    });
+
+    test("sends both x-api-key and content-type on POST requests", async () => {
+      const apiKeyContext = {
+        ...context,
+        api: {
+          baseUrl: "https://custom-stacks-node.example.com",
+          apiKey: "my-test-api-key",
+        },
+      };
+
+      mockRequest.mockImplementation(
+        (url: string, init: { method: string; headers: Record<string, string>; body: string }) => {
+          expect(url).toBe(
+            "https://custom-stacks-node.example.com/v2/contracts/call-read/SP123.contract/my-function",
+          );
+          expect(init.method).toBe("POST");
+          expect(init.headers["x-api-key"]).toBe("my-test-api-key");
+          expect(init.headers["content-type"]).toBe("application/json");
+          expect(JSON.parse(init.body)).toMatchObject({
+            sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
+            arguments: [],
+          });
+          return {
+            statusCode: 200,
+            body: mockBody({ okay: true, result: "0x01" }),
+          };
+        },
+      );
+
+      const result = await datasourceStacksApi.callReadFunction(
+        apiKeyContext,
+        "SP123.contract",
+        "my-function",
+      );
+      expect(result).toStrictEqual(Result.ok({ okay: true, result: "0x01" }));
+    });
+  });
 });

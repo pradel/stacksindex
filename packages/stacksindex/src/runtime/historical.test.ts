@@ -1801,4 +1801,42 @@ describe("historical runtime with handlers", () => {
     expect(result.isErr()).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
   });
+
+  test("uses custom baseUrl and apiKey when provided to runtime", async () => {
+    const contractId = "SP123.token";
+    const customBaseUrl = "https://custom-stacks.example.com";
+    const customApiKey = "test-api-key-123";
+
+    mockRequest.mockImplementation((rawUrl: string, init: { headers: Record<string, string> }) => {
+      const url = decodeURIComponent(rawUrl);
+      expect(url.startsWith(customBaseUrl)).toBe(true);
+      expect(init.headers["x-api-key"]).toBe(customApiKey);
+
+      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 1,
+            offset: 0,
+            total: 0,
+            results: [],
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({
+      logger: context.logger,
+      db: testDb.db,
+      api: {
+        baseUrl: customBaseUrl,
+        apiKey: customApiKey,
+      },
+    });
+
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+    expect(result.isOk()).toBe(true);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
 });

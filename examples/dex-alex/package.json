@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm build && node dist/index.mjs",
+    "dev": "pnpm build && node --env-file-if-exists=.env dist/index.mjs",
     "build": "vp pack",
     "studio": "drizzle-kit studio"
   },

@@ -1,3 +1,5 @@
+import process from "node:process";
+
 import { PGlite } from "@electric-sql/pglite";
 import { decodeClarityValue } from "@stacks/codec";
 import { eq } from "drizzle-orm";
@@ -15,6 +17,8 @@ import { poolTable, swapTable, tokenTable } from "./schema.ts";
 const CHAIN_ID = 1n;
 
 const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
+
+const apiKey = process.env.HIRO_API_KEY;
 
 const appClient = new PGlite("./data/app.db");
 const appDb = drizzle({ client: appClient });
@@ -77,7 +81,7 @@ async function discoverTokens(
   const decimalsResults = await Promise.all(
     missingTokens.map((tokenAddress) =>
       datasourceStacksApi
-        .callReadFunction({ logger }, tokenAddress, "get-decimals")
+        .callReadFunction({ logger, api: { apiKey } }, tokenAddress, "get-decimals")
         .then((res) => ({ tokenAddress, result: res })),
     ),
   );
@@ -116,7 +120,7 @@ async function discoverTokens(
   }
 }
 
-const runtime = createHistoricalRuntime({ logger, db: indexerDb });
+const runtime = createHistoricalRuntime({ logger, db: indexerDb, api: { apiKey } });
 
 const result = await runtime.run([
   {
@@ -182,7 +186,7 @@ const result = await runtime.run([
 
         try {
           const countResult = await datasourceStacksApi.callReadFunction(
-            { logger },
+            { logger, api: { apiKey } },
             POOL_CONTRACT,
             "get-pool-count",
           );
@@ -194,7 +198,7 @@ const result = await runtime.run([
             const poolId = BigInt(decodedCount.value);
 
             const contractsResult = await datasourceStacksApi.callReadFunction(
-              { logger },
+              { logger, api: { apiKey } },
               POOL_CONTRACT,
               "get-pool-contracts",
               { args: [encodeUint(poolId)] },
@@ -308,6 +312,5 @@ const result = await runtime.run([
 
 if (result.isErr()) {
   logger.error({ msg: "Error running historical sync", error: result.error });
-  // oxlint-disable-next-line no-undef
   process.exit(1);
 }
