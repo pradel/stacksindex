@@ -63,19 +63,19 @@ export const syncStore = {
   getExistingTransactions: async (
     { txIds, chainId }: { txIds: string[]; chainId: number },
     context: Context,
-  ) => {
+  ): Promise<{ txId: string; blockHeight: number }[]> => {
     if (txIds.length === 0) {
       return [];
     }
 
     const result = await context.db
-      .select({ txId: transactionsTable.txId })
+      .select({ txId: transactionsTable.txId, blockHeight: transactionsTable.blockHeight })
       .from(transactionsTable)
       .where(
         and(eq(transactionsTable.chainId, BigInt(chainId)), inArray(transactionsTable.txId, txIds)),
       );
 
-    return result.map((row) => row.txId);
+    return result.map((row) => ({ txId: row.txId, blockHeight: Number(row.blockHeight) }));
   },
 
   getExistingBlocks: async (

@@ -464,7 +464,7 @@ describe("aPI DataSource", () => {
     test("passes tip as a query parameter", async () => {
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe(
-          "https://api.hiro.so/v2/contracts/call-read/SP123.token/get-decimals?tip=150450",
+          "https://api.hiro.so/v2/contracts/call-read/SP123/token/get-decimals?tip=150450",
         );
         return {
           statusCode: 200,
@@ -483,7 +483,7 @@ describe("aPI DataSource", () => {
 
     test("omits tip query parameter when not provided", async () => {
       mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe("https://api.hiro.so/v2/contracts/call-read/SP123.token/get-pool-count");
+        expect(url).toBe("https://api.hiro.so/v2/contracts/call-read/SP123/token/get-pool-count");
         return {
           statusCode: 200,
           body: mockBody({ okay: true, result: "0x03" }),
@@ -496,6 +496,22 @@ describe("aPI DataSource", () => {
         "get-pool-count",
       );
       expect(result.isOk()).toBe(true);
+    });
+
+    test("returns parse error for contract ids without a contract name", async () => {
+      const result = await datasourceStacksApi.callReadFunction(
+        { logger: context.logger },
+        "SP123",
+        "get-pool-count",
+      );
+      expectTaggedError(
+        result,
+        new StacksApiParseError({
+          message: 'Invalid contract id, expected "address.contract-name": SP123',
+          cause: null,
+        }),
+      );
+      expect(mockRequest).not.toHaveBeenCalled();
     });
   });
 });

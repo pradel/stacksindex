@@ -28,11 +28,20 @@ export const parseCursor = (cursor: string): BuildCursorParams => {
   if (parts.length !== 4) {
     throw new Error(`Invalid cursor format: ${cursor}`);
   }
+  const [blockHeight, microblockSequence, txIndex, eventIndex] = parts.map(Number);
+  if (
+    !Number.isInteger(blockHeight) ||
+    !Number.isInteger(microblockSequence) ||
+    !Number.isInteger(txIndex) ||
+    !Number.isInteger(eventIndex)
+  ) {
+    throw new Error(`Invalid cursor format: ${cursor}`);
+  }
   return {
-    blockHeight: Number(parts[0]),
-    microblockSequence: Number(parts[1]),
-    txIndex: Number(parts[2]),
-    eventIndex: Number(parts[3]),
+    blockHeight,
+    microblockSequence,
+    txIndex,
+    eventIndex,
   };
 };
 
@@ -40,15 +49,18 @@ function findFirstContractEvent(
   tx: TransactionApiResponse,
   contractId: string,
 ): { event_index: number } | null {
+  let firstEventIndex: number | null = null;
   for (const event of tx.events) {
     if (
       event.event_type === "smart_contract_log" &&
       event.contract_log.contract_id === contractId
     ) {
-      return { event_index: event.event_index };
+      if (firstEventIndex === null || event.event_index < firstEventIndex) {
+        firstEventIndex = event.event_index;
+      }
     }
   }
-  return null;
+  return firstEventIndex === null ? null : { event_index: firstEventIndex };
 }
 
 export const createHistoricalSync = (context: HistoricalSyncContext) => ({
@@ -77,9 +89,13 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
     });
 
     // Walk backwards through pages so we process oldest transactions first.
-    let offset = Math.max(0, total - ADDRESS_TX_LIMIT);
+    // Limit each request to the remaining count so pages never overlap.
+    let remaining = total;
 
-    while (offset >= 0) {
+    while (remaining > 0) {
+      const limit = Math.min(ADDRESS_TX_LIMIT, remaining);
+      const offset = remaining - limit;
+
       context.logger.debug({
         service: "getContractEventsFirstCursor",
         msg: `Scanning page for ${contractId}`,
@@ -87,7 +103,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       });
       // oxlint-disable-next-line no-await-in-loop
       const pageResult = await datasourceStacksApi.getAddressTransactions(context, contractId, {
-        limit: ADDRESS_TX_LIMIT,
+        limit,
         offset,
         exclude_function_args: true,
       });
@@ -125,10 +141,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
         }
       }
 
-      if (offset === 0) {
-        break;
-      }
-      offset = Math.max(0, offset - ADDRESS_TX_LIMIT);
+      remaining = offset;
     }
 
     const duration = stopClock();

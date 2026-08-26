@@ -250,7 +250,7 @@ describe("syncStore", () => {
         { txIds: ["tx-1", "tx-2"], chainId: 1 },
         { db: testDb.db },
       );
-      expect(result).toStrictEqual(["tx-1"]);
+      expect(result).toStrictEqual([{ txId: "tx-1", blockHeight: 100 }]);
     });
   });
 

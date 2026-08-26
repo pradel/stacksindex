@@ -6,7 +6,7 @@ This architecture assumes a single Stacks network per indexer instance. The curr
 
 ## Architecture Overview
 
-```
+```text
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │    Stacks    │────▶│    Syncer    │────▶│   Indexer    │────▶│     API      │
 │     API      │     │              │     │              │     │   (read)     │
@@ -48,7 +48,7 @@ PostgreSQL tables defined by the user's schema. These store the transformed/inde
 
 Users configure the indexer with four elements:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                      CONFIGURATION                          │
 ├─────────────────┬───────────────────────────────────────────┤
@@ -101,7 +101,7 @@ One handler per contract filter. Each receives:
 
 Events from the Stacks API have this structure:
 
-```
+```text
 Event {
     event_index: number
     event_type: string              -- "smart_contract_log", "stx_transfer", etc.
@@ -124,7 +124,7 @@ Key differences from EVM:
 
 ## Data Flow
 
-```
+```text
 1. SYNC PHASE (Historical)
 
    ┌──────────────────────────────────────────────────────────┐
@@ -175,7 +175,7 @@ Key differences from EVM:
 
 The Stacks API v2 uses a cursor with the structure:
 
-```
+```text
 block_height:microblock_sequence:tx_index:event_index
 ```
 
@@ -194,7 +194,7 @@ position instead.
 
 Fetches past blockchain data using cursor-based pagination, from oldest to newest.
 
-```
+```text
 Block 0 ──────────────────────────────────────▶ Latest Block
          [page 1] → [page 2] → [page 3] → ...
                         │
@@ -214,7 +214,7 @@ Block 0 ────────────────────────
 Not implemented in the POC. The plan: poll for new blocks after historical sync
 completes, then fetch events for new blocks.
 
-```
+```text
               poll         poll         poll
                │            │            │
                ▼            ▼            ▼
@@ -237,24 +237,26 @@ completes, then fetch events for new blocks.
 
 Defines what blockchain data to fetch and process:
 
-```
+```text
 Filter {
     contractId: string               -- e.g., "SP6P4EJF...satoshibles"
     handler: EventHandler            -- async (event, context) => void
     startBlock?: number              -- skip events below this height
-    endBlock?: number                -- stop syncing/processing here (inclusive)
+    endBlock?: number                -- inclusive upper bound on processing
 }
 ```
 
-Only `smart_contract_log` events are stored in the POC; bounds are enforced at
-dispatch time so out-of-range rows may exist in the sync store without ever
+Only `smart_contract_log` events are stored in the POC. `endBlock` bounds
+processing only: rows above it may still be fetched and retained in the sync
+store, but they are never dispatched to handlers. Bounds are enforced at
+dispatch time, so out-of-range rows can exist in the sync store without ever
 reaching handlers.
 
 ### Event (Decoded)
 
 Event passed to handlers after decoding:
 
-```
+```text
 HandlerEvent {
     -- Raw log data (from the Stacks API)
     event_index: number
@@ -277,7 +279,7 @@ HandlerEvent {
 
 Tracks indexing progress:
 
-```
+```text
 Checkpoint {
     block_height: number             -- Last fully processed block
     block_time: number
@@ -293,7 +295,7 @@ On startup, the indexer:
 3. Resumes syncing from the saved cursor
 4. Resumes indexing from the checkpoint block
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                     ON STARTUP                          │
 ├─────────────────────────────────────────────────────────┤

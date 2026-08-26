@@ -427,11 +427,26 @@ export const datasourceStacksApi = {
     } = {},
   ) {
     const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip } = options;
-    const path = `/v2/contracts/call-read/${contractId}/${functionName}`;
+    // The call-read endpoint takes address, contract name, and function as
+    // Separate path segments. Ids arrive as "address.contract-name".
+    const dotIndex = contractId.indexOf(".");
+    if (dotIndex === -1) {
+      return Promise.resolve(
+        Result.err(
+          new StacksApiParseError({
+            message: `Invalid contract id, expected "address.contract-name": ${contractId}`,
+            cause: null,
+          }),
+        ),
+      );
+    }
+    const address = contractId.slice(0, dotIndex);
+    const contractName = contractId.slice(dotIndex + 1);
+    const path = `/v2/contracts/call-read/${address}/${contractName}/${functionName}`;
     return this._request<CallReadResponse>(context, {
       path,
       method: "POST",
-      // Null entries are dropped by the query builder -> omitted from the URL.
+      // Null query entries are dropped by the builder -> omitted from the URL.
       query: { tip: tip ?? null },
       body: {
         sender,

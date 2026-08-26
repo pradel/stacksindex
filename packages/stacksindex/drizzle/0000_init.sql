@@ -49,3 +49,6 @@ CREATE TABLE "transactions" (
 	"canonical" boolean DEFAULT true NOT NULL,
 	CONSTRAINT "transactions_pkey" PRIMARY KEY("chainId","tx_id")
 );
+--> statement-breakpoint
+CREATE INDEX "blocks_chain_id_hash_idx" ON "blocks" USING btree ("chainId","hash");--> statement-breakpoint
+CREATE INDEX "events_chain_id_block_height_idx" ON "events" USING btree ("chainId","blockHeight");

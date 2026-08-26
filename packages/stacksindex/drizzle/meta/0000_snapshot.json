@@ -1,5 +1,5 @@
 {
-  "id": "d27d810e-fbf0-454b-8d76-de01b9f55d7d",
+  "id": "84cfcb7a-ac55-42f5-9443-3a490a4ad162",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -39,7 +39,29 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "blocks_chain_id_hash_idx": {
+          "name": "blocks_chain_id_hash_idx",
+          "columns": [
+            {
+              "expression": "chainId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "blocks_pkey": {
@@ -147,7 +169,29 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "events_chain_id_block_height_idx": {
+          "name": "events_chain_id_block_height_idx",
+          "columns": [
+            {
+              "expression": "chainId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "blockHeight",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "events_pkey": {

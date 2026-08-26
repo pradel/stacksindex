@@ -8,6 +8,7 @@ import {
   createHistoricalRuntime,
   createLogger,
   migrate as migrateIndexer,
+  parseCursor,
   syncStore,
   type HistoricalRuntimeContext,
 } from "stacksindex";
@@ -16,7 +17,11 @@ import { POOL_CONTRACT, createAlexHandler } from "./handler.ts";
 
 function optionalNumberEnv(name: string): number | undefined {
   const raw = env[name];
-  return raw === undefined || raw === "" ? undefined : Number(raw);
+  if (raw === undefined || raw === "") {
+    return undefined;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
 }
 
 /**
@@ -25,7 +30,8 @@ function optionalNumberEnv(name: string): number | undefined {
  * the Hiro address-transactions endpoint can time out on very large contracts.
  */
 async function seedProgress(db: HistoricalRuntimeContext["db"], cursor: string): Promise<void> {
-  const blockHeight = Number(cursor.split(":")[0]);
+  // Validate the cursor format via parseCursor before seeding.
+  const { blockHeight } = parseCursor(cursor);
   await syncStore.upsertSyncProgress(
     { contractId: POOL_CONTRACT, chainId: 1, cursor, lastBlockHeight: blockHeight },
     { db },
@@ -51,8 +57,17 @@ async function main(): Promise<void> {
 
   const seedCursor = env.SEED_CURSOR;
   if (seedCursor !== undefined && seedCursor !== "") {
-    await seedProgress(indexerDb, seedCursor);
-    logger.info({ msg: "Seeded sync progress", cursor: seedCursor });
+    try {
+      await seedProgress(indexerDb, seedCursor);
+      logger.info({ msg: "Seeded sync progress", cursor: seedCursor });
+    } catch (error) {
+      logger.error({ msg: "Invalid SEED_CURSOR", cursor: seedCursor, error });
+      // oxlint-disable-next-line no-undef
+      process.exitCode = 1;
+      await indexerClient.close();
+      await appClient.close();
+      return;
+    }
   }
 
   const runtimeOptions: HistoricalRuntimeContext = {

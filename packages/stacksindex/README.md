@@ -41,6 +41,15 @@ if (result.isErr()) {
 The runtime migrates the sync-store schema automatically (`migrate()` is also
 exported for manual use).
 
+Delivery is **at-least-once**: if a handler throws mid-batch, the checkpoint is
+left unchanged and previously successful events of that batch may be replayed
+on the next run. Handlers must therefore be idempotent — the ALEX example does
+this with `onConflictDoNothing`/`onConflictDoUpdate` writes.
+
+Changing a filter's `startBlock`/`endBlock` between runs is supported upward
+(raising `endBlock` backfills the gap); lowering bounds or reprocessing old
+ranges requires wiping the sync store and derived tables.
+
 ## API
 
 ### `createHistoricalRuntime(context)`

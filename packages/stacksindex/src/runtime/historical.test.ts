@@ -610,10 +610,22 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
+    // Events whose transaction is already stored must still resolve valid
+    // Heights (from the stored rows) so they are dispatched.
+    const seenHeights: number[] = [];
     const runtime = createHistoricalRuntime({ logger, db: testDb.db });
-    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+    const result = await runtime.run([
+      {
+        contractId,
+        handler: (event) => {
+          seenHeights.push(event.block_height);
+          return Promise.resolve();
+        },
+      },
+    ]);
 
     expect(result.isOk()).toBe(true);
+    expect(seenHeights).toStrictEqual([100]);
 
     // Verify no getTransactions or getBlockByHash calls were made
     const txCalls = mockRequest.mock.calls.filter((call: any) =>
@@ -995,6 +1007,8 @@ describe("parseCursor helper", () => {
   test("throws on invalid cursor format", () => {
     expect(() => parseCursor("invalid")).toThrow("Invalid cursor format: invalid");
     expect(() => parseCursor("100:0:5")).toThrow("Invalid cursor format: 100:0:5");
+    expect(() => parseCursor("100:0:five:2")).toThrow("Invalid cursor format: 100:0:five:2");
+    expect(() => parseCursor("100:0:5:2.5")).toThrow("Invalid cursor format: 100:0:5:2.5");
   });
 });
 
@@ -1231,7 +1245,7 @@ describe("historical runtime with handlers", () => {
 
     // Read-only calls must be pinned to the tip of the block being processed.
     expect(callReadUrls).toHaveLength(1);
-    expect(callReadUrls[0]).toContain("/v2/contracts/call-read/");
+    expect(callReadUrls[0]).toContain("/v2/contracts/call-read/SP123/token/get-pool-count?tip=100");
     expect(callReadUrls[0]).toContain("tip=100");
   });
 

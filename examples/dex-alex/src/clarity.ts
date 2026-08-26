@@ -50,19 +50,23 @@ export function extractBool(value: MaybeClarity, key: string): boolean | undefin
   return undefined;
 }
 
-/** Read `key` from a tuple value as a principal (`address` or `address.contract`). */
-export function extractPrincipal(value: MaybeClarity, key: string): string | undefined {
-  const field = asTuple(value)?.[key];
-  if (field === undefined) {
+/** Format a standalone Clarity principal value; undefined for non-principals. */
+export function principalFromValue(value: MaybeClarity): string | undefined {
+  if (value === undefined) {
     return undefined;
   }
-  if (field.type_id === ClarityTypeID.PrincipalStandard) {
-    return field.address;
+  if (value.type_id === ClarityTypeID.PrincipalStandard) {
+    return value.address;
   }
-  if (field.type_id === ClarityTypeID.PrincipalContract) {
-    return `${field.address}.${field.contract_name}`;
+  if (value.type_id === ClarityTypeID.PrincipalContract) {
+    return `${value.address}.${value.contract_name}`;
   }
   return undefined;
+}
+
+/** Read `key` from a tuple value as a principal (`address` or `address.contract`). */
+export function extractPrincipal(value: MaybeClarity, key: string): string | undefined {
+  return principalFromValue(asTuple(value)?.[key]);
 }
 
 /** Encode a `uint` Clarity value as hex, for read-only call arguments. */

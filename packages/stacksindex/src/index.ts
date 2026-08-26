@@ -9,6 +9,7 @@ export type {
   ResolvedNetwork,
 } from "./lib/types.ts";
 export { resolveNetwork } from "./lib/types.ts";
+export { buildCursor, parseCursor } from "./sync-historical/index.ts";
 export type { Result } from "better-result";
 export { createLogger } from "./logger/index.ts";
 export type { Logger } from "./logger/index.ts";

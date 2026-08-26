@@ -250,11 +250,12 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     // Batch fetch transactions (deduplicated by tx_id)
     const txIds = [...new Set(events.map((event) => event.tx_id))];
     // oxlint-disable-next-line no-await-in-loop
-    const existingTxIds = await syncStore.getExistingTransactions(
+    const existingTxs = await syncStore.getExistingTransactions(
       { txIds, chainId },
       { db: dsContext.db },
     );
-    const missingTxIds = txIds.filter((txId) => !existingTxIds.includes(txId));
+    const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
+    const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
     context.logger.debug({
       service: "historicalRuntime",
       msg: `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
@@ -266,6 +267,16 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       return Result.err(txResult.error);
     }
     const transactions = txResult.value;
+
+    // Resolve each event's block height from existing AND newly fetched
+    // Transactions so events whose tx was already stored keep a valid height.
+    const heightByTxId = new Map<string, number>();
+    for (const tx of existingTxs) {
+      heightByTxId.set(tx.txId, tx.blockHeight);
+    }
+    for (const tx of transactions) {
+      heightByTxId.set(tx.tx_id, tx.block_height);
+    }
 
     // Batch fetch blocks (deduplicated by block_hash)
     const blockHashes = [...new Set(transactions.map((transaction) => transaction.block_hash))];
@@ -288,10 +299,10 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
 
     // Only smart_contract_log events carry a Clarity value; other event types are skipped.
     const smartContractLogs = events.filter((event) => event.event_type === "smart_contract_log");
-    const eventsWithBlockHeight = smartContractLogs.map((event) => {
-      const tx = transactions.find((transaction) => transaction.tx_id === event.tx_id);
-      return { event, blockHeight: tx?.block_height ?? 0 };
-    });
+    const eventsWithBlockHeight = smartContractLogs.map((event) => ({
+      event,
+      blockHeight: heightByTxId.get(event.tx_id) ?? 0,
+    }));
 
     // oxlint-disable-next-line no-await-in-loop
     await dsContext.db.transaction(async (tx) => {

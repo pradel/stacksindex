@@ -4,7 +4,6 @@ import type { PgliteDatabase } from "drizzle-orm/pglite";
 import {
   ClarityTypeID,
   decodeClarityValueUnwrapped,
-  formatPrincipal,
   type ClarityValue,
   type EventHandler,
   type HandlerEvent,
@@ -19,6 +18,7 @@ import {
   extractPrincipal,
   extractString,
   extractUint,
+  principalFromValue,
 } from "./clarity.ts";
 import { poolTable, swapTable, tokenTable } from "./schema.ts";
 
@@ -81,14 +81,6 @@ async function readPoolContracts(
   return decoded !== undefined && decoded.type_id === ClarityTypeID.Tuple
     ? decoded.data
     : undefined;
-}
-
-function principalOf(value: ClarityValue | undefined): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return formatPrincipal(value as { address: string; contract_name?: string });
 }
 
 async function readSymbol(
@@ -171,8 +163,8 @@ async function discoverTokens(
     return {};
   }
 
-  const tokenX = principalOf(contracts["token-x"]);
-  const tokenY = principalOf(contracts["token-y"]);
+  const tokenX = principalFromValue(contracts["token-x"]);
+  const tokenY = principalFromValue(contracts["token-y"]);
 
   for (const address of [tokenX, tokenY]) {
     if (address === undefined) {
