@@ -420,33 +420,6 @@ describe("aPI DataSource", () => {
     });
   });
 
-  describe("getAddressTransactions", () => {
-    test("delegates to getPrincipalTransactions", async () => {
-      const address = "SP123.token";
-      const mockResponse = {
-        limit: 50,
-        total: 1,
-        cursor: { next: null, previous: null, current: "curr_1" },
-        results: [],
-      };
-
-      mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe(
-          `https://api.hiro.so/extended/v3/principals/${address}/transactions?limit=50`,
-        );
-        return {
-          statusCode: 200,
-          body: mockBody(mockResponse),
-        };
-      });
-
-      const result = await datasourceStacksApi.getAddressTransactions(context, address, {
-        limit: 50,
-      });
-      expect(result).toStrictEqual(Result.ok(mockResponse));
-    });
-  });
-
   describe("getContractLogs", () => {
     test("returns contract logs on 200", async () => {
       const contractId = "SP123.token";

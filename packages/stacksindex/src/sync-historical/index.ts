@@ -90,7 +90,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       // oxlint-disable-next-line no-await-in-loop
       const pageResult = await datasourceStacksApi.getPrincipalTransactions(context, contractId, {
         limit: ADDRESS_TX_LIMIT,
-        cursor: currentCursor,
+        cursor: currentCursor ?? undefined,
       });
       if (pageResult.isErr()) {
         return Result.err(pageResult.error);

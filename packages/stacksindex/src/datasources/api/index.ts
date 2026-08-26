@@ -35,8 +35,6 @@ export type GetTransactionsQuery = paths["/extended/v1/tx/multiple"]["get"]["par
 export type GetPrincipalTransactionsQuery =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["parameters"]["query"];
 
-export type GetAddressTransactionsQuery = GetPrincipalTransactionsQuery;
-
 export type TransactionApiResponse = Extract<
   paths["/extended/v3/transactions/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
   { block: unknown }
@@ -51,8 +49,6 @@ export type BatchTransactionResult =
 
 export type PrincipalTransactionsResponse =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
-
-export type AddressTransactionsResponse = PrincipalTransactionsResponse;
 
 export type ContractLogsResponse =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -320,26 +316,15 @@ export const datasourceStacksApi = {
   getPrincipalTransactions(
     context: DatasourceStacksApiContext,
     principal: string,
-    options: { limit?: number; cursor?: string | null } = {},
+    options: GetPrincipalTransactionsQuery = {},
   ) {
-    const { limit = 50, cursor } = options;
+    const { limit = 50, cursor, ...rest } = options;
     const path = `/extended/v3/principals/${principal}/transactions`;
-    return this._request<PrincipalTransactionsResponse, { limit?: number; cursor?: string | null }>(
-      context,
-      {
-        path,
-        method: "GET",
-        query: { limit, cursor: cursor ?? null },
-      },
-    );
-  },
-
-  getAddressTransactions(
-    context: DatasourceStacksApiContext,
-    address: string,
-    options: { limit?: number; cursor?: string | null } = {},
-  ) {
-    return this.getPrincipalTransactions(context, address, options);
+    return this._request<PrincipalTransactionsResponse, GetPrincipalTransactionsQuery>(context, {
+      path,
+      method: "GET",
+      query: { limit, cursor, ...rest },
+    });
   },
 
   getContractLogs(
