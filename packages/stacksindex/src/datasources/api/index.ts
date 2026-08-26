@@ -15,6 +15,9 @@ import {
 export type BlockApiResponse =
   paths["/extended/v2/blocks/{height_or_hash}"]["get"]["responses"]["200"]["content"]["application/json"];
 
+export type BlockTransactionsApiResponse =
+  paths["/extended/v3/blocks/{height_or_hash}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
+
 export interface TransactionApiResponse {
   tx_id: string;
   nonce: number;
@@ -319,10 +322,23 @@ export const datasourceStacksApi = {
     return result;
   },
 
-  getBlockByHash(context: DatasourceStacksApiContext, hash: string) {
+  getBlock(context: DatasourceStacksApiContext, heightOrHash: string | number) {
     return this._request<BlockApiResponse>(context, {
-      path: `/extended/v2/blocks/${hash}`,
+      path: `/extended/v2/blocks/${heightOrHash}`,
       method: "GET",
+    });
+  },
+
+  getBlockTransactions(
+    context: DatasourceStacksApiContext,
+    heightOrHash: string | number,
+    options: { limit?: number; cursor?: string | null } = {},
+  ) {
+    const { limit, cursor } = options;
+    return this._request<BlockTransactionsApiResponse>(context, {
+      path: `/extended/v3/blocks/${heightOrHash}/transactions`,
+      method: "GET",
+      query: { limit: limit ?? null, cursor: cursor ?? null },
     });
   },
 

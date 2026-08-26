@@ -825,7 +825,7 @@ describe("historical runtime", () => {
 
     expect(result.isOk()).toBe(true);
 
-    // Verify no getTransaction or getBlockByHash calls were made
+    // Verify no getTransaction or getBlock calls were made
     const txCalls = mockRequest.mock.calls.filter((call: any) =>
       (call[0] as string).includes("/extended/v1/tx/"),
     );
