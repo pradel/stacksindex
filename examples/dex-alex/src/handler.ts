@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import {
-  ClarityTypeID,
+  ClarityType,
   decodeClarityValueUnwrapped,
   type ClarityValue,
   type EventHandler,
@@ -41,7 +41,7 @@ interface PrintEventData {
 
 function parsePrintEvent(event: HandlerEvent): PrintEventData | undefined {
   const tuple = event.decoded;
-  if (tuple === undefined || tuple.type_id !== ClarityTypeID.Tuple) {
+  if (tuple === undefined || tuple.type !== ClarityType.Tuple) {
     return undefined;
   }
   return {
@@ -62,7 +62,7 @@ async function readUint(
     return undefined;
   }
   const decoded = decodeClarityValueUnwrapped(result.value.result);
-  return decoded !== undefined && decoded.type_id === ClarityTypeID.UInt
+  return decoded !== undefined && decoded.type === ClarityType.UInt
     ? BigInt(decoded.value)
     : undefined;
 }
@@ -78,9 +78,7 @@ async function readPoolContracts(
     return undefined;
   }
   const decoded = decodeClarityValueUnwrapped(result.value.result);
-  return decoded !== undefined && decoded.type_id === ClarityTypeID.Tuple
-    ? decoded.data
-    : undefined;
+  return decoded !== undefined && decoded.type === ClarityType.Tuple ? decoded.value : undefined;
 }
 
 async function readSymbol(
@@ -92,8 +90,8 @@ async function readSymbol(
     return undefined;
   }
   const decoded = decodeClarityValueUnwrapped(result.value.result);
-  return decoded !== undefined && decoded.type_id === ClarityTypeID.StringAscii
-    ? decoded.data
+  return decoded !== undefined && decoded.type === ClarityType.StringASCII
+    ? decoded.value
     : undefined;
 }
 
@@ -106,7 +104,7 @@ async function readDecimals(
     return undefined;
   }
   const decoded = decodeClarityValueUnwrapped(result.value.result);
-  return decoded !== undefined && decoded.type_id === ClarityTypeID.UInt
+  return decoded !== undefined && decoded.type === ClarityType.UInt
     ? BigInt(decoded.value)
     : undefined;
 }

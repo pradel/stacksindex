@@ -9,6 +9,7 @@ import { URL as NodeURL } from "node:url";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import { ClarityType } from "../indexing/clarity.ts";
 import type { HandlerEvent } from "../lib/types.ts";
 import { createLogger } from "../logger/index.ts";
 import { parseCursor } from "../sync-historical/index.ts";
@@ -1241,7 +1242,7 @@ describe("historical runtime with handlers", () => {
 
     expect(result.isOk()).toBe(true);
     expect(received).toHaveLength(1);
-    expect(received[0].decoded).toMatchObject({ type_id: 1, value: "5" });
+    expect(received[0].decoded).toMatchObject({ type: ClarityType.UInt, value: 5n });
 
     // Read-only calls must be pinned to the tip of the block being processed.
     expect(callReadUrls).toHaveLength(1);

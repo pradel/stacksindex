@@ -1,11 +1,9 @@
-import { ClarityTypeID, type ClarityValue } from "stacksindex";
+import { ClarityType, cvToHex, uintCV, type ClarityValue } from "stacksindex";
 
 type MaybeClarity = ClarityValue | undefined;
 
 function asTuple(value: MaybeClarity): Record<string, ClarityValue> | undefined {
-  return typeof value === "object" && value.type_id === ClarityTypeID.Tuple
-    ? value.data
-    : undefined;
+  return typeof value === "object" && value.type === ClarityType.Tuple ? value.value : undefined;
 }
 
 /** Read `key` from a tuple value as a nested tuple record. */
@@ -25,41 +23,37 @@ export function extractField(value: MaybeClarity, key: string): ClarityValue | u
 export function extractString(value: MaybeClarity, key: string): string | undefined {
   const field = asTuple(value)?.[key];
   return field !== undefined &&
-    (field.type_id === ClarityTypeID.StringAscii || field.type_id === ClarityTypeID.StringUtf8)
-    ? field.data
+    (field.type === ClarityType.StringASCII || field.type === ClarityType.StringUTF8)
+    ? field.value
     : undefined;
 }
 
 /** Read `key` from a tuple value as a uint. */
 export function extractUint(value: MaybeClarity, key: string): bigint | undefined {
   const field = asTuple(value)?.[key];
-  return field !== undefined && field.type_id === ClarityTypeID.UInt
-    ? BigInt(field.value)
-    : undefined;
+  return field !== undefined && field.type === ClarityType.UInt ? BigInt(field.value) : undefined;
 }
 
 /** Read `key` from a tuple value as a bool. */
 export function extractBool(value: MaybeClarity, key: string): boolean | undefined {
   const field = asTuple(value)?.[key];
-  if (
-    field !== undefined &&
-    (field.type_id === ClarityTypeID.BoolTrue || field.type_id === ClarityTypeID.BoolFalse)
-  ) {
-    return field.value;
+  if (field !== undefined && field.type === ClarityType.BoolTrue) {
+    return true;
+  }
+  if (field !== undefined && field.type === ClarityType.BoolFalse) {
+    return false;
   }
   return undefined;
 }
 
 /** Format a standalone Clarity principal value; undefined for non-principals. */
 export function principalFromValue(value: MaybeClarity): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value.type_id === ClarityTypeID.PrincipalStandard) {
-    return value.address;
-  }
-  if (value.type_id === ClarityTypeID.PrincipalContract) {
-    return `${value.address}.${value.contract_name}`;
+  if (
+    value !== undefined &&
+    (value.type === ClarityType.PrincipalStandard || value.type === ClarityType.PrincipalContract)
+  ) {
+    // Principals carry their formatted id ("address" or "address.contract-name").
+    return value.value;
   }
   return undefined;
 }
@@ -71,5 +65,5 @@ export function extractPrincipal(value: MaybeClarity, key: string): string | und
 
 /** Encode a `uint` Clarity value as hex, for read-only call arguments. */
 export function encodeUint(value: bigint): string {
-  return `0x01${value.toString(16).padStart(32, "0")}`;
+  return cvToHex(uintCV(value));
 }

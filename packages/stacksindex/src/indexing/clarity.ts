@@ -1,25 +1,41 @@
-import {
-  ClarityTypeID,
-  type ClarityValue,
-  type ClarityValueResponseOk,
-  decodeClarityValue as decodeClarityValueNative,
-} from "@stacks/codec";
+import { ClarityType, hexToCV, type ClarityValue } from "@stacks/transactions";
 
-export { decodeClarityValue } from "@stacks/codec";
-export type { ClarityValue } from "@stacks/codec";
+export {
+  bufferCV,
+  ClarityType,
+  contractPrincipalCV,
+  cvToHex,
+  falseCV,
+  hexToCV,
+  intCV,
+  listCV,
+  noneCV,
+  responseErrorCV,
+  responseOkCV,
+  someCV,
+  standardPrincipalCV,
+  stringAsciiCV,
+  stringUtf8CV,
+  trueCV,
+  tupleCV,
+  uintCV,
+} from "@stacks/transactions";
+export type { ClarityValue } from "@stacks/transactions";
+
+/** Decode a hex-encoded Clarity value. Alias of {@link hexToCV}. */
+export const decodeClarityValue = hexToCV;
 
 /** Unwrap `(ok ...)` / `(some ...)` wrappers from a decoded Clarity value. */
 function unwrapClarityValue(value: ClarityValue): ClarityValue {
   let current = value;
   for (let depth = 0; depth < 8; depth += 1) {
-    if (current.type_id === ClarityTypeID.ResponseOk) {
-      current = (current as ClarityValueResponseOk).value;
+    if (current.type === ClarityType.ResponseOk) {
+      current = current.value;
       // oxlint-disable-next-line no-continue
       continue;
     }
-    if (current.type_id === ClarityTypeID.OptionalSome) {
-      const unwrapped = current;
-      current = unwrapped.value;
+    if (current.type === ClarityType.OptionalSome) {
+      current = current.value;
       // oxlint-disable-next-line no-continue
       continue;
     }
@@ -34,7 +50,7 @@ function unwrapClarityValue(value: ClarityValue): ClarityValue {
  */
 export function decodeClarityValueUnwrapped(hex: string): ClarityValue | undefined {
   try {
-    const decoded = decodeClarityValueNative(hex);
+    const decoded = hexToCV(hex);
     return unwrapClarityValue(decoded);
   } catch {
     return undefined;

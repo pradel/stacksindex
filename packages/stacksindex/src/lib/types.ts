@@ -1,4 +1,4 @@
-import type { ClarityValue } from "@stacks/codec";
+import type { ClarityValue } from "@stacks/transactions";
 import type { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";

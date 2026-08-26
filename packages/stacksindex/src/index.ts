@@ -29,9 +29,26 @@ export { HandlerExecutionError } from "./lib/errors.ts";
 export { migrate } from "./sync-store/migrate.ts";
 export { syncStore } from "./sync-store/index.ts";
 export {
+  bufferCV,
+  ClarityType,
+  contractPrincipalCV,
+  cvToHex,
   decodeClarityValue,
   decodeClarityValueUnwrapped,
+  falseCV,
   formatPrincipal,
+  hexToCV,
+  intCV,
+  listCV,
+  noneCV,
+  responseErrorCV,
+  responseOkCV,
+  someCV,
+  standardPrincipalCV,
+  stringAsciiCV,
+  stringUtf8CV,
+  trueCV,
+  tupleCV,
+  uintCV,
 } from "./indexing/clarity.ts";
-export { ClarityTypeID, decodeStacksAddress } from "@stacks/codec";
-export type { ClarityValue } from "@stacks/codec";
+export type { ClarityValue } from "./indexing/clarity.ts";

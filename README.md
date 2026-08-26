@@ -52,8 +52,10 @@ await runtime.run([
     startBlock: 150_000, // optional: skip earlier events
     endBlock: 151_181, // optional: stop at this height
     async handler(event, context) {
-      // event.decoded is the parsed Clarity tuple (undefined if undecodable)
-      const action = event.decoded?.type_id === 12 ? event.decoded.data.action?.data : undefined;
+      // event.decoded is the parsed Clarity tuple (undefined if undecodable);
+      // tuples expose their fields on `.value`, ints/uints are bigints
+      const isTuple = event.decoded?.type === ClarityType.Tuple;
+      const action = isTuple ? event.decoded.value.action?.value : undefined;
 
       // Read-only calls are pinned to the tip of the block being processed
       await context.client.callReadOnly("SP….my-token", "get-decimals");

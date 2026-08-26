@@ -99,12 +99,20 @@ default to the current tip.
 
 ### Clarity helpers
 
-- `decodeClarityValue(hex)` — decode any hex-encoded Clarity value
+Powered by `@stacks/transactions` — decoded values follow its `ClarityValue`
+shapes (`{ type, value }`; ints/uints are `bigint`, tuples expose their fields
+on `.value`, principals carry a pre-formatted id string).
+
+- `decodeClarityValue(hex)` / `hexToCV` / `cvToHex` — decode and serialize
+  Clarity values
 - `decodeClarityValueUnwrapped(hex)` — decode + unwrap `(ok …)`/`(some …)`;
   returns `undefined` instead of throwing
 - `formatPrincipal({ address, contract_name? })`
-- `ClarityTypeID`, `ClarityValue`, `decodeStacksAddress` re-exported from
-  `@stacks/codec`
+- Builders: `trueCV`, `falseCV`, `noneCV`, `someCV`, `intCV`, `uintCV`,
+  `bufferCV`, `stringAsciiCV`, `stringUtf8CV`, `listCV`, `tupleCV`,
+  `standardPrincipalCV`, `contractPrincipalCV`, `responseOkCV`,
+  `responseErrorCV`
+- `ClarityType` enum and the `ClarityValue` type
 
 ### Utilities
 

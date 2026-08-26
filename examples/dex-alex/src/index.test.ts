@@ -1,21 +1,24 @@
-import { Buffer } from "node:buffer";
+// oxlint-disable typescript/no-unsafe-type-assertion
+// Integration tests for the ALEX handler, run against an in-memory PGlite
+// Database. Read-only call results are real Clarity hex built with the
+// @stacks/transactions builders; print events are passed pre-decoded, exactly
+// The way the runtime delivers them via `event.decoded`.
 
 import { PGlite } from "@electric-sql/pglite";
-// oxlint-disable typescript/no-unsafe-type-assertion
-// oxlint-disable typescript/no-unsafe-return
-// oxlint-disable typescript/no-explicit-any
-// Integration tests for the ALEX handler, run against an in-memory PGlite
-// Database. Read-only call results are real Clarity hex (verified against the
-// @stacks/codec decoder); print events are passed pre-decoded, exactly the way
-// The runtime delivers them via `event.decoded`.
 import { Result } from "better-result";
 import { eq } from "drizzle-orm";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { migrate as migrateApp } from "drizzle-orm/pglite/migrator";
 import {
   StacksApiUnexpectedError,
+  contractPrincipalCV,
   createLogger,
-  decodeStacksAddress,
+  cvToHex,
+  responseOkCV,
+  stringAsciiCV,
+  trueCV,
+  tupleCV,
+  uintCV,
   type CallReadResponse,
   type ClarityValue,
   type EventHandler,
@@ -31,127 +34,23 @@ import { poolTable, swapTable, tokenTable } from "./schema.ts";
 const logger = createLogger({ level: 0 });
 
 // ---------------------------------------------------------------------------
-// Clarity hex builders (verified against decodeClarityValue round-trips)
-// ---------------------------------------------------------------------------
-
-const hexByte = (value: number) => value.toString(16).padStart(2, "0");
-const hex32 = (value: number) => value.toString(16).padStart(8, "0");
-
-function hexAscii(text: string): string {
-  return `0d${hex32(Buffer.byteLength(text))}${Buffer.from(text, "utf8").toString("hex")}`;
-}
-
-function hexUint(value: bigint): string {
-  return `01${value.toString(16).padStart(32, "0")}`;
-}
-
-function hexTuple(entries: [string, string][]): string {
-  const sorted = [...entries].sort((left, right) => (left[0] < right[0] ? -1 : 1));
-  let body = "";
-  for (const [key, value] of sorted) {
-    body += `${hexByte(key.length)}${Buffer.from(key, "utf8").toString("hex")}${value}`;
-  }
-  return `0c${hex32(sorted.length)}${body}`;
-}
-
-const okHex = (inner: string) => `07${inner}`;
-
-function hexPrincipal(principal: string): string {
-  // Split "address.contract-name" and decode into version + hash160 bytes.
-  const dot = principal.indexOf(".");
-  const address = dot === -1 ? principal : principal.slice(0, dot);
-  const contractName = dot === -1 ? undefined : principal.slice(dot + 1);
-  const [version, hash] = decodeStacksAddress(address) as [number, string];
-  const hashHex = hash.startsWith("0x") ? hash.slice(2) : hash;
-  if (contractName !== undefined) {
-    return `06${hexByte(version)}${hashHex}${hexByte(contractName.length)}${Buffer.from(contractName).toString("hex")}`;
-  }
-  return `05${hexByte(version)}${hashHex}`;
-}
-
-// ---------------------------------------------------------------------------
-// Decoded-value builders (plain objects shaped like @stacks/codec results)
-// ---------------------------------------------------------------------------
-
-function cvUint(value: bigint): ClarityValue {
-  return {
-    type_id: 1,
-    value: value.toString(),
-    repr: `u${value}`,
-    hex: `0x${hexUint(value)}`,
-  } as unknown as ClarityValue;
-}
-
-function cvAscii(text: string): ClarityValue {
-  return {
-    type_id: 13,
-    data: text,
-    repr: `"${text}"`,
-    hex: "",
-  } as unknown as ClarityValue;
-}
-
-function cvPrincipalContract(principal: string): ClarityValue {
-  const dot = principal.indexOf(".");
-  const address = dot === -1 ? principal : principal.slice(0, dot);
-  const contractName = dot === -1 ? undefined : principal.slice(dot + 1);
-  const [version, hash] = decodeStacksAddress(address) as [number, string];
-  if (contractName === undefined) {
-    return {
-      type_id: 6,
-      address,
-      address_version: version,
-      address_hash_bytes: hash,
-      repr: `'${principal}`,
-      hex: "",
-    } as unknown as ClarityValue;
-  }
-  return {
-    type_id: 6,
-    address,
-    contract_name: contractName,
-    address_version: version,
-    address_hash_bytes: hash,
-    repr: `'${principal}`,
-    hex: "",
-  } as unknown as ClarityValue;
-}
-
-function cvBool(value: boolean): ClarityValue {
-  return {
-    type_id: value ? 3 : 4,
-    value,
-    repr: String(value),
-    hex: "",
-  } as unknown as ClarityValue;
-}
-
-function cvTuple(data: Record<string, ClarityValue>): ClarityValue {
-  return {
-    type_id: 12,
-    data,
-    repr: "(tuple ...)",
-    hex: "",
-  } as unknown as ClarityValue;
-}
-
-// ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const POOL_TOKEN = `SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.pool`;
-const TOKEN_X = "SP102V8P0F7JX67ARQ77WEA3D3CFB5XW39REDT0AM.token-wstx";
-const TOKEN_Y = "SP3Y2ZSH8P7D50B0VBTSX11S7XSG24M1VB9YFQA4K.token-aeusdc";
+const ALEX = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9";
+const POOL_TOKEN = `${ALEX}.pool`;
+const TOKEN_X = `${ALEX}.token-wstx`;
+const TOKEN_Y = `${ALEX}.token-aeusdc`;
 
 function makePrintEvent(input: {
   action: string;
   object?: string;
   data: Record<string, ClarityValue>;
 }): Parameters<EventHandler>[0] {
-  const decoded = cvTuple({
-    action: cvAscii(input.action),
-    object: cvAscii(input.object ?? "pool"),
-    data: cvTuple(input.data),
+  const decoded = tupleCV({
+    action: stringAsciiCV(input.action),
+    object: stringAsciiCV(input.object ?? "pool"),
+    data: tupleCV(input.data),
   });
   return {
     event_index: 0,
@@ -189,7 +88,10 @@ function makeClient(calls: Record<string, string>): { client: IndexingClient; se
         const callKey = `${contractId}::${functionName}`;
         if (Object.hasOwn(calls, callKey)) {
           return Promise.resolve(
-            Result.ok<CallReadResponse, StacksApiError>({ okay: true, result: calls[callKey] }),
+            Result.ok<CallReadResponse, StacksApiError>({
+              okay: true,
+              result: calls[callKey],
+            }),
           );
         }
         return Promise.resolve(
@@ -222,33 +124,33 @@ describe("alex handler", () => {
 
   test("indexes pool creation and discovers tokens with symbols", async () => {
     const { client } = makeClient({
-      [`${POOL_CONTRACT}::get-pool-count`]: okHex(hexUint(1n)),
-      [`${POOL_CONTRACT}::get-pool-contracts`]: okHex(
-        hexTuple([
-          ["token-x", hexPrincipal(TOKEN_X)],
-          ["token-y", hexPrincipal(TOKEN_Y)],
-        ]),
+      [`${POOL_CONTRACT}::get-pool-count`]: cvToHex(responseOkCV(uintCV(1n))),
+      [`${POOL_CONTRACT}::get-pool-contracts`]: cvToHex(
+        responseOkCV(
+          tupleCV({
+            "token-x": contractPrincipalCV(ALEX, "token-wstx"),
+            "token-y": contractPrincipalCV(ALEX, "token-aeusdc"),
+          }),
+        ),
       ),
-      [`${TOKEN_X}::get-decimals`]: okHex(hexUint(6n)),
-      [`${TOKEN_X}::get-symbol`]: okHex(hexAscii("sBTC")),
-      [`${TOKEN_Y}::get-decimals`]: okHex(hexUint(6n)),
-      [`${TOKEN_Y}::get-symbol`]: okHex(hexAscii("aeUSDC")),
+      [`${TOKEN_X}::get-decimals`]: cvToHex(responseOkCV(uintCV(6n))),
+      [`${TOKEN_X}::get-symbol`]: cvToHex(responseOkCV(stringAsciiCV("sBTC"))),
+      [`${TOKEN_Y}::get-decimals`]: cvToHex(responseOkCV(uintCV(6n))),
+      [`${TOKEN_Y}::get-symbol`]: cvToHex(responseOkCV(stringAsciiCV("aeUSDC"))),
     });
 
     await handler(
       makePrintEvent({
         action: "created",
         data: {
-          "pool-token": cvPrincipalContract(POOL_TOKEN),
-          "balance-x": cvUint(0n),
-          "balance-y": cvUint(0n),
-          "total-supply": cvUint(0n),
-          "fee-rate-x": cvUint(500n),
-          "fee-rate-y": cvUint(300n),
-          "fee-to-address": cvPrincipalContract(
-            "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fee-receiver",
-          ),
-          "oracle-enabled": cvBool(true),
+          "pool-token": contractPrincipalCV(ALEX, "pool"),
+          "balance-x": uintCV(0n),
+          "balance-y": uintCV(0n),
+          "total-supply": uintCV(0n),
+          "fee-rate-x": uintCV(500n),
+          "fee-rate-y": uintCV(300n),
+          "fee-to-address": contractPrincipalCV(ALEX, "fee-receiver"),
+          "oracle-enabled": trueCV(),
         },
       }),
       { db: appDb, client } as unknown as HandlerContext,
@@ -294,11 +196,11 @@ describe("alex handler", () => {
       makePrintEvent({
         action: "swap-x-for-y",
         data: {
-          "pool-token": cvPrincipalContract(POOL_TOKEN),
-          dx: cvUint(1_000_000n),
-          dy: cvUint(39_600n),
-          "balance-x": cvUint(24_857_000_000n),
-          "balance-y": cvUint(950_400n),
+          "pool-token": contractPrincipalCV(ALEX, "pool"),
+          dx: uintCV(1_000_000n),
+          dy: uintCV(39_600n),
+          "balance-x": uintCV(24_857_000_000n),
+          "balance-y": uintCV(950_400n),
         },
       }),
       { db: appDb, client } as unknown as HandlerContext,
@@ -338,9 +240,9 @@ describe("alex handler", () => {
       makePrintEvent({
         action: "swap-y-for-x",
         data: {
-          "pool-token": cvPrincipalContract(POOL_TOKEN),
-          "balance-x": cvUint(9_800_000n),
-          "balance-y": cvUint(520_000n),
+          "pool-token": contractPrincipalCV(ALEX, "pool"),
+          "balance-x": uintCV(9_800_000n),
+          "balance-y": uintCV(520_000n),
         },
       }),
       { db: appDb, client } as unknown as HandlerContext,
@@ -374,10 +276,10 @@ describe("alex handler", () => {
       makePrintEvent({
         action: "liquidity-added",
         data: {
-          "pool-token": cvPrincipalContract(POOL_TOKEN),
-          "balance-x": cvUint(2_000n),
-          "balance-y": cvUint(3_000n),
-          "total-supply": cvUint(1_500n),
+          "pool-token": contractPrincipalCV(ALEX, "pool"),
+          "balance-x": uintCV(2_000n),
+          "balance-y": uintCV(3_000n),
+          "total-supply": uintCV(1_500n),
         },
       }),
       { db: appDb, client } as unknown as HandlerContext,
