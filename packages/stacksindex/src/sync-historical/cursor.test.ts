@@ -35,7 +35,12 @@ describe("getContractEventsFirstCursor", () => {
   test("returns null when contract has no transactions", async () => {
     mockRequest.mockReturnValue({
       statusCode: 200,
-      body: mockBody({ limit: 1, offset: 0, total: 0, results: [] }),
+      body: mockBody({
+        limit: 50,
+        total: 0,
+        cursor: { next: null, previous: null, current: "" },
+        results: [],
+      }),
     });
 
     const sync = createHistoricalSync(context);
@@ -49,23 +54,13 @@ describe("getContractEventsFirstCursor", () => {
     mockRequest.mockReturnValueOnce({
       statusCode: 200,
       body: mockBody({
-        limit: 1,
-        offset: 0,
-        total: 3,
-        results: [{ tx_id: "tx-1", event_count: 0 }],
-      }),
-    });
-
-    mockRequest.mockReturnValueOnce({
-      statusCode: 200,
-      body: mockBody({
         limit: 50,
-        offset: 0,
         total: 3,
+        cursor: { next: null, previous: null, current: "curr" },
         results: [
-          { tx_id: "tx-1", event_count: 0 },
-          { tx_id: "tx-2", event_count: 2 },
-          { tx_id: "tx-3", event_count: 1 },
+          { transaction: { tx_id: "tx-3" } },
+          { transaction: { tx_id: "tx-2" } },
+          { transaction: { tx_id: "tx-1" } },
         ],
       }),
     });
@@ -73,10 +68,11 @@ describe("getContractEventsFirstCursor", () => {
     mockRequest.mockReturnValueOnce({
       statusCode: 200,
       body: mockBody({
-        tx_id: "tx-2",
-        block_height: 100,
-        microblock_sequence: 2147483647,
-        tx_index: 5,
+        tx_id: "tx-1",
+        block: {
+          height: 100,
+          tx_index: 5,
+        },
         events: [
           {
             event_index: 0,
@@ -95,40 +91,28 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("100:2147483647:5:1");
+    expect((result as any).value).toBe("100:0:5:1");
   });
 
   test("skips transactions with no matching contract events", async () => {
     mockRequest.mockReturnValueOnce({
       statusCode: 200,
       body: mockBody({
-        limit: 1,
-        offset: 0,
-        total: 2,
-        results: [{ tx_id: "tx-1", event_count: 0 }],
-      }),
-    });
-
-    mockRequest.mockReturnValueOnce({
-      statusCode: 200,
-      body: mockBody({
         limit: 50,
-        offset: 0,
         total: 2,
-        results: [
-          { tx_id: "tx-1", event_count: 0 },
-          { tx_id: "tx-2", event_count: 1 },
-        ],
+        cursor: { next: null, previous: null, current: "curr" },
+        results: [{ transaction: { tx_id: "tx-2" } }, { transaction: { tx_id: "tx-1" } }],
       }),
     });
 
     mockRequest.mockReturnValueOnce({
       statusCode: 200,
       body: mockBody({
-        tx_id: "tx-2",
-        block_height: 200,
-        microblock_sequence: 0,
-        tx_index: 3,
+        tx_id: "tx-1",
+        block: {
+          height: 200,
+          tx_index: 3,
+        },
         events: [
           {
             event_index: 0,
@@ -150,33 +134,21 @@ describe("getContractEventsFirstCursor", () => {
     mockRequest.mockReturnValueOnce({
       statusCode: 200,
       body: mockBody({
-        limit: 1,
-        offset: 0,
-        total: 2,
-        results: [{ tx_id: "tx-1", event_count: 0 }],
-      }),
-    });
-
-    mockRequest.mockReturnValueOnce({
-      statusCode: 200,
-      body: mockBody({
         limit: 50,
-        offset: 0,
         total: 2,
-        results: [
-          { tx_id: "tx-1", event_count: 0 },
-          { tx_id: "tx-2", event_count: 1 },
-        ],
+        cursor: { next: null, previous: null, current: "curr" },
+        results: [{ transaction: { tx_id: "tx-2" } }, { transaction: { tx_id: "tx-1" } }],
       }),
     });
 
     mockRequest.mockReturnValueOnce({
       statusCode: 200,
       body: mockBody({
-        tx_id: "tx-2",
-        block_height: 200,
-        microblock_sequence: 0,
-        tx_index: 3,
+        tx_id: "tx-1",
+        block: {
+          height: 200,
+          tx_index: 3,
+        },
         events: [
           {
             event_index: 0,
@@ -191,6 +163,18 @@ describe("getContractEventsFirstCursor", () => {
       }),
     });
 
+    mockRequest.mockReturnValueOnce({
+      statusCode: 200,
+      body: mockBody({
+        tx_id: "tx-2",
+        block: {
+          height: 201,
+          tx_index: 0,
+        },
+        events: [],
+      }),
+    });
+
     const sync = createHistoricalSync(context);
     const result = await sync.getContractEventsFirstCursor(contractId);
 
@@ -202,22 +186,11 @@ describe("getContractEventsFirstCursor", () => {
     mockRequest.mockReturnValueOnce({
       statusCode: 200,
       body: mockBody({
-        limit: 1,
-        offset: 0,
-        total: 60,
-        results: [{ tx_id: "tx-count", event_count: 0 }],
-      }),
-    });
-
-    mockRequest.mockReturnValueOnce({
-      statusCode: 200,
-      body: mockBody({
         limit: 50,
-        offset: 10,
         total: 60,
+        cursor: { next: "cursor_page_2", previous: null, current: "page_1" },
         results: Array.from({ length: 50 }, (_unused, index) => ({
-          tx_id: `tx-${index + 11}`,
-          event_count: 0,
+          transaction: { tx_id: `tx-${index + 11}` },
         })),
       }),
     });
@@ -226,14 +199,13 @@ describe("getContractEventsFirstCursor", () => {
       statusCode: 200,
       body: mockBody({
         limit: 50,
-        offset: 0,
         total: 60,
+        cursor: { next: null, previous: "page_1", current: "page_2" },
         results: [
-          { tx_id: "tx-1", event_count: 1 },
           ...Array.from({ length: 9 }, (_unused, index) => ({
-            tx_id: `tx-${index + 2}`,
-            event_count: 0,
+            transaction: { tx_id: `tx-${index + 2}` },
           })),
+          { transaction: { tx_id: "tx-1" } },
         ],
       }),
     });
@@ -242,9 +214,10 @@ describe("getContractEventsFirstCursor", () => {
       statusCode: 200,
       body: mockBody({
         tx_id: "tx-1",
-        block_height: 1,
-        microblock_sequence: 2147483647,
-        tx_index: 0,
+        block: {
+          height: 1,
+          tx_index: 0,
+        },
         events: [
           {
             event_index: 0,
@@ -259,11 +232,11 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("1:2147483647:0:0");
-    expect(mockRequest).toHaveBeenCalledTimes(4);
+    expect((result as any).value).toBe("1:0:0:0");
+    expect(mockRequest).toHaveBeenCalledTimes(3);
   });
 
-  test("returns error when getAddressTransactions fails", async () => {
+  test("returns error when getPrincipalTransactions fails", async () => {
     mockRequest.mockReturnValue({
       statusCode: 400,
       statusText: "Bad Request",
@@ -280,10 +253,10 @@ describe("getContractEventsFirstCursor", () => {
     mockRequest.mockReturnValueOnce({
       statusCode: 200,
       body: mockBody({
-        limit: 1,
-        offset: 0,
+        limit: 50,
         total: 1,
-        results: [{ tx_id: "tx-1", event_count: 1 }],
+        cursor: { next: null, previous: null, current: "curr" },
+        results: [{ transaction: { tx_id: "tx-1" } }],
       }),
     });
 

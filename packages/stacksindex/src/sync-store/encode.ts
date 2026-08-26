@@ -28,15 +28,15 @@ export const encodeTransaction = ({
 }): typeof ponderSyncSchema.transactionsTable.$inferInsert => ({
   txId: transaction.tx_id,
   chainId: BigInt(chainId),
-  blockHeight: BigInt(transaction.block_height),
-  blockHash: transaction.block_hash,
-  txIndex: transaction.tx_index,
-  txType: transaction.tx_type,
-  senderAddress: transaction.sender_address,
+  blockHeight: BigInt(transaction.block.height),
+  blockHash: transaction.block.hash,
+  txIndex: transaction.block.tx_index,
+  txType: transaction.type,
+  senderAddress: transaction.sender.address,
   feeRate: BigInt(transaction.fee_rate),
-  nonce: BigInt(transaction.nonce),
-  txStatus: transaction.tx_status,
-  canonical: transaction.canonical,
+  nonce: BigInt(transaction.sender.nonce),
+  txStatus: transaction.status,
+  canonical: typeof transaction.canonical === "boolean" ? transaction.canonical : true,
 });
 
 export const encodeEvent = ({

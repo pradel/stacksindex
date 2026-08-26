@@ -36,52 +36,81 @@ export interface BlockApiResponse {
 
 export interface TransactionApiResponse {
   tx_id: string;
-  nonce: number;
+  type: string;
+  status: string;
   fee_rate: string;
-  sender_address: string;
-  sponsored: boolean;
-  post_condition_mode: string;
-  // oxlint-disable-next-line typescript/no-explicit-any
-  post_conditions: any[];
-  anchor_mode: string;
-  block_hash: string;
-  block_height: number;
-  block_time: number;
-  block_time_iso: string;
-  burn_block_time: number;
-  burn_block_height: number;
-  burn_block_time_iso: string;
-  parent_burn_block_time: number;
-  parent_burn_block_time_iso: string;
-  canonical: boolean;
-  tx_index: number;
-  tx_status: string;
-  tx_result: {
+  sender: {
+    address: string;
+    nonce: number;
+  };
+  sponsor?: {
+    address: string;
+    nonce: number;
+  } | null;
+  block: {
+    hash: string;
+    height: number;
+    time: number;
+    tx_index: number;
+    index_hash?: string;
+  };
+  bitcoin_block?: {
+    height: number;
+    time: number;
+    hash?: string;
+  };
+  parent_block?: {
+    hash: string;
+  };
+  execution_cost?: {
+    read_count: number;
+    read_length: number;
+    runtime: number;
+    write_count: number;
+    write_length: number;
+  };
+  result?: {
     hex: string;
     repr: string;
   } | null;
-  event_count: number;
-  parent_block_hash: string;
-  is_unanchored: boolean;
-  microblock_hash: string;
-  microblock_sequence: number;
-  microblock_canonical: boolean;
-  execution_cost_read_count: number;
-  execution_cost_read_length: number;
-  execution_cost_runtime: number;
-  execution_cost_write_count: number;
-  execution_cost_write_length: number;
-  vm_error: null | string;
-  events: ContractEvent[];
-  tx_type: string;
+  vm_error?: null | string;
+  events?: ContractEvent[];
+  // oxlint-disable-next-line typescript/no-explicit-any
+  post_conditions?: any[];
+  [key: string]: unknown;
 }
 
-export interface AddressTransactionsResponse {
-  limit: number;
-  offset: number;
-  total: number;
-  results: TransactionApiResponse[];
+export interface CursorPagination {
+  next: string | null;
+  previous: string | null;
+  current: string;
 }
+
+export interface PrincipalTransactionItem {
+  transaction: TransactionApiResponse;
+  involvement: "sender" | "sponsor" | "affected";
+  balance_changes?: {
+    stx?: {
+      sent: string;
+      received: string;
+      net: string;
+    };
+  };
+  affected_balances?: {
+    stx: boolean;
+    ft: boolean;
+    nft: boolean;
+  };
+}
+
+export interface PrincipalTransactionsResponse {
+  limit: number;
+  total: number;
+  cursor: CursorPagination;
+  results: PrincipalTransactionItem[];
+}
+
+export type AddressTransactionsResponse = PrincipalTransactionsResponse;
 
 export interface ContractLogsResponse {
   limit: number;
@@ -345,10 +374,18 @@ export const datasourceStacksApi = {
     });
   },
 
-  getTransaction(context: DatasourceStacksApiContext, txId: string) {
+  getTransaction(
+    context: DatasourceStacksApiContext,
+    txId: string,
+    options: {
+      include?: ("function_args" | "source_code" | "post_conditions" | "result")[];
+    } = {},
+  ) {
+    const { include } = options;
     return this._request<TransactionApiResponse>(context, {
-      path: `/extended/v1/tx/${txId}`,
+      path: `/extended/v3/transactions/${txId}`,
       method: "GET",
+      query: { include: include && include.length > 0 ? include.join(",") : null },
     });
   },
 
@@ -377,23 +414,31 @@ export const datasourceStacksApi = {
         }
         return null;
       })
-      .filter((entry) => entry !== null);
+      .filter((entry): entry is TransactionApiResponse => entry !== null);
 
     return Result.ok(results);
+  },
+
+  getPrincipalTransactions(
+    context: DatasourceStacksApiContext,
+    principal: string,
+    options: { limit?: number; cursor?: string | null } = {},
+  ) {
+    const { limit = 50, cursor } = options;
+    const path = `/extended/v3/principals/${principal}/transactions`;
+    return this._request<PrincipalTransactionsResponse>(context, {
+      path,
+      method: "GET",
+      query: { limit, cursor: cursor ?? null },
+    });
   },
 
   getAddressTransactions(
     context: DatasourceStacksApiContext,
     address: string,
-    options: { limit?: number; offset?: number; exclude_function_args?: boolean } = {},
+    options: { limit?: number; cursor?: string | null } = {},
   ) {
-    const { limit = 50, offset = 0, exclude_function_args = true } = options;
-    const path = `/extended/v1/address/${address}/transactions`;
-    return this._request<AddressTransactionsResponse>(context, {
-      path,
-      method: "GET",
-      query: { limit, offset, exclude_function_args: String(exclude_function_args) },
-    });
+    return this.getPrincipalTransactions(context, address, options);
   },
 
   getContractLogs(

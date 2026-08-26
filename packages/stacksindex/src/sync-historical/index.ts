@@ -29,8 +29,16 @@ export const buildCursor = ({
 
 export const parseCursor = (cursor: string): BuildCursorParams => {
   const parts = cursor.split(":");
-  if (parts.length !== 4) {
+  if (parts.length < 3 || parts.length > 4) {
     throw new Error(`Invalid cursor format: ${cursor}`);
+  }
+  if (parts.length === 3) {
+    return {
+      blockHeight: Number(parts[0]),
+      microblockSequence: 0,
+      txIndex: Number(parts[1]),
+      eventIndex: Number(parts[2]),
+    };
   }
   return {
     blockHeight: Number(parts[0]),
@@ -44,6 +52,9 @@ function findFirstContractEvent(
   tx: TransactionApiResponse,
   contractId: string,
 ): { event_index: number } | null {
+  if (!tx.events) {
+    return null;
+  }
   for (const event of tx.events) {
     if (
       event.event_type === "smart_contract_log" &&
@@ -61,78 +72,79 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
   ): Promise<Result<string | null, StacksApiError>> {
     const stopClock = startClock();
     const ADDRESS_TX_LIMIT = 50;
-    const countResult = await datasourceStacksApi.getAddressTransactions(context, contractId, {
-      limit: 1,
-      offset: 0,
-    });
-    if (countResult.isErr()) {
-      return Result.err(countResult.error);
-    }
 
-    const { total } = countResult.value;
-    if (total === 0) {
-      return Result.ok(null);
-    }
+    const pages: TransactionApiResponse[][] = [];
+    let currentCursor: string | null = null;
 
-    context.logger.info({
-      service: "getContractEventsFirstCursor",
-      msg: `Looking for first event of ${contractId}`,
-      totalTransactions: total,
-    });
-
-    // Walk backwards through pages so we process oldest transactions first.
-    let offset = Math.max(0, total - ADDRESS_TX_LIMIT);
-
-    while (offset >= 0) {
+    do {
       context.logger.debug({
         service: "getContractEventsFirstCursor",
         msg: `Scanning page for ${contractId}`,
-        offset,
+        cursor: currentCursor,
       });
+
       // oxlint-disable-next-line no-await-in-loop
-      const pageResult = await datasourceStacksApi.getAddressTransactions(context, contractId, {
+      const pageResult = await datasourceStacksApi.getPrincipalTransactions(context, contractId, {
         limit: ADDRESS_TX_LIMIT,
-        offset,
-        exclude_function_args: true,
+        cursor: currentCursor,
       });
       if (pageResult.isErr()) {
         return Result.err(pageResult.error);
       }
 
-      const txs = pageResult.value.results;
-      // Iterate from oldest to newest within the page.
-      for (const tx of txs.slice().reverse()) {
-        if (tx.event_count > 0) {
-          // oxlint-disable-next-line no-await-in-loop
-          const txResult = await datasourceStacksApi.getTransaction(context, tx.tx_id);
-          if (txResult.isErr()) {
-            return Result.err(txResult.error);
-          }
-
-          const firstEvent = findFirstContractEvent(txResult.value, contractId);
-          if (firstEvent) {
-            const cursor = buildCursor({
-              blockHeight: txResult.value.block_height,
-              microblockSequence: txResult.value.microblock_sequence,
-              txIndex: txResult.value.tx_index,
-              eventIndex: firstEvent.event_index,
-            });
-            const duration = stopClock();
-            context.logger.info({
-              service: "getContractEventsFirstCursor",
-              msg: `Found first cursor for ${contractId} at block ${txResult.value.block_height}`,
-              block: txResult.value.block_height,
-              duration,
-            });
-            return Result.ok(cursor);
-          }
-        }
-      }
-
-      if (offset === 0) {
+      const { results, cursor } = pageResult.value;
+      if (results.length === 0) {
         break;
       }
-      offset = Math.max(0, offset - ADDRESS_TX_LIMIT);
+
+      pages.push(results.map((item) => item.transaction));
+      currentCursor = cursor.next;
+    } while (currentCursor);
+
+    if (pages.length === 0) {
+      const duration = stopClock();
+      context.logger.info({
+        service: "getContractEventsFirstCursor",
+        msg: `No transactions found for ${contractId}`,
+        duration,
+      });
+      return Result.ok(null);
+    }
+
+    context.logger.info({
+      service: "getContractEventsFirstCursor",
+      msg: `Looking for first event of ${contractId} across ${pages.length} page(s)`,
+    });
+
+    // Walk backwards through pages (from oldest page to newest page)
+    for (const page of pages.slice().reverse()) {
+      // Iterate from oldest to newest within the page
+      for (const tx of page.slice().reverse()) {
+        // oxlint-disable-next-line no-await-in-loop
+        const txResult = await datasourceStacksApi.getTransaction(context, tx.tx_id);
+        if (txResult.isErr()) {
+          return Result.err(txResult.error);
+        }
+
+        const fullTx = txResult.value;
+        const firstEvent = findFirstContractEvent(fullTx, contractId);
+        if (firstEvent) {
+          const cursor = buildCursor({
+            blockHeight: fullTx.block.height,
+            microblockSequence: 0,
+            txIndex: fullTx.block.tx_index,
+            eventIndex: firstEvent.event_index,
+          });
+          const duration = stopClock();
+          context.logger.info({
+            service: "getContractEventsFirstCursor",
+            msg: `Found first cursor for ${contractId} at block ${fullTx.block.height}`,
+            block: fullTx.block.height,
+            duration,
+          });
+          return Result.ok(cursor);
+        }
+      }
     }
 
     const duration = stopClock();
