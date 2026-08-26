@@ -44,6 +44,9 @@ function findFirstContractEvent(
   tx: TransactionApiResponse,
   contractId: string,
 ): { event_index: number } | null {
+  if (!("events" in tx) || !Array.isArray(tx.events)) {
+    return null;
+  }
   for (const event of tx.events) {
     if (
       event.event_type === "smart_contract_log" &&
@@ -110,7 +113,12 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
           }
 
           const firstEvent = findFirstContractEvent(txResult.value, contractId);
-          if (firstEvent) {
+          if (
+            firstEvent &&
+            "block_height" in txResult.value &&
+            "microblock_sequence" in txResult.value &&
+            "tx_index" in txResult.value
+          ) {
             const cursor = buildCursor({
               blockHeight: txResult.value.block_height,
               microblockSequence: txResult.value.microblock_sequence,
