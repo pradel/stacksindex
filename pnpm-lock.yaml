@@ -29,7 +29,7 @@ importers:
         version: 0.45.2(@electric-sql/pglite@0.4.5)
       indexer:
         specifier: workspace:*
-        version: link:../../packages/indexer
+        version: link:../../packages/stacksindex
     devDependencies:
       '@types/node':
         specifier: 26.2.0
@@ -44,7 +44,7 @@ importers:
         specifier: 0.1.24
         version: 0.1.24(@types/node@26.2.0)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.2.0)(esbuild@0.27.5)(jiti@2.6.1)(publint@0.3.24)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3))(esbuild@0.27.5)(jiti@2.6.1)(publint@0.3.24)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
 
-  packages/indexer:
+  packages/stacksindex:
     dependencies:
       better-result:
         specifier: 2.9.0
