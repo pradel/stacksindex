@@ -34,24 +34,38 @@ export type GetTransactionsQuery = paths["/extended/v1/tx/multiple"]["get"]["par
 export type GetAddressTransactionsQuery =
   paths["/extended/v1/address/{principal}/transactions"]["get"]["parameters"]["query"];
 
-export type TransactionApiResponse =
-  paths["/extended/v1/tx/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"];
+export type TransactionApiResponse = Extract<
+  paths["/extended/v1/tx/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
+  { block_height: number }
+>;
 
-export type BatchTransactionsApiResponse =
-  paths["/extended/v1/tx/multiple"]["get"]["responses"]["200"]["content"]["application/json"];
+export interface BatchTransactionsApiResponse {
+  [key: string]:
+    | {
+        found: true;
+        result: TransactionApiResponse;
+      }
+    | {
+        found: false;
+        result: {
+          tx_id: string;
+        };
+      };
+}
 
 export type BatchTransactionResult = BatchTransactionsApiResponse[string];
 
-export type AddressTransactionsResponse =
-  paths["/extended/v1/address/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
+export type AddressTransactionsResponse = Omit<
+  paths["/extended/v1/address/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"],
+  "results"
+> & {
+  results: TransactionApiResponse[];
+};
 
 export type ContractLogsResponse =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type ContractEvent = Extract<
-  TransactionApiResponse,
-  { events: unknown[] }
->["events"][number];
+export type ContractEvent = TransactionApiResponse["events"][number];
 
 export type SmartContractLogEvent = Extract<ContractEvent, { event_type: "smart_contract_log" }>;
 export type StxLockEvent = Extract<ContractEvent, { event_type: "stx_lock" }>;

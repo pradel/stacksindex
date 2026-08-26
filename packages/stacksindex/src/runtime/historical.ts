@@ -288,15 +288,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         const transactions = txResult.value;
 
         // Batch fetch blocks (deduplicated by block_hash) in chunks of 5
-        const blockHashes = [
-          ...new Set(
-            transactions
-              .map((transaction) =>
-                "block_hash" in transaction ? transaction.block_hash : undefined,
-              )
-              .filter((hash): hash is string => Boolean(hash)),
-          ),
-        ];
+        const blockHashes = [...new Set(transactions.map((transaction) => transaction.block_hash))];
         // oxlint-disable-next-line no-await-in-loop
         const existingBlockHashes = await syncStore.getExistingBlocks(
           { blockHashes, chainId: 1 },
@@ -334,7 +326,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           const tx = transactions.find((transaction) => transaction.tx_id === event.tx_id);
           return {
             event,
-            blockHeight: tx && "block_height" in tx ? tx.block_height : 0,
+            blockHeight: tx?.block_height ?? 0,
           };
         });
 
