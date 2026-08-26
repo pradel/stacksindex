@@ -250,18 +250,92 @@ describe("aPI DataSource", () => {
     });
   });
 
-  describe("getBlockByHash", () => {
-    test("returns block data on 200", async () => {
+  describe("getBlock", () => {
+    test("returns block data on 200 by hash", async () => {
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe("https://api.hiro.so/extended/v2/blocks/0xabc123");
         return {
           statusCode: 200,
-          body: mockBody({ hash: "0xabc123", block_height: 123_456 }),
+          body: mockBody({ hash: "0xabc123", height: 123_456 }),
         };
       });
 
-      const result = await datasourceStacksApi.getBlockByHash(context, "0xabc123");
-      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
+      const result = await datasourceStacksApi.getBlock(context, "0xabc123");
+      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", height: 123_456 }));
+    });
+
+    test("returns block data on 200 by height", async () => {
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe("https://api.hiro.so/extended/v2/blocks/123456");
+        return {
+          statusCode: 200,
+          body: mockBody({ hash: "0xabc123", height: 123_456 }),
+        };
+      });
+
+      const result = await datasourceStacksApi.getBlock(context, 123_456);
+      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", height: 123_456 }));
+    });
+  });
+
+  describe("getBlockTransactions", () => {
+    test("returns block transactions on 200 with cursor and limit", async () => {
+      const mockResponse = {
+        total: 1,
+        limit: 20,
+        cursor: {
+          next: "100:0:1",
+          previous: null,
+          current: "100:0:0",
+        },
+        results: [
+          {
+            tx_id: "0xtx123",
+            type: "contract_call",
+            status: "success",
+          },
+        ],
+      };
+
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe(
+          "https://api.hiro.so/extended/v3/blocks/0xabc123/transactions?limit=20&cursor=100%3A0%3A0",
+        );
+        return {
+          statusCode: 200,
+          body: mockBody(mockResponse),
+        };
+      });
+
+      const result = await datasourceStacksApi.getBlockTransactions(context, "0xabc123", {
+        limit: 20,
+        cursor: "100:0:0",
+      });
+      expect(result).toStrictEqual(Result.ok(mockResponse));
+    });
+
+    test("returns block transactions by height", async () => {
+      const mockResponse = {
+        total: 0,
+        limit: 20,
+        cursor: {
+          next: null,
+          previous: null,
+          current: null,
+        },
+        results: [],
+      };
+
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe("https://api.hiro.so/extended/v3/blocks/123456/transactions");
+        return {
+          statusCode: 200,
+          body: mockBody(mockResponse),
+        };
+      });
+
+      const result = await datasourceStacksApi.getBlockTransactions(context, 123_456);
+      expect(result).toStrictEqual(Result.ok(mockResponse));
     });
   });
 
@@ -294,7 +368,7 @@ describe("aPI DataSource", () => {
 
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe(
-          `https://api.hiro.so/extended/v1/address/${address}/transactions?limit=50&offset=100&exclude_function_args=true`,
+          `https://api.hiro.so/extended/v1/address/${address}/transactions?limit=50&offset=100`,
         );
         return {
           statusCode: 200,

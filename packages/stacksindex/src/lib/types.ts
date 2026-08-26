@@ -1,7 +1,9 @@
+import type { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
-import type { SmartContractLogEvent } from "../datasources/api/index.ts";
+import type { StacksApiError } from "../datasources/api/errors.ts";
+import type { CallReadResponse, SmartContractLogEvent } from "../datasources/api/index.ts";
 
 export interface LogEvent {
   type: "log";
@@ -16,8 +18,17 @@ export type HandlerEvent = SmartContractLogEvent & {
   sender_address: string;
 };
 
+export interface IndexingClient {
+  callReadOnly(
+    contractId: string,
+    functionName: string,
+    options?: { args?: string[]; sender?: string; tip?: number },
+  ): Promise<Result<CallReadResponse, StacksApiError>>;
+}
+
 export interface HandlerContext {
   db: NodePgDatabase | PgliteDatabase;
+  client: IndexingClient;
 }
 
 export type EventHandler = (event: HandlerEvent, context: HandlerContext) => Promise<void>;

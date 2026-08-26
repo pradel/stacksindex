@@ -825,7 +825,7 @@ describe("historical runtime", () => {
 
     expect(result.isOk()).toBe(true);
 
-    // Verify no getTransaction or getBlockByHash calls were made
+    // Verify no getTransaction or getBlock calls were made
     const txCalls = mockRequest.mock.calls.filter((call: any) =>
       (call[0] as string).includes("/extended/v1/tx/"),
     );
@@ -1838,5 +1838,200 @@ describe("historical runtime with handlers", () => {
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
     expect(result.isOk()).toBe(true);
     expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("provides IndexingClient to handler with current block height tip and runtime api options", async () => {
+    const contractId = "SP123.token";
+    const customBaseUrl = "https://custom-stacks.example.com";
+    const customApiKey = "test-api-key-123";
+
+    let handlerCalled = false;
+    let callReadOnlySuccess = false;
+    // oxlint-disable-next-line init-declarations
+    let callReadOnlyUrl: string | undefined;
+    // oxlint-disable-next-line init-declarations
+    let callReadOnlyApiKey: string | undefined;
+
+    mockRequest.mockImplementation(
+      (
+        rawUrl: string,
+        init?: { headers?: Record<string, string>; method?: string; body?: string },
+      ) => {
+        const url = decodeURIComponent(rawUrl);
+
+        if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+          return {
+            statusCode: 200,
+            body: mockBody({
+              limit: 1,
+              offset: 0,
+              total: 1,
+              results: [{ tx_id: "tx-1", event_count: 1 }],
+            }),
+          };
+        }
+        if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+          return {
+            statusCode: 200,
+            body: mockBody({
+              limit: 50,
+              offset: 0,
+              total: 1,
+              results: [{ tx_id: "tx-1", event_count: 1 }],
+            }),
+          };
+        }
+        if (url.includes("/extended/v1/tx/multiple")) {
+          return {
+            statusCode: 200,
+            body: mockBody({
+              "tx-1": {
+                found: true,
+                result: {
+                  tx_id: "tx-1",
+                  block_height: 1234,
+                  block_hash: "block-1",
+                  microblock_sequence: 0,
+                  tx_index: 0,
+                  sender_address: "SP sender",
+                  fee_rate: "1000",
+                  nonce: 0,
+                  tx_status: "success",
+                  tx_type: "contract_call",
+                  canonical: true,
+                  event_count: 1,
+                  events: [],
+                },
+              },
+            }),
+          };
+        }
+        if (url.includes("/extended/v1/tx/tx-1")) {
+          return {
+            statusCode: 200,
+            body: mockBody({
+              tx_id: "tx-1",
+              block_height: 1234,
+              block_hash: "block-1",
+              microblock_sequence: 0,
+              tx_index: 0,
+              sender_address: "SP sender",
+              fee_rate: "1000",
+              nonce: 0,
+              tx_status: "success",
+              tx_type: "contract_call",
+              canonical: true,
+              event_count: 1,
+              events: [
+                {
+                  event_index: 0,
+                  event_type: "smart_contract_log",
+                  contract_log: {
+                    contract_id: contractId,
+                    topic: "print",
+                    value: { hex: "", repr: "" },
+                  },
+                },
+              ],
+            }),
+          };
+        }
+        if (
+          url.includes(
+            `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=1234:0:0:0`,
+          )
+        ) {
+          return {
+            statusCode: 200,
+            body: mockBody({
+              results: [
+                {
+                  tx_id: "tx-1",
+                  event_index: 0,
+                  event_type: "smart_contract_log",
+                  contract_log: {
+                    contract_id: contractId,
+                    topic: "print",
+                    value: { hex: "", repr: "" },
+                  },
+                },
+              ],
+              limit: 100,
+              offset: 0,
+              total: 1,
+              next_cursor: null,
+              prev_cursor: null,
+            }),
+          };
+        }
+        if (url.includes("/extended/v2/blocks/block-1")) {
+          return {
+            statusCode: 200,
+            body: mockBody({
+              canonical: true,
+              height: 1234,
+              hash: "block-1",
+              block_time: 1000,
+              block_time_iso: "",
+              tenure_height: 1234,
+              index_block_hash: "",
+              parent_block_hash: "",
+              parent_index_block_hash: "",
+              burn_block_time: 1000,
+              burn_block_time_iso: "",
+              burn_block_hash: "",
+              burn_block_height: 1234,
+              miner_txid: "",
+              tx_count: 1,
+              execution_cost_read_count: 0,
+              execution_cost_read_length: 0,
+              execution_cost_runtime: 0,
+              execution_cost_write_count: 0,
+              execution_cost_write_length: 0,
+            }),
+          };
+        }
+        if (url.includes("/v2/contracts/call-read/SP123.token/get-total-supply")) {
+          callReadOnlyUrl = url;
+          callReadOnlyApiKey = init?.headers?.["x-api-key"];
+          return {
+            statusCode: 200,
+            body: mockBody({ okay: true, result: "0x01000000000000000000000000000003e8" }),
+          };
+        }
+
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    );
+
+    const runtime = createHistoricalRuntime({
+      logger: context.logger,
+      db: testDb.db,
+      api: {
+        baseUrl: customBaseUrl,
+        apiKey: customApiKey,
+      },
+    });
+
+    const result = await runtime.run([
+      {
+        contractId,
+        handler: async (_event, { client }) => {
+          handlerCalled = true;
+          const readResult = await client.callReadOnly(contractId, "get-total-supply");
+          if (readResult.isOk() && readResult.value.okay) {
+            callReadOnlySuccess = true;
+          }
+        },
+      },
+    ]);
+
+    expect(result.isOk()).toBe(true);
+    expect(handlerCalled).toBe(true);
+    expect(callReadOnlySuccess).toBe(true);
+    expect(callReadOnlyUrl).toBe(
+      `${customBaseUrl}/v2/contracts/call-read/SP123.token/get-total-supply?tip=1234`,
+    );
+    expect(callReadOnlyApiKey).toBe(customApiKey);
   });
 });

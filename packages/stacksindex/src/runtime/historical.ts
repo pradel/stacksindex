@@ -217,6 +217,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         logger: context.logger,
         db: context.db,
         handlers,
+        api: context.api,
       });
 
       const statesResult = await initializeContractStates(filters, context);
@@ -313,7 +314,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         for (const chunk of chunkArray(missingBlockHashes, BATCH_SIZE)) {
           // oxlint-disable-next-line no-await-in-loop
           const blockResults = await Promise.all(
-            chunk.map((hash) => datasourceStacksApi.getBlockByHash(context, hash)),
+            chunk.map((hash) => datasourceStacksApi.getBlock(context, hash)),
           );
           for (const blockResult of blockResults) {
             if (blockResult.isErr()) {
