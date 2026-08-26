@@ -419,13 +419,20 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     contractId: string,
     functionName: string,
-    options: { args?: string[]; sender?: string } = {},
+    options: {
+      args?: string[];
+      sender?: string;
+      /** Chain tip (block height) to query; defaults to the current tip. */
+      tip?: number;
+    } = {},
   ) {
-    const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM" } = options;
+    const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip } = options;
     const path = `/v2/contracts/call-read/${contractId}/${functionName}`;
     return this._request<CallReadResponse>(context, {
       path,
       method: "POST",
+      // Null entries are dropped by the query builder -> omitted from the URL.
+      query: { tip: tip ?? null },
       body: {
         sender,
         arguments: args,

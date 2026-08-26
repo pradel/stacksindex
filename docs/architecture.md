@@ -93,7 +93,9 @@ One handler per contract filter. Each receives:
 - `event` — raw log fields plus `decoded` (the parsed Clarity value) and sync
   metadata (`block_height`, `block_time`, `tx_index`, `sender_address`)
 - `context.db` — database handle for derived writes
-- `context.client` — read-only contract calls against the configured network
+- `context.client` — read-only contract calls against the configured network,
+  pinned to the chain tip of the block being processed (`?tip=` on
+  `/v2/contracts/call-read`) so reads stay deterministic across runs
 
 ## Stacks Event Structure
 

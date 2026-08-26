@@ -1149,6 +1149,7 @@ describe("historical runtime with handlers", () => {
   test("passes decoded Clarity values and a read-only client to handlers", async () => {
     const contractId = "SP123.token";
     const received: HandlerEvent[] = [];
+    const callReadUrls: string[] = [];
 
     registerTxs({
       txId: "tx-1",
@@ -1199,6 +1200,7 @@ describe("historical runtime with handlers", () => {
         };
       }
       if (url.includes("/v2/contracts/call-read/")) {
+        callReadUrls.push(url);
         return {
           statusCode: 200,
           body: mockBody({ okay: true, result: "0x03" }),
@@ -1226,6 +1228,11 @@ describe("historical runtime with handlers", () => {
     expect(result.isOk()).toBe(true);
     expect(received).toHaveLength(1);
     expect(received[0].decoded).toMatchObject({ type_id: 1, value: "5" });
+
+    // Read-only calls must be pinned to the tip of the block being processed.
+    expect(callReadUrls).toHaveLength(1);
+    expect(callReadUrls[0]).toContain("/v2/contracts/call-read/");
+    expect(callReadUrls[0]).toContain("tip=100");
   });
 
   test("updates checkpoint after processing events", async () => {

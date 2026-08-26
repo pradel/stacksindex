@@ -63,7 +63,8 @@ export interface IndexingClient {
   callReadOnly(
     contractId: string,
     functionName: string,
-    options?: { args?: string[]; sender?: string },
+    /** `tip` is overridden by the runtime with the block being processed. */
+    options?: { args?: string[]; sender?: string; tip?: number },
   ): Promise<Result<CallReadResponse, StacksApiError>>;
 }
 

@@ -83,6 +83,11 @@ Extends the API's smart contract log with sync metadata plus:
 - `client.callReadOnly(contractId, functionName, { args?, sender? })` —
   read-only contract calls, returning `Result<CallReadResponse, StacksApiError>`
 
+Read-only calls are **pinned to the chain tip of the block currently being
+processed** (the API's `?tip=` query parameter), so handler reads are
+deterministic no matter when the indexer runs. Outside event processing, calls
+default to the current tip.
+
 ### Clarity helpers
 
 - `decodeClarityValue(hex)` — decode any hex-encoded Clarity value

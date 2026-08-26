@@ -121,6 +121,10 @@ async function initializeContractStates(
 }
 
 export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
+  // Chain tip (block height) that read-only calls are evaluated against.
+  // Updated per event during processing; undefined outside a run.
+  let currentTipBlockHeight: number | undefined = undefined;
+
   async function processEventsUpTo(
     toBlockHeight: number,
     chainId: number,
@@ -171,6 +175,9 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         sender_address: row.senderAddress,
         decoded: decodeClarityValueUnwrapped(row.valueHex),
       };
+      // Pin read-only calls to the state at the block being processed so
+      // That handler reads stay deterministic across runs.
+      currentTipBlockHeight = event.block_height;
       // oxlint-disable-next-line no-await-in-loop
       const result = await indexing.executeEvent(event);
       if (result.isErr()) {
@@ -336,8 +343,14 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       }
 
       const client: IndexingClient = {
-        callReadOnly: (contractId, functionName, options) =>
-          datasourceStacksApi.callReadFunction(dsContext, contractId, functionName, options),
+        callReadOnly: (contractId, functionName, options) => {
+          // Pin to the block being processed; fall back to the caller's tip.
+          const tip = currentTipBlockHeight ?? options?.tip;
+          return datasourceStacksApi.callReadFunction(dsContext, contractId, functionName, {
+            ...options,
+            tip,
+          });
+        },
       };
 
       const indexing = createIndexing({

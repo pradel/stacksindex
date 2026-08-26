@@ -460,5 +460,42 @@ describe("aPI DataSource", () => {
       );
       expect(result.isOk()).toBe(true);
     });
+
+    test("passes tip as a query parameter", async () => {
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe(
+          "https://api.hiro.so/v2/contracts/call-read/SP123.token/get-decimals?tip=150450",
+        );
+        return {
+          statusCode: 200,
+          body: mockBody({ okay: true, result: "0x03" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.callReadFunction(
+        { logger: context.logger },
+        "SP123.token",
+        "get-decimals",
+        { tip: 150_450 },
+      );
+      expect(result.isOk()).toBe(true);
+    });
+
+    test("omits tip query parameter when not provided", async () => {
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe("https://api.hiro.so/v2/contracts/call-read/SP123.token/get-pool-count");
+        return {
+          statusCode: 200,
+          body: mockBody({ okay: true, result: "0x03" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.callReadFunction(
+        { logger: context.logger },
+        "SP123.token",
+        "get-pool-count",
+      );
+      expect(result.isOk()).toBe(true);
+    });
   });
 });

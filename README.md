@@ -55,7 +55,7 @@ await runtime.run([
       // event.decoded is the parsed Clarity tuple (undefined if undecodable)
       const action = event.decoded?.type_id === 12 ? event.decoded.data.action?.data : undefined;
 
-      // Read-only contract calls are available via context.client
+      // Read-only calls are pinned to the tip of the block being processed
       await context.client.callReadOnly("SP….my-token", "get-decimals");
 
       // Write derived rows to your own database (PGlite or node-postgres)
