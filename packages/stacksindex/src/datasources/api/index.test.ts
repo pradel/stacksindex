@@ -368,7 +368,7 @@ describe("aPI DataSource", () => {
 
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe(
-          `https://api.hiro.so/extended/v1/address/${address}/transactions?limit=50&offset=100&exclude_function_args=true`,
+          `https://api.hiro.so/extended/v1/address/${address}/transactions?limit=50&offset=100`,
         );
         return {
           statusCode: 200,
