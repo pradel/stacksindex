@@ -30,13 +30,13 @@
   },
   "dependencies": {
     "@stacks/codec": "1.7.0",
-    "better-result": "2.9.0",
+    "better-result": "3.0.1",
     "consola": "3.4.2",
     "undici": "8.10.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.4.5",
-    "@types/node": "26.2.0",
+    "@types/node": "26.3.0",
     "@vitest/coverage-v8": "4.1.11",
     "drizzle-kit": "0.31.10",
     "drizzle-orm": "0.45.2",

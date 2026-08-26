@@ -11,12 +11,12 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "0.4.5",
-    "better-result": "2.9.0",
+    "better-result": "3.0.1",
     "drizzle-orm": "0.45.2",
     "stacksindex": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "26.2.0",
+    "@types/node": "26.3.0",
     "drizzle-kit": "0.31.10",
     "typescript": "6.0.3",
     "vite-plus": "0.1.24"

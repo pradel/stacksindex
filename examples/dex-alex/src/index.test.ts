@@ -16,10 +16,12 @@ import {
   StacksApiUnexpectedError,
   createLogger,
   decodeStacksAddress,
+  type CallReadResponse,
   type ClarityValue,
   type EventHandler,
   type HandlerContext,
   type IndexingClient,
+  type StacksApiError,
 } from "stacksindex";
 import { beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
@@ -186,10 +188,12 @@ function makeClient(calls: Record<string, string>): { client: IndexingClient; se
         seen.push({ contractId, functionName });
         const callKey = `${contractId}::${functionName}`;
         if (Object.hasOwn(calls, callKey)) {
-          return Promise.resolve(Result.ok({ okay: true, result: calls[callKey] }));
+          return Promise.resolve(
+            Result.ok<CallReadResponse, StacksApiError>({ okay: true, result: calls[callKey] }),
+          );
         }
         return Promise.resolve(
-          Result.err(
+          Result.err<CallReadResponse, StacksApiError>(
             new StacksApiUnexpectedError({ message: "not mocked", cause: null, path: callKey }),
           ),
         );
