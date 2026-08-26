@@ -820,7 +820,7 @@ describe("historical runtime", () => {
 
     expect(result.isOk()).toBe(true);
 
-    // Verify no getTransaction or getBlockByHash calls were made
+    // Verify no getTransaction or getBlock calls were made
     const txCalls = mockRequest.mock.calls.filter((call: any) =>
       (call[0] as string).includes("/extended/v3/transactions/"),
     );
@@ -1825,25 +1825,14 @@ describe("historical runtime with handlers", () => {
       ) => {
         const url = decodeURIComponent(rawUrl);
 
-        if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
-          return {
-            statusCode: 200,
-            body: mockBody({
-              limit: 1,
-              offset: 0,
-              total: 1,
-              results: [{ tx_id: "tx-1", event_count: 1 }],
-            }),
-          };
-        }
-        if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+        if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
           return {
             statusCode: 200,
             body: mockBody({
               limit: 50,
-              offset: 0,
               total: 1,
-              results: [{ tx_id: "tx-1", event_count: 1 }],
+              cursor: { next: null, previous: null, current: "curr" },
+              results: [{ transaction: { tx_id: "tx-1" } }],
             }),
           };
         }
@@ -1855,39 +1844,39 @@ describe("historical runtime with handlers", () => {
                 found: true,
                 result: {
                   tx_id: "tx-1",
-                  block_height: 1234,
-                  block_hash: "block-1",
-                  microblock_sequence: 0,
-                  tx_index: 0,
-                  sender_address: "SP sender",
+                  type: "contract_call",
+                  status: "success",
                   fee_rate: "1000",
-                  nonce: 0,
-                  tx_status: "success",
-                  tx_type: "contract_call",
-                  canonical: true,
-                  event_count: 1,
+                  sender: { address: "SP sender", nonce: 0 },
+                  sponsor: null,
+                  block: {
+                    hash: "block-1",
+                    height: 1234,
+                    time: 1000,
+                    tx_index: 0,
+                  },
                   events: [],
                 },
               },
             }),
           };
         }
-        if (url.includes("/extended/v1/tx/tx-1")) {
+        if (url.includes("/extended/v3/transactions/tx-1")) {
           return {
             statusCode: 200,
             body: mockBody({
               tx_id: "tx-1",
-              block_height: 1234,
-              block_hash: "block-1",
-              microblock_sequence: 0,
-              tx_index: 0,
-              sender_address: "SP sender",
+              type: "contract_call",
+              status: "success",
               fee_rate: "1000",
-              nonce: 0,
-              tx_status: "success",
-              tx_type: "contract_call",
-              canonical: true,
-              event_count: 1,
+              sender: { address: "SP sender", nonce: 0 },
+              sponsor: null,
+              block: {
+                hash: "block-1",
+                height: 1234,
+                time: 1000,
+                tx_index: 0,
+              },
               events: [
                 {
                   event_index: 0,

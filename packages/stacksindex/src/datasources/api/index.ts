@@ -1,3 +1,4 @@
+import type { paths } from "@stacks/blockchain-api-client";
 import { Result } from "better-result";
 import { request } from "undici";
 
@@ -11,28 +12,30 @@ import {
   StacksApiUnexpectedError,
 } from "./errors.ts";
 
-export interface BlockApiResponse {
-  canonical: boolean;
-  height: number;
-  hash: string;
-  block_time: number;
-  block_time_iso: string;
-  tenure_height: number;
-  index_block_hash: string;
-  parent_block_hash: string;
-  parent_index_block_hash: string;
-  burn_block_time: number;
-  burn_block_time_iso: string;
-  burn_block_hash: string;
-  burn_block_height: number;
-  miner_txid: string;
-  tx_count: number;
-  execution_cost_read_count: number;
-  execution_cost_read_length: number;
-  execution_cost_runtime: number;
-  execution_cost_write_count: number;
-  execution_cost_write_length: number;
-}
+export type BlockApiResponse =
+  paths["/extended/v2/blocks/{height_or_hash}"]["get"]["responses"]["200"]["content"]["application/json"];
+
+export type GetBlockQuery =
+  paths["/extended/v2/blocks/{height_or_hash}"]["get"]["parameters"]["query"];
+
+export type BlockTransactionsApiResponse =
+  paths["/extended/v3/blocks/{height_or_hash}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
+
+export type GetBlockTransactionsQuery =
+  paths["/extended/v3/blocks/{height_or_hash}/transactions"]["get"]["parameters"]["query"];
+
+export type GetContractLogsQuery =
+  paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["parameters"]["query"];
+
+export type GetTransactionQuery =
+  paths["/extended/v3/transactions/{tx_id}"]["get"]["parameters"]["query"];
+
+export type GetTransactionsQuery = paths["/extended/v1/tx/multiple"]["get"]["parameters"]["query"];
+
+export type GetPrincipalTransactionsQuery =
+  paths["/extended/v3/principals/{principal}/transactions"]["get"]["parameters"]["query"];
+
+export type GetAddressTransactionsQuery = GetPrincipalTransactionsQuery;
 
 export interface TransactionApiResponse {
   tx_id: string;
@@ -211,24 +214,24 @@ export interface CallReadResponse {
   result: string;
 }
 
-interface RequestOptions {
+interface RequestOptions<QueryT = unknown> {
   path: string;
   method: "GET" | "POST";
-  query?: Record<string, string | string[] | number | number[] | bigint | bigint[] | null>;
+  query?: QueryT;
   body?: unknown;
 }
 
 export const datasourceStacksApi = {
-  async _request<ResponseT>(
+  async _request<ResponseT, QueryT extends Record<string, unknown> | undefined>(
     context: DatasourceStacksApiContext,
-    options: RequestOptions,
+    options: RequestOptions<QueryT>,
   ): Promise<Result<ResponseT, StacksApiError>> {
-    return this._requestWithRetry(context, options, 0);
+    return this._requestWithRetry<ResponseT, QueryT>(context, options, 0);
   },
 
-  async _requestWithRetry<ResponseT>(
+  async _requestWithRetry<ResponseT, QueryT extends Record<string, unknown> | undefined>(
     context: DatasourceStacksApiContext,
-    options: RequestOptions,
+    options: RequestOptions<QueryT>,
     attempt: number,
   ): Promise<Result<ResponseT, StacksApiError>> {
     const maxRateLimitRetries = 3;
@@ -241,8 +244,9 @@ export const datasourceStacksApi = {
       for (const [key, value] of Object.entries(options.query)) {
         const vals = Array.isArray(value) ? value : [value];
         for (const entry of vals) {
-          if (entry !== null) {
-            const str = typeof entry === "string" ? entry : entry.toString();
+          if (entry !== null && entry !== undefined) {
+            // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access
+            const str: string = typeof entry === "string" ? entry : entry.toString();
             parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(str)}`);
           }
         }
@@ -367,22 +371,37 @@ export const datasourceStacksApi = {
     return result;
   },
 
-  getBlockByHash(context: DatasourceStacksApiContext, hash: string) {
-    return this._request<BlockApiResponse>(context, {
-      path: `/extended/v2/blocks/${hash}`,
+  getBlock(
+    context: DatasourceStacksApiContext,
+    heightOrHash: string | number,
+    options?: GetBlockQuery,
+  ) {
+    return this._request<BlockApiResponse, GetBlockQuery>(context, {
+      path: `/extended/v2/blocks/${heightOrHash}`,
       method: "GET",
+      query: options,
+    });
+  },
+
+  getBlockTransactions(
+    context: DatasourceStacksApiContext,
+    heightOrHash: string | number,
+    options: GetBlockTransactionsQuery = {},
+  ) {
+    return this._request<BlockTransactionsApiResponse, GetBlockTransactionsQuery>(context, {
+      path: `/extended/v3/blocks/${heightOrHash}/transactions`,
+      method: "GET",
+      query: options,
     });
   },
 
   getTransaction(
     context: DatasourceStacksApiContext,
     txId: string,
-    options: {
-      include?: ("function_args" | "source_code" | "post_conditions" | "result")[];
-    } = {},
+    options: GetTransactionQuery = {},
   ) {
     const { include } = options;
-    return this._request<TransactionApiResponse>(context, {
+    return this._request<TransactionApiResponse, { include?: string | null }>(context, {
       path: `/extended/v3/transactions/${txId}`,
       method: "GET",
       query: { include: include && include.length > 0 ? include.join(",") : null },
@@ -392,15 +411,19 @@ export const datasourceStacksApi = {
   async getTransactions(
     context: DatasourceStacksApiContext,
     txIds: string[],
+    options: GetTransactionsQuery = { tx_id: txIds },
   ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
     if (txIds.length === 0) {
       return Result.ok([]);
     }
 
-    const mapResult = await this._request<Record<string, BatchTransactionResult>>(context, {
+    const mapResult = await this._request<
+      Record<string, BatchTransactionResult>,
+      GetTransactionsQuery
+    >(context, {
       path: "/extended/v1/tx/multiple",
       method: "GET",
-      query: { tx_id: txIds },
+      query: options,
     });
     if (mapResult.isErr()) {
       return Result.err(mapResult.error);
@@ -426,11 +449,14 @@ export const datasourceStacksApi = {
   ) {
     const { limit = 50, cursor } = options;
     const path = `/extended/v3/principals/${principal}/transactions`;
-    return this._request<PrincipalTransactionsResponse>(context, {
-      path,
-      method: "GET",
-      query: { limit, cursor: cursor ?? null },
-    });
+    return this._request<PrincipalTransactionsResponse, { limit?: number; cursor?: string | null }>(
+      context,
+      {
+        path,
+        method: "GET",
+        query: { limit, cursor: cursor ?? null },
+      },
+    );
   },
 
   getAddressTransactions(
@@ -444,14 +470,14 @@ export const datasourceStacksApi = {
   getContractLogs(
     context: DatasourceStacksApiContext,
     contractId: string,
-    options: { limit?: number; cursor?: string | null } = {},
+    options: GetContractLogsQuery = {},
   ) {
-    const { limit = 100, cursor } = options;
+    const { limit = 100, cursor, ...rest } = options;
     const path = `/extended/v2/smart-contracts/${contractId}/logs`;
-    return this._request<ContractLogsResponse>(context, {
+    return this._request<ContractLogsResponse, GetContractLogsQuery>(context, {
       path,
       method: "GET",
-      query: { limit, cursor: cursor ?? null },
+      query: { limit, cursor, ...rest },
     });
   },
 
@@ -463,7 +489,7 @@ export const datasourceStacksApi = {
   ) {
     const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip } = options;
     const path = `/v2/contracts/call-read/${contractId}/${functionName}`;
-    return this._request<CallReadResponse>(context, {
+    return this._request<CallReadResponse, { tip?: number | null }>(context, {
       path,
       method: "POST",
       query: { tip: tip ?? null },
