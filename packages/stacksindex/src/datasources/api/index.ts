@@ -297,30 +297,6 @@ export const datasourceStacksApi = {
     });
   },
 
-  async getTransactions(
-    context: DatasourceStacksApiContext,
-    txIds: string[],
-    options: GetTransactionQuery = {},
-  ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
-    if (txIds.length === 0) {
-      return Result.ok([]);
-    }
-
-    const results = await Promise.all(
-      txIds.map((txId) => this.getTransaction(context, txId, options)),
-    );
-
-    const transactions: TransactionApiResponse[] = [];
-    for (const res of results) {
-      if (res.isErr()) {
-        return Result.err(res.error);
-      }
-      transactions.push(res.value);
-    }
-
-    return Result.ok(transactions);
-  },
-
   getPrincipalTransactions(
     context: DatasourceStacksApiContext,
     principal: string,

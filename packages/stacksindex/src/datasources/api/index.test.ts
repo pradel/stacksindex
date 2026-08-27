@@ -380,30 +380,6 @@ describe("aPI DataSource", () => {
     });
   });
 
-  describe("getTransactions", () => {
-    test("returns empty array when txIds is empty", async () => {
-      const result = await datasourceStacksApi.getTransactions(context, []);
-      expect(result).toStrictEqual(Result.ok([]));
-    });
-
-    test("fetches transactions concurrently using getTransaction", async () => {
-      const mockTx1 = { tx_id: "tx-1", block: { hash: "0x1", height: 100 } };
-      const mockTx2 = { tx_id: "tx-2", block: { hash: "0x2", height: 101 } };
-      const txResponses: Record<string, typeof mockTx1> = {
-        "https://api.hiro.so/extended/v3/transactions/tx-1": mockTx1,
-        "https://api.hiro.so/extended/v3/transactions/tx-2": mockTx2,
-      };
-
-      mockRequest.mockImplementation((url: string) => ({
-        statusCode: 200,
-        body: mockBody(txResponses[url]),
-      }));
-
-      const result = await datasourceStacksApi.getTransactions(context, ["tx-1", "tx-2"]);
-      expect(result).toStrictEqual(Result.ok([mockTx1, mockTx2]));
-    });
-  });
-
   describe("getTransactionEvents", () => {
     test("returns transaction events on 200", async () => {
       const txId = "0xtx123";

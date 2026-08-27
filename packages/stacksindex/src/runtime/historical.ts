@@ -185,13 +185,17 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     txIds: string[],
   ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
     const transactions: TransactionApiResponse[] = [];
-    for (const chunk of chunkArray(txIds, 50)) {
+    for (const chunk of chunkArray(txIds, BATCH_SIZE)) {
       // oxlint-disable-next-line no-await-in-loop
-      const txsResult = await datasourceStacksApi.getTransactions(context, chunk);
-      if (txsResult.isErr()) {
-        return Result.err(txsResult.error);
+      const txResults = await Promise.all(
+        chunk.map((txId) => datasourceStacksApi.getTransaction(context, txId)),
+      );
+      for (const txResult of txResults) {
+        if (txResult.isErr()) {
+          return Result.err(txResult.error);
+        }
+        transactions.push(txResult.value);
       }
-      transactions.push(...txsResult.value);
     }
     return Result.ok(transactions);
   }
