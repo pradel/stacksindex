@@ -114,25 +114,11 @@ describe("getContractEventsFirstCursor", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
+            event_count: 1,
             block: {
               height: 100,
               tx_index: 5,
             },
-            events: [
-              {
-                event_index: 0,
-                event_type: "stx_asset",
-              },
-              {
-                event_index: 1,
-                event_type: "smart_contract_log",
-                contract_log: {
-                  contract_id: contractId,
-                  topic: "print",
-                  value: { hex: "", repr: "" },
-                },
-              },
-            ],
           }),
         };
       }
@@ -143,7 +129,7 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("100:0:5:1");
+    expect((result as any).value).toBe("100:0:5:0");
   });
 
   test("skips transactions with no matching contract events", async () => {
@@ -175,21 +161,11 @@ describe("getContractEventsFirstCursor", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
+            event_count: 1,
             block: {
               height: 200,
               tx_index: 3,
             },
-            events: [
-              {
-                event_index: 0,
-                event_type: "smart_contract_log",
-                contract_log: {
-                  contract_id: contractId,
-                  topic: "print",
-                  value: { hex: "", repr: "" },
-                },
-              },
-            ],
           }),
         };
       }
@@ -232,21 +208,11 @@ describe("getContractEventsFirstCursor", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
+            event_count: 0,
             block: {
               height: 200,
               tx_index: 3,
             },
-            events: [
-              {
-                event_index: 0,
-                event_type: "smart_contract_log",
-                contract_log: {
-                  contract_id: "SP456.other",
-                  topic: "print",
-                  value: { hex: "", repr: "" },
-                },
-              },
-            ],
           }),
         };
       }
@@ -255,11 +221,11 @@ describe("getContractEventsFirstCursor", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-2",
+            event_count: 0,
             block: {
               height: 201,
               tx_index: 0,
             },
-            events: [],
           }),
         };
       }
@@ -319,11 +285,11 @@ describe("getContractEventsFirstCursor", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-none",
+            event_count: 0,
             block: {
               height: 1,
               tx_index: 0,
             },
-            events: [],
           }),
         };
       }
@@ -332,21 +298,11 @@ describe("getContractEventsFirstCursor", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
+            event_count: 1,
             block: {
               height: 2,
               tx_index: 0,
             },
-            events: [
-              {
-                event_index: 0,
-                event_type: "smart_contract_log",
-                contract_log: {
-                  contract_id: contractId,
-                  topic: "print",
-                  value: { hex: "", repr: "" },
-                },
-              },
-            ],
           }),
         };
       }

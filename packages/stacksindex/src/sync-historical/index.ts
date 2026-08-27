@@ -1,7 +1,7 @@
 import { Result } from "better-result";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
-import { datasourceStacksApi, type TransactionApiResponse } from "../datasources/api/index.ts";
+import { datasourceStacksApi } from "../datasources/api/index.ts";
 import { startClock } from "../lib/timer.ts";
 import type { Logger } from "../logger/index.ts";
 
@@ -48,24 +48,6 @@ export const parseCursor = (cursor: string): BuildCursorParams => {
   };
 };
 
-function findFirstContractEvent(
-  tx: TransactionApiResponse,
-  contractId: string,
-): { event_index: number } | null {
-  if (!tx.events) {
-    return null;
-  }
-  for (const event of tx.events) {
-    if (
-      event.event_type === "smart_contract_log" &&
-      event.contract_log.contract_id === contractId
-    ) {
-      return { event_index: event.event_index };
-    }
-  }
-  return null;
-}
-
 export const createHistoricalSync = (context: HistoricalSyncContext) => ({
   /**
    * Discovers the initial cursor required to start synchronizing smart contract logs.
@@ -83,12 +65,15 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
    *    - However, the transactions endpoint allows inequality coordinate querying (`<= cursor`). Passing a cursor like
    *      `${deploymentBlock}:0:0` jumps directly to that block's transactions without validating prior existence.
    *
+   * 3. **`/extended/v3/transactions/{tx_id}` returns `event_count` instead of an inline events array**:
+   *    - In the v3 API, transaction objects provide an `event_count` number indicating how many events were produced.
+   *
    * ### Implementation Strategy
    * 1. Fetch contract metadata via `GET /extended/v1/contract/{contract_id}` (1 request) to obtain its deployment `block_height`.
    * 2. Jump straight to the deployment block by querying `getPrincipalTransactions` with `cursor: "${deploymentBlock}:0:0"`.
-   * 3. Iterate transactions from oldest to newest within the page to locate the first transaction containing a matching `smart_contract_log`.
-   * 4. If found, construct the exact 4-part event cursor (`block.height:0:block.tx_index:event_index`) for `getContractLogs`.
-   * 5. If no events are emitted on the deployment page, traverse forward in time (older -> newer) using `cursor.previous`.
+   * 3. Iterate transactions from oldest to newest within the page and inspect `event_count`.
+   * 4. When a transaction with `event_count > 0` is found, construct the initial cursor (`block.height:0:block.tx_index:0`) for `getContractLogs`.
+   * 5. If no transactions on the deployment page have events, traverse forward in time (older -> newer) using `cursor.previous`.
    */
   async getContractEventsFirstCursor(
     contractId: string,
@@ -146,13 +131,12 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
         }
 
         const fullTx = txResult.value;
-        const firstEvent = findFirstContractEvent(fullTx, contractId);
-        if (firstEvent) {
+        if (fullTx.event_count > 0) {
           const firstCursor = buildCursor({
             blockHeight: fullTx.block.height,
             microblockSequence: 0,
             txIndex: fullTx.block.tx_index,
-            eventIndex: firstEvent.event_index,
+            eventIndex: 0,
           });
           const duration = stopClock();
           context.logger.info({

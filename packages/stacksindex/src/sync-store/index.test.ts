@@ -63,7 +63,6 @@ const transaction: TransactionApiResponse = {
     hex: "0x0703",
     repr: "(ok true)",
   },
-  events: [],
   event_count: 0,
   post_conditions: [],
   execution_cost: {

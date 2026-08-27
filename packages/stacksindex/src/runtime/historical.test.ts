@@ -152,6 +152,7 @@ describe("historical runtime", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
+            event_count: 1,
             type: "contract_call",
             status: "success",
             fee_rate: "1000",
@@ -238,6 +239,7 @@ describe("historical runtime", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-2",
+            event_count: 1,
             type: "contract_call",
             status: "success",
             fee_rate: "1000",
@@ -354,6 +356,7 @@ describe("historical runtime", () => {
       contractId: string;
     }) => ({
       tx_id: txId,
+      event_count: 1,
       type: "contract_call",
       status: "success",
       fee_rate: "1000",
@@ -896,6 +899,7 @@ describe("historical runtime", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
+            event_count: 1,
             type: "contract_call",
             status: "success",
             fee_rate: "1000",
@@ -1056,6 +1060,7 @@ describe("historical runtime", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
+            event_count: 1,
             type: "contract_call",
             status: "success",
             fee_rate: "1000",
@@ -1090,7 +1095,7 @@ describe("historical runtime", () => {
         };
       }
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:1`)
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
         return {
           statusCode: 200,
@@ -1224,6 +1229,7 @@ describe("historical runtime with handlers", () => {
       contractId: string;
     }) => ({
       tx_id: txId,
+      event_count: 1,
       type: "contract_call",
       status: "success",
       fee_rate: "1000",
@@ -1533,6 +1539,7 @@ describe("historical runtime with handlers", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
+            event_count: 1,
             type: "contract_call",
             status: "success",
             fee_rate: "1000",
@@ -1783,6 +1790,7 @@ describe("historical runtime with handlers", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
+            event_count: 1,
             type: "contract_call",
             status: "success",
             fee_rate: "1000",
@@ -1998,6 +2006,7 @@ describe("historical runtime with handlers", () => {
             statusCode: 200,
             body: mockBody({
               tx_id: "tx-1",
+              event_count: 1,
               type: "contract_call",
               status: "success",
               fee_rate: "1000",

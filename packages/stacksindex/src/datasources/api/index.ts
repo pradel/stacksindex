@@ -39,7 +39,6 @@ export type TransactionApiResponse = Extract<
   paths["/extended/v3/transactions/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
   { block: unknown }
 > & {
-  events?: ContractEvent[];
   canonical?: boolean;
 };
 
