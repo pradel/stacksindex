@@ -60,6 +60,17 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -458,6 +469,17 @@ describe("historical runtime", () => {
       }
 
       // Contract A initialization
+      if (url.includes(`/extended/v1/contract/${contractA}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractA,
+            block_height: 100,
+            tx_id: "tx-a-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractA}/transactions`)) {
         return {
           statusCode: 200,
@@ -471,6 +493,17 @@ describe("historical runtime", () => {
       }
 
       // Contract B initialization
+      if (url.includes(`/extended/v1/contract/${contractB}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractB,
+            block_height: 50,
+            tx_id: "tx-b-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractB}/transactions`)) {
         return {
           statusCode: 200,
@@ -836,6 +869,17 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -903,6 +947,17 @@ describe("historical runtime", () => {
     const contractId = "SP123.token";
 
     mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -932,6 +987,17 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -1261,6 +1327,17 @@ describe("historical runtime with handlers", () => {
       }
 
       // Contract A initialization
+      if (url.includes(`/extended/v1/contract/${contractA}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractA,
+            block_height: 100,
+            tx_id: "tx-a-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractA}/transactions`)) {
         return {
           statusCode: 200,
@@ -1274,6 +1351,17 @@ describe("historical runtime with handlers", () => {
       }
 
       // Contract B initialization
+      if (url.includes(`/extended/v1/contract/${contractB}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractB,
+            block_height: 50,
+            tx_id: "tx-b-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractB}/transactions`)) {
         return {
           statusCode: 200,
@@ -1380,6 +1468,17 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -1619,6 +1718,17 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -1778,6 +1888,17 @@ describe("historical runtime with handlers", () => {
       expect(url.startsWith(customBaseUrl)).toBe(true);
       expect(init.headers["x-api-key"]).toBe(customApiKey);
 
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -1803,7 +1924,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
     expect(result.isOk()).toBe(true);
-    expect(mockRequest).toHaveBeenCalledTimes(1);
+    expect(mockRequest).toHaveBeenCalledTimes(2);
   });
 
   test("provides IndexingClient to handler with current block height tip and runtime api options", async () => {
@@ -1825,6 +1946,17 @@ describe("historical runtime with handlers", () => {
       ) => {
         const url = decodeURIComponent(rawUrl);
 
+        if (url.includes(`/extended/v1/contract/${contractId}`)) {
+          return {
+            statusCode: 200,
+            body: mockBody({
+              contract_id: contractId,
+              block_height: 1234,
+              tx_id: "tx-deploy",
+              canonical: true,
+            }),
+          };
+        }
         if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
           return {
             statusCode: 200,

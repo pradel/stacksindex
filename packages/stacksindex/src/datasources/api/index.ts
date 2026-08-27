@@ -50,6 +50,9 @@ export type BatchTransactionResult =
 export type PrincipalTransactionsResponse =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
 
+export type ContractApiResponse =
+  paths["/extended/v1/contract/{contract_id}"]["get"]["responses"]["200"]["content"]["application/json"];
+
 export type ContractLogsResponse =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
 
@@ -324,6 +327,14 @@ export const datasourceStacksApi = {
       path,
       method: "GET",
       query: { limit, cursor, ...rest },
+    });
+  },
+
+  getContract(context: DatasourceStacksApiContext, contractId: string) {
+    const path = `/extended/v1/contract/${contractId}`;
+    return this._request<ContractApiResponse, undefined>(context, {
+      path,
+      method: "GET",
     });
   },
 
