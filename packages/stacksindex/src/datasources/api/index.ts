@@ -157,7 +157,8 @@ export const datasourceStacksApi = {
           if (duration > 15000) {
             context.logger.warn({
               service: "datasourceStacksApi",
-              msg: `Slow API call ${path}`,
+              msg: `Slow API call`,
+              path,
               duration,
             });
           }
@@ -175,7 +176,8 @@ export const datasourceStacksApi = {
             duration = stopClock();
             context.logger.trace({
               service: "datasourceStacksApi",
-              msg: `${path} error response ${statusCode}`,
+              msg: `error response ${statusCode}`,
+              path,
               duration,
             });
 
@@ -194,6 +196,7 @@ export const datasourceStacksApi = {
             context.logger.trace({
               service: "datasourceStacksApi",
               msg: `${path} response`,
+              path,
               duration,
             });
 
@@ -238,6 +241,7 @@ export const datasourceStacksApi = {
       context.logger.debug({
         service: "datasourceStacksApi",
         msg: `${path} rate limited, retrying after ${result.error.retryAfter}s, attempt ${attempt + 1}`,
+        path,
       });
       await sleep(delayMs);
       return this._requestWithRetry(context, options, attempt + 1);
