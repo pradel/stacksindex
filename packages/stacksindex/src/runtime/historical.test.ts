@@ -82,71 +82,6 @@ describe("historical runtime", () => {
           }),
         };
       }
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        if (url.includes("tx_id=tx-1")) {
-          results["tx-1"] = {
-            found: true,
-            result: {
-              tx_id: "tx-1",
-              type: "contract_call",
-              status: "success",
-              fee_rate: "1000",
-              sender: { address: "SP sender", nonce: 0 },
-              sponsor: null,
-              block: {
-                hash: "block-1",
-                height: 100,
-                time: 1000,
-                tx_index: 0,
-              },
-              bitcoin_block: {
-                height: 100,
-                time: 1000,
-              },
-              events: [
-                {
-                  event_index: 0,
-                  event_type: "smart_contract_log",
-                  contract_log: {
-                    contract_id: contractId,
-                    topic: "print",
-                    value: { hex: "", repr: "" },
-                  },
-                },
-              ],
-            },
-          };
-        }
-        if (url.includes("tx_id=tx-2")) {
-          results["tx-2"] = {
-            found: true,
-            result: {
-              tx_id: "tx-2",
-              type: "contract_call",
-              status: "success",
-              fee_rate: "1000",
-              sender: { address: "SP sender", nonce: 0 },
-              sponsor: null,
-              block: {
-                hash: "block-2",
-                height: 200,
-                time: 2000,
-                tx_index: 0,
-              },
-              bitcoin_block: {
-                height: 200,
-                time: 2000,
-              },
-              events: [],
-            },
-          };
-        }
-        return {
-          statusCode: 200,
-          body: mockBody(results),
-        };
-      }
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -482,16 +417,6 @@ describe("historical runtime", () => {
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
 
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        for (const [txId, txData] of Object.entries(txMap)) {
-          if (url.includes(`tx_id=${txId}`)) {
-            results[txId] = { found: true, result: txData };
-          }
-        }
-        return { statusCode: 200, body: mockBody(results) };
-      }
-
       // Contract A initialization
       if (url.includes(`/extended/v1/contract/${contractA}`)) {
         return {
@@ -709,34 +634,6 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        if (url.includes("tx_id=tx-1")) {
-          results["tx-1"] = {
-            found: true,
-            result: {
-              tx_id: "tx-1",
-              type: "contract_call",
-              status: "success",
-              fee_rate: "1000",
-              sender: { address: "SP sender", nonce: 0 },
-              sponsor: null,
-              block: {
-                hash: "block-1",
-                height: 100,
-                time: 1000,
-                tx_index: 0,
-              },
-              bitcoin_block: {
-                height: 100,
-                time: 1000,
-              },
-              events: [],
-            },
-          };
-        }
-        return { statusCode: 200, body: mockBody(results) };
-      }
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -1077,48 +974,6 @@ describe("historical runtime", () => {
           }),
         };
       }
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        if (url.includes("tx_id=tx-1")) {
-          results["tx-1"] = {
-            found: true,
-            result: {
-              tx_id: "tx-1",
-              type: "contract_call",
-              status: "success",
-              fee_rate: "1000",
-              sender: { address: "SP sender", nonce: 0 },
-              sponsor: null,
-              block: {
-                hash: "block-1",
-                height: 100,
-                time: 1000,
-                tx_index: 0,
-              },
-              bitcoin_block: {
-                height: 100,
-                time: 1000,
-              },
-              events: [
-                {
-                  event_index: 0,
-                  event_type: "stx_asset",
-                },
-                {
-                  event_index: 1,
-                  event_type: "smart_contract_log",
-                  contract_log: {
-                    contract_id: contractId,
-                    topic: "print",
-                    value: { hex: "0x01", repr: "123" },
-                  },
-                },
-              ],
-            },
-          };
-        }
-        return { statusCode: 200, body: mockBody(results) };
-      }
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -1411,16 +1266,6 @@ describe("historical runtime with handlers", () => {
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
 
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        for (const [txId, txData] of Object.entries(txMap)) {
-          if (url.includes(`tx_id=${txId}`)) {
-            results[txId] = { found: true, result: txData };
-          }
-        }
-        return { statusCode: 200, body: mockBody(results) };
-      }
-
       // Contract A initialization
       if (url.includes(`/extended/v1/contract/${contractA}`)) {
         return {
@@ -1606,44 +1451,6 @@ describe("historical runtime with handlers", () => {
             results: [{ transaction: { tx_id: "tx-1" } }],
           }),
         };
-      }
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        if (url.includes("tx_id=tx-1")) {
-          results["tx-1"] = {
-            found: true,
-            result: {
-              tx_id: "tx-1",
-              type: "contract_call",
-              status: "success",
-              fee_rate: "1000",
-              sender: { address: "SP sender", nonce: 0 },
-              sponsor: null,
-              block: {
-                hash: "block-1",
-                height: 100,
-                time: 1000,
-                tx_index: 0,
-              },
-              bitcoin_block: {
-                height: 100,
-                time: 1000,
-              },
-              events: [
-                {
-                  event_index: 0,
-                  event_type: "smart_contract_log",
-                  contract_log: {
-                    contract_id: contractId,
-                    topic: "print",
-                    value: { hex: "", repr: "" },
-                  },
-                },
-              ],
-            },
-          };
-        }
-        return { statusCode: 200, body: mockBody(results) };
       }
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
@@ -1879,44 +1686,6 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        if (url.includes("tx_id=tx-1")) {
-          results["tx-1"] = {
-            found: true,
-            result: {
-              tx_id: "tx-1",
-              type: "contract_call",
-              status: "success",
-              fee_rate: "1000",
-              sender: { address: "SP sender", nonce: 0 },
-              sponsor: null,
-              block: {
-                hash: "block-1",
-                height: 100,
-                time: 1000,
-                tx_index: 0,
-              },
-              bitcoin_block: {
-                height: 100,
-                time: 1000,
-              },
-              events: [
-                {
-                  event_index: 0,
-                  event_type: "smart_contract_log",
-                  contract_log: {
-                    contract_id: contractId,
-                    topic: "print",
-                    value: { hex: "", repr: "" },
-                  },
-                },
-              ],
-            },
-          };
-        }
-        return { statusCode: 200, body: mockBody(results) };
-      }
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -2126,31 +1895,6 @@ describe("historical runtime with handlers", () => {
               total: 1,
               cursor: { next: null, previous: null, current: "curr" },
               results: [{ transaction: { tx_id: "tx-1" } }],
-            }),
-          };
-        }
-        if (url.includes("/extended/v1/tx/multiple")) {
-          return {
-            statusCode: 200,
-            body: mockBody({
-              "tx-1": {
-                found: true,
-                result: {
-                  tx_id: "tx-1",
-                  type: "contract_call",
-                  status: "success",
-                  fee_rate: "1000",
-                  sender: { address: "SP sender", nonce: 0 },
-                  sponsor: null,
-                  block: {
-                    hash: "block-1",
-                    height: 1234,
-                    time: 1000,
-                    tx_index: 0,
-                  },
-                  events: [],
-                },
-              },
             }),
           };
         }

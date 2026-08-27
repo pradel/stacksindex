@@ -30,8 +30,6 @@ export type GetContractLogsQuery =
 export type GetTransactionQuery =
   paths["/extended/v3/transactions/{tx_id}"]["get"]["parameters"]["query"];
 
-export type GetTransactionsQuery = paths["/extended/v1/tx/multiple"]["get"]["parameters"]["query"];
-
 export type GetPrincipalTransactionsQuery =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["parameters"]["query"];
 
@@ -49,10 +47,6 @@ export type TransactionApiResponse = Extract<
 > & {
   canonical?: boolean;
 };
-
-export type BatchTransactionResult =
-  | { found: true; result: TransactionApiResponse }
-  | { found: false; tx_id?: string; result?: { tx_id: string } };
 
 export type PrincipalTransactionsResponse =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -306,35 +300,25 @@ export const datasourceStacksApi = {
   async getTransactions(
     context: DatasourceStacksApiContext,
     txIds: string[],
-    options: GetTransactionsQuery = { tx_id: txIds },
+    options: GetTransactionQuery = {},
   ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
     if (txIds.length === 0) {
       return Result.ok([]);
     }
 
-    const mapResult = await this._request<
-      Record<string, BatchTransactionResult>,
-      GetTransactionsQuery
-    >(context, {
-      path: "/extended/v1/tx/multiple",
-      method: "GET",
-      query: options,
-    });
-    if (mapResult.isErr()) {
-      return Result.err(mapResult.error);
+    const results = await Promise.all(
+      txIds.map((txId) => this.getTransaction(context, txId, options)),
+    );
+
+    const transactions: TransactionApiResponse[] = [];
+    for (const res of results) {
+      if (res.isErr()) {
+        return Result.err(res.error);
+      }
+      transactions.push(res.value);
     }
 
-    const results = txIds
-      .map((txId) => {
-        const entry = mapResult.value[txId];
-        if (entry.found) {
-          return entry.result;
-        }
-        return null;
-      })
-      .filter((entry): entry is TransactionApiResponse => entry !== null);
-
-    return Result.ok(results);
+    return Result.ok(transactions);
   },
 
   getPrincipalTransactions(
