@@ -109,12 +109,34 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 2,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              { event_index: 0, type: "stx_asset" },
+              {
+                event_index: 2,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
-            event_count: 1,
+            event_count: 2,
             block: {
               height: 100,
               tx_index: 5,
@@ -129,7 +151,7 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("100:0:5:0");
+    expect((result as any).value).toBe("100:0:5:2");
   });
 
   test("skips transactions with no matching contract events", async () => {
@@ -156,6 +178,27 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: "SP456.other-contract",
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -169,6 +212,19 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+      if (url.includes("/extended/v3/transactions/tx-2")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-2",
+            event_count: 0,
+            block: {
+              height: 201,
+              tx_index: 0,
+            },
+          }),
+        };
+      }
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -176,7 +232,7 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("200:0:3:0");
+    expect((result as any).value).toBeNull();
   });
 
   test("returns null when no transactions contain contract events", async () => {
@@ -290,6 +346,27 @@ describe("getContractEventsFirstCursor", () => {
               height: 1,
               tx_index: 0,
             },
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
           }),
         };
       }

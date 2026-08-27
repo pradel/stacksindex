@@ -147,6 +147,27 @@ describe("historical runtime", () => {
           body: mockBody(results),
         };
       }
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -520,6 +541,28 @@ describe("historical runtime", () => {
       }
 
       for (const [txId, txData] of Object.entries(txMap)) {
+        if (url.includes(`/extended/v3/transactions/${txId}/events`)) {
+          const events = (txData.events ?? []) as {
+            event_index: number;
+            event_type?: string;
+            contract_log?: unknown;
+          }[];
+          return {
+            statusCode: 200,
+            body: mockBody({
+              total: events.length,
+              limit: 50,
+              cursor: { next: null, previous: null, current: "0" },
+              results: events.map((event) => ({
+                event_index: event.event_index,
+                type: event.event_type === "smart_contract_log" ? "contract_log" : event.event_type,
+                ...(event.event_type === "smart_contract_log"
+                  ? { contract_log: event.contract_log }
+                  : {}),
+              })),
+            }),
+          };
+        }
         if (url.includes(`/extended/v3/transactions/${txId}`)) {
           return { statusCode: 200, body: mockBody(txData) };
         }
@@ -894,6 +937,27 @@ describe("historical runtime", () => {
           }),
         };
       }
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -1055,12 +1119,37 @@ describe("historical runtime", () => {
         }
         return { statusCode: 200, body: mockBody(results) };
       }
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 2,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "stx_asset",
+              },
+              {
+                event_index: 1,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "0x01", repr: "123" },
+                },
+              },
+            ],
+          }),
+        };
+      }
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
-            event_count: 1,
+            event_count: 2,
             type: "contract_call",
             status: "success",
             fee_rate: "1000",
@@ -1095,7 +1184,7 @@ describe("historical runtime", () => {
         };
       }
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:1`)
       ) {
         return {
           statusCode: 200,
@@ -1381,6 +1470,28 @@ describe("historical runtime with handlers", () => {
       }
 
       for (const [txId, txData] of Object.entries(txMap)) {
+        if (url.includes(`/extended/v3/transactions/${txId}/events`)) {
+          const events = (txData.events ?? []) as {
+            event_index: number;
+            event_type?: string;
+            contract_log?: unknown;
+          }[];
+          return {
+            statusCode: 200,
+            body: mockBody({
+              total: events.length,
+              limit: 50,
+              cursor: { next: null, previous: null, current: "0" },
+              results: events.map((event) => ({
+                event_index: event.event_index,
+                type: event.event_type === "smart_contract_log" ? "contract_log" : event.event_type,
+                ...(event.event_type === "smart_contract_log"
+                  ? { contract_log: event.contract_log }
+                  : {}),
+              })),
+            }),
+          };
+        }
         if (url.includes(`/extended/v3/transactions/${txId}`)) {
           return { statusCode: 200, body: mockBody(txData) };
         }
@@ -1533,6 +1644,27 @@ describe("historical runtime with handlers", () => {
           };
         }
         return { statusCode: 200, body: mockBody(results) };
+      }
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
       }
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
@@ -1785,6 +1917,27 @@ describe("historical runtime with handlers", () => {
         }
         return { statusCode: 200, body: mockBody(results) };
       }
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -1998,6 +2151,27 @@ describe("historical runtime with handlers", () => {
                   events: [],
                 },
               },
+            }),
+          };
+        }
+        if (url.includes("/extended/v3/transactions/tx-1/events")) {
+          return {
+            statusCode: 200,
+            body: mockBody({
+              total: 1,
+              limit: 50,
+              cursor: { next: null, previous: null, current: "0" },
+              results: [
+                {
+                  event_index: 0,
+                  type: "contract_log",
+                  contract_log: {
+                    contract_id: contractId,
+                    topic: "print",
+                    value: { hex: "", repr: "" },
+                  },
+                },
+              ],
             }),
           };
         }

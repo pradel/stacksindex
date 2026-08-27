@@ -380,6 +380,39 @@ describe("aPI DataSource", () => {
     });
   });
 
+  describe("getTransactionEvents", () => {
+    test("returns transaction events on 200", async () => {
+      const txId = "0xtx123";
+      const mockResponse = {
+        limit: 50,
+        total: 1,
+        cursor: { next: null, previous: null, current: "0" },
+        results: [
+          {
+            event_index: 0,
+            type: "contract_log",
+            contract_log: {
+              contract_id: "SP123.token",
+              topic: "print",
+              value: { hex: "0x01", repr: "123" },
+            },
+          },
+        ],
+      };
+
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe(`https://api.hiro.so/extended/v3/transactions/${txId}/events?limit=50`);
+        return {
+          statusCode: 200,
+          body: mockBody(mockResponse),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransactionEvents(context, txId, { limit: 50 });
+      expect(result).toStrictEqual(Result.ok(mockResponse));
+    });
+  });
+
   describe("getPrincipalTransactions", () => {
     test("returns principal transactions on 200 with cursor", async () => {
       const principal = "SP123.token";

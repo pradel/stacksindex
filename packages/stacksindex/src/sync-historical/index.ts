@@ -48,6 +48,34 @@ export const parseCursor = (cursor: string): BuildCursorParams => {
   };
 };
 
+async function findFirstMatchingContractEvent(
+  context: HistoricalSyncContext,
+  txId: string,
+  contractId: string,
+): Promise<Result<{ event_index: number } | null, StacksApiError>> {
+  let eventCursor: string | null = "initial";
+  while (eventCursor) {
+    // oxlint-disable-next-line no-await-in-loop
+    const eventsResult = await datasourceStacksApi.getTransactionEvents(context, txId, {
+      limit: 50,
+      cursor: eventCursor === "initial" ? undefined : eventCursor,
+    });
+    if (eventsResult.isErr()) {
+      return Result.err(eventsResult.error);
+    }
+    const { results, cursor } = eventsResult.value;
+    for (const event of results) {
+      if (event.type === "contract_log" && "contract_log" in event) {
+        if (event.contract_log.contract_id === contractId) {
+          return Result.ok({ event_index: event.event_index });
+        }
+      }
+    }
+    eventCursor = cursor.next;
+  }
+  return Result.ok(null);
+}
+
 export const createHistoricalSync = (context: HistoricalSyncContext) => ({
   /**
    * Discovers the initial cursor required to start synchronizing smart contract logs.
@@ -65,15 +93,21 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
    *    - However, the transactions endpoint allows inequality coordinate querying (`<= cursor`). Passing a cursor like
    *      `${deploymentBlock}:0:0` jumps directly to that block's transactions without validating prior existence.
    *
-   * 3. **`/extended/v3/transactions/{tx_id}` returns `event_count` instead of an inline events array**:
-   *    - In the v3 API, transaction objects provide an `event_count` number indicating how many events were produced.
+   * 3. **Transactions may contain non-log events or logs for other contracts**:
+   *    - In v3, transaction objects return `event_count` rather than an inline `events` array.
+   *    - A transaction's events may be token transfers (`ft_asset`, `stx_asset`), locks, or print logs for other contracts
+   *      in a multi-contract transaction.
+   *    - Blindly using `event_index: 0` can result in a 404 from `/logs` if index 0 is not a `contract_log` for that contract.
    *
    * ### Implementation Strategy
    * 1. Fetch contract metadata via `GET /extended/v1/contract/{contract_id}` (1 request) to obtain its deployment `block_height`.
    * 2. Jump straight to the deployment block by querying `getPrincipalTransactions` with `cursor: "${deploymentBlock}:0:0"`.
-   * 3. Iterate transactions from oldest to newest within the page and inspect `event_count`.
-   * 4. When a transaction with `event_count > 0` is found, construct the initial cursor (`block.height:0:block.tx_index:0`) for `getContractLogs`.
-   * 5. If no transactions on the deployment page have events, traverse forward in time (older -> newer) using `cursor.previous`.
+   * 3. Iterate transactions from oldest to newest within the page:
+   *    - If `event_count === 0`, skip immediately (0 extra requests).
+   *    - If `event_count > 0`, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
+   *      matching `contract_id`.
+   * 4. When found, construct the exact 4-part cursor (`block.height:0:block.tx_index:event_index`) for `getContractLogs`.
+   * 5. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
    */
   async getContractEventsFirstCursor(
     contractId: string,
@@ -132,20 +166,33 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
 
         const fullTx = txResult.value;
         if (fullTx.event_count > 0) {
-          const firstCursor = buildCursor({
-            blockHeight: fullTx.block.height,
-            microblockSequence: 0,
-            txIndex: fullTx.block.tx_index,
-            eventIndex: 0,
-          });
-          const duration = stopClock();
-          context.logger.info({
-            service: "getContractEventsFirstCursor",
-            msg: `Found first cursor for ${contractId} at block ${fullTx.block.height}`,
-            block: fullTx.block.height,
-            duration,
-          });
-          return Result.ok(firstCursor);
+          // oxlint-disable-next-line no-await-in-loop
+          const matchingEventResult = await findFirstMatchingContractEvent(
+            context,
+            fullTx.tx_id,
+            contractId,
+          );
+          if (matchingEventResult.isErr()) {
+            return Result.err(matchingEventResult.error);
+          }
+
+          const matchingEvent = matchingEventResult.value;
+          if (matchingEvent) {
+            const firstCursor = buildCursor({
+              blockHeight: fullTx.block.height,
+              microblockSequence: 0,
+              txIndex: fullTx.block.tx_index,
+              eventIndex: matchingEvent.event_index,
+            });
+            const duration = stopClock();
+            context.logger.info({
+              service: "getContractEventsFirstCursor",
+              msg: `Found first cursor for ${contractId} at block ${fullTx.block.height}`,
+              block: fullTx.block.height,
+              duration,
+            });
+            return Result.ok(firstCursor);
+          }
         }
       }
 

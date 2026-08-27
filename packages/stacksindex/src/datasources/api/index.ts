@@ -35,6 +35,14 @@ export type GetTransactionsQuery = paths["/extended/v1/tx/multiple"]["get"]["par
 export type GetPrincipalTransactionsQuery =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["parameters"]["query"];
 
+export type GetTransactionEventsQuery =
+  paths["/extended/v3/transactions/{tx_id}/events"]["get"]["parameters"]["query"];
+
+export type TransactionEventsResponse =
+  paths["/extended/v3/transactions/{tx_id}/events"]["get"]["responses"]["200"]["content"]["application/json"];
+
+export type TransactionEvent = TransactionEventsResponse["results"][number];
+
 export type TransactionApiResponse = Extract<
   paths["/extended/v3/transactions/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
   { block: unknown }
@@ -278,6 +286,20 @@ export const datasourceStacksApi = {
       path: `/extended/v3/transactions/${txId}`,
       method: "GET",
       query: { include: include && include.length > 0 ? include.join(",") : null },
+    });
+  },
+
+  getTransactionEvents(
+    context: DatasourceStacksApiContext,
+    txId: string,
+    options: GetTransactionEventsQuery = {},
+  ) {
+    const { limit = 50, cursor, ...rest } = options;
+    const path = `/extended/v3/transactions/${txId}/events`;
+    return this._request<TransactionEventsResponse, GetTransactionEventsQuery>(context, {
+      path,
+      method: "GET",
+      query: { limit, cursor, ...rest },
     });
   },
 
