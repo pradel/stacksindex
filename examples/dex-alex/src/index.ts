@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import process from "node:process";
 
 import { PGlite } from "@electric-sql/pglite";
@@ -19,6 +20,8 @@ const CHAIN_ID = 1n;
 const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
 
 const apiKey = process.env.HIRO_API_KEY;
+
+fs.mkdirSync("./data", { recursive: true });
 
 const appClient = new PGlite("./data/app.db");
 const appDb = drizzle({ client: appClient });

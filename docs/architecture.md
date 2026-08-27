@@ -133,8 +133,8 @@ Key differences from EVM:
    ┌──────────────────────────────────────────────────────────┐
    │  For each event:                                         │
    │  - Extract tx_id                                         │
-   │  - Fetch transaction: GET /extended/v1/tx/{tx_id}        │
-   │  - Extract block_hash from transaction (reorg-proof)      │
+   │  - Fetch transaction: GET /extended/v3/transactions/{tx_id}│
+   │  - Extract block.hash from transaction (reorg-proof)     │
    │  - Fetch block: GET /extended/v2/blocks/{block_hash}     │
    └────────────────────────┬─────────────────────────────────┘
                              │

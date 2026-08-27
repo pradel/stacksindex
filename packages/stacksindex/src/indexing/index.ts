@@ -30,6 +30,7 @@ export const createIndexing = (context: IndexingContext) => ({
         contractId: event.contract_log.contract_id,
         eventType: event.event_type,
         blockHeight: event.block_height,
+        txIndex: event.tx_index,
         duration,
       });
       return Result.ok(undefined);
@@ -61,6 +62,7 @@ export const createIndexing = (context: IndexingContext) => ({
         contractId: event.contract_log.contract_id,
         eventType: event.event_type,
         blockHeight: event.block_height,
+        txIndex: event.tx_index,
         duration,
       });
     } catch (err) {
@@ -70,6 +72,7 @@ export const createIndexing = (context: IndexingContext) => ({
         contractId: event.contract_log.contract_id,
         eventType: event.event_type,
         blockHeight: event.block_height,
+        txIndex: event.tx_index,
         error: err,
         duration,
       });
@@ -87,6 +90,7 @@ export const createIndexing = (context: IndexingContext) => ({
       contractId: event.contract_log.contract_id,
       eventType: event.event_type,
       blockHeight: event.block_height,
+      txIndex: event.tx_index,
       duration,
     });
 

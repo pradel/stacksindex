@@ -27,45 +27,42 @@ export type GetBlockTransactionsQuery =
 export type GetContractLogsQuery =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["parameters"]["query"];
 
-export type GetTransactionQuery = paths["/extended/v1/tx/{tx_id}"]["get"]["parameters"]["query"];
+export type GetTransactionQuery =
+  paths["/extended/v3/transactions/{tx_id}"]["get"]["parameters"]["query"];
 
-export type GetTransactionsQuery = paths["/extended/v1/tx/multiple"]["get"]["parameters"]["query"];
+export type GetPrincipalTransactionsQuery =
+  paths["/extended/v3/principals/{principal}/transactions"]["get"]["parameters"]["query"];
 
-export type GetAddressTransactionsQuery =
-  paths["/extended/v1/address/{principal}/transactions"]["get"]["parameters"]["query"];
+export type GetTransactionEventsQuery =
+  paths["/extended/v3/transactions/{tx_id}/events"]["get"]["parameters"]["query"];
+
+export type TransactionEventsResponse =
+  paths["/extended/v3/transactions/{tx_id}/events"]["get"]["responses"]["200"]["content"]["application/json"];
+
+export type TransactionEvent = TransactionEventsResponse["results"][number];
 
 export type TransactionApiResponse = Extract<
-  paths["/extended/v1/tx/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
-  { block_height: number }
->;
-
-export interface BatchTransactionsApiResponse {
-  [key: string]:
-    | {
-        found: true;
-        result: TransactionApiResponse;
-      }
-    | {
-        found: false;
-        result: {
-          tx_id: string;
-        };
-      };
-}
-
-export type BatchTransactionResult = BatchTransactionsApiResponse[string];
-
-export type AddressTransactionsResponse = Omit<
-  paths["/extended/v1/address/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"],
-  "results"
+  paths["/extended/v3/transactions/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
+  { block: unknown }
 > & {
-  results: TransactionApiResponse[];
+  canonical?: boolean;
 };
+
+export type PrincipalTransactionsResponse =
+  paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
+
+export type ContractApiResponse =
+  paths["/extended/v1/contract/{contract_id}"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type ContractLogsResponse =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type ContractEvent = TransactionApiResponse["events"][number];
+type MinedV1Transaction = Extract<
+  paths["/extended/v1/tx/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
+  { block_height: number }
+>;
+
+export type ContractEvent = MinedV1Transaction["events"][number];
 
 export type SmartContractLogEvent = Extract<ContractEvent, { event_type: "smart_contract_log" }>;
 export type StxLockEvent = Extract<ContractEvent, { event_type: "stx_lock" }>;
@@ -278,58 +275,47 @@ export const datasourceStacksApi = {
     txId: string,
     options: GetTransactionQuery = {},
   ) {
-    return this._request<TransactionApiResponse, GetTransactionQuery>(context, {
-      path: `/extended/v1/tx/${txId}`,
+    const { include } = options;
+    return this._request<TransactionApiResponse, { include?: string | null }>(context, {
+      path: `/extended/v3/transactions/${txId}`,
       method: "GET",
-      query: options,
+      query: { include: include && include.length > 0 ? include.join(",") : null },
     });
   },
 
-  async getTransactions(
+  getTransactionEvents(
     context: DatasourceStacksApiContext,
-    txIds: string[],
-    options: GetTransactionsQuery = { tx_id: txIds },
-  ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
-    if (txIds.length === 0) {
-      return Result.ok([]);
-    }
-
-    const mapResult = await this._request<
-      Record<string, BatchTransactionResult>,
-      GetTransactionsQuery
-    >(context, {
-      path: "/extended/v1/tx/multiple",
-      method: "GET",
-      query: options,
-    });
-    if (mapResult.isErr()) {
-      return Result.err(mapResult.error);
-    }
-
-    const results = txIds
-      .map((txId) => {
-        const entry = mapResult.value[txId];
-        if (entry.found) {
-          return entry.result;
-        }
-        return null;
-      })
-      .filter((entry) => entry !== null);
-
-    return Result.ok(results);
-  },
-
-  getAddressTransactions(
-    context: DatasourceStacksApiContext,
-    address: string,
-    options: GetAddressTransactionsQuery = {},
+    txId: string,
+    options: GetTransactionEventsQuery = {},
   ) {
-    const { limit = 50, offset = 0, ...rest } = options;
-    const path = `/extended/v1/address/${address}/transactions`;
-    return this._request<AddressTransactionsResponse, GetAddressTransactionsQuery>(context, {
+    const { limit = 50, cursor, ...rest } = options;
+    const path = `/extended/v3/transactions/${txId}/events`;
+    return this._request<TransactionEventsResponse, GetTransactionEventsQuery>(context, {
       path,
       method: "GET",
-      query: { limit, offset, ...rest },
+      query: { limit, cursor, ...rest },
+    });
+  },
+
+  getPrincipalTransactions(
+    context: DatasourceStacksApiContext,
+    principal: string,
+    options: GetPrincipalTransactionsQuery = {},
+  ) {
+    const { limit = 50, cursor, ...rest } = options;
+    const path = `/extended/v3/principals/${principal}/transactions`;
+    return this._request<PrincipalTransactionsResponse, GetPrincipalTransactionsQuery>(context, {
+      path,
+      method: "GET",
+      query: { limit, cursor, ...rest },
+    });
+  },
+
+  getContract(context: DatasourceStacksApiContext, contractId: string) {
+    const path = `/extended/v1/contract/${contractId}`;
+    return this._request<ContractApiResponse, undefined>(context, {
+      path,
+      method: "GET",
     });
   },
 

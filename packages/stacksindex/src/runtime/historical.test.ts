@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createLogger } from "../logger/index.ts";
-import { parseCursor } from "../sync-historical/index.ts";
+import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
   blocksTable,
@@ -60,101 +60,70 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
-            limit: 1,
-            offset: 0,
-            total: 1,
-            results: [{ tx_id: "tx-1", event_count: 1 }],
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
           }),
         };
       }
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
           body: mockBody({
             limit: 50,
-            offset: 0,
             total: 1,
-            results: [{ tx_id: "tx-1", event_count: 1 }],
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [{ transaction: { tx_id: "tx-1" } }],
           }),
         };
       }
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        if (url.includes("tx_id=tx-1")) {
-          results["tx-1"] = {
-            found: true,
-            result: {
-              tx_id: "tx-1",
-              block_height: 100,
-              block_hash: "block-1",
-              microblock_sequence: 0,
-              tx_index: 0,
-              sender_address: "SP sender",
-              fee_rate: "1000",
-              nonce: 0,
-              tx_status: "success",
-              tx_type: "contract_call",
-              canonical: true,
-              event_count: 1,
-              events: [
-                {
-                  event_index: 0,
-                  event_type: "smart_contract_log",
-                  contract_log: {
-                    contract_id: contractId,
-                    topic: "print",
-                    value: { hex: "", repr: "" },
-                  },
-                },
-              ],
-            },
-          };
-        }
-        if (url.includes("tx_id=tx-2")) {
-          results["tx-2"] = {
-            found: true,
-            result: {
-              tx_id: "tx-2",
-              block_height: 200,
-              block_hash: "block-2",
-              microblock_sequence: 0,
-              tx_index: 0,
-              sender_address: "SP sender",
-              fee_rate: "1000",
-              nonce: 0,
-              tx_status: "success",
-              tx_type: "contract_call",
-              canonical: true,
-              event_count: 1,
-              events: [],
-            },
-          };
-        }
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
-          body: mockBody(results),
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
         };
       }
-      if (url.includes("/extended/v1/tx/tx-1")) {
+      if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
-            block_height: 100,
-            block_hash: "block-1",
-            microblock_sequence: 0,
-            tx_index: 0,
-            sender_address: "SP sender",
-            fee_rate: "1000",
-            nonce: 0,
-            tx_status: "success",
-            tx_type: "contract_call",
-            canonical: true,
             event_count: 1,
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP sender", nonce: 0 },
+            sponsor: null,
+            block: {
+              hash: "block-1",
+              height: 100,
+              time: 1000,
+              tx_index: 0,
+            },
+            bitcoin_block: {
+              height: 100,
+              time: 1000,
+            },
             events: [
               {
                 event_index: 0,
@@ -221,22 +190,27 @@ describe("historical runtime", () => {
           }),
         };
       }
-      if (url.includes("/extended/v1/tx/tx-2")) {
+      if (url.includes("/extended/v3/transactions/tx-2")) {
         return {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-2",
-            block_height: 200,
-            block_hash: "block-2",
-            microblock_sequence: 0,
-            tx_index: 0,
-            sender_address: "SP sender",
-            fee_rate: "1000",
-            nonce: 0,
-            tx_status: "success",
-            tx_type: "contract_call",
-            canonical: true,
             event_count: 1,
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP sender", nonce: 0 },
+            sponsor: null,
+            block: {
+              hash: "block-2",
+              height: 200,
+              time: 2000,
+              tx_index: 0,
+            },
+            bitcoin_block: {
+              height: 200,
+              time: 2000,
+            },
             events: [],
           }),
         };
@@ -338,17 +312,22 @@ describe("historical runtime", () => {
       contractId: string;
     }) => ({
       tx_id: txId,
-      block_height: blockHeight,
-      block_hash: blockHash,
-      microblock_sequence: 0,
-      tx_index: 0,
-      sender_address: "SP sender",
-      fee_rate: "1000",
-      nonce: 0,
-      tx_status: "success",
-      tx_type: "contract_call",
-      canonical: true,
       event_count: 1,
+      type: "contract_call",
+      status: "success",
+      fee_rate: "1000",
+      sender: { address: "SP sender", nonce: 0 },
+      sponsor: null,
+      block: {
+        hash: blockHash,
+        height: blockHeight,
+        time: blockHeight * 10,
+        tx_index: 0,
+      },
+      bitcoin_block: {
+        height: blockHeight,
+        time: blockHeight * 10,
+      },
       events: [
         {
           event_index: 0,
@@ -438,66 +417,78 @@ describe("historical runtime", () => {
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
 
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        for (const [txId, txData] of Object.entries(txMap)) {
-          if (url.includes(`tx_id=${txId}`)) {
-            results[txId] = { found: true, result: txData };
-          }
-        }
-        return { statusCode: 200, body: mockBody(results) };
-      }
-
       // Contract A initialization
-      if (url.includes(`/extended/v1/address/${contractA}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractA}`)) {
         return {
           statusCode: 200,
           body: mockBody({
-            limit: 1,
-            offset: 0,
-            total: 1,
-            results: [{ tx_id: "tx-a-init", event_count: 1 }],
+            contract_id: contractA,
+            block_height: 100,
+            tx_id: "tx-a-deploy",
+            canonical: true,
           }),
         };
       }
-      if (url.includes(`/extended/v1/address/${contractA}/transactions?limit=50`)) {
+      if (url.includes(`/extended/v3/principals/${contractA}/transactions`)) {
         return {
           statusCode: 200,
           body: mockBody({
             limit: 50,
-            offset: 0,
             total: 1,
-            results: [{ tx_id: "tx-a-init", event_count: 1 }],
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [{ transaction: { tx_id: "tx-a-init" } }],
           }),
         };
       }
 
       // Contract B initialization
-      if (url.includes(`/extended/v1/address/${contractB}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractB}`)) {
         return {
           statusCode: 200,
           body: mockBody({
-            limit: 1,
-            offset: 0,
-            total: 1,
-            results: [{ tx_id: "tx-b-init", event_count: 1 }],
+            contract_id: contractB,
+            block_height: 50,
+            tx_id: "tx-b-deploy",
+            canonical: true,
           }),
         };
       }
-      if (url.includes(`/extended/v1/address/${contractB}/transactions?limit=50`)) {
+      if (url.includes(`/extended/v3/principals/${contractB}/transactions`)) {
         return {
           statusCode: 200,
           body: mockBody({
             limit: 50,
-            offset: 0,
             total: 1,
-            results: [{ tx_id: "tx-b-init", event_count: 1 }],
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [{ transaction: { tx_id: "tx-b-init" } }],
           }),
         };
       }
 
       for (const [txId, txData] of Object.entries(txMap)) {
-        if (url.includes(`/extended/v1/tx/${txId}`)) {
+        if (url.includes(`/extended/v3/transactions/${txId}/events`)) {
+          const events = (txData.events ?? []) as {
+            event_index: number;
+            event_type?: string;
+            contract_log?: unknown;
+          }[];
+          return {
+            statusCode: 200,
+            body: mockBody({
+              total: events.length,
+              limit: 50,
+              cursor: { next: null, previous: null, current: "0" },
+              results: events.map((event) => ({
+                event_index: event.event_index,
+                type: event.event_type === "smart_contract_log" ? "contract_log" : event.event_type,
+                ...(event.event_type === "smart_contract_log"
+                  ? { contract_log: event.contract_log }
+                  : {}),
+              })),
+            }),
+          };
+        }
+        if (url.includes(`/extended/v3/transactions/${txId}`)) {
           return { statusCode: 200, body: mockBody(txData) };
         }
       }
@@ -643,30 +634,6 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        if (url.includes("tx_id=tx-1")) {
-          results["tx-1"] = {
-            found: true,
-            result: {
-              tx_id: "tx-1",
-              block_height: 100,
-              block_hash: "block-1",
-              microblock_sequence: 0,
-              tx_index: 0,
-              sender_address: "SP sender",
-              fee_rate: "1000",
-              nonce: 0,
-              tx_status: "success",
-              tx_type: "contract_call",
-              canonical: true,
-              event_count: 1,
-              events: [],
-            },
-          };
-        }
-        return { statusCode: 200, body: mockBody(results) };
-      }
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -693,22 +660,26 @@ describe("historical runtime", () => {
           }),
         };
       }
-      if (url.includes("/extended/v1/tx/tx-1")) {
+      if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
-            block_height: 100,
-            block_hash: "block-1",
-            microblock_sequence: 0,
-            tx_index: 0,
-            sender_address: "SP sender",
+            type: "contract_call",
+            status: "success",
             fee_rate: "1000",
-            nonce: 0,
-            tx_status: "success",
-            tx_type: "contract_call",
-            canonical: true,
-            event_count: 1,
+            sender: { address: "SP sender", nonce: 0 },
+            sponsor: null,
+            block: {
+              hash: "block-1",
+              height: 100,
+              time: 1000,
+              tx_index: 0,
+            },
+            bitcoin_block: {
+              height: 100,
+              time: 1000,
+            },
             events: [],
           }),
         };
@@ -748,9 +719,9 @@ describe("historical runtime", () => {
 
     expect(result.isOk()).toBe(true);
 
-    // Should not have called getAddressTransactions (first cursor discovery)
+    // Should not have called getPrincipalTransactions (first cursor discovery)
     const addressTxCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/address/"),
+      (call[0] as string).includes("/principals/"),
     );
     expect(addressTxCalls).toHaveLength(0);
 
@@ -827,7 +798,7 @@ describe("historical runtime", () => {
 
     // Verify no getTransaction or getBlock calls were made
     const txCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/extended/v1/tx/"),
+      (call[0] as string).includes("/extended/v3/transactions/"),
     );
     const blockCalls = mockRequest.mock.calls.filter((call: any) =>
       (call[0] as string).includes("/extended/v2/blocks/"),
@@ -841,44 +812,70 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
-            limit: 1,
-            offset: 0,
-            total: 1,
-            results: [{ tx_id: "tx-1", event_count: 1 }],
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
           }),
         };
       }
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
           body: mockBody({
             limit: 50,
-            offset: 0,
             total: 1,
-            results: [{ tx_id: "tx-1", event_count: 1 }],
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [{ transaction: { tx_id: "tx-1" } }],
           }),
         };
       }
-      if (url.includes("/extended/v1/tx/tx-1")) {
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
-            block_height: 100,
-            block_hash: "block-1",
-            microblock_sequence: 0,
-            tx_index: 0,
-            sender_address: "SP sender",
-            fee_rate: "1000",
-            nonce: 0,
-            tx_status: "success",
-            tx_type: "contract_call",
-            canonical: true,
             event_count: 1,
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP sender", nonce: 0 },
+            sponsor: null,
+            block: {
+              hash: "block-1",
+              height: 100,
+              time: 1000,
+              tx_index: 0,
+            },
+            bitcoin_block: {
+              height: 100,
+              time: 1000,
+            },
             events: [
               {
                 event_index: 0,
@@ -915,10 +912,26 @@ describe("historical runtime", () => {
     const contractId = "SP123.token";
 
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
         return {
           statusCode: 200,
-          body: mockBody({ limit: 1, offset: 0, total: 0, results: [] }),
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 0,
+            cursor: { next: null, previous: null, current: "" },
+            results: [],
+          }),
         };
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -939,82 +952,74 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
-            limit: 1,
-            offset: 0,
-            total: 1,
-            results: [{ tx_id: "tx-1", event_count: 2 }],
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
           }),
         };
       }
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
           body: mockBody({
             limit: 50,
-            offset: 0,
             total: 1,
-            results: [{ tx_id: "tx-1", event_count: 2 }],
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [{ transaction: { tx_id: "tx-1" } }],
           }),
         };
       }
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        if (url.includes("tx_id=tx-1")) {
-          results["tx-1"] = {
-            found: true,
-            result: {
-              tx_id: "tx-1",
-              block_height: 100,
-              block_hash: "block-1",
-              microblock_sequence: 0,
-              tx_index: 0,
-              sender_address: "SP sender",
-              fee_rate: "1000",
-              nonce: 0,
-              tx_status: "success",
-              tx_type: "contract_call",
-              canonical: true,
-              event_count: 2,
-              events: [
-                {
-                  event_index: 0,
-                  event_type: "stx_asset",
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 2,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "stx_asset",
+              },
+              {
+                event_index: 1,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "0x01", repr: "123" },
                 },
-                {
-                  event_index: 1,
-                  event_type: "smart_contract_log",
-                  contract_log: {
-                    contract_id: contractId,
-                    topic: "print",
-                    value: { hex: "0x01", repr: "123" },
-                  },
-                },
-              ],
-            },
-          };
-        }
-        return { statusCode: 200, body: mockBody(results) };
+              },
+            ],
+          }),
+        };
       }
-      if (url.includes("/extended/v1/tx/tx-1")) {
+      if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
-            block_height: 100,
-            block_hash: "block-1",
-            microblock_sequence: 0,
-            tx_index: 0,
-            sender_address: "SP sender",
-            fee_rate: "1000",
-            nonce: 0,
-            tx_status: "success",
-            tx_type: "contract_call",
-            canonical: true,
             event_count: 2,
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP sender", nonce: 0 },
+            sponsor: null,
+            block: {
+              hash: "block-1",
+              height: 100,
+              time: 1000,
+              tx_index: 0,
+            },
+            bitcoin_block: {
+              height: 100,
+              time: 1000,
+            },
             events: [
               {
                 event_index: 0,
@@ -1114,9 +1119,9 @@ describe("historical runtime", () => {
   });
 });
 
-describe("parseCursor helper", () => {
-  test("parses valid cursor", () => {
-    const result = parseCursor("100:0:5:2");
+describe("cursor parser helpers", () => {
+  test("parses valid logs cursor", () => {
+    const result = parseLogsCursor("100:0:5:2");
     expect(result).toStrictEqual({
       blockHeight: 100,
       microblockSequence: 0,
@@ -1125,9 +1130,28 @@ describe("parseCursor helper", () => {
     });
   });
 
-  test("throws on invalid cursor format", () => {
-    expect(() => parseCursor("invalid")).toThrow("Invalid cursor format: invalid");
-    expect(() => parseCursor("100:0:5")).toThrow("Invalid cursor format: 100:0:5");
+  test("throws on invalid logs cursor format", () => {
+    expect(() => parseLogsCursor("invalid")).toThrow("Invalid logs cursor format: invalid");
+    expect(() => parseLogsCursor("100:0:5:2:1")).toThrow("Invalid logs cursor format: 100:0:5:2:1");
+    expect(() => parseLogsCursor("100:0:5")).toThrow("Invalid logs cursor format: 100:0:5");
+  });
+
+  test("parses valid transaction cursor", () => {
+    const result = parseTransactionCursor("100:0:5");
+    expect(result).toStrictEqual({
+      blockHeight: 100,
+      microblockSequence: 0,
+      txIndex: 5,
+    });
+  });
+
+  test("throws on invalid transaction cursor format", () => {
+    expect(() => parseTransactionCursor("invalid")).toThrow(
+      "Invalid transaction cursor format: invalid",
+    );
+    expect(() => parseTransactionCursor("100:0:5:2")).toThrow(
+      "Invalid transaction cursor format: 100:0:5:2",
+    );
   });
 });
 
@@ -1168,17 +1192,22 @@ describe("historical runtime with handlers", () => {
       contractId: string;
     }) => ({
       tx_id: txId,
-      block_height: blockHeight,
-      block_hash: blockHash,
-      microblock_sequence: 0,
-      tx_index: 0,
-      sender_address: "SP sender",
-      fee_rate: "1000",
-      nonce: 0,
-      tx_status: "success",
-      tx_type: "contract_call",
-      canonical: true,
       event_count: 1,
+      type: "contract_call",
+      status: "success",
+      fee_rate: "1000",
+      sender: { address: "SP sender", nonce: 0 },
+      sponsor: null,
+      block: {
+        hash: blockHash,
+        height: blockHeight,
+        time: blockHeight * 10,
+        tx_index: 0,
+      },
+      bitcoin_block: {
+        height: blockHeight,
+        time: blockHeight * 10,
+      },
       events: [
         {
           event_index: 0,
@@ -1256,66 +1285,78 @@ describe("historical runtime with handlers", () => {
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
 
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        for (const [txId, txData] of Object.entries(txMap)) {
-          if (url.includes(`tx_id=${txId}`)) {
-            results[txId] = { found: true, result: txData };
-          }
-        }
-        return { statusCode: 200, body: mockBody(results) };
-      }
-
       // Contract A initialization
-      if (url.includes(`/extended/v1/address/${contractA}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractA}`)) {
         return {
           statusCode: 200,
           body: mockBody({
-            limit: 1,
-            offset: 0,
-            total: 1,
-            results: [{ tx_id: "tx-a-init", event_count: 1 }],
+            contract_id: contractA,
+            block_height: 100,
+            tx_id: "tx-a-deploy",
+            canonical: true,
           }),
         };
       }
-      if (url.includes(`/extended/v1/address/${contractA}/transactions?limit=50`)) {
+      if (url.includes(`/extended/v3/principals/${contractA}/transactions`)) {
         return {
           statusCode: 200,
           body: mockBody({
             limit: 50,
-            offset: 0,
             total: 1,
-            results: [{ tx_id: "tx-a-init", event_count: 1 }],
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [{ transaction: { tx_id: "tx-a-init" } }],
           }),
         };
       }
 
       // Contract B initialization
-      if (url.includes(`/extended/v1/address/${contractB}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractB}`)) {
         return {
           statusCode: 200,
           body: mockBody({
-            limit: 1,
-            offset: 0,
-            total: 1,
-            results: [{ tx_id: "tx-b-init", event_count: 1 }],
+            contract_id: contractB,
+            block_height: 50,
+            tx_id: "tx-b-deploy",
+            canonical: true,
           }),
         };
       }
-      if (url.includes(`/extended/v1/address/${contractB}/transactions?limit=50`)) {
+      if (url.includes(`/extended/v3/principals/${contractB}/transactions`)) {
         return {
           statusCode: 200,
           body: mockBody({
             limit: 50,
-            offset: 0,
             total: 1,
-            results: [{ tx_id: "tx-b-init", event_count: 1 }],
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [{ transaction: { tx_id: "tx-b-init" } }],
           }),
         };
       }
 
       for (const [txId, txData] of Object.entries(txMap)) {
-        if (url.includes(`/extended/v1/tx/${txId}`)) {
+        if (url.includes(`/extended/v3/transactions/${txId}/events`)) {
+          const events = (txData.events ?? []) as {
+            event_index: number;
+            event_type?: string;
+            contract_log?: unknown;
+          }[];
+          return {
+            statusCode: 200,
+            body: mockBody({
+              total: events.length,
+              limit: 50,
+              cursor: { next: null, previous: null, current: "0" },
+              results: events.map((event) => ({
+                event_index: event.event_index,
+                type: event.event_type === "smart_contract_log" ? "contract_log" : event.event_type,
+                ...(event.event_type === "smart_contract_log"
+                  ? { contract_log: event.contract_log }
+                  : {}),
+              })),
+            }),
+          };
+        }
+        if (url.includes(`/extended/v3/transactions/${txId}`)) {
           return { statusCode: 200, body: mockBody(txData) };
         }
       }
@@ -1408,78 +1449,70 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
-            limit: 1,
-            offset: 0,
-            total: 1,
-            results: [{ tx_id: "tx-1", event_count: 1 }],
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
           }),
         };
       }
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
           body: mockBody({
             limit: 50,
-            offset: 0,
             total: 1,
-            results: [{ tx_id: "tx-1", event_count: 1 }],
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [{ transaction: { tx_id: "tx-1" } }],
           }),
         };
       }
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        if (url.includes("tx_id=tx-1")) {
-          results["tx-1"] = {
-            found: true,
-            result: {
-              tx_id: "tx-1",
-              block_height: 100,
-              block_hash: "block-1",
-              microblock_sequence: 0,
-              tx_index: 0,
-              sender_address: "SP sender",
-              fee_rate: "1000",
-              nonce: 0,
-              tx_status: "success",
-              tx_type: "contract_call",
-              canonical: true,
-              event_count: 1,
-              events: [
-                {
-                  event_index: 0,
-                  event_type: "smart_contract_log",
-                  contract_log: {
-                    contract_id: contractId,
-                    topic: "print",
-                    value: { hex: "", repr: "" },
-                  },
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
                 },
-              ],
-            },
-          };
-        }
-        return { statusCode: 200, body: mockBody(results) };
+              },
+            ],
+          }),
+        };
       }
-      if (url.includes("/extended/v1/tx/tx-1")) {
+      if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
-            block_height: 100,
-            block_hash: "block-1",
-            microblock_sequence: 0,
-            tx_index: 0,
-            sender_address: "SP sender",
-            fee_rate: "1000",
-            nonce: 0,
-            tx_status: "success",
-            tx_type: "contract_call",
-            canonical: true,
             event_count: 1,
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP sender", nonce: 0 },
+            sponsor: null,
+            block: {
+              hash: "block-1",
+              height: 100,
+              time: 1000,
+              tx_index: 0,
+            },
+            bitcoin_block: {
+              height: 100,
+              time: 1000,
+            },
             events: [
               {
                 event_index: 0,
@@ -1650,78 +1683,70 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
-            limit: 1,
-            offset: 0,
-            total: 1,
-            results: [{ tx_id: "tx-1", event_count: 1 }],
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
           }),
         };
       }
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
           body: mockBody({
             limit: 50,
-            offset: 0,
             total: 1,
-            results: [{ tx_id: "tx-1", event_count: 1 }],
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [{ transaction: { tx_id: "tx-1" } }],
           }),
         };
       }
-      if (url.includes("/extended/v1/tx/multiple")) {
-        const results: Record<string, any> = {};
-        if (url.includes("tx_id=tx-1")) {
-          results["tx-1"] = {
-            found: true,
-            result: {
-              tx_id: "tx-1",
-              block_height: 100,
-              block_hash: "block-1",
-              microblock_sequence: 0,
-              tx_index: 0,
-              sender_address: "SP sender",
-              fee_rate: "1000",
-              nonce: 0,
-              tx_status: "success",
-              tx_type: "contract_call",
-              canonical: true,
-              event_count: 1,
-              events: [
-                {
-                  event_index: 0,
-                  event_type: "smart_contract_log",
-                  contract_log: {
-                    contract_id: contractId,
-                    topic: "print",
-                    value: { hex: "", repr: "" },
-                  },
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
                 },
-              ],
-            },
-          };
-        }
-        return { statusCode: 200, body: mockBody(results) };
+              },
+            ],
+          }),
+        };
       }
-      if (url.includes("/extended/v1/tx/tx-1")) {
+      if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
-            block_height: 100,
-            block_hash: "block-1",
-            microblock_sequence: 0,
-            tx_index: 0,
-            sender_address: "SP sender",
-            fee_rate: "1000",
-            nonce: 0,
-            tx_status: "success",
-            tx_type: "contract_call",
-            canonical: true,
             event_count: 1,
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP sender", nonce: 0 },
+            sponsor: null,
+            block: {
+              hash: "block-1",
+              height: 100,
+              time: 1000,
+              tx_index: 0,
+            },
+            bitcoin_block: {
+              height: 100,
+              time: 1000,
+            },
             events: [
               {
                 event_index: 0,
@@ -1812,13 +1837,24 @@ describe("historical runtime with handlers", () => {
       expect(url.startsWith(customBaseUrl)).toBe(true);
       expect(init.headers["x-api-key"]).toBe(customApiKey);
 
-      if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
-            limit: 1,
-            offset: 0,
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
             total: 0,
+            cursor: { next: null, previous: null, current: "" },
             results: [],
           }),
         };
@@ -1837,7 +1873,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
     expect(result.isOk()).toBe(true);
-    expect(mockRequest).toHaveBeenCalledTimes(1);
+    expect(mockRequest).toHaveBeenCalledTimes(2);
   });
 
   test("provides IndexingClient to handler with current block height tip and runtime api options", async () => {
@@ -1859,69 +1895,66 @@ describe("historical runtime with handlers", () => {
       ) => {
         const url = decodeURIComponent(rawUrl);
 
-        if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=1`)) {
+        if (url.includes(`/extended/v1/contract/${contractId}`)) {
           return {
             statusCode: 200,
             body: mockBody({
-              limit: 1,
-              offset: 0,
-              total: 1,
-              results: [{ tx_id: "tx-1", event_count: 1 }],
+              contract_id: contractId,
+              block_height: 1234,
+              tx_id: "tx-deploy",
+              canonical: true,
             }),
           };
         }
-        if (url.includes(`/extended/v1/address/${contractId}/transactions?limit=50`)) {
+        if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
           return {
             statusCode: 200,
             body: mockBody({
               limit: 50,
-              offset: 0,
               total: 1,
-              results: [{ tx_id: "tx-1", event_count: 1 }],
+              cursor: { next: null, previous: null, current: "curr" },
+              results: [{ transaction: { tx_id: "tx-1" } }],
             }),
           };
         }
-        if (url.includes("/extended/v1/tx/multiple")) {
+        if (url.includes("/extended/v3/transactions/tx-1/events")) {
           return {
             statusCode: 200,
             body: mockBody({
-              "tx-1": {
-                found: true,
-                result: {
-                  tx_id: "tx-1",
-                  block_height: 1234,
-                  block_hash: "block-1",
-                  microblock_sequence: 0,
-                  tx_index: 0,
-                  sender_address: "SP sender",
-                  fee_rate: "1000",
-                  nonce: 0,
-                  tx_status: "success",
-                  tx_type: "contract_call",
-                  canonical: true,
-                  event_count: 1,
-                  events: [],
+              total: 1,
+              limit: 50,
+              cursor: { next: null, previous: null, current: "0" },
+              results: [
+                {
+                  event_index: 0,
+                  type: "contract_log",
+                  contract_log: {
+                    contract_id: contractId,
+                    topic: "print",
+                    value: { hex: "", repr: "" },
+                  },
                 },
-              },
+              ],
             }),
           };
         }
-        if (url.includes("/extended/v1/tx/tx-1")) {
+        if (url.includes("/extended/v3/transactions/tx-1")) {
           return {
             statusCode: 200,
             body: mockBody({
               tx_id: "tx-1",
-              block_height: 1234,
-              block_hash: "block-1",
-              microblock_sequence: 0,
-              tx_index: 0,
-              sender_address: "SP sender",
-              fee_rate: "1000",
-              nonce: 0,
-              tx_status: "success",
-              tx_type: "contract_call",
-              canonical: true,
               event_count: 1,
+              type: "contract_call",
+              status: "success",
+              fee_rate: "1000",
+              sender: { address: "SP sender", nonce: 0 },
+              sponsor: null,
+              block: {
+                hash: "block-1",
+                height: 1234,
+                time: 1000,
+                tx_index: 0,
+              },
               events: [
                 {
                   event_index: 0,
