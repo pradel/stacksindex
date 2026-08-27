@@ -13,38 +13,54 @@ export interface HistoricalSyncContext {
   };
 }
 
-interface BuildCursorParams {
+export interface LogsCursor {
   blockHeight: number;
   microblockSequence: number;
   txIndex: number;
   eventIndex: number;
 }
 
-export const buildCursor = ({
+export const buildLogsCursor = ({
   blockHeight,
   microblockSequence,
   txIndex,
   eventIndex,
-}: BuildCursorParams): string => `${blockHeight}:${microblockSequence}:${txIndex}:${eventIndex}`;
+}: LogsCursor): string => `${blockHeight}:${microblockSequence}:${txIndex}:${eventIndex}`;
 
-export const parseCursor = (cursor: string): BuildCursorParams => {
+export const parseLogsCursor = (cursor: string): LogsCursor => {
   const parts = cursor.split(":");
-  if (parts.length < 3 || parts.length > 4) {
-    throw new Error(`Invalid cursor format: ${cursor}`);
-  }
-  if (parts.length === 3) {
-    return {
-      blockHeight: Number(parts[0]),
-      microblockSequence: 0,
-      txIndex: Number(parts[1]),
-      eventIndex: Number(parts[2]),
-    };
+  if (parts.length !== 4) {
+    throw new Error(`Invalid logs cursor format: ${cursor}`);
   }
   return {
     blockHeight: Number(parts[0]),
     microblockSequence: Number(parts[1]),
     txIndex: Number(parts[2]),
     eventIndex: Number(parts[3]),
+  };
+};
+
+export interface TransactionCursor {
+  blockHeight: number;
+  microblockSequence: number;
+  txIndex: number;
+}
+
+export const buildTransactionCursor = ({
+  blockHeight,
+  microblockSequence,
+  txIndex,
+}: TransactionCursor): string => `${blockHeight}:${microblockSequence}:${txIndex}`;
+
+export const parseTransactionCursor = (cursor: string): TransactionCursor => {
+  const parts = cursor.split(":");
+  if (parts.length !== 3) {
+    throw new Error(`Invalid transaction cursor format: ${cursor}`);
+  }
+  return {
+    blockHeight: Number(parts[0]),
+    microblockSequence: Number(parts[1]),
+    txIndex: Number(parts[2]),
   };
 };
 
@@ -133,7 +149,11 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       deploymentBlockHeight,
     });
 
-    let currentCursor: string | null = `${deploymentBlockHeight}:0:0`;
+    let currentCursor: string | null = buildTransactionCursor({
+      blockHeight: deploymentBlockHeight,
+      microblockSequence: 0,
+      txIndex: 0,
+    });
 
     while (currentCursor) {
       context.logger.debug({
@@ -178,7 +198,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
 
           const matchingEvent = matchingEventResult.value;
           if (matchingEvent) {
-            const firstCursor = buildCursor({
+            const firstCursor = buildLogsCursor({
               blockHeight: fullTx.block.height,
               microblockSequence: 0,
               txIndex: fullTx.block.tx_index,

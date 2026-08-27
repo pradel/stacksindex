@@ -6,7 +6,13 @@
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createLogger } from "../logger/index.ts";
-import { createHistoricalSync } from "./index.ts";
+import {
+  buildLogsCursor,
+  buildTransactionCursor,
+  createHistoricalSync,
+  parseLogsCursor,
+  parseTransactionCursor,
+} from "./index.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
 
@@ -459,5 +465,41 @@ describe("getContractEventsFirstCursor", () => {
     const sync = createHistoricalSync(context);
     const result = await sync.getContractEventsFirstCursor(contractId);
     expect(result.isErr()).toBe(true);
+  });
+});
+
+describe("cursor utilities", () => {
+  test("builds and parses logs cursor", () => {
+    const cursor = buildLogsCursor({
+      blockHeight: 123,
+      microblockSequence: 0,
+      txIndex: 4,
+      eventIndex: 2,
+    });
+    expect(cursor).toBe("123:0:4:2");
+
+    const parsed = parseLogsCursor("123:0:4:2");
+    expect(parsed).toStrictEqual({
+      blockHeight: 123,
+      microblockSequence: 0,
+      txIndex: 4,
+      eventIndex: 2,
+    });
+  });
+
+  test("builds and parses transaction cursor", () => {
+    const cursor = buildTransactionCursor({
+      blockHeight: 123,
+      microblockSequence: 0,
+      txIndex: 4,
+    });
+    expect(cursor).toBe("123:0:4");
+
+    const parsed = parseTransactionCursor("123:0:4");
+    expect(parsed).toStrictEqual({
+      blockHeight: 123,
+      microblockSequence: 0,
+      txIndex: 4,
+    });
   });
 });

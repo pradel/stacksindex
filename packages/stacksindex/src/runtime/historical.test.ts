@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createLogger } from "../logger/index.ts";
-import { parseCursor } from "../sync-historical/index.ts";
+import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
   blocksTable,
@@ -1119,9 +1119,9 @@ describe("historical runtime", () => {
   });
 });
 
-describe("parseCursor helper", () => {
-  test("parses valid cursor", () => {
-    const result = parseCursor("100:0:5:2");
+describe("cursor parser helpers", () => {
+  test("parses valid logs cursor", () => {
+    const result = parseLogsCursor("100:0:5:2");
     expect(result).toStrictEqual({
       blockHeight: 100,
       microblockSequence: 0,
@@ -1130,9 +1130,28 @@ describe("parseCursor helper", () => {
     });
   });
 
-  test("throws on invalid cursor format", () => {
-    expect(() => parseCursor("invalid")).toThrow("Invalid cursor format: invalid");
-    expect(() => parseCursor("100:0:5:2:1")).toThrow("Invalid cursor format: 100:0:5:2:1");
+  test("throws on invalid logs cursor format", () => {
+    expect(() => parseLogsCursor("invalid")).toThrow("Invalid logs cursor format: invalid");
+    expect(() => parseLogsCursor("100:0:5:2:1")).toThrow("Invalid logs cursor format: 100:0:5:2:1");
+    expect(() => parseLogsCursor("100:0:5")).toThrow("Invalid logs cursor format: 100:0:5");
+  });
+
+  test("parses valid transaction cursor", () => {
+    const result = parseTransactionCursor("100:0:5");
+    expect(result).toStrictEqual({
+      blockHeight: 100,
+      microblockSequence: 0,
+      txIndex: 5,
+    });
+  });
+
+  test("throws on invalid transaction cursor format", () => {
+    expect(() => parseTransactionCursor("invalid")).toThrow(
+      "Invalid transaction cursor format: invalid",
+    );
+    expect(() => parseTransactionCursor("100:0:5:2")).toThrow(
+      "Invalid transaction cursor format: 100:0:5:2",
+    );
   });
 });
 

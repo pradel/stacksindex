@@ -15,7 +15,7 @@ import type { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
-import { createHistoricalSync, parseCursor } from "../sync-historical/index.ts";
+import { createHistoricalSync, parseLogsCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 
 const BATCH_SIZE = 5;
@@ -49,9 +49,9 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
     return undefined;
   }
 
-  let minHeight = parseCursor(activeStates[0].cursor).blockHeight;
+  let minHeight = parseLogsCursor(activeStates[0].cursor).blockHeight;
   for (const state of activeStates.slice(1)) {
-    const height = parseCursor(state.cursor).blockHeight;
+    const height = parseLogsCursor(state.cursor).blockHeight;
     if (height < minHeight) {
       minHeight = height;
     }
@@ -82,7 +82,7 @@ async function initializeContractStates(
       if (cursor) {
         context.logger.info({
           service: "historicalRuntime",
-          msg: `Starting sync for ${filter.contractId} from block ${parseCursor(cursor).blockHeight}`,
+          msg: `Starting sync for ${filter.contractId} from block ${parseLogsCursor(cursor).blockHeight}`,
         });
         states.push({ contractId: filter.contractId, cursor, done: false });
       } else {
@@ -95,7 +95,7 @@ async function initializeContractStates(
     } else {
       context.logger.info({
         service: "historicalRuntime",
-        msg: `Resuming sync for ${filter.contractId} from block ${parseCursor(saved.cursor).blockHeight}`,
+        msg: `Resuming sync for ${filter.contractId} from block ${parseLogsCursor(saved.cursor).blockHeight}`,
       });
       states.push({ contractId: filter.contractId, cursor: saved.cursor, done: false });
     }
@@ -242,9 +242,9 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
 
         // Fair scheduling: pick contract with lowest block height
         let [lowestState] = activeStates;
-        let lowestHeight = parseCursor(lowestState.cursor).blockHeight;
+        let lowestHeight = parseLogsCursor(lowestState.cursor).blockHeight;
         for (const state of activeStates.slice(1)) {
-          const height = parseCursor(state.cursor).blockHeight;
+          const height = parseLogsCursor(state.cursor).blockHeight;
           if (height < lowestHeight) {
             lowestState = state;
             lowestHeight = height;
@@ -263,7 +263,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         }
 
         const { results: events, next_cursor: nextCursor } = logsResult.value;
-        const currentHeight = parseCursor(lowestState.cursor).blockHeight;
+        const currentHeight = parseLogsCursor(lowestState.cursor).blockHeight;
         context.logger.info({
           service: "historicalRuntime",
           msg: `Syncing ${lowestState.contractId}`,
@@ -342,7 +342,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
 
         // Update progress or mark done
         if (nextCursor) {
-          const lastBlockHeight = parseCursor(nextCursor).blockHeight;
+          const lastBlockHeight = parseLogsCursor(nextCursor).blockHeight;
           // oxlint-disable-next-line no-await-in-loop
           await syncStore.upsertSyncProgress(
             {
