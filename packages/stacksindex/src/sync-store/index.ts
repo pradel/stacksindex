@@ -8,7 +8,7 @@ import type {
   SmartContractLogEvent,
   TransactionApiResponse,
 } from "../datasources/api/index.ts";
-import { encodeBlock, encodeEvent, encodeTransaction } from "./encode.js";
+import { type BlockData, encodeBlock, encodeEvent, encodeTransaction } from "./encode.js";
 import {
   blocksTable,
   checkpointsTable,
@@ -29,7 +29,7 @@ interface Context {
 
 export const syncStore = {
   insertBlocks: async (
-    { blocks, chainId }: { blocks: BlockApiResponse[]; chainId: number },
+    { blocks, chainId }: { blocks: (BlockData | BlockApiResponse)[]; chainId: number },
     context: Context,
   ) => {
     if (blocks.length === 0) {

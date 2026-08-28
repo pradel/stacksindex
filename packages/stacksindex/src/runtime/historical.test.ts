@@ -295,6 +295,12 @@ describe("historical runtime", () => {
     }
     expect(progress.cursor).toBe("200:0:0:0");
     expect(Number(progress.lastBlockHeight)).toBe(200);
+
+    // Verify no getBlock API calls were made (blocks are derived directly from transactions)
+    const blockCalls = mockRequest.mock.calls.filter((call: any) =>
+      (call[0] as string).includes("/extended/v2/blocks/"),
+    );
+    expect(blockCalls).toHaveLength(0);
   });
 
   test("schedules multiple contracts fairly by block height", async () => {
@@ -1955,6 +1961,10 @@ describe("historical runtime with handlers", () => {
                 height: 1234,
                 time: 1000,
                 tx_index: 0,
+              },
+              bitcoin_block: {
+                height: 1234,
+                time: 1000,
               },
               events: [
                 {

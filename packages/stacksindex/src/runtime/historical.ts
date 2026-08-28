@@ -6,7 +6,6 @@ import { migrate } from "../database/index.ts";
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
   datasourceStacksApi,
-  type BlockApiResponse,
   type SmartContractLogEvent,
   type TransactionApiResponse,
 } from "../datasources/api/index.ts";
@@ -17,6 +16,7 @@ import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 import { createHistoricalSync, parseLogsCursor } from "../sync-historical/index.ts";
+import type { BlockData } from "../sync-store/encode.ts";
 import { syncStore } from "../sync-store/index.ts";
 
 const BATCH_SIZE = 5;
@@ -295,34 +295,19 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         }
         const transactions = txResult.value;
 
-        // Batch fetch blocks (deduplicated by block.hash) in chunks of 5
-        const blockHashes = [...new Set(transactions.map((transaction) => transaction.block.hash))];
-        // oxlint-disable-next-line no-await-in-loop
-        const existingBlockHashes = await syncStore.getExistingBlocks(
-          { blockHashes, chainId: 1 },
-          { db: context.db },
-        );
-        const missingBlockHashes = blockHashes.filter(
-          (hash) => !existingBlockHashes.includes(hash),
-        );
-        context.logger.debug({
-          service: "historicalRuntime",
-          msg: `Blocks: ${blockHashes.length} total, ${missingBlockHashes.length} missing`,
-        });
-
-        const blocks: BlockApiResponse[] = [];
-        for (const chunk of chunkArray(missingBlockHashes, BATCH_SIZE)) {
-          // oxlint-disable-next-line no-await-in-loop
-          const blockResults = await Promise.all(
-            chunk.map((hash) => datasourceStacksApi.getBlock(context, hash)),
-          );
-          for (const blockResult of blockResults) {
-            if (blockResult.isErr()) {
-              return Result.err(blockResult.error);
-            }
-            blocks.push(blockResult.value);
+        // Extract unique blocks directly from transactions (no extra API calls needed)
+        const blockMap = new Map<number, BlockData>();
+        for (const transaction of transactions) {
+          if (!blockMap.has(transaction.block.height)) {
+            blockMap.set(transaction.block.height, {
+              height: transaction.block.height,
+              hash: transaction.block.hash,
+              burn_block_time: transaction.bitcoin_block.time,
+              burn_block_height: transaction.bitcoin_block.height,
+            });
           }
         }
+        const blocks = Array.from(blockMap.values());
 
         // Store blocks, transactions, and events
         // Only smart_contract_log events have a `value` field; skip other event types.

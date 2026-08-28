@@ -4,6 +4,7 @@
   "scripts": {
     "ready": "vp fmt && vp lint && vp run -r test && vp run -r build",
     "test": "vp run -r test",
+    "bench": "vp run -r bench",
     "build": "vp run -r build",
     "prepare": "vp config"
   },

@@ -1,0 +1,21 @@
+{
+  "name": "benchmarks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vp test",
+    "bench": "vp test src/benchmark.test.ts --run"
+  },
+  "dependencies": {
+    "@stacks/blockchain-api-client": "9.0.2",
+    "better-result": "3.0.1",
+    "indexer": "workspace:*",
+    "undici": "8.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "typescript": "6.0.3",
+    "vite-plus": "0.1.24"
+  }
+}
