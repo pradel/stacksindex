@@ -21,15 +21,15 @@ importers:
       '@electric-sql/pglite':
         specifier: 0.5.8
         version: 0.5.8
-      '@stacks/codec':
-        specifier: 2.1.0
-        version: 2.1.0
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(pg@8.23.0)
       indexer:
         specifier: workspace:*
         version: link:../../packages/stacksindex
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: 26.4.0
@@ -49,6 +49,9 @@ importers:
       '@stacks/blockchain-api-client':
         specifier: 9.0.2
         version: 9.0.2(supports-color@7.2.0)
+      '@stacks/codec':
+        specifier: 2.1.0
+        version: 2.1.0
       better-result:
         specifier: 3.0.1
         version: 3.0.1
@@ -1856,6 +1859,9 @@ packages:
   yuku-parser@0.5.48:
     resolution: {integrity: sha512-OWBfhrpgK9+/4+IXG9oT8Bao4AhViQA7vdyNNH7EUg8dQYgwa70XtIBWTpCEme1P1ECyoDNYkn0wT63f8XRcVA==}
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
 snapshots:
 
   '@babel/helper-string-parser@7.27.1': {}
@@ -3187,3 +3193,5 @@ snapshots:
       '@yuku-parser/binding-linux-x64-musl': 0.5.48
       '@yuku-parser/binding-win32-arm64': 0.5.48
       '@yuku-parser/binding-win32-x64': 0.5.48
+
+  zod@4.4.3: {}

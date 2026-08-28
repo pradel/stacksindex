@@ -1,7 +1,13 @@
-import { ClarityTypeID, type ClarityValue, decodeClarityValue } from "@stacks/codec";
 import { eq } from "drizzle-orm";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
-import type { EventHandler, IndexingClient, Logger } from "indexer";
+import {
+  decodeHex,
+  encodeUint,
+  type EventHandler,
+  type IndexingClient,
+  type Logger,
+} from "indexer";
+import { z } from "zod";
 
 import { poolTable, swapTable, tokenTable } from "./schema.ts";
 
@@ -11,73 +17,123 @@ export type AppDatabase = PgliteDatabase<any>;
 export const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
 export const CHAIN_ID = 1n;
 
-export interface PrincipalData {
-  address: string;
-  contract_name: string;
-}
+// Schemas for contract read-only responses
+const uintResultSchema = z.union([
+  z.object({ ok: z.bigint() }).transform((val) => val.ok),
+  z.bigint(),
+]);
 
-export function formatContractId(principal: PrincipalData): string {
-  return `${principal.address}.${principal.contract_name}`;
-}
+const stringResultSchema = z.union([
+  z.object({ ok: z.string() }).transform((val) => val.ok),
+  z.string(),
+]);
 
-export function encodeUint(value: bigint): string {
-  const hex = value.toString(16).padStart(32, "0");
-  return `0x01${hex}`;
-}
+const poolContractsResultSchema = z.union([
+  z
+    .object({
+      ok: z.object({
+        "token-x": z.string(),
+        "token-y": z.string(),
+      }),
+    })
+    .transform((val) => ({
+      tokenX: val.ok["token-x"],
+      tokenY: val.ok["token-y"],
+    })),
+  z
+    .object({
+      "token-x": z.string(),
+      "token-y": z.string(),
+    })
+    .transform((val) => ({
+      tokenX: val["token-x"],
+      tokenY: val["token-y"],
+    })),
+]);
 
-export function decodeCallReadResult(hex: string): ClarityValue {
-  const decoded = decodeClarityValue(hex);
-  if (decoded.type_id === ClarityTypeID.ResponseOk) {
-    return decoded.value;
-  }
-  return decoded;
-}
+// Zod schemas for contract log events (validating decoded JSON object)
+export const poolCreatedLogSchema = z
+  .object({
+    object: z.literal("pool"),
+    action: z.literal("created"),
+    data: z.object({
+      "pool-token": z.string(),
+      "balance-x": z.bigint().optional().default(0n),
+      "balance-y": z.bigint().optional().default(0n),
+      "total-supply": z.bigint().optional().default(0n),
+      "fee-rate-x": z.bigint().optional().default(0n),
+      "fee-rate-y": z.bigint().optional().default(0n),
+      "fee-to-address": z.string().optional().default(""),
+      "oracle-enabled": z.boolean().optional().default(false),
+    }),
+  })
+  .transform((val) => ({
+    action: "created" as const,
+    poolToken: val.data["pool-token"],
+    balanceX: val.data["balance-x"],
+    balanceY: val.data["balance-y"],
+    totalSupply: val.data["total-supply"],
+    feeRateX: val.data["fee-rate-x"],
+    feeRateY: val.data["fee-rate-y"],
+    feeToAddress: val.data["fee-to-address"],
+    oracleEnabled: val.data["oracle-enabled"],
+  }));
 
-export function getTupleData(
-  value: ClarityValue | undefined,
-): Record<string, ClarityValue> | undefined {
-  if (value !== undefined && value.type_id === ClarityTypeID.Tuple) {
-    return value.data;
-  }
-  return undefined;
-}
+export const poolSwapLogSchema = z
+  .object({
+    object: z.literal("pool"),
+    action: z.union([z.literal("swap-x-for-y"), z.literal("swap-y-for-x")]),
+    data: z.object({
+      "pool-token": z.string(),
+      "balance-x": z.bigint(),
+      "balance-y": z.bigint(),
+      "total-supply": z.bigint(),
+    }),
+  })
+  .transform((val) => ({
+    action: val.action,
+    poolToken: val.data["pool-token"],
+    balanceX: val.data["balance-x"],
+    balanceY: val.data["balance-y"],
+    totalSupply: val.data["total-supply"],
+  }));
 
-export function getStringData(value: ClarityValue | undefined): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value.type_id === ClarityTypeID.StringAscii || value.type_id === ClarityTypeID.StringUtf8) {
-    return value.data;
-  }
-  return undefined;
-}
+const otherPoolActionSchema = z.union([
+  z.literal("add-to-position"),
+  z.literal("reduce-position"),
+  z.literal("set-fee-to-address"),
+  z.literal("set-fee-rate-x"),
+  z.literal("set-fee-rate-y"),
+  z.literal("set-oracle-enabled"),
+  z.literal("set-oracle-average"),
+]);
 
-export function getUintValue(value: ClarityValue | undefined): bigint {
-  if (value !== undefined && value.type_id === ClarityTypeID.UInt) {
-    return BigInt(value.value);
-  }
-  return 0n;
-}
+export const poolBalanceChangeLogSchema = z
+  .object({
+    object: z.literal("pool"),
+    action: otherPoolActionSchema,
+    data: z.object({
+      "pool-token": z.string(),
+      "balance-x": z.bigint(),
+      "balance-y": z.bigint(),
+      "total-supply": z.bigint(),
+    }),
+  })
+  .transform((val) => ({
+    action: val.action,
+    poolToken: val.data["pool-token"],
+    balanceX: val.data["balance-x"],
+    balanceY: val.data["balance-y"],
+    totalSupply: val.data["total-supply"],
+  }));
 
-export function getPrincipalData(value: ClarityValue | undefined): PrincipalData | undefined {
-  if (value !== undefined && value.type_id === ClarityTypeID.PrincipalContract) {
-    return { address: value.address, contract_name: value.contract_name };
-  }
-  return undefined;
-}
+export const poolLogSchema = z.union([
+  poolCreatedLogSchema,
+  poolSwapLogSchema,
+  poolBalanceChangeLogSchema,
+]);
 
-export function getBoolValue(value: ClarityValue | undefined): boolean {
-  if (value === undefined) {
-    return false;
-  }
-  if (value.type_id === ClarityTypeID.BoolTrue) {
-    return true;
-  }
-  if (value.type_id === ClarityTypeID.BoolFalse) {
-    return false;
-  }
-  return false;
-}
+export type PoolLog = z.infer<typeof poolLogSchema>;
 
 export interface DiscoverTokensParams {
   client: IndexingClient;
@@ -133,11 +189,14 @@ export async function discoverTokens({
       );
     }
 
-    const decodedDecimals = decodeCallReadResult(decimalsRes.value.result);
-    const decimals = Number(getUintValue(decodedDecimals));
+    const decimalsParsed = uintResultSchema.safeParse(decodeHex(decimalsRes.value.result));
+    if (!decimalsParsed.success) {
+      throw new Error(`Failed to decode decimals for token ${tokenAddress}`);
+    }
+    const decimals = Number(decimalsParsed.data);
 
-    const decodedSymbol = decodeCallReadResult(symbolRes.value.result);
-    const symbol = getStringData(decodedSymbol) ?? tokenAddress.split(".")[1];
+    const symbolParsed = stringResultSchema.safeParse(decodeHex(symbolRes.value.result));
+    const symbol = symbolParsed.success ? symbolParsed.data : tokenAddress.split(".")[1];
 
     insertOps.push(
       db
@@ -183,8 +242,7 @@ export async function syncPoolTokens({
     );
   }
 
-  const decodedCount = decodeCallReadResult(countResult.value.result);
-  const poolId = getUintValue(decodedCount);
+  const poolId = uintResultSchema.parse(decodeHex(countResult.value.result));
 
   const contractsResult = await client.callReadOnly(poolContract, "get-pool-contracts", {
     args: [encodeUint(poolId)],
@@ -197,22 +255,9 @@ export async function syncPoolTokens({
     );
   }
 
-  const decodedContracts = decodeCallReadResult(contractsResult.value.result);
-  const poolContracts = getTupleData(decodedContracts);
-  if (!poolContracts) {
-    throw new Error(`Failed to decode pool contracts tuple for pool ${poolToken}`);
-  }
-
-  const tokenXPrincipal = getPrincipalData(poolContracts["token-x"]);
-  const tokenYPrincipal = getPrincipalData(poolContracts["token-y"]);
-  if (!tokenXPrincipal || !tokenYPrincipal) {
-    throw new Error(
-      `Failed to extract token-x or token-y principal from pool contracts for pool ${poolToken}`,
-    );
-  }
-
-  const tokenX = formatContractId(tokenXPrincipal);
-  const tokenY = formatContractId(tokenYPrincipal);
+  const { tokenX, tokenY } = poolContractsResultSchema.parse(
+    decodeHex(contractsResult.value.result),
+  );
 
   await discoverTokens({
     client,
@@ -282,71 +327,45 @@ export function createPoolHandler({
   poolContract = POOL_CONTRACT,
 }: CreatePoolHandlerOptions): EventHandler {
   return async (event, { client }) => {
-    const decoded = decodeClarityValue(event.contract_log.value.hex);
-    const tupleData = getTupleData(decoded);
-    if (!tupleData) {
+    const decoded = decodeHex(event.contract_log.value.hex);
+    const parsed = poolLogSchema.safeParse(decoded);
+    if (!parsed.success) {
       return;
     }
 
-    const action = getStringData(tupleData.action);
-    const object = getStringData(tupleData.object);
+    const log = parsed.data;
 
-    if (object !== "pool") {
-      return;
-    }
-
-    const data = getTupleData(tupleData.data);
-    if (!data) {
-      return;
-    }
-
-    const poolTokenPrincipal = getPrincipalData(data["pool-token"]);
-    if (!poolTokenPrincipal) {
-      return;
-    }
-
-    const poolToken = formatContractId(poolTokenPrincipal);
-    const balanceX = getUintValue(data["balance-x"]);
-    const balanceY = getUintValue(data["balance-y"]);
-    const totalSupply = getUintValue(data["total-supply"]);
-
-    if (action === "created") {
-      const feeRateX = getUintValue(data["fee-rate-x"]);
-      const feeRateY = getUintValue(data["fee-rate-y"]);
-      const feeToPrincipal = getPrincipalData(data["fee-to-address"]);
-      const feeToAddress = feeToPrincipal ? formatContractId(feeToPrincipal) : "";
-      const oracleEnabled = getBoolValue(data["oracle-enabled"]);
-
+    if (log.action === "created") {
       await db
         .insert(poolTable)
         .values({
-          address: poolToken,
+          address: log.poolToken,
           chainId,
           balanceX: 0n,
           balanceY: 0n,
           totalSupply: 0n,
-          feeRateX,
-          feeRateY,
-          feeToAddress,
-          oracleEnabled,
+          feeRateX: log.feeRateX,
+          feeRateY: log.feeRateY,
+          feeToAddress: log.feeToAddress,
+          oracleEnabled: log.oracleEnabled,
           createdAt: BigInt(event.block_time),
         })
         .onConflictDoUpdate({
           target: [poolTable.address, poolTable.chainId],
           set: {
-            feeRateX,
-            feeRateY,
-            feeToAddress,
-            oracleEnabled,
+            feeRateX: log.feeRateX,
+            feeRateY: log.feeRateY,
+            feeToAddress: log.feeToAddress,
+            oracleEnabled: log.oracleEnabled,
           },
         });
 
-      await syncPoolTokens({ client, db, logger, chainId, poolContract, poolToken });
-    } else if (action === "swap-x-for-y" || action === "swap-y-for-x") {
+      await syncPoolTokens({ client, db, logger, chainId, poolContract, poolToken: log.poolToken });
+    } else if (log.action === "swap-x-for-y" || log.action === "swap-y-for-x") {
       const [pool] = await db
         .select()
         .from(poolTable)
-        .where(eq(poolTable.address, poolToken))
+        .where(eq(poolTable.address, log.poolToken))
         .limit(1);
 
       let amountIn = 0n;
@@ -354,12 +373,12 @@ export function createPoolHandler({
 
       // oxlint-disable-next-line typescript/no-unnecessary-condition
       if (pool) {
-        if (action === "swap-x-for-y") {
-          amountIn = balanceX - pool.balanceX;
-          amountOut = pool.balanceY - balanceY;
+        if (log.action === "swap-x-for-y") {
+          amountIn = log.balanceX - pool.balanceX;
+          amountOut = pool.balanceY - log.balanceY;
         } else {
-          amountIn = balanceY - pool.balanceY;
-          amountOut = pool.balanceX - balanceX;
+          amountIn = log.balanceY - pool.balanceY;
+          amountOut = pool.balanceX - log.balanceX;
         }
       }
 
@@ -369,8 +388,8 @@ export function createPoolHandler({
           txId: event.tx_id,
           chainId,
           eventIndex: event.event_index,
-          poolAddress: poolToken,
-          action,
+          poolAddress: log.poolToken,
+          action: log.action,
           amountIn,
           amountOut,
           blockHeight: BigInt(event.block_height),
@@ -380,27 +399,34 @@ export function createPoolHandler({
 
       await upsertPoolBalances({
         db,
-        poolToken,
+        poolToken: log.poolToken,
         chainId,
-        balanceX,
-        balanceY,
-        totalSupply,
+        balanceX: log.balanceX,
+        balanceY: log.balanceY,
+        totalSupply: log.totalSupply,
         blockTime: event.block_time,
       });
 
       // oxlint-disable-next-line typescript/no-unnecessary-condition
       if (pool && (!pool.tokenX || !pool.tokenY)) {
-        await syncPoolTokens({ client, db, logger, chainId, poolContract, poolToken });
+        await syncPoolTokens({
+          client,
+          db,
+          logger,
+          chainId,
+          poolContract,
+          poolToken: log.poolToken,
+        });
       }
     } else {
       // Liquidity added / removed or other pool balance changes
       await upsertPoolBalances({
         db,
-        poolToken,
+        poolToken: log.poolToken,
         chainId,
-        balanceX,
-        balanceY,
-        totalSupply,
+        balanceX: log.balanceX,
+        balanceY: log.balanceY,
+        totalSupply: log.totalSupply,
         blockTime: event.block_time,
       });
     }

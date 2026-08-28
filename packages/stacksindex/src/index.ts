@@ -9,6 +9,14 @@ export { datasourceStacksApi } from "./datasources/api/index.ts";
 export type { CallReadResponse, DatasourceStacksApiContext } from "./datasources/api/index.ts";
 export { StacksApiUnexpectedError } from "./datasources/api/errors.ts";
 export type { StacksApiError } from "./datasources/api/errors.ts";
+export {
+  ClarityTypeID,
+  cvToJSON,
+  decodeClarityValue,
+  decodeHex,
+  encodeUint,
+} from "./codec/index.ts";
+export type { ClarityValue } from "./codec/index.ts";
 export type {
   EventHandler,
   HandlerContext,
