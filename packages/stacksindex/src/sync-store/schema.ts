@@ -1,4 +1,4 @@
-import { pgTable, primaryKey, text, integer, bigint, boolean } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 
 export const blocksTable = pgTable(
   "blocks",
@@ -14,6 +14,7 @@ export const blocksTable = pgTable(
       name: "blocks_pkey",
       columns: [table.chainId, table.height],
     }),
+    index("blocks_chain_id_hash_idx").on(table.chainId, table.hash),
   ],
 );
 
@@ -74,6 +75,7 @@ export const eventsTable = pgTable(
       name: "events_pkey",
       columns: [table.chainId, table.txId, table.eventIndex],
     }),
+    index("events_chain_id_block_height_idx").on(table.chainId, table.blockHeight),
   ],
 );
 
