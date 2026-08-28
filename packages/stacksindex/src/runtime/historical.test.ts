@@ -272,7 +272,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
@@ -592,7 +592,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([
       { contractId: contractA, handler: noopHandler },
       { contractId: contractB, handler: noopHandler },
@@ -714,7 +714,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
@@ -791,7 +791,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
@@ -902,7 +902,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isErr()).toBe(true);
@@ -937,7 +937,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
@@ -1102,7 +1102,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
@@ -1419,7 +1419,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
+    const runtime = await createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
     });
@@ -1583,7 +1583,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
+    const runtime = await createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
     });
@@ -1666,7 +1666,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
+    const runtime = await createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
     });
@@ -1817,7 +1817,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
+    const runtime = await createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
     });
@@ -1862,7 +1862,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
+    const runtime = await createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
       api: {
@@ -2037,7 +2037,7 @@ describe("historical runtime with handlers", () => {
       },
     );
 
-    const runtime = createHistoricalRuntime({
+    const runtime = await createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
       api: {
@@ -2066,5 +2066,45 @@ describe("historical runtime with handlers", () => {
       `${customBaseUrl}/v2/contracts/call-read/SP123/token/get-total-supply?tip=1234`,
     );
     expect(callReadOnlyApiKey).toBe(customApiKey);
+  });
+
+  test("initializes runtime with database config option and cleans up on close", async () => {
+    const contractId = "SP123.token";
+
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 0,
+            cursor: { next: null, previous: null, current: "" },
+            results: [],
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = await createHistoricalRuntime({
+      logger: context.logger,
+      database: { kind: "pglite" },
+    });
+
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+    expect(result.isOk()).toBe(true);
+
+    await runtime.close();
   });
 });
