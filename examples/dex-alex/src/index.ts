@@ -4,7 +4,7 @@ import process from "node:process";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { createHistoricalRuntime, createLogger } from "indexer";
+import { createDatabase, createHistoricalRuntime, createLogger } from "indexer";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 
@@ -18,17 +18,13 @@ const appDb = drizzle({ client: appClient });
 
 await migrate(appDb, { migrationsFolder: "./drizzle" });
 
-const logger = createLogger({
-  level: 2,
+const indexerDatabase = await createDatabase({
+  kind: "pglite",
+  directory: "./data/indexer.db",
 });
 
-const runtime = await createHistoricalRuntime({
-  logger,
-  database: {
-    kind: "pglite",
-    directory: "./data/indexer.db",
-  },
-  api: { apiKey },
+const logger = createLogger({
+  level: 2,
 });
 
 let isShuttingDown = false;
@@ -43,7 +39,7 @@ async function shutdown(code: number) {
     // Ignore error on close
   }
   try {
-    await runtime.close();
+    await indexerDatabase.close();
   } catch {
     // Ignore error on close
   }
@@ -58,6 +54,8 @@ process.on("SIGTERM", () => {
   // oxlint-disable-next-line eslint/no-void
   void shutdown(0);
 });
+
+const runtime = createHistoricalRuntime({ logger, db: indexerDatabase.db, api: { apiKey } });
 
 const result = await runtime.run([
   {

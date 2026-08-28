@@ -7,6 +7,7 @@
 // oxlint-disable vitest/prefer-called-once, vitest/prefer-called-times
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import { createDatabase } from "../database/index.ts";
 import { createLogger } from "../logger/index.ts";
 import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -272,7 +273,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
@@ -592,7 +593,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([
       { contractId: contractA, handler: noopHandler },
       { contractId: contractB, handler: noopHandler },
@@ -714,7 +715,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
@@ -791,7 +792,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
@@ -902,7 +903,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isErr()).toBe(true);
@@ -937,7 +938,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
@@ -1102,7 +1103,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.isOk()).toBe(true);
@@ -1419,7 +1420,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({
+    const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
     });
@@ -1583,7 +1584,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({
+    const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
     });
@@ -1666,7 +1667,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({
+    const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
     });
@@ -1817,7 +1818,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({
+    const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
     });
@@ -1862,7 +1863,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({
+    const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
       api: {
@@ -2037,7 +2038,7 @@ describe("historical runtime with handlers", () => {
       },
     );
 
-    const runtime = await createHistoricalRuntime({
+    const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
       api: {
@@ -2068,7 +2069,7 @@ describe("historical runtime with handlers", () => {
     expect(callReadOnlyApiKey).toBe(customApiKey);
   });
 
-  test("initializes runtime with database config option and cleans up on close", async () => {
+  test("initializes runtime with database created from createDatabase and cleans up on close", async () => {
     const contractId = "SP123.token";
 
     mockRequest.mockImplementation((url: string) => {
@@ -2097,14 +2098,16 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({
+    const indexerDb = await createDatabase({ kind: "pglite" });
+
+    const runtime = createHistoricalRuntime({
       logger: context.logger,
-      database: { kind: "pglite" },
+      db: indexerDb.db,
     });
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
     expect(result.isOk()).toBe(true);
 
-    await runtime.close();
+    await indexerDb.close();
   });
 });

@@ -2,7 +2,6 @@ import { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
-import { createDatabase, type DatabaseConfig } from "../database/index.ts";
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
   datasourceStacksApi,
@@ -29,18 +28,7 @@ export interface Filter {
 // oxlint-disable-next-line typescript/no-explicit-any
 export interface HistoricalRuntimeContext<TSchema extends Record<string, unknown> = any> {
   logger: Logger;
-  db?: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>;
-  database?: DatabaseConfig;
-  api?: {
-    baseUrl?: string;
-    apiKey?: string;
-  };
-}
-
-interface RuntimeExecutionContext {
-  logger: Logger;
-  // oxlint-disable-next-line typescript/no-explicit-any
-  db: NodePgDatabase<any> | PgliteDatabase<any>;
+  db: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>;
   api?: {
     baseUrl?: string;
     apiKey?: string;
@@ -74,7 +62,7 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
 
 async function initializeContractStates(
   filters: Filter[],
-  context: RuntimeExecutionContext,
+  context: HistoricalRuntimeContext,
 ): Promise<Result<ContractSyncState[], StacksApiError>> {
   const states: ContractSyncState[] = [];
   for (const filter of filters) {
@@ -116,28 +104,12 @@ async function initializeContractStates(
   return Result.ok(states);
 }
 
-export const createHistoricalRuntime = async (context: HistoricalRuntimeContext) => {
-  let { db } = context;
-  let closeDb: (() => Promise<void>) | undefined = undefined;
-
-  if (!db) {
-    const dbConfig = context.database ?? { kind: "pglite" };
-    const dbResult = await createDatabase(dbConfig);
-    ({ db } = dbResult);
-    closeDb = dbResult.close;
-  }
-
-  const runtimeContext: RuntimeExecutionContext = {
-    logger: context.logger,
-    db,
-    api: context.api,
-  };
-
+export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
   async function processEventsUpTo(
     toBlockHeight: number,
     indexing: ReturnType<typeof createIndexing>,
   ): Promise<Result<void, StacksApiError | HandlerExecutionError>> {
-    const checkpoint = await syncStore.getCheckpoint({ chainId: 1 }, { db: runtimeContext.db });
+    const checkpoint = await syncStore.getCheckpoint({ chainId: 1 }, { db: context.db });
     const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
 
     if (fromBlockHeight >= toBlockHeight) {
@@ -146,7 +118,7 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
 
     const rows = await syncStore.getEvents(
       { chainId: 1, fromBlockHeight: fromBlockHeight + 1, toBlockHeight },
-      { db: runtimeContext.db },
+      { db: context.db },
     );
 
     if (rows.length === 0) {
@@ -154,7 +126,7 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
     }
 
     const toLabel = toBlockHeight === Number.MAX_SAFE_INTEGER ? "latest" : String(toBlockHeight);
-    runtimeContext.logger.info({
+    context.logger.info({
       service: "historicalRuntime",
       msg: `Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`,
       count: rows.length,
@@ -196,11 +168,11 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
         blockHeight: Number(lastRow.blockHeight),
         blockTime: Number(lastRow.blockTime),
       },
-      { db: runtimeContext.db },
+      { db: context.db },
     );
 
     const batchDuration = batchClock();
-    runtimeContext.logger.info({
+    context.logger.info({
       service: "historicalRuntime",
       msg: `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
       block: Number(lastRow.blockHeight),
@@ -217,7 +189,7 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
     for (const chunk of chunkArray(txIds, BATCH_SIZE)) {
       // oxlint-disable-next-line no-await-in-loop
       const txResults = await Promise.all(
-        chunk.map((txId) => datasourceStacksApi.getTransaction(runtimeContext, txId)),
+        chunk.map((txId) => datasourceStacksApi.getTransaction(context, txId)),
       );
       for (const txResult of txResults) {
         if (txResult.isErr()) {
@@ -237,7 +209,7 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
 
       const runClock = startClock();
 
-      runtimeContext.logger.info({
+      context.logger.info({
         service: "historicalRuntime",
         msg: `Starting historical indexer for ${filters.length} contract(s)`,
       });
@@ -247,13 +219,13 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
         handlers[filter.contractId] = filter.handler;
       }
       const indexing = createIndexing({
-        logger: runtimeContext.logger,
-        db: runtimeContext.db,
+        logger: context.logger,
+        db: context.db,
         handlers,
-        api: runtimeContext.api,
+        api: context.api,
       });
 
-      const statesResult = await initializeContractStates(filters, runtimeContext);
+      const statesResult = await initializeContractStates(filters, context);
       if (statesResult.isErr()) {
         return Result.err(statesResult.error);
       }
@@ -283,7 +255,7 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
         // Fetch one page of events
         // oxlint-disable-next-line no-await-in-loop
         const logsResult = await datasourceStacksApi.getContractLogs(
-          runtimeContext,
+          context,
           lowestState.contractId,
           { cursor: lowestState.cursor },
         );
@@ -293,7 +265,7 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
 
         const { results: events, next_cursor: nextCursor } = logsResult.value;
         const currentHeight = parseLogsCursor(lowestState.cursor).blockHeight;
-        runtimeContext.logger.info({
+        context.logger.info({
           service: "historicalRuntime",
           msg: `Syncing ${lowestState.contractId}`,
           block: currentHeight,
@@ -305,10 +277,10 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
         // oxlint-disable-next-line no-await-in-loop
         const existingTxIds = await syncStore.getExistingTransactions(
           { txIds, chainId: 1 },
-          { db: runtimeContext.db },
+          { db: context.db },
         );
         const missingTxIds = txIds.filter((txId) => !existingTxIds.includes(txId));
-        runtimeContext.logger.debug({
+        context.logger.debug({
           service: "historicalRuntime",
           msg: `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
         });
@@ -325,12 +297,12 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
         // oxlint-disable-next-line no-await-in-loop
         const existingBlockHashes = await syncStore.getExistingBlocks(
           { blockHashes, chainId: 1 },
-          { db: runtimeContext.db },
+          { db: context.db },
         );
         const missingBlockHashes = blockHashes.filter(
           (hash) => !existingBlockHashes.includes(hash),
         );
-        runtimeContext.logger.debug({
+        context.logger.debug({
           service: "historicalRuntime",
           msg: `Blocks: ${blockHashes.length} total, ${missingBlockHashes.length} missing`,
         });
@@ -339,7 +311,7 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
         for (const chunk of chunkArray(missingBlockHashes, BATCH_SIZE)) {
           // oxlint-disable-next-line no-await-in-loop
           const blockResults = await Promise.all(
-            chunk.map((hash) => datasourceStacksApi.getBlock(runtimeContext, hash)),
+            chunk.map((hash) => datasourceStacksApi.getBlock(context, hash)),
           );
           for (const blockResult of blockResults) {
             if (blockResult.isErr()) {
@@ -363,7 +335,7 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
         const chainId = 1;
 
         // oxlint-disable-next-line no-await-in-loop
-        await runtimeContext.db.transaction(async (tx) => {
+        await context.db.transaction(async (tx) => {
           await Promise.all([
             syncStore.insertBlocks({ blocks, chainId }, { db: tx }),
             syncStore.insertTransactions({ transactions, chainId }, { db: tx }),
@@ -382,11 +354,11 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
               cursor: nextCursor,
               lastBlockHeight,
             },
-            { db: runtimeContext.db },
+            { db: context.db },
           );
           lowestState.cursor = nextCursor;
         } else {
-          runtimeContext.logger.info({
+          context.logger.info({
             service: "historicalRuntime",
             msg: `Sync complete for ${lowestState.contractId}`,
           });
@@ -412,18 +384,13 @@ export const createHistoricalRuntime = async (context: HistoricalRuntimeContext)
       }
 
       const runDuration = runClock();
-      runtimeContext.logger.info({
+      context.logger.info({
         service: "historicalRuntime",
         msg: "Historical indexing complete",
         duration: runDuration,
       });
 
       return Result.ok(undefined);
-    },
-    async close(): Promise<void> {
-      if (closeDb) {
-        await closeDb();
-      }
     },
   };
 };
