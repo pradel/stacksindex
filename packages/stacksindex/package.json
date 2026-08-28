@@ -13,7 +13,8 @@
     "url": "git+https://github.com/author/library.git"
   },
   "files": [
-    "dist"
+    "dist",
+    "drizzle"
   ],
   "type": "module",
   "exports": {
@@ -39,15 +40,26 @@
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
     "@types/node": "26.4.0",
+    "@types/pg": "8.23.1",
     "@vitest/coverage-v8": "4.1.11",
     "drizzle-kit": "0.31.10",
     "drizzle-orm": "0.45.2",
+    "pg": "8.23.0",
     "publint": "0.3.24",
     "typescript": "6.0.3",
     "vite-plus": "0.1.24"
   },
   "peerDependencies": {
-    "@electric-sql/pglite": "0.4.4",
-    "drizzle-orm": "^0.45.2"
+    "@electric-sql/pglite": "^0.5.0",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@electric-sql/pglite": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    }
   }
 }
