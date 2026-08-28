@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@stacks/blockchain-api-client": "9.0.2",
+    "@stacks/codec": "2.1.0",
     "better-result": "3.0.1",
     "consola": "3.4.2",
     "undici": "8.10.0"

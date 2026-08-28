@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.8",
-    "@stacks/codec": "2.1.0",
     "drizzle-orm": "0.45.2",
-    "indexer": "workspace:*"
+    "indexer": "workspace:*",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "26.4.0",
