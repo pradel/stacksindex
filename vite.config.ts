@@ -53,8 +53,12 @@ export default defineConfig({
       "sort-keys": "off",
       "vitest/prefer-importing-vitest-globals": "off",
       "vitest/consistent-test-it": "off",
+      "vitest/require-hook": "off",
       "no-underscore-dangle": "off",
     },
+  },
+  test: {
+    exclude: ["**/node_modules/**", "**/dist/**", "ponder/**"],
   },
   run: {
     cache: true,

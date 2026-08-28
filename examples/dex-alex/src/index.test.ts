@@ -4,6 +4,8 @@
 // @stacks/transactions builders; print events are passed pre-decoded, exactly
 // The way the runtime delivers them via `event.decoded`.
 
+import path from "node:path";
+
 import { PGlite } from "@electric-sql/pglite";
 import { Result } from "better-result";
 import { eq } from "drizzle-orm";
@@ -112,7 +114,9 @@ describe("alex handler", () => {
 
   beforeAll(async () => {
     appDb = drizzle({ client: new PGlite() });
-    await migrateApp(appDb, { migrationsFolder: "./drizzle" });
+    await migrateApp(appDb, {
+      migrationsFolder: path.resolve(import.meta.dirname, "../drizzle"),
+    });
     handler = createAlexHandler({ appDb, logger });
   });
 
