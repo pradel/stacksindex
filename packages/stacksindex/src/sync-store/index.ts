@@ -28,12 +28,13 @@ interface Context {
 }
 
 export const syncStore = {
-  insertBlocks: async ({ blocks }: { blocks: BlockApiResponse[] }, context: Context) => {
+  insertBlocks: async (
+    { blocks, chainId }: { blocks: BlockApiResponse[]; chainId: number },
+    context: Context,
+  ) => {
     if (blocks.length === 0) {
       return;
     }
-
-    const chainId = 1;
 
     await context.db
       .insert(blocksTable)
@@ -44,14 +45,12 @@ export const syncStore = {
   },
 
   insertTransactions: async (
-    { transactions }: { transactions: TransactionApiResponse[] },
+    { transactions, chainId }: { transactions: TransactionApiResponse[]; chainId: number },
     context: Context,
   ) => {
     if (transactions.length === 0) {
       return;
     }
-
-    const chainId = 1;
 
     await context.db
       .insert(transactionsTable)
@@ -145,14 +144,18 @@ export const syncStore = {
   },
 
   insertEvents: async (
-    { events }: { events: { event: SmartContractLogEvent; blockHeight: number }[] },
+    {
+      events,
+      chainId,
+    }: {
+      events: { event: SmartContractLogEvent; blockHeight: number }[];
+      chainId: number;
+    },
     context: Context,
   ) => {
     if (events.length === 0) {
       return;
     }
-
-    const chainId = 1;
 
     await context.db
       .insert(eventsTable)

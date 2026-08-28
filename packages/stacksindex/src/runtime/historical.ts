@@ -332,12 +332,14 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           return { event, blockHeight: tx?.block.height ?? 0 };
         });
 
+        const chainId = 1;
+
         // oxlint-disable-next-line no-await-in-loop
         await context.db.transaction(async (tx) => {
           await Promise.all([
-            syncStore.insertBlocks({ blocks }, { db: tx }),
-            syncStore.insertTransactions({ transactions }, { db: tx }),
-            syncStore.insertEvents({ events: eventsWithBlockHeight }, { db: tx }),
+            syncStore.insertBlocks({ blocks, chainId }, { db: tx }),
+            syncStore.insertTransactions({ transactions, chainId }, { db: tx }),
+            syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }, { db: tx }),
           ]);
         });
 

@@ -102,6 +102,7 @@ describe("syncStore", () => {
       await syncStore.insertBlocks(
         {
           blocks: [block],
+          chainId: 1,
         },
         { db: testDb.db },
       );
@@ -117,6 +118,27 @@ describe("syncStore", () => {
         },
       ]);
     });
+
+    test("insert blocks with custom chainId", async () => {
+      await syncStore.insertBlocks(
+        {
+          blocks: [block],
+          chainId: 2147483648,
+        },
+        { db: testDb.db },
+      );
+
+      const result = await testDb.db.select().from(blocksTable);
+      expect(result).toStrictEqual([
+        {
+          blockTime: 1775125322n,
+          chainId: 2147483648n,
+          hash: "0xa7a68bdbb6048b0b614733c9c49410956a8df3e6bc6b55b336a4020b8d6770ee",
+          height: 7443118n,
+          tenureHeight: 943342n,
+        },
+      ]);
+    });
   });
 
   describe("insertTransactions", () => {
@@ -124,6 +146,7 @@ describe("syncStore", () => {
       await syncStore.insertTransactions(
         {
           transactions: [transaction],
+          chainId: 1,
         },
         { db: testDb.db },
       );
@@ -135,6 +158,33 @@ describe("syncStore", () => {
           blockHeight: 7444092n,
           canonical: true,
           chainId: 1n,
+          feeRate: 1218n,
+          nonce: 43334n,
+          senderAddress: "SP220K5EDGPF1A09AD0VCTGC541TJH4SX96DV5ES7",
+          txId: "0x78323ef7a23b45b96f318f5e41306dee91ee1d083b0e98be75382b91cab88f80",
+          txIndex: 3,
+          txStatus: "success",
+          txType: "token_transfer",
+        },
+      ]);
+    });
+
+    test("insert transactions with custom chainId", async () => {
+      await syncStore.insertTransactions(
+        {
+          transactions: [transaction],
+          chainId: 2147483648,
+        },
+        { db: testDb.db },
+      );
+
+      const result = await testDb.db.select().from(transactionsTable);
+      expect(result).toStrictEqual([
+        {
+          blockHash: "0xaa832f80b70e93f9b35415cf88b00daf6c398997520ad1efc00d83afd1157c81",
+          blockHeight: 7444092n,
+          canonical: true,
+          chainId: 2147483648n,
           feeRate: 1218n,
           nonce: 43334n,
           senderAddress: "SP220K5EDGPF1A09AD0VCTGC541TJH4SX96DV5ES7",
@@ -297,6 +347,7 @@ describe("syncStore", () => {
               blockHeight: 100,
             },
           ],
+          chainId: 1,
         },
         { db: testDb.db },
       );
@@ -304,6 +355,43 @@ describe("syncStore", () => {
       const result = await testDb.db.select().from(eventsTable);
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
+        chainId: 1n,
+        txId: "tx-1",
+        contractId: "SP123.token",
+        eventType: "smart_contract_log",
+        valueHex: "0x01",
+        valueRepr: "(ok true)",
+      });
+      expect(Number(result[0].blockHeight)).toBe(100);
+    });
+
+    test("inserts events with custom chainId", async () => {
+      await syncStore.insertEvents(
+        {
+          events: [
+            {
+              event: {
+                tx_id: "tx-1",
+                event_index: 0,
+                event_type: "smart_contract_log" as const,
+                contract_log: {
+                  contract_id: "SP123.token",
+                  topic: "print",
+                  value: { hex: "0x01", repr: "(ok true)" },
+                },
+              } satisfies SmartContractLogEvent,
+              blockHeight: 100,
+            },
+          ],
+          chainId: 2147483648,
+        },
+        { db: testDb.db },
+      );
+
+      const result = await testDb.db.select().from(eventsTable);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        chainId: 2147483648n,
         txId: "tx-1",
         contractId: "SP123.token",
         eventType: "smart_contract_log",
@@ -325,8 +413,14 @@ describe("syncStore", () => {
         },
       } satisfies SmartContractLogEvent;
 
-      await syncStore.insertEvents({ events: [{ event, blockHeight: 100 }] }, { db: testDb.db });
-      await syncStore.insertEvents({ events: [{ event, blockHeight: 100 }] }, { db: testDb.db });
+      await syncStore.insertEvents(
+        { events: [{ event, blockHeight: 100 }], chainId: 1 },
+        { db: testDb.db },
+      );
+      await syncStore.insertEvents(
+        { events: [{ event, blockHeight: 100 }], chainId: 1 },
+        { db: testDb.db },
+      );
 
       const result = await testDb.db.select().from(eventsTable);
       expect(result).toHaveLength(1);
