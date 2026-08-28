@@ -13,7 +13,8 @@
     "url": "git+https://github.com/author/library.git"
   },
   "files": [
-    "dist"
+    "dist",
+    "drizzle"
   ],
   "type": "module",
   "exports": {

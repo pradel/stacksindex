@@ -7,7 +7,6 @@ import { NodePgDatabase, drizzle as drizzleNodePg } from "drizzle-orm/node-postg
 import { migrate as migrateNodePg } from "drizzle-orm/node-postgres/migrator";
 import { type PgliteDatabase, drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { migrate as migratePglite } from "drizzle-orm/pglite/migrator";
-import pg from "pg";
 
 export type DatabaseConfig =
   | {
@@ -56,17 +55,14 @@ export async function createDatabase(config: DatabaseConfig): Promise<DatabaseRe
     };
   }
 
-  const pool = new pg.Pool({
-    connectionString: config.connectionString,
-  });
-  const db = drizzleNodePg({ client: pool });
+  const db = drizzleNodePg({ connection: config.connectionString });
   return {
     db,
     migrate: async () => {
       await migrateNodePg(db, { migrationsFolder });
     },
     close: async () => {
-      await pool.end();
+      await db.$client.end();
     },
   };
 }
