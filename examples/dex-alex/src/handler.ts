@@ -5,6 +5,9 @@ import type { EventHandler, IndexingClient, Logger } from "indexer";
 
 import { poolTable, swapTable, tokenTable } from "./schema.ts";
 
+// oxlint-disable-next-line typescript/no-explicit-any
+export type AppDatabase = PgliteDatabase<any>;
+
 export const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
 export const CHAIN_ID = 1n;
 
@@ -78,7 +81,7 @@ export function getBoolValue(value: ClarityValue | undefined): boolean {
 
 export interface DiscoverTokensParams {
   client: IndexingClient;
-  db: PgliteDatabase;
+  db: AppDatabase;
   logger: Logger;
   chainId: bigint;
   tokenAddresses: string[];
@@ -103,39 +106,51 @@ export async function discoverTokens({
     return;
   }
 
-  const decimalsResults = await Promise.all(
-    missingTokens.map((tokenAddress) =>
-      client
-        .callReadOnly(tokenAddress, "get-decimals")
-        .then((res) => ({ tokenAddress, result: res })),
-    ),
+  const detailsResults = await Promise.all(
+    missingTokens.map(async (tokenAddress) => {
+      const [decimalsRes, symbolRes] = await Promise.all([
+        client.callReadOnly(tokenAddress, "get-decimals"),
+        client.callReadOnly(tokenAddress, "get-symbol"),
+      ]);
+      return { tokenAddress, decimalsRes, symbolRes };
+    }),
   );
 
   const insertOps = [];
-  for (const { tokenAddress, result: decimalsResult } of decimalsResults) {
-    if (!decimalsResult.isOk() || !decimalsResult.value.okay) {
-      logger.warn({
-        msg: "Failed to fetch token decimals",
-        token: tokenAddress,
-        error: decimalsResult.isErr() ? decimalsResult.error : "not okay",
-      });
-    } else {
-      const decodedDecimals = decodeCallReadResult(decimalsResult.value.result);
-      const decimals = Number(getUintValue(decodedDecimals));
-
-      insertOps.push(
-        db
-          .insert(tokenTable)
-          .values({
-            address: tokenAddress,
-            chainId,
-            symbol: tokenAddress,
-            decimals,
-          })
-          .onConflictDoNothing(),
+  for (const { tokenAddress, decimalsRes, symbolRes } of detailsResults) {
+    if (!decimalsRes.isOk() || !decimalsRes.value.okay) {
+      throw new Error(
+        `Failed to fetch decimals for token ${tokenAddress}: ${
+          decimalsRes.isErr() ? decimalsRes.error.message : "call-read response not okay"
+        }`,
       );
-      logger.info({ msg: "Discovered token", token: tokenAddress, decimals });
     }
+    if (!symbolRes.isOk() || !symbolRes.value.okay) {
+      throw new Error(
+        `Failed to fetch symbol for token ${tokenAddress}: ${
+          symbolRes.isErr() ? symbolRes.error.message : "call-read response not okay"
+        }`,
+      );
+    }
+
+    const decodedDecimals = decodeCallReadResult(decimalsRes.value.result);
+    const decimals = Number(getUintValue(decodedDecimals));
+
+    const decodedSymbol = decodeCallReadResult(symbolRes.value.result);
+    const symbol = getStringData(decodedSymbol) ?? tokenAddress.split(".")[1];
+
+    insertOps.push(
+      db
+        .insert(tokenTable)
+        .values({
+          address: tokenAddress,
+          chainId,
+          symbol,
+          decimals,
+        })
+        .onConflictDoNothing(),
+    );
+    logger.info({ msg: "Discovered token", token: tokenAddress, symbol, decimals });
   }
   if (insertOps.length > 0) {
     await Promise.all(insertOps);
@@ -144,7 +159,7 @@ export async function discoverTokens({
 
 export interface SyncPoolTokensParams {
   client: IndexingClient;
-  db: PgliteDatabase;
+  db: AppDatabase;
   logger: Logger;
   chainId: bigint;
   poolContract: string;
@@ -159,53 +174,59 @@ export async function syncPoolTokens({
   poolContract,
   poolToken,
 }: SyncPoolTokensParams): Promise<void> {
-  try {
-    const countResult = await client.callReadOnly(poolContract, "get-pool-count");
-    if (!countResult.isOk() || !countResult.value.okay) {
-      return;
-    }
-
-    const decodedCount = decodeCallReadResult(countResult.value.result);
-    const poolId = getUintValue(decodedCount);
-
-    const contractsResult = await client.callReadOnly(poolContract, "get-pool-contracts", {
-      args: [encodeUint(poolId)],
-    });
-    if (!contractsResult.isOk() || !contractsResult.value.okay) {
-      return;
-    }
-
-    const decodedContracts = decodeCallReadResult(contractsResult.value.result);
-    const poolContracts = getTupleData(decodedContracts);
-    if (!poolContracts) {
-      return;
-    }
-
-    const tokenXPrincipal = getPrincipalData(poolContracts["token-x"]);
-    const tokenYPrincipal = getPrincipalData(poolContracts["token-y"]);
-    if (!tokenXPrincipal || !tokenYPrincipal) {
-      return;
-    }
-
-    const tokenX = formatContractId(tokenXPrincipal);
-    const tokenY = formatContractId(tokenYPrincipal);
-
-    await discoverTokens({
-      client,
-      db,
-      logger,
-      chainId,
-      tokenAddresses: [tokenX, tokenY],
-    });
-
-    await db.update(poolTable).set({ tokenX, tokenY }).where(eq(poolTable.address, poolToken));
-  } catch (err) {
-    logger.warn({ msg: "Failed to discover tokens", pool: poolToken, error: err });
+  const countResult = await client.callReadOnly(poolContract, "get-pool-count");
+  if (!countResult.isOk() || !countResult.value.okay) {
+    throw new Error(
+      `Failed to fetch pool count from ${poolContract}: ${
+        countResult.isErr() ? countResult.error.message : "call-read response not okay"
+      }`,
+    );
   }
+
+  const decodedCount = decodeCallReadResult(countResult.value.result);
+  const poolId = getUintValue(decodedCount);
+
+  const contractsResult = await client.callReadOnly(poolContract, "get-pool-contracts", {
+    args: [encodeUint(poolId)],
+  });
+  if (!contractsResult.isOk() || !contractsResult.value.okay) {
+    throw new Error(
+      `Failed to fetch pool contracts for pool ${poolToken} (poolId: ${poolId}): ${
+        contractsResult.isErr() ? contractsResult.error.message : "call-read response not okay"
+      }`,
+    );
+  }
+
+  const decodedContracts = decodeCallReadResult(contractsResult.value.result);
+  const poolContracts = getTupleData(decodedContracts);
+  if (!poolContracts) {
+    throw new Error(`Failed to decode pool contracts tuple for pool ${poolToken}`);
+  }
+
+  const tokenXPrincipal = getPrincipalData(poolContracts["token-x"]);
+  const tokenYPrincipal = getPrincipalData(poolContracts["token-y"]);
+  if (!tokenXPrincipal || !tokenYPrincipal) {
+    throw new Error(
+      `Failed to extract token-x or token-y principal from pool contracts for pool ${poolToken}`,
+    );
+  }
+
+  const tokenX = formatContractId(tokenXPrincipal);
+  const tokenY = formatContractId(tokenYPrincipal);
+
+  await discoverTokens({
+    client,
+    db,
+    logger,
+    chainId,
+    tokenAddresses: [tokenX, tokenY],
+  });
+
+  await db.update(poolTable).set({ tokenX, tokenY }).where(eq(poolTable.address, poolToken));
 }
 
 interface UpsertPoolBalancesParams {
-  db: PgliteDatabase;
+  db: AppDatabase;
   poolToken: string;
   chainId: bigint;
   balanceX: bigint;
@@ -248,7 +269,7 @@ async function upsertPoolBalances({
 }
 
 export interface CreatePoolHandlerOptions {
-  db: PgliteDatabase;
+  db: AppDatabase;
   logger: Logger;
   chainId?: bigint;
   poolContract?: string;
@@ -366,6 +387,11 @@ export function createPoolHandler({
         totalSupply,
         blockTime: event.block_time,
       });
+
+      // oxlint-disable-next-line typescript/no-unnecessary-condition
+      if (pool && (!pool.tokenX || !pool.tokenY)) {
+        await syncPoolTokens({ client, db, logger, chainId, poolContract, poolToken });
+      }
     } else {
       // Liquidity added / removed or other pool balance changes
       await upsertPoolBalances({

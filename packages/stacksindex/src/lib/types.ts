@@ -26,8 +26,9 @@ export interface IndexingClient {
   ): Promise<Result<CallReadResponse, StacksApiError>>;
 }
 
-export interface HandlerContext {
-  db: NodePgDatabase | PgliteDatabase;
+// oxlint-disable-next-line typescript/no-explicit-any
+export interface HandlerContext<TSchema extends Record<string, unknown> = any> {
+  db: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>;
   client: IndexingClient;
 }
 

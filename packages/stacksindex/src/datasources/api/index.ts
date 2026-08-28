@@ -344,7 +344,11 @@ export const datasourceStacksApi = {
     options: { args?: string[]; sender?: string; tip?: number } = {},
   ) {
     const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip } = options;
-    const path = `/v2/contracts/call-read/${contractId}/${functionName}`;
+    const [contractAddress, contractName] = contractId.split(".");
+    const path =
+      contractAddress && contractName
+        ? `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`
+        : `/v2/contracts/call-read/${contractId}/${functionName}`;
     return this._request<CallReadResponse, { tip?: number | null }>(context, {
       path,
       method: "POST",

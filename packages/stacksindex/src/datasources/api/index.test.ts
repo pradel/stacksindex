@@ -596,7 +596,7 @@ describe("aPI DataSource", () => {
       mockRequest.mockImplementation(
         (url: string, init: { method: string; headers: Record<string, string>; body: string }) => {
           expect(url).toBe(
-            "https://custom-stacks-node.example.com/v2/contracts/call-read/SP123.contract/my-function",
+            "https://custom-stacks-node.example.com/v2/contracts/call-read/SP123/contract/my-function",
           );
           expect(init.method).toBe("POST");
           expect(init.headers["x-api-key"]).toBe("my-test-api-key");

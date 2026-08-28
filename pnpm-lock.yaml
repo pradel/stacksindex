@@ -19,14 +19,14 @@ importers:
   examples/dex-alex:
     dependencies:
       '@electric-sql/pglite':
-        specifier: 0.4.5
-        version: 0.4.5
+        specifier: 0.5.7
+        version: 0.5.7
       '@stacks/codec':
-        specifier: 1.7.0
-        version: 1.7.0
+        specifier: 2.1.0
+        version: 2.1.0
       drizzle-orm:
         specifier: 0.45.2
-        version: 0.45.2(@electric-sql/pglite@0.4.5)
+        version: 0.45.2(@electric-sql/pglite@0.5.7)
       indexer:
         specifier: workspace:*
         version: link:../../packages/stacksindex
@@ -60,8 +60,8 @@ importers:
         version: 8.10.0
     devDependencies:
       '@electric-sql/pglite':
-        specifier: 0.4.5
-        version: 0.4.5
+        specifier: 0.5.7
+        version: 0.5.7
       '@types/node':
         specifier: 26.3.0
         version: 26.3.0
@@ -73,7 +73,7 @@ importers:
         version: 0.31.10
       drizzle-orm:
         specifier: 0.45.2
-        version: 0.45.2(@electric-sql/pglite@0.4.5)
+        version: 0.45.2(@electric-sql/pglite@0.5.7)
       publint:
         specifier: 0.3.24
         version: 0.3.24
@@ -110,8 +110,8 @@ packages:
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
 
-  '@electric-sql/pglite@0.4.5':
-    resolution: {integrity: sha512-aGG2zGEyZzGWKy8P+9ZoNUV0jxt1+hgbeTf+bVAYyxVZZLXg3/9aFlfLxb08AYZVAfAkQlQIysmWjhc5hwDG8g==}
+  '@electric-sql/pglite@0.5.7':
+    resolution: {integrity: sha512-6WBks0NFO6YUhGP03mCNkbJuVFWwrZPrzZ/vsnAPnsCD28pybdZ+yoTrlLlWFoZst3kdaju5pxIslV/jrr36nQ==}
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
@@ -880,8 +880,8 @@ packages:
   '@stacks/blockchain-api-client@9.0.2':
     resolution: {integrity: sha512-5e52LJNsO0eBFK+mx0u6d3vCdDzMDNb7n2o8QFIhnIlh9/2mJn/rpN1AFGzZZVeybVaOdvK9BzeTmkdlLltshg==}
 
-  '@stacks/codec@1.7.0':
-    resolution: {integrity: sha512-3ItXfadfYvZxNJ2Wk8TxhhAUODmC7A5kPpE4OvyX5DZg9F9evDlhhkX8E/CU7PWyVbKQzSlqxbbdMl+Dy4x9zg==}
+  '@stacks/codec@2.1.0':
+    resolution: {integrity: sha512-RzI3UQ5oNXjcO1we2e6qq5/27+SosrmX2gZZxSi6VPTB26bTUxBY1/z1wxnJ820xu7xTg6Bhf8ssNkkZlcsz0A==}
     engines: {node: '>=20'}
 
   '@standard-schema/spec@1.1.0':
@@ -899,8 +899,8 @@ packages:
   '@types/node@20.14.14':
     resolution: {integrity: sha512-d64f00982fS9YoOgJkAMolK7MN8Iq3TDdVjchbYHdEmjth/DHowx82GnoA+tVUAN+7vxfYUgAzi+JXbKNd2SDQ==}
 
-  '@types/node@20.19.39':
-    resolution: {integrity: sha512-orrrD74MBUyK8jOAD/r0+lfa1I2MO6I+vAkmAWzMYbCcgrN4lCrmK52gRFQq/JRxfYPfonkr4b0jcY7Olqdqbw==}
+  '@types/node@24.13.3':
+    resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
 
   '@types/node@26.3.0':
     resolution: {integrity: sha512-L3fgrnchriRC2ExBflb8j4uZZURHZfQsmQeyVzhjcHW4kkwVyo8/0h1B2MVzMTrYUJYu6G7EWs14hW/L9putqw==}
@@ -1747,8 +1747,8 @@ packages:
   undici-types@5.26.5:
     resolution: {integrity: sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==}
 
-  undici-types@6.21.0:
-    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+  undici-types@7.18.2:
+    resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
@@ -1761,18 +1761,6 @@ packages:
     resolution: {integrity: sha512-b3fr6WtCiEhetjuzW/4KcEMOAMuZxoxZATWaXKmPzOLf1upG+pzKJOFZTb94D6wiPBlwcjxoaUtF7C3uAN+VjQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
-
-  ws@8.20.0:
-    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
 
   ws@8.21.3:
     resolution: {integrity: sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==}
@@ -1820,7 +1808,7 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@electric-sql/pglite@0.4.5': {}
+  '@electric-sql/pglite@0.5.7': {}
 
   '@esbuild-kit/core-utils@3.3.2':
     dependencies:
@@ -2225,9 +2213,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@stacks/codec@1.7.0':
+  '@stacks/codec@2.1.0':
     dependencies:
-      '@types/node': 20.19.39
+      '@types/node': 24.13.3
       detect-libc: 2.1.2
 
   '@standard-schema/spec@1.1.0': {}
@@ -2245,9 +2233,9 @@ snapshots:
     dependencies:
       undici-types: 5.26.5
 
-  '@types/node@20.19.39':
+  '@types/node@24.13.3':
     dependencies:
-      undici-types: 6.21.0
+      undici-types: 7.18.2
 
   '@types/node@26.3.0':
     dependencies:
@@ -2370,7 +2358,7 @@ snapshots:
       tinyexec: 1.3.0
       tinyglobby: 0.2.16
       vite: '@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.3.0)(esbuild@0.27.5)(jiti@2.6.1)(publint@0.3.24)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)'
-      ws: 8.20.0
+      ws: 8.21.3
     optionalDependencies:
       '@types/node': 26.3.0
       '@vitest/coverage-v8': 4.1.11(@voidzero-dev/vite-plus-test@0.1.24)
@@ -2507,9 +2495,9 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.21.0
 
-  drizzle-orm@0.45.2(@electric-sql/pglite@0.4.5):
+  drizzle-orm@0.45.2(@electric-sql/pglite@0.5.7):
     optionalDependencies:
-      '@electric-sql/pglite': 0.4.5
+      '@electric-sql/pglite': 0.5.7
 
   engine.io-client@6.6.6(supports-color@7.2.0):
     dependencies:
@@ -2931,7 +2919,7 @@ snapshots:
 
   undici-types@5.26.5: {}
 
-  undici-types@6.21.0: {}
+  undici-types@7.18.2: {}
 
   undici-types@8.3.0: {}
 
@@ -3036,8 +3024,6 @@ snapshots:
       - utf-8-validate
       - vite
       - yaml
-
-  ws@8.20.0: {}
 
   ws@8.21.3: {}
 

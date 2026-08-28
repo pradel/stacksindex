@@ -25,9 +25,10 @@ export interface Filter {
   handler: EventHandler;
 }
 
-export interface HistoricalRuntimeContext {
+// oxlint-disable-next-line typescript/no-explicit-any
+export interface HistoricalRuntimeContext<TSchema extends Record<string, unknown> = any> {
   logger: Logger;
-  db: NodePgDatabase | PgliteDatabase;
+  db: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>;
   api?: {
     baseUrl?: string;
     apiKey?: string;

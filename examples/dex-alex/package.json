@@ -9,8 +9,8 @@
     "studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@electric-sql/pglite": "0.4.5",
-    "@stacks/codec": "1.7.0",
+    "@electric-sql/pglite": "0.5.7",
+    "@stacks/codec": "2.1.0",
     "drizzle-orm": "0.45.2",
     "indexer": "workspace:*"
   },

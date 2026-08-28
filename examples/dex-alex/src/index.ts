@@ -13,17 +13,47 @@ const apiKey = process.env.HIRO_API_KEY;
 fs.mkdirSync("./data", { recursive: true });
 
 const appClient = new PGlite("./data/app.db");
+await appClient.waitReady;
 const appDb = drizzle({ client: appClient });
 
 await migrate(appDb, { migrationsFolder: "./drizzle" });
 
 const indexerClient = new PGlite("./data/indexer.db");
+await indexerClient.waitReady;
 const indexerDb = drizzle({ client: indexerClient });
 
 await migrateIndexer(indexerDb);
 
 const logger = createLogger({
   level: 2,
+});
+
+let isShuttingDown = false;
+async function shutdown(code: number) {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+  try {
+    await appClient.close();
+  } catch {
+    // Ignore error on close
+  }
+  try {
+    await indexerClient.close();
+  } catch {
+    // Ignore error on close
+  }
+  process.exit(code);
+}
+
+process.on("SIGINT", () => {
+  // oxlint-disable-next-line eslint/no-void
+  void shutdown(0);
+});
+process.on("SIGTERM", () => {
+  // oxlint-disable-next-line eslint/no-void
+  void shutdown(0);
 });
 
 const runtime = createHistoricalRuntime({ logger, db: indexerDb, api: { apiKey } });
@@ -37,5 +67,7 @@ const result = await runtime.run([
 
 if (result.isErr()) {
   logger.error({ msg: "Error running historical sync", error: result.error });
-  process.exit(1);
+  await shutdown(1);
+} else {
+  await shutdown(0);
 }
