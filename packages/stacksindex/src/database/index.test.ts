@@ -19,8 +19,10 @@ describe("database", () => {
     }
   });
 
-  test("creates in-memory pglite database with migrations", async () => {
+  test("creates in-memory pglite database and applies migrations via migrate()", async () => {
     const database = await createDatabase({ kind: "pglite" });
+
+    await database.migrate();
 
     // Verify tables exist and queries work
     const blocks = await database.db.select().from(blocksTable);
@@ -32,7 +34,7 @@ describe("database", () => {
     await database.close();
   });
 
-  test("creates pglite database with directory and migrations", async () => {
+  test("creates pglite database with directory and applies migrations", async () => {
     const tempDir = path.resolve(import.meta.dirname, `../../test-data-${Date.now()}`);
     tempDirs.push(tempDir);
 
@@ -40,6 +42,8 @@ describe("database", () => {
       kind: "pglite",
       directory: tempDir,
     });
+
+    await database.migrate();
 
     const blocks = await database.db.select().from(blocksTable);
     expect(blocks).toStrictEqual([]);

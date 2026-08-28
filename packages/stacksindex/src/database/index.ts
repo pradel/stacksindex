@@ -21,6 +21,7 @@ export type DatabaseConfig =
 
 export interface DatabaseResult {
   db: NodePgDatabase | PgliteDatabase;
+  migrate: () => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -44,9 +45,11 @@ export async function createDatabase(config: DatabaseConfig): Promise<DatabaseRe
     const client = config.directory ? new PGlite(config.directory) : new PGlite();
     await client.waitReady;
     const db = drizzlePglite({ client });
-    await migratePglite(db, { migrationsFolder });
     return {
       db,
+      migrate: async () => {
+        await migratePglite(db, { migrationsFolder });
+      },
       close: async () => {
         await client.close();
       },
@@ -57,9 +60,11 @@ export async function createDatabase(config: DatabaseConfig): Promise<DatabaseRe
     connectionString: config.connectionString,
   });
   const db = drizzleNodePg({ client: pool });
-  await migrateNodePg(db, { migrationsFolder });
   return {
     db,
+    migrate: async () => {
+      await migrateNodePg(db, { migrationsFolder });
+    },
     close: async () => {
       await pool.end();
     },

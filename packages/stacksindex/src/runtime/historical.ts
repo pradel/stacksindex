@@ -2,6 +2,7 @@ import { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
+import { migrate } from "../database/index.ts";
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
   datasourceStacksApi,
@@ -206,6 +207,8 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       if (filters.length === 0) {
         return Result.ok(undefined);
       }
+
+      await migrate(context.db);
 
       const runClock = startClock();
 
