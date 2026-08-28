@@ -58,7 +58,7 @@ export default defineConfig({
     },
   },
   test: {
-    exclude: ["**/node_modules/**", "**/dist/**", "ponder/**"],
+    exclude: ["**/node_modules/**", "**/dist/**", "repos/**"],
   },
   run: {
     cache: true,

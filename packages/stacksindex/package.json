@@ -37,8 +37,8 @@
     "undici": "8.10.0"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.7",
-    "@types/node": "26.3.0",
+    "@electric-sql/pglite": "0.5.8",
+    "@types/node": "26.4.0",
     "@vitest/coverage-v8": "4.1.11",
     "drizzle-kit": "0.31.10",
     "drizzle-orm": "0.45.2",
