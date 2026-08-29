@@ -1,0 +1,396 @@
+{
+  "GET https://api.hiro.so/extended/v1/contract/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "tx_id": "0xsatoshibles_deploy",
+      "canonical": true,
+      "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+      "block_height": 32000
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/principals/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/transactions?limit=50&cursor=32000:0:0": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "limit": 50,
+      "total": 1,
+      "cursor": {
+        "next": null,
+        "previous": null,
+        "current": "32000:0:0"
+      },
+      "results": [
+        {
+          "transaction": {
+            "tx_id": "0xmulti_sat_tx_1"
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xmulti_sat_tx_1/events?limit=50": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "total": 1,
+      "limit": 50,
+      "cursor": {
+        "next": null,
+        "previous": null,
+        "current": "0"
+      },
+      "results": [
+        {
+          "event_index": 0,
+          "type": "contract_log",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0100000000000000000000000000000001",
+              "repr": "u1"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xmulti_sat_tx_1": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "tx_id": "0xmulti_sat_tx_1",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "2000",
+      "sender": {
+        "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C",
+        "nonce": 1
+      },
+      "sponsor": null,
+      "block": {
+        "hash": "0xmulti_block_32000",
+        "height": 32000,
+        "time": 1630000000,
+        "tx_index": 0
+      },
+      "events": []
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/blocks/0xmulti_block_32000": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "canonical": true,
+      "height": 32000,
+      "hash": "0xmulti_block_32000",
+      "block_time": 1630000000,
+      "burn_block_time": 1630000000,
+      "burn_block_height": 32000
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?limit=100&cursor=32000:0:0:0": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "results": [
+        {
+          "tx_id": "0xmulti_sat_tx_1",
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0100000000000000000000000000000001",
+              "repr": "u1"
+            }
+          }
+        }
+      ],
+      "limit": 100,
+      "offset": 0,
+      "total": 2,
+      "next_cursor": "32010:0:0:0",
+      "prev_cursor": null
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?limit=100&cursor=32010:0:0:0": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "results": [
+        {
+          "tx_id": "0xmulti_sat_tx_2",
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0100000000000000000000000000000002",
+              "repr": "u2"
+            }
+          }
+        }
+      ],
+      "limit": 100,
+      "offset": 0,
+      "total": 2,
+      "next_cursor": null,
+      "prev_cursor": "32000:0:0:0"
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xmulti_sat_tx_2": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "tx_id": "0xmulti_sat_tx_2",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "2000",
+      "sender": {
+        "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C",
+        "nonce": 2
+      },
+      "sponsor": null,
+      "block": {
+        "hash": "0xmulti_block_32010",
+        "height": 32010,
+        "time": 1630000600,
+        "tx_index": 0
+      },
+      "events": []
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/blocks/0xmulti_block_32010": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "canonical": true,
+      "height": 32010,
+      "hash": "0xmulti_block_32010",
+      "block_time": 1630000600,
+      "burn_block_time": 1630000600,
+      "burn_block_height": 32010
+    }
+  },
+  "GET https://api.hiro.so/extended/v1/contract/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "tx_id": "0xalex_deploy",
+      "canonical": true,
+      "contract_id": "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01",
+      "block_height": 32005
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/principals/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01/transactions?limit=50&cursor=32005:0:0": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "limit": 50,
+      "total": 1,
+      "cursor": {
+        "next": null,
+        "previous": null,
+        "current": "32005:0:0"
+      },
+      "results": [
+        {
+          "transaction": {
+            "tx_id": "0xmulti_alex_tx_1"
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xmulti_alex_tx_1/events?limit=50": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "total": 1,
+      "limit": 50,
+      "cursor": {
+        "next": null,
+        "previous": null,
+        "current": "0"
+      },
+      "results": [
+        {
+          "event_index": 0,
+          "type": "contract_log",
+          "contract_log": {
+            "contract_id": "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01",
+            "topic": "print",
+            "value": {
+              "hex": "0x0100000000000000000000000000000064",
+              "repr": "u100"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xmulti_alex_tx_1": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "tx_id": "0xmulti_alex_tx_1",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "3000",
+      "sender": {
+        "address": "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+        "nonce": 1
+      },
+      "sponsor": null,
+      "block": {
+        "hash": "0xmulti_block_32005",
+        "height": 32005,
+        "time": 1630000300,
+        "tx_index": 0
+      },
+      "events": []
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/blocks/0xmulti_block_32005": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "canonical": true,
+      "height": 32005,
+      "hash": "0xmulti_block_32005",
+      "block_time": 1630000300,
+      "burn_block_time": 1630000300,
+      "burn_block_height": 32005
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01/logs?limit=100&cursor=32005:0:0:0": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "results": [
+        {
+          "tx_id": "0xmulti_alex_tx_1",
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "contract_log": {
+            "contract_id": "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01",
+            "topic": "print",
+            "value": {
+              "hex": "0x0100000000000000000000000000000064",
+              "repr": "u100"
+            }
+          }
+        }
+      ],
+      "limit": 100,
+      "offset": 0,
+      "total": 2,
+      "next_cursor": "32015:0:0:0",
+      "prev_cursor": null
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01/logs?limit=100&cursor=32015:0:0:0": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "results": [
+        {
+          "tx_id": "0xmulti_alex_tx_2",
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "contract_log": {
+            "contract_id": "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01",
+            "topic": "print",
+            "value": {
+              "hex": "0x01000000000000000000000000000000c8",
+              "repr": "u200"
+            }
+          }
+        }
+      ],
+      "limit": 100,
+      "offset": 0,
+      "total": 2,
+      "next_cursor": null,
+      "prev_cursor": "32005:0:0:0"
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xmulti_alex_tx_2": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "tx_id": "0xmulti_alex_tx_2",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "3000",
+      "sender": {
+        "address": "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+        "nonce": 2
+      },
+      "sponsor": null,
+      "block": {
+        "hash": "0xmulti_block_32015",
+        "height": 32015,
+        "time": 1630000900,
+        "tx_index": 0
+      },
+      "events": []
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/blocks/0xmulti_block_32015": {
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "canonical": true,
+      "height": 32015,
+      "hash": "0xmulti_block_32015",
+      "block_time": 1630000900,
+      "burn_block_time": 1630000900,
+      "burn_block_height": 32015
+    }
+  }
+}

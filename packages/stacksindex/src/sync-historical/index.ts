@@ -127,6 +127,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
    */
   async getContractEventsFirstCursor(
     contractId: string,
+    options?: { startBlock?: number },
   ): Promise<Result<string | null, StacksApiError>> {
     const stopClock = startClock();
     const ADDRESS_TX_LIMIT = 50;
@@ -142,15 +143,20 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
     }
 
     const { block_height: deploymentBlockHeight } = contractResult.value;
+    const initialBlockHeight =
+      options?.startBlock === undefined
+        ? deploymentBlockHeight
+        : Math.max(deploymentBlockHeight, options.startBlock);
 
     context.logger.info({
       service: "getContractEventsFirstCursor",
-      msg: `Looking for first event of ${contractId} starting at block ${deploymentBlockHeight}`,
+      msg: `Looking for first event of ${contractId} starting at block ${initialBlockHeight}`,
       deploymentBlockHeight,
+      initialBlockHeight,
     });
 
     let currentCursor: string | null = buildTransactionCursor({
-      blockHeight: deploymentBlockHeight,
+      blockHeight: initialBlockHeight,
       microblockSequence: 0,
       txIndex: 0,
     });

@@ -466,6 +466,78 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
     expect(result.isErr()).toBe(true);
   });
+
+  test("uses startBlock when startBlock is greater than deployment block height", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
+      if (
+        url.includes(
+          `/extended/v3/principals/${contractId}/transactions?limit=50&cursor=150%3A0%3A0`,
+        )
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 1,
+            cursor: { next: null, previous: null, current: "150:0:0" },
+            results: [{ transaction: { tx_id: "tx-150" } }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-150/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-150")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-150",
+            event_count: 1,
+            block: {
+              height: 150,
+              tx_index: 0,
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const sync = createHistoricalSync(context);
+    const result = await sync.getContractEventsFirstCursor(contractId, { startBlock: 150 });
+
+    expect(result.isOk()).toBe(true);
+    expect((result as any).value).toBe("150:0:0:0");
+  });
 });
 
 describe("cursor utilities", () => {

@@ -1,0 +1,24 @@
+{
+  "name": "indexer-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vp test",
+    "check": "vp check",
+    "record": "RECORD=true vp test"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@stacks/codec": "2.1.0",
+    "better-result": "3.0.1",
+    "drizzle-orm": "0.45.2",
+    "indexer": "workspace:*",
+    "undici": "8.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "typescript": "6.0.3",
+    "vite-plus": "0.1.24"
+  }
+}
