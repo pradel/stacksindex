@@ -90,11 +90,30 @@ export function createScenarioRecorder(fixtureFileName: string): ScenarioRecorde
         ...init?.headers,
       };
 
-      const liveRes = await globalThis.fetch(rawUrl, {
-        method,
-        headers: requestHeaders,
-        body: init?.body,
-      });
+      let liveRes: Response | null = null;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        // oxlint-disable-next-line no-await-in-loop
+        liveRes = await globalThis.fetch(rawUrl, {
+          method,
+          headers: requestHeaders,
+          body: init?.body,
+        });
+
+        if (liveRes.status === 429) {
+          const retryAfterSec = Number(liveRes.headers.get("retry-after") ?? 1);
+          const waitMs = Math.max(retryAfterSec * 1000, 1000);
+          // oxlint-disable-next-line no-await-in-loop
+          await new Promise((resolve) => {
+            globalThis.setTimeout(resolve, waitMs);
+          });
+        } else {
+          break;
+        }
+      }
+
+      if (!liveRes) {
+        throw new Error(`Failed to fetch ${rawUrl}`);
+      }
 
       const text = await liveRes.text();
       const bodyData: unknown = (() => {

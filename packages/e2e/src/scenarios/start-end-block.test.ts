@@ -59,25 +59,43 @@ describe("e2E: Bounded startBlock and endBlock scenario", () => {
         contractId: SATOSHIBLES_CONTRACT,
         handler: satoshiblesHandler,
         startBlock: 47784,
-        endBlock: 47786,
+        endBlock: 47784,
       },
     ]);
 
     expect(result.isOk()).toBe(true);
 
     const recordedEvents = tracer.getEvents();
-    expect(recordedEvents).toHaveLength(1);
+    expect(recordedEvents).toHaveLength(3);
 
-    // Verify strict global chronological order
+    // Verify strict global chronological order (blockHeight, txIndex, eventIndex)
     tracer.assertChronologicalOrder();
 
-    // Verify recorded event is strictly within [startBlock, endBlock]
-    expect(recordedEvents[0].blockHeight).toBeGreaterThanOrEqual(47784);
-    expect(recordedEvents[0].blockHeight).toBeLessThanOrEqual(47786);
-    expect(recordedEvents[0].blockHeight).toBe(47784);
+    // Verify all 3 events belong to block 47784
+    for (const event of recordedEvents) {
+      expect(event.blockHeight).toBe(47784);
+      expect(event.topic).toBe("print");
+    }
+
+    // Verify event 1: tx_index 28
+    expect(recordedEvents[0].txIndex).toBe(28);
+    expect(recordedEvents[0].eventIndex).toBe(0);
     expect(recordedEvents[0].txId).toBe(
       "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
     );
-    expect(recordedEvents[0].topic).toBe("print");
+
+    // Verify event 2: tx_index 34
+    expect(recordedEvents[1].txIndex).toBe(34);
+    expect(recordedEvents[1].eventIndex).toBe(0);
+    expect(recordedEvents[1].txId).toBe(
+      "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
+    );
+
+    // Verify event 3: tx_index 48
+    expect(recordedEvents[2].txIndex).toBe(48);
+    expect(recordedEvents[2].eventIndex).toBe(0);
+    expect(recordedEvents[2].txId).toBe(
+      "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+    );
   });
 });

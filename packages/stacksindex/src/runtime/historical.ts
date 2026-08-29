@@ -41,28 +41,28 @@ export interface HistoricalRuntimeContext<TSchema extends Record<string, unknown
 interface ContractSyncState {
   contractId: string;
   cursor: string | null;
+  syncedBlockHeight?: number;
+  isInitialPage?: boolean;
   done: boolean;
   startBlock?: number;
   endBlock?: number;
 }
 
 function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
-  const activeStates = states.filter(
-    (state): state is ContractSyncState & { cursor: string } =>
-      !state.done && state.cursor !== null,
-  );
+  const activeStates = states.filter((state) => !state.done);
   if (activeStates.length === 0) {
     return undefined;
   }
 
-  let minHeight = parseLogsCursor(activeStates[0].cursor).blockHeight;
-  for (const state of activeStates.slice(1)) {
-    const height = parseLogsCursor(state.cursor).blockHeight;
-    if (height < minHeight) {
-      minHeight = height;
+  let minHeight: number | undefined = undefined;
+  for (const state of activeStates) {
+    if (state.syncedBlockHeight !== undefined) {
+      if (minHeight === undefined || state.syncedBlockHeight < minHeight) {
+        minHeight = state.syncedBlockHeight;
+      }
     }
   }
-  return minHeight - 1;
+  return minHeight;
 }
 
 async function initializeContractStates(
@@ -109,6 +109,7 @@ async function initializeContractStates(
           states.push({
             contractId: filter.contractId,
             cursor,
+            isInitialPage: true,
             done: false,
             startBlock: filter.startBlock,
             endBlock: filter.endBlock,
@@ -149,6 +150,7 @@ async function initializeContractStates(
         states.push({
           contractId: filter.contractId,
           cursor: saved.cursor,
+          isInitialPage: false,
           done: false,
           startBlock: filter.startBlock,
           endBlock: filter.endBlock,
@@ -247,6 +249,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
 
   async function fetchMissingTransactions(
     txIds: string[],
+    maxBlockHeight?: number,
   ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
     const transactions: TransactionApiResponse[] = [];
     for (const chunk of chunkArray(txIds, BATCH_SIZE)) {
@@ -254,14 +257,94 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       const txResults = await Promise.all(
         chunk.map((txId) => datasourceStacksApi.getTransaction(context, txId)),
       );
+      let exceededMaxHeight = false;
       for (const txResult of txResults) {
         if (txResult.isErr()) {
           return Result.err(txResult.error);
         }
         transactions.push(txResult.value);
+        if (maxBlockHeight !== undefined && txResult.value.block.height > maxBlockHeight) {
+          exceededMaxHeight = true;
+        }
+      }
+      if (exceededMaxHeight) {
+        break;
       }
     }
     return Result.ok(transactions);
+  }
+
+  async function fetchMissingBlocks(
+    transactions: TransactionApiResponse[],
+  ): Promise<Result<BlockApiResponse[], StacksApiError>> {
+    const blockHashes = [...new Set(transactions.map((transaction) => transaction.block.hash))];
+    const existingBlockHashes = await syncStore.getExistingBlocks(
+      { blockHashes, chainId: 1 },
+      { db: context.db },
+    );
+    const missingBlockHashes = blockHashes.filter((hash) => !existingBlockHashes.includes(hash));
+    context.logger.debug({
+      service: "historicalRuntime",
+      msg: `Blocks: ${blockHashes.length} total, ${missingBlockHashes.length} missing`,
+    });
+
+    const blocks: BlockApiResponse[] = [];
+    for (const chunk of chunkArray(missingBlockHashes, BATCH_SIZE)) {
+      // oxlint-disable-next-line no-await-in-loop
+      const blockResults = await Promise.all(
+        chunk.map((hash) => datasourceStacksApi.getBlock(context, hash)),
+      );
+      for (const blockResult of blockResults) {
+        if (blockResult.isErr()) {
+          return Result.err(blockResult.error);
+        }
+        blocks.push(blockResult.value);
+      }
+    }
+    return Result.ok(blocks);
+  }
+
+  async function advanceContractSyncState(
+    lowestState: ContractSyncState,
+    currentHeight: number,
+    nextCursor: string | null,
+  ): Promise<void> {
+    const wasInitialPage = lowestState.isInitialPage ?? false;
+    lowestState.isInitialPage = false;
+    lowestState.syncedBlockHeight = currentHeight - 1;
+
+    if (nextCursor) {
+      const lastBlockHeight = parseLogsCursor(nextCursor).blockHeight;
+      const isPastEndBlock =
+        lowestState.endBlock !== undefined &&
+        (currentHeight > lowestState.endBlock ||
+          (!wasInitialPage && currentHeight >= lowestState.endBlock));
+
+      if (isPastEndBlock) {
+        context.logger.info({
+          service: "historicalRuntime",
+          msg: `Sync reached endBlock ${lowestState.endBlock} for ${lowestState.contractId}`,
+        });
+        lowestState.done = true;
+      } else {
+        await syncStore.upsertSyncProgress(
+          {
+            contractId: lowestState.contractId,
+            chainId: 1,
+            cursor: nextCursor,
+            lastBlockHeight,
+          },
+          { db: context.db },
+        );
+        lowestState.cursor = nextCursor;
+      }
+    } else {
+      context.logger.info({
+        service: "historicalRuntime",
+        msg: `Sync complete for ${lowestState.contractId}`,
+      });
+      lowestState.done = true;
+    }
   }
 
   return {
@@ -298,25 +381,24 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       }
       const states = statesResult.value;
 
-      // Main loop: pick lowest cursor block height, fetch one page
       while (states.some((state) => !state.done)) {
-        const activeStates = states.filter(
-          (state): state is ContractSyncState & { cursor: string } =>
-            !state.done && state.cursor !== null,
-        );
-        if (activeStates.length === 0) {
-          break;
+        // Find contract with lowest block height cursor
+        let lowestState: ContractSyncState | null = null;
+        let lowestHeight = Number.MAX_SAFE_INTEGER;
+
+        for (const state of states) {
+          if (!state.done && state.cursor !== null) {
+            const height = parseLogsCursor(state.cursor).blockHeight;
+            if (height < lowestHeight) {
+              lowestHeight = height;
+              lowestState = state;
+            }
+          }
         }
 
-        // Fair scheduling: pick contract with lowest block height
-        let [lowestState] = activeStates;
-        let lowestHeight = parseLogsCursor(lowestState.cursor).blockHeight;
-        for (const state of activeStates.slice(1)) {
-          const height = parseLogsCursor(state.cursor).blockHeight;
-          if (height < lowestHeight) {
-            lowestState = state;
-            lowestHeight = height;
-          }
+        // All contracts done
+        if (!lowestState || lowestState.cursor === null) {
+          break;
         }
 
         // Fetch one page of events
@@ -339,8 +421,15 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           events: events.length,
         });
 
-        // Batch fetch transactions (deduplicated by tx_id) in chunks of 5
-        const txIds = [...new Set(events.map((event) => event.tx_id))];
+        // Batch fetch transactions (deduplicated by tx_id) in chronological order
+        const txIds = [
+          ...new Set(
+            events
+              .slice()
+              .reverse()
+              .map((event) => event.tx_id),
+          ),
+        ];
         // oxlint-disable-next-line no-await-in-loop
         const existingTxIds = await syncStore.getExistingTransactions(
           { txIds, chainId: 1 },
@@ -353,40 +442,18 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         });
 
         // oxlint-disable-next-line no-await-in-loop
-        const txResult = await fetchMissingTransactions(missingTxIds);
+        const txResult = await fetchMissingTransactions(missingTxIds, lowestState.endBlock);
         if (txResult.isErr()) {
           return Result.err(txResult.error);
         }
         const transactions = txResult.value;
 
-        // Batch fetch blocks (deduplicated by block.hash) in chunks of 5
-        const blockHashes = [...new Set(transactions.map((transaction) => transaction.block.hash))];
         // oxlint-disable-next-line no-await-in-loop
-        const existingBlockHashes = await syncStore.getExistingBlocks(
-          { blockHashes, chainId: 1 },
-          { db: context.db },
-        );
-        const missingBlockHashes = blockHashes.filter(
-          (hash) => !existingBlockHashes.includes(hash),
-        );
-        context.logger.debug({
-          service: "historicalRuntime",
-          msg: `Blocks: ${blockHashes.length} total, ${missingBlockHashes.length} missing`,
-        });
-
-        const blocks: BlockApiResponse[] = [];
-        for (const chunk of chunkArray(missingBlockHashes, BATCH_SIZE)) {
-          // oxlint-disable-next-line no-await-in-loop
-          const blockResults = await Promise.all(
-            chunk.map((hash) => datasourceStacksApi.getBlock(context, hash)),
-          );
-          for (const blockResult of blockResults) {
-            if (blockResult.isErr()) {
-              return Result.err(blockResult.error);
-            }
-            blocks.push(blockResult.value);
-          }
+        const blockResult = await fetchMissingBlocks(transactions);
+        if (blockResult.isErr()) {
+          return Result.err(blockResult.error);
         }
+        const blocks = blockResult.value;
 
         // Store blocks, transactions, and events
         // Only smart_contract_log events have a `value` field; skip other event types.
@@ -394,10 +461,13 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           // oxlint-disable-next-line typescript/no-unnecessary-condition
           (event): event is SmartContractLogEvent => event.event_type === "smart_contract_log",
         );
-        const eventsWithBlockHeight = smartContractLogs.map((event) => {
-          const tx = transactions.find((transaction) => transaction.tx_id === event.tx_id);
-          return { event, blockHeight: tx?.block.height ?? 0 };
-        });
+        const txMap = new Map(transactions.map((transaction) => [transaction.tx_id, transaction]));
+        const eventsWithBlockHeight = smartContractLogs
+          .map((event) => {
+            const tx = txMap.get(event.tx_id);
+            return { event, blockHeight: tx?.block.height ?? 0 };
+          })
+          .filter((item) => item.blockHeight > 0);
 
         const chainId = 1;
 
@@ -410,35 +480,8 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           ]);
         });
 
-        // Update progress or mark done
-        if (nextCursor) {
-          const lastBlockHeight = parseLogsCursor(nextCursor).blockHeight;
-          if (lowestState.endBlock !== undefined && lastBlockHeight > lowestState.endBlock) {
-            context.logger.info({
-              service: "historicalRuntime",
-              msg: `Sync reached endBlock ${lowestState.endBlock} for ${lowestState.contractId}`,
-            });
-            lowestState.done = true;
-          } else {
-            // oxlint-disable-next-line no-await-in-loop
-            await syncStore.upsertSyncProgress(
-              {
-                contractId: lowestState.contractId,
-                chainId: 1,
-                cursor: nextCursor,
-                lastBlockHeight,
-              },
-              { db: context.db },
-            );
-            lowestState.cursor = nextCursor;
-          }
-        } else {
-          context.logger.info({
-            service: "historicalRuntime",
-            msg: `Sync complete for ${lowestState.contractId}`,
-          });
-          lowestState.done = true;
-        }
+        // oxlint-disable-next-line no-await-in-loop
+        await advanceContractSyncState(lowestState, currentHeight, nextCursor);
 
         // Incremental indexing: process all events up to the safe block height
         const safeHeight = getSafeBlockHeight(states);

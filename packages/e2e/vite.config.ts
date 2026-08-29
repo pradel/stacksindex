@@ -2,6 +2,7 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   test: {
-    testTimeout: 30000,
+    testTimeout: 120000,
+    hookTimeout: 120000,
   },
 });
