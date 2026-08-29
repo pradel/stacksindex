@@ -221,11 +221,9 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
 
       // Iterate from oldest to newest within the page
       for (const item of results.slice().reverse()) {
-        const itemBlockHeight = (item.transaction as { block?: { height?: number } }).block?.height;
+        const itemBlockHeight = item.transaction.block.height;
         const isBeforeStart =
-          options?.startBlock !== undefined &&
-          itemBlockHeight !== undefined &&
-          itemBlockHeight < options.startBlock;
+          options?.startBlock !== undefined && itemBlockHeight < options.startBlock;
 
         if (!isBeforeStart) {
           // oxlint-disable-next-line no-await-in-loop
