@@ -49,7 +49,6 @@ interface ContractSyncState {
   contractId: string;
   cursor: string | null;
   syncedBlockHeight?: number;
-  isInitialPage?: boolean;
   done: boolean;
   startBlock?: number;
   endBlock?: number;
@@ -220,7 +219,6 @@ async function initContractFromScratch(
   return Result.ok({
     contractId: filter.contractId,
     cursor,
-    isInitialPage: true,
     done: false,
     startBlock: filter.startBlock,
     endBlock: filter.endBlock,
@@ -274,7 +272,6 @@ async function initContractFromSaved(
     return Result.ok({
       contractId: filter.contractId,
       cursor: saved.cursor,
-      isInitialPage: false,
       done: false,
       startBlock: filter.startBlock,
       endBlock: filter.endBlock,
@@ -339,7 +336,6 @@ async function initContractFromSaved(
   return Result.ok({
     contractId: filter.contractId,
     cursor,
-    isInitialPage: true,
     done: false,
     startBlock: filter.startBlock,
     endBlock: filter.endBlock,
@@ -516,16 +512,12 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     currentHeight: number,
     nextCursor: string | null,
   ): Promise<void> {
-    const wasInitialPage = lowestState.isInitialPage ?? false;
-    lowestState.isInitialPage = false;
     lowestState.syncedBlockHeight = currentHeight - 1;
 
     if (nextCursor) {
       const lastBlockHeight = parseLogsCursor(nextCursor).blockHeight;
       const { endBlock } = lowestState;
-      const isPastEndBlock =
-        endBlock !== undefined &&
-        (currentHeight > endBlock || (!wasInitialPage && currentHeight >= endBlock));
+      const isPastEndBlock = endBlock !== undefined && currentHeight > endBlock;
 
       if (endBlock !== undefined && isPastEndBlock) {
         context.logger.info({
