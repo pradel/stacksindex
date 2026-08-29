@@ -59,6 +59,7 @@ export default defineConfig({
       "vitest/consistent-test-it": "off",
       "vitest/require-hook": "off",
       "no-underscore-dangle": "off",
+      "no-await-in-loop": "off",
     },
   },
   test: {

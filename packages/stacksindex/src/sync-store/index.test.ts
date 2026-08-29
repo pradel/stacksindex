@@ -223,6 +223,7 @@ describe("syncStore", () => {
         contractId: "SP123.token",
         cursor: "100:0:5:2",
         lastBlockHeight: 100n,
+        isComplete: false,
       });
     });
   });
@@ -241,6 +242,7 @@ describe("syncStore", () => {
           contractId: "SP123.token",
           cursor: "200:0:3:1",
           lastBlockHeight: 200n,
+          isComplete: false,
         },
       ]);
     });
@@ -265,6 +267,31 @@ describe("syncStore", () => {
           contractId: "SP123.token",
           cursor: "300:0:1:0",
           lastBlockHeight: 300n,
+          isComplete: false,
+        },
+      ]);
+    });
+
+    test("saves completed status with null cursor", async () => {
+      await syncStore.upsertSyncProgress(
+        {
+          contractId: "SP123.token",
+          chainId: 1,
+          cursor: null,
+          lastBlockHeight: 500,
+          isComplete: true,
+        },
+        { db: testDb.db },
+      );
+
+      const result = await testDb.db.select().from(syncProgressTable);
+      expect(result).toStrictEqual([
+        {
+          chainId: 1n,
+          contractId: "SP123.token",
+          cursor: null,
+          lastBlockHeight: 500n,
+          isComplete: true,
         },
       ]);
     });

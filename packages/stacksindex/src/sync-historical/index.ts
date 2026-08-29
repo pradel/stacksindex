@@ -71,7 +71,6 @@ async function findFirstMatchingContractEvent(
 ): Promise<Result<{ event_index: number } | null, StacksApiError>> {
   let eventCursor: string | null = "initial";
   while (eventCursor) {
-    // oxlint-disable-next-line no-await-in-loop
     const eventsResult = await datasourceStacksApi.getTransactionEvents(context, txId, {
       limit: 50,
       cursor: eventCursor === "initial" ? undefined : eventCursor,
@@ -205,7 +204,6 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
         cursor: currentCursor,
       });
 
-      // oxlint-disable-next-line no-await-in-loop
       const pageResult = await datasourceStacksApi.getPrincipalTransactions(context, contractId, {
         limit: ADDRESS_TX_LIMIT,
         cursor: currentCursor,
@@ -226,7 +224,6 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
           options?.startBlock !== undefined && itemBlockHeight < options.startBlock;
 
         if (!isBeforeStart) {
-          // oxlint-disable-next-line no-await-in-loop
           const cursorResult = await checkTransactionForMatchingEvent(
             context,
             item.transaction.tx_id,

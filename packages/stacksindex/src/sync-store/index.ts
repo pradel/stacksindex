@@ -118,11 +118,13 @@ export const syncStore = {
       chainId,
       cursor,
       lastBlockHeight,
+      isComplete = false,
     }: {
       contractId: string;
       chainId: number;
-      cursor: string;
+      cursor: string | null;
       lastBlockHeight: number;
+      isComplete?: boolean;
     },
     context: Context,
   ) => {
@@ -133,12 +135,14 @@ export const syncStore = {
         contractId,
         cursor,
         lastBlockHeight: BigInt(lastBlockHeight),
+        isComplete,
       })
       .onConflictDoUpdate({
         target: [syncProgressTable.chainId, syncProgressTable.contractId],
         set: {
           cursor,
           lastBlockHeight: BigInt(lastBlockHeight),
+          isComplete,
         },
       });
   },
