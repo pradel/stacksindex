@@ -158,7 +158,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
    *    - If `event_count === 0`, skip immediately (0 extra requests).
    *    - If `event_count > 0`, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
    *      matching `contract_id`.
-   *    4. When found, construct the exact 4-part cursor (`block.height:0:block.tx_index:event_index`) for `getContractLogs`.
+   * 4. When found, construct the exact 4-part cursor (`block.height:0:block.tx_index:event_index`) for `getContractLogs`.
    * 5. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
    */
   async getContractEventsFirstCursor(
