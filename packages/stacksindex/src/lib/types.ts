@@ -19,11 +19,11 @@ export type HandlerEvent = SmartContractLogEvent & {
 };
 
 export interface IndexingClient {
-  callReadOnly(
+  callReadOnly: (
     contractId: string,
     functionName: string,
     options?: { args?: string[]; sender?: string; tip?: number },
-  ): Promise<Result<CallReadResponse, StacksApiError>>;
+  ) => Promise<Result<CallReadResponse, StacksApiError>>;
 }
 
 // oxlint-disable-next-line typescript/no-explicit-any
