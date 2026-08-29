@@ -47,10 +47,12 @@ export default defineConfig({
       "vitest/no-hooks": "off",
       "vitest/prefer-import-in-mock": "off",
       "vitest/prefer-expect-assertions": "off",
+      "vitest/no-importing-vitest-globals": "off",
       "jest/consistent-test-it": "off",
       "jest/prefer-ending-with-an-expect": "off",
 
       "sort-keys": "off",
+      "one-var": "off",
       "vitest/prefer-importing-vitest-globals": "off",
       "vitest/consistent-test-it": "off",
       "vitest/require-hook": "off",
