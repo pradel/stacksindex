@@ -53,6 +53,8 @@ export default defineConfig({
 
       "sort-keys": "off",
       "one-var": "off",
+      "node/no-sync": "off",
+      "node/no-top-level-await": "off",
       "vitest/prefer-importing-vitest-globals": "off",
       "vitest/consistent-test-it": "off",
       "vitest/require-hook": "off",
