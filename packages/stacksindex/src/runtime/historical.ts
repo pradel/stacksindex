@@ -12,7 +12,7 @@ import {
 } from "../datasources/api/index.ts";
 import { createIndexing } from "../indexing/index.ts";
 import { chunkArray } from "../lib/array.ts";
-import type { HandlerExecutionError } from "../lib/errors.ts";
+import { FilterValidationError, type HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
@@ -22,6 +22,13 @@ import { syncStore } from "../sync-store/index.ts";
 const BATCH_SIZE = 5;
 
 export interface Filter {
+  contractId: string;
+  handler: EventHandler;
+  startBlock?: number;
+  endBlock?: number | "latest";
+}
+
+interface ResolvedFilter {
   contractId: string;
   handler: EventHandler;
   startBlock?: number;
@@ -65,8 +72,86 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
   return minHeight;
 }
 
-async function initializeContractStates(
+async function validateAndResolveFilters(
   filters: Filter[],
+  context: HistoricalRuntimeContext,
+): Promise<Result<ResolvedFilter[], StacksApiError | FilterValidationError>> {
+  for (const filter of filters) {
+    if (filter.startBlock !== undefined) {
+      if (!Number.isInteger(filter.startBlock) || filter.startBlock < 0) {
+        return Result.err(
+          new FilterValidationError({
+            message: `Validation failed: Invalid startBlock for '${filter.contractId}'. Got ${filter.startBlock}, expected a non-negative integer.`,
+          }),
+        );
+      }
+    }
+
+    if (filter.endBlock !== undefined && filter.endBlock !== "latest") {
+      if (!Number.isInteger(filter.endBlock) || filter.endBlock < 0) {
+        return Result.err(
+          new FilterValidationError({
+            message: `Validation failed: Invalid endBlock for '${filter.contractId}'. Got ${filter.endBlock}, expected a non-negative integer or "latest".`,
+          }),
+        );
+      }
+    }
+  }
+
+  let latestBlockHeight: number | undefined = undefined;
+  const hasLatestTag = filters.some((filter) => filter.endBlock === "latest");
+
+  if (hasLatestTag) {
+    const statusResult = await datasourceStacksApi.getStatus(context);
+    if (statusResult.isErr()) {
+      return Result.err(statusResult.error);
+    }
+    const chainTipHeight = statusResult.value.chain_tip?.block_height;
+    if (chainTipHeight === undefined) {
+      return Result.err(
+        new FilterValidationError({
+          message:
+            "Validation failed: Unable to determine latest block height from API status response.",
+        }),
+      );
+    }
+    latestBlockHeight = chainTipHeight;
+    context.logger.info({
+      service: "historicalRuntime",
+      msg: `Resolved "latest" endBlock to block height ${latestBlockHeight}`,
+      latestBlockHeight,
+    });
+  }
+
+  const resolvedFilters: ResolvedFilter[] = [];
+  for (const filter of filters) {
+    const resolvedEndBlock = filter.endBlock === "latest" ? latestBlockHeight : filter.endBlock;
+
+    if (
+      filter.startBlock !== undefined &&
+      resolvedEndBlock !== undefined &&
+      filter.startBlock > resolvedEndBlock
+    ) {
+      return Result.err(
+        new FilterValidationError({
+          message: `Validation failed: Start block (${filter.startBlock}) is after end block (${resolvedEndBlock}) for contract '${filter.contractId}'.`,
+        }),
+      );
+    }
+
+    resolvedFilters.push({
+      contractId: filter.contractId,
+      handler: filter.handler,
+      startBlock: filter.startBlock,
+      endBlock: resolvedEndBlock,
+    });
+  }
+
+  return Result.ok(resolvedFilters);
+}
+
+async function initializeContractStates(
+  filters: ResolvedFilter[],
   context: HistoricalRuntimeContext,
 ): Promise<Result<ContractSyncState[], StacksApiError>> {
   const states: ContractSyncState[] = [];
@@ -165,7 +250,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
   async function processEventsUpTo(
     toBlockHeight: number,
     indexing: ReturnType<typeof createIndexing>,
-    filterMap: Map<string, Filter>,
+    filterMap: Map<string, ResolvedFilter>,
   ): Promise<Result<void, StacksApiError | HandlerExecutionError>> {
     const checkpoint = await syncStore.getCheckpoint({ chainId: 1 }, { db: context.db });
     const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
@@ -350,10 +435,18 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
   }
 
   return {
-    async run(filters: Filter[]): Promise<Result<void, StacksApiError | HandlerExecutionError>> {
+    async run(
+      filters: Filter[],
+    ): Promise<Result<void, StacksApiError | HandlerExecutionError | FilterValidationError>> {
       if (filters.length === 0) {
         return Result.ok(undefined);
       }
+
+      const validationResult = await validateAndResolveFilters(filters, context);
+      if (validationResult.isErr()) {
+        return Result.err(validationResult.error);
+      }
+      const resolvedFilters = validationResult.value;
 
       await migrate(context.db);
 
@@ -361,12 +454,12 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
 
       context.logger.info({
         service: "historicalRuntime",
-        msg: `Starting historical indexer for ${filters.length} contract(s)`,
+        msg: `Starting historical indexer for ${resolvedFilters.length} contract(s)`,
       });
 
-      const filterMap = new Map<string, Filter>();
+      const filterMap = new Map<string, ResolvedFilter>();
       const handlers: Record<string, EventHandler | undefined> = {};
-      for (const filter of filters) {
+      for (const filter of resolvedFilters) {
         handlers[filter.contractId] = filter.handler;
         filterMap.set(filter.contractId, filter);
       }
@@ -377,7 +470,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         api: context.api,
       });
 
-      const statesResult = await initializeContractStates(filters, context);
+      const statesResult = await initializeContractStates(resolvedFilters, context);
       if (statesResult.isErr()) {
         return Result.err(statesResult.error);
       }

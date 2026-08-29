@@ -4,3 +4,7 @@ export class HandlerExecutionError extends TaggedError("HandlerExecutionError")<
   contractId: string;
   cause: unknown;
 }> {}
+
+export class FilterValidationError extends TaggedError("FilterValidationError")<{
+  message: string;
+}> {}

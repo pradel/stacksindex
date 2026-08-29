@@ -57,6 +57,9 @@ export type ContractApiResponse =
 export type ContractLogsResponse =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
 
+export type ApiStatusResponse =
+  paths["/extended"]["get"]["responses"]["200"]["content"]["application/json"];
+
 type MinedV1Transaction = Extract<
   paths["/extended/v1/tx/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
   { block_height: number }
@@ -334,6 +337,13 @@ export const datasourceStacksApi = {
       path,
       method: "GET",
       query: { limit, cursor, ...rest },
+    });
+  },
+
+  getStatus(context: DatasourceStacksApiContext) {
+    return this._request<ApiStatusResponse, undefined>(context, {
+      path: "/extended/v1/status",
+      method: "GET",
     });
   },
 

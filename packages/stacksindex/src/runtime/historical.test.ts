@@ -2950,4 +2950,260 @@ describe("historical runtime with handlers", () => {
     );
     expect(block200Calls).toHaveLength(0);
   });
+
+  test("rejects invalid startBlock (negative or non-integer)", async () => {
+    const contractId = "SP123.token";
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+
+    const negativeResult = await runtime.run([
+      { contractId, handler: noopHandler, startBlock: -1 },
+    ]);
+    expect(negativeResult.isErr()).toBe(true);
+    const negativeError = negativeResult.isErr() ? negativeResult.error : null;
+    expect(negativeError).toMatchObject({
+      name: "FilterValidationError",
+      message: expect.stringContaining("Invalid startBlock"),
+    });
+
+    const floatResult = await runtime.run([{ contractId, handler: noopHandler, startBlock: 1.5 }]);
+    expect(floatResult.isErr()).toBe(true);
+    const floatError = floatResult.isErr() ? floatResult.error : null;
+    expect(floatError).toMatchObject({
+      name: "FilterValidationError",
+      message: expect.stringContaining("Invalid startBlock"),
+    });
+  });
+
+  test("rejects invalid endBlock (negative or non-integer)", async () => {
+    const contractId = "SP123.token";
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+
+    const negativeResult = await runtime.run([{ contractId, handler: noopHandler, endBlock: -5 }]);
+    expect(negativeResult.isErr()).toBe(true);
+    const negativeError = negativeResult.isErr() ? negativeResult.error : null;
+    expect(negativeError).toMatchObject({
+      name: "FilterValidationError",
+      message: expect.stringContaining("Invalid endBlock"),
+    });
+
+    const floatResult = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100.2 }]);
+    expect(floatResult.isErr()).toBe(true);
+    const floatError = floatResult.isErr() ? floatResult.error : null;
+    expect(floatError).toMatchObject({
+      name: "FilterValidationError",
+      message: expect.stringContaining("Invalid endBlock"),
+    });
+  });
+
+  test("rejects when startBlock is greater than endBlock", async () => {
+    const contractId = "SP123.token";
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+
+    const result = await runtime.run([
+      { contractId, handler: noopHandler, startBlock: 200, endBlock: 100 },
+    ]);
+    expect(result.isErr()).toBe(true);
+    const resultError = result.isErr() ? result.error : null;
+    expect(resultError).toMatchObject({
+      name: "FilterValidationError",
+      message: expect.stringContaining("Start block (200) is after end block (100)"),
+    });
+  });
+
+  test("resolves endBlock: 'latest' using API status and bounds synchronization", async () => {
+    const contractId = "SP123.token";
+    const handledHeights: number[] = [];
+    const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
+      handledHeights.push(event.block_height);
+      return Promise.resolve();
+    });
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+      if (url.includes("/extended/v1/status")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            server_version: "stacks-node-api:v1.0.0",
+            status: "ready",
+            chain_tip: {
+              block_height: 100,
+              block_hash: "block-100",
+              index_block_hash: "idx-100",
+              microblock_hash: "mb-100",
+              microblock_sequence: 0,
+            },
+          }),
+        };
+      }
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 50,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 1,
+            cursor: { next: null, previous: null, current: "100:0:0" },
+            results: [{ transaction: { tx_id: "tx-100", block: { height: 100, tx_index: 0 } } }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-100/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            results: [
+              {
+                tx_id: "tx-100",
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 1,
+            next_cursor: "150:0:0:0",
+            prev_cursor: null,
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-100")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-100",
+            event_count: 1,
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP sender", nonce: 0 },
+            sponsor: null,
+            block: {
+              hash: "block-100",
+              height: 100,
+              time: 1000,
+              tx_index: 0,
+            },
+            bitcoin_block: {
+              height: 100,
+              time: 1000,
+            },
+            events: [
+              {
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/extended/v2/blocks/block-100")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            canonical: true,
+            height: 100,
+            hash: "block-100",
+            block_time: 1000,
+            block_time_iso: "",
+            tenure_height: 100,
+            index_block_hash: "",
+            parent_block_hash: "",
+            parent_index_block_hash: "",
+            burn_block_time: 1000,
+            burn_block_time_iso: "",
+            burn_block_hash: "",
+            burn_block_height: 100,
+            miner_txid: "",
+            tx_count: 1,
+            execution_cost_read_count: 0,
+            execution_cost_read_length: 0,
+            execution_cost_runtime: 0,
+            execution_cost_write_count: 0,
+            execution_cost_write_length: 0,
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const result = await runtime.run([
+      { contractId, handler, startBlock: 100, endBlock: "latest" },
+    ]);
+
+    expect(result.isOk()).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handledHeights).toStrictEqual([100]);
+
+    // Should not have fetched page with cursor 150:0:0:0 because 150 > resolved endBlock (100)
+    const logsCalls = mockRequest.mock.calls.filter(
+      (call: any) =>
+        (call[0] as string).includes("cursor=150%3A0%3A0%3A0") ||
+        (call[0] as string).includes("cursor=150:0:0:0"),
+    );
+    expect(logsCalls).toHaveLength(0);
+  });
+
+  test("returns error when endBlock: 'latest' fails to fetch API status", async () => {
+    const contractId = "SP123.token";
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+      if (url.includes("/extended/v1/status")) {
+        return {
+          statusCode: 500,
+          body: mockBody({ error: "Internal Server Error" }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: "latest" }]);
+
+    expect(result.isErr()).toBe(true);
+  });
 });
