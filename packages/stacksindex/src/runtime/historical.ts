@@ -516,13 +516,16 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     currentHeight: number,
     nextCursor: string | null,
   ): Promise<void> {
+    const wasInitialPage = lowestState.isInitialPage ?? false;
     lowestState.isInitialPage = false;
     lowestState.syncedBlockHeight = currentHeight - 1;
 
     if (nextCursor) {
       const lastBlockHeight = parseLogsCursor(nextCursor).blockHeight;
       const { endBlock } = lowestState;
-      const isPastEndBlock = endBlock !== undefined && lastBlockHeight > endBlock;
+      const isPastEndBlock =
+        endBlock !== undefined &&
+        (currentHeight > endBlock || (!wasInitialPage && currentHeight >= endBlock));
 
       if (endBlock !== undefined && isPastEndBlock) {
         context.logger.info({
