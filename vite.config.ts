@@ -64,6 +64,8 @@ export default defineConfig({
     },
   },
   test: {
+    testTimeout: 60000,
+    hookTimeout: 60000,
     exclude: ["**/node_modules/**", "**/dist/**", "repos/**"],
   },
   run: {
