@@ -24,6 +24,7 @@ const BATCH_SIZE = 5;
 export interface Filter {
   contractId: string;
   handler: EventHandler;
+  startBlock?: number;
 }
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -76,7 +77,9 @@ async function initializeContractStates(
     if (saved === null) {
       const historicalSync = createHistoricalSync(context);
       // oxlint-disable-next-line no-await-in-loop
-      const cursorResult = await historicalSync.getContractEventsFirstCursor(filter.contractId);
+      const cursorResult = await historicalSync.getContractEventsFirstCursor(filter.contractId, {
+        startBlock: filter.startBlock,
+      });
       if (cursorResult.isErr()) {
         return Result.err(cursorResult.error);
       }
@@ -109,6 +112,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
   async function processEventsUpTo(
     toBlockHeight: number,
     indexing: ReturnType<typeof createIndexing>,
+    filterMap: Map<string, Filter>,
   ): Promise<Result<void, StacksApiError | HandlerExecutionError>> {
     const checkpoint = await syncStore.getCheckpoint({ chainId: 1 }, { db: context.db });
     const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
@@ -136,28 +140,34 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     const batchClock = startClock();
 
     for (const row of rows) {
-      const event: HandlerEvent = {
-        event_index: row.eventIndex,
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        event_type: row.eventType as "smart_contract_log",
-        tx_id: row.txId,
-        contract_log: {
-          contract_id: row.contractId,
-          topic: row.topic,
-          value: {
-            hex: row.valueHex,
-            repr: row.valueRepr,
+      const filter = filterMap.get(row.contractId);
+      const rowBlockHeight = Number(row.blockHeight);
+      const isBeforeStart = filter?.startBlock !== undefined && rowBlockHeight < filter.startBlock;
+
+      if (!isBeforeStart) {
+        const event: HandlerEvent = {
+          event_index: row.eventIndex,
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          event_type: row.eventType as "smart_contract_log",
+          tx_id: row.txId,
+          contract_log: {
+            contract_id: row.contractId,
+            topic: row.topic,
+            value: {
+              hex: row.valueHex,
+              repr: row.valueRepr,
+            },
           },
-        },
-        block_height: Number(row.blockHeight),
-        block_time: Number(row.blockTime),
-        tx_index: row.txIndex,
-        sender_address: row.senderAddress,
-      };
-      // oxlint-disable-next-line no-await-in-loop
-      const result = await indexing.executeEvent(event);
-      if (result.isErr()) {
-        return Result.err(result.error);
+          block_height: rowBlockHeight,
+          block_time: Number(row.blockTime),
+          tx_index: row.txIndex,
+          sender_address: row.senderAddress,
+        };
+        // oxlint-disable-next-line no-await-in-loop
+        const result = await indexing.executeEvent(event);
+        if (result.isErr()) {
+          return Result.err(result.error);
+        }
       }
     }
 
@@ -217,9 +227,11 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         msg: `Starting historical indexer for ${filters.length} contract(s)`,
       });
 
+      const filterMap = new Map<string, Filter>();
       const handlers: Record<string, EventHandler | undefined> = {};
       for (const filter of filters) {
         handlers[filter.contractId] = filter.handler;
+        filterMap.set(filter.contractId, filter);
       }
       const indexing = createIndexing({
         logger: context.logger,
@@ -372,7 +384,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         const safeHeight = getSafeBlockHeight(states);
         if (safeHeight !== undefined) {
           // oxlint-disable-next-line no-await-in-loop
-          const indexResult = await processEventsUpTo(safeHeight, indexing);
+          const indexResult = await processEventsUpTo(safeHeight, indexing, filterMap);
           if (indexResult.isErr()) {
             return Result.err(indexResult.error);
           }
@@ -381,7 +393,11 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
 
       // Final indexing pass: process all remaining events
       // oxlint-disable-next-line no-await-in-loop
-      const finalIndexResult = await processEventsUpTo(Number.MAX_SAFE_INTEGER, indexing);
+      const finalIndexResult = await processEventsUpTo(
+        Number.MAX_SAFE_INTEGER,
+        indexing,
+        filterMap,
+      );
       if (finalIndexResult.isErr()) {
         return Result.err(finalIndexResult.error);
       }

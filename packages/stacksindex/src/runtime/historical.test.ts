@@ -79,7 +79,7 @@ describe("historical runtime", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1" } }],
+            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
           }),
         };
       }
@@ -437,7 +437,7 @@ describe("historical runtime", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-a-init" } }],
+            results: [{ transaction: { tx_id: "tx-a-init", block: { height: 100, tx_index: 0 } } }],
           }),
         };
       }
@@ -461,7 +461,7 @@ describe("historical runtime", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-b-init" } }],
+            results: [{ transaction: { tx_id: "tx-b-init", block: { height: 50, tx_index: 0 } } }],
           }),
         };
       }
@@ -831,7 +831,7 @@ describe("historical runtime", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1" } }],
+            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
           }),
         };
       }
@@ -971,7 +971,7 @@ describe("historical runtime", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1" } }],
+            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
           }),
         };
       }
@@ -1305,7 +1305,7 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-a-init" } }],
+            results: [{ transaction: { tx_id: "tx-a-init", block: { height: 100, tx_index: 0 } } }],
           }),
         };
       }
@@ -1329,7 +1329,7 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-b-init" } }],
+            results: [{ transaction: { tx_id: "tx-b-init", block: { height: 50, tx_index: 0 } } }],
           }),
         };
       }
@@ -1468,7 +1468,7 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1" } }],
+            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
           }),
         };
       }
@@ -1702,7 +1702,7 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1" } }],
+            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
           }),
         };
       }
@@ -1914,7 +1914,7 @@ describe("historical runtime with handlers", () => {
               limit: 50,
               total: 1,
               cursor: { next: null, previous: null, current: "curr" },
-              results: [{ transaction: { tx_id: "tx-1" } }],
+              results: [{ transaction: { tx_id: "tx-1", block: { height: 1234, tx_index: 0 } } }],
             }),
           };
         }
@@ -2109,5 +2109,157 @@ describe("historical runtime with handlers", () => {
     expect(result.isOk()).toBe(true);
 
     await indexerDb.close();
+  });
+
+  test("filters events and starts synchronization at startBlock", async () => {
+    const contractId = "SP123.token";
+    const handledHeights: number[] = [];
+    const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
+      handledHeights.push(event.block_height);
+      return Promise.resolve();
+    });
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 50,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 1,
+            cursor: { next: null, previous: null, current: "100:0:0" },
+            results: [{ transaction: { tx_id: "tx-100", block: { height: 100, tx_index: 0 } } }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-100/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-100")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-100",
+            event_count: 1,
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP sender", nonce: 0 },
+            sponsor: null,
+            block: {
+              hash: "block-100",
+              height: 100,
+              time: 1000,
+              tx_index: 0,
+            },
+            bitcoin_block: {
+              height: 100,
+              time: 1000,
+            },
+            events: [
+              {
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            results: [
+              {
+                tx_id: "tx-100",
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 1,
+            next_cursor: null,
+            prev_cursor: null,
+          }),
+        };
+      }
+      if (url.includes("/extended/v2/blocks/block-100")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            canonical: true,
+            height: 100,
+            hash: "block-100",
+            block_time: 1000,
+            block_time_iso: "",
+            tenure_height: 100,
+            index_block_hash: "",
+            parent_block_hash: "",
+            parent_index_block_hash: "",
+            burn_block_time: 1000,
+            burn_block_time_iso: "",
+            burn_block_hash: "",
+            burn_block_height: 100,
+            miner_txid: "",
+            tx_count: 1,
+            execution_cost_read_count: 0,
+            execution_cost_read_length: 0,
+            execution_cost_runtime: 0,
+            execution_cost_write_count: 0,
+            execution_cost_write_length: 0,
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const result = await runtime.run([{ contractId, handler, startBlock: 100 }]);
+
+    expect(result.isOk()).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handledHeights).toStrictEqual([100]);
   });
 });
