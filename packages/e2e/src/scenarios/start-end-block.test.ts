@@ -58,31 +58,26 @@ describe("e2E: Bounded startBlock and endBlock scenario", () => {
       {
         contractId: SATOSHIBLES_CONTRACT,
         handler: satoshiblesHandler,
-        startBlock: 32020,
-        endBlock: 32030,
+        startBlock: 47784,
+        endBlock: 47786,
       },
     ]);
 
     expect(result.isOk()).toBe(true);
 
     const recordedEvents = tracer.getEvents();
-    expect(recordedEvents).toHaveLength(2);
+    expect(recordedEvents).toHaveLength(1);
 
     // Verify strict global chronological order
     tracer.assertChronologicalOrder();
 
-    // Verify all recorded events are within [startBlock, endBlock]
-    for (const event of recordedEvents) {
-      expect(event.blockHeight).toBeGreaterThanOrEqual(32020);
-      expect(event.blockHeight).toBeLessThanOrEqual(32030);
-    }
-
-    expect(recordedEvents[0].blockHeight).toBe(32020);
-    expect(recordedEvents[0].txId).toBe("0xbound_tx_32020");
-    expect(recordedEvents[0].decoded).toBe(20n);
-
-    expect(recordedEvents[1].blockHeight).toBe(32030);
-    expect(recordedEvents[1].txId).toBe("0xbound_tx_32030");
-    expect(recordedEvents[1].decoded).toBe(30n);
+    // Verify recorded event is strictly within [startBlock, endBlock]
+    expect(recordedEvents[0].blockHeight).toBeGreaterThanOrEqual(47784);
+    expect(recordedEvents[0].blockHeight).toBeLessThanOrEqual(47786);
+    expect(recordedEvents[0].blockHeight).toBe(47784);
+    expect(recordedEvents[0].txId).toBe(
+      "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
+    );
+    expect(recordedEvents[0].topic).toBe("print");
   });
 });

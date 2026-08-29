@@ -92,6 +92,43 @@ async function findFirstMatchingContractEvent(
   return Result.ok(null);
 }
 
+async function checkTransactionForMatchingEvent(
+  context: HistoricalSyncContext,
+  txId: string,
+  contractId: string,
+): Promise<Result<LogsCursor | null, StacksApiError>> {
+  const txResult = await datasourceStacksApi.getTransaction(context, txId);
+  if (txResult.isErr()) {
+    return Result.err(txResult.error);
+  }
+
+  const fullTx = txResult.value;
+  if (fullTx.event_count === 0) {
+    return Result.ok(null);
+  }
+
+  const matchingEventResult = await findFirstMatchingContractEvent(
+    context,
+    fullTx.tx_id,
+    contractId,
+  );
+  if (matchingEventResult.isErr()) {
+    return Result.err(matchingEventResult.error);
+  }
+
+  const matchingEvent = matchingEventResult.value;
+  if (!matchingEvent) {
+    return Result.ok(null);
+  }
+
+  return Result.ok({
+    blockHeight: fullTx.block.height,
+    microblockSequence: 0,
+    txIndex: fullTx.block.tx_index,
+    eventIndex: matchingEvent.event_index,
+  });
+}
+
 export const createHistoricalSync = (context: HistoricalSyncContext) => ({
   /**
    * Discovers the initial cursor required to start synchronizing smart contract logs.
@@ -122,7 +159,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
    *    - If `event_count === 0`, skip immediately (0 extra requests).
    *    - If `event_count > 0`, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
    *      matching `contract_id`.
-   * 4. When found, construct the exact 4-part cursor (`block.height:0:block.tx_index:event_index`) for `getContractLogs`.
+   *    4. When found, construct the exact 4-part cursor (`block.height:0:block.tx_index:event_index`) for `getContractLogs`.
    * 5. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
    */
   async getContractEventsFirstCursor(
@@ -184,37 +221,30 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
 
       // Iterate from oldest to newest within the page
       for (const item of results.slice().reverse()) {
-        // oxlint-disable-next-line no-await-in-loop
-        const txResult = await datasourceStacksApi.getTransaction(context, item.transaction.tx_id);
-        if (txResult.isErr()) {
-          return Result.err(txResult.error);
-        }
+        const itemBlockHeight = (item.transaction as { block?: { height?: number } }).block?.height;
+        const isBeforeStart =
+          options?.startBlock !== undefined &&
+          itemBlockHeight !== undefined &&
+          itemBlockHeight < options.startBlock;
 
-        const fullTx = txResult.value;
-        if (fullTx.event_count > 0) {
+        if (!isBeforeStart) {
           // oxlint-disable-next-line no-await-in-loop
-          const matchingEventResult = await findFirstMatchingContractEvent(
+          const cursorResult = await checkTransactionForMatchingEvent(
             context,
-            fullTx.tx_id,
+            item.transaction.tx_id,
             contractId,
           );
-          if (matchingEventResult.isErr()) {
-            return Result.err(matchingEventResult.error);
+          if (cursorResult.isErr()) {
+            return Result.err(cursorResult.error);
           }
 
-          const matchingEvent = matchingEventResult.value;
-          if (matchingEvent) {
-            const firstCursor = buildLogsCursor({
-              blockHeight: fullTx.block.height,
-              microblockSequence: 0,
-              txIndex: fullTx.block.tx_index,
-              eventIndex: matchingEvent.event_index,
-            });
+          if (cursorResult.value) {
+            const firstCursor = buildLogsCursor(cursorResult.value);
             const duration = stopClock();
             context.logger.info({
               service: "getContractEventsFirstCursor",
-              msg: `Found first cursor for ${contractId} at block ${fullTx.block.height}`,
-              block: fullTx.block.height,
+              msg: `Found first cursor for ${contractId} at block ${cursorResult.value.blockHeight}`,
+              block: cursorResult.value.blockHeight,
               duration,
             });
             return Result.ok(firstCursor);

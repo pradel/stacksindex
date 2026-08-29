@@ -1,11 +1,7 @@
-// oxlint-disable typescript/no-unsafe-assignment
-// oxlint-disable typescript/no-explicit-any
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-
-import * as undiciActual from "undici";
 
 export interface FixtureEntry {
   statusCode: number;
@@ -88,17 +84,19 @@ export function createScenarioRecorder(fixtureFileName: string): ScenarioRecorde
         };
       }
 
-      // Record mode: fetch from live API
-      const liveRes = await undiciActual.request(rawUrl, {
-        method: method as undiciActual.Dispatcher.HttpMethod,
-        headers: {
-          ...(process.env.HIRO_API_KEY ? { "x-api-key": process.env.HIRO_API_KEY } : {}),
-          ...init?.headers,
-        },
+      // Record mode: fetch from live API using native fetch
+      const requestHeaders: Record<string, string> = {
+        ...(process.env.HIRO_API_KEY ? { "x-api-key": process.env.HIRO_API_KEY } : {}),
+        ...init?.headers,
+      };
+
+      const liveRes = await globalThis.fetch(rawUrl, {
+        method,
+        headers: requestHeaders,
         body: init?.body,
       });
 
-      const text = await liveRes.body.text();
+      const text = await liveRes.text();
       const bodyData: unknown = (() => {
         try {
           return JSON.parse(text) as unknown;
@@ -108,14 +106,12 @@ export function createScenarioRecorder(fixtureFileName: string): ScenarioRecorde
       })();
 
       const headersRecord: Record<string, string> = {};
-      for (const [headerKey, headerVal] of Object.entries(liveRes.headers)) {
-        if (typeof headerVal === "string") {
-          headersRecord[headerKey] = headerVal;
-        }
-      }
+      liveRes.headers.forEach((value, headerName) => {
+        headersRecord[headerName] = value;
+      });
 
       const entry: FixtureEntry = {
-        statusCode: liveRes.statusCode,
+        statusCode: liveRes.status,
         headers: headersRecord,
         body: bodyData,
       };
