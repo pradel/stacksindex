@@ -92,6 +92,43 @@ async function findFirstMatchingContractEvent(
   return Result.ok(null);
 }
 
+async function checkTransactionForMatchingEvent(
+  context: HistoricalSyncContext,
+  txId: string,
+  contractId: string,
+): Promise<Result<LogsCursor | null, StacksApiError>> {
+  const txResult = await datasourceStacksApi.getTransaction(context, txId);
+  if (txResult.isErr()) {
+    return Result.err(txResult.error);
+  }
+
+  const fullTx = txResult.value;
+  if (fullTx.event_count === 0) {
+    return Result.ok(null);
+  }
+
+  const matchingEventResult = await findFirstMatchingContractEvent(
+    context,
+    fullTx.tx_id,
+    contractId,
+  );
+  if (matchingEventResult.isErr()) {
+    return Result.err(matchingEventResult.error);
+  }
+
+  const matchingEvent = matchingEventResult.value;
+  if (!matchingEvent) {
+    return Result.ok(null);
+  }
+
+  return Result.ok({
+    blockHeight: fullTx.block.height,
+    microblockSequence: 0,
+    txIndex: fullTx.block.tx_index,
+    eventIndex: matchingEvent.event_index,
+  });
+}
+
 export const createHistoricalSync = (context: HistoricalSyncContext) => ({
   /**
    * Discovers the initial cursor required to start synchronizing smart contract logs.
@@ -179,40 +216,25 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       // Iterate from oldest to newest within the page
       for (const item of results.slice().reverse()) {
         // oxlint-disable-next-line no-await-in-loop
-        const txResult = await datasourceStacksApi.getTransaction(context, item.transaction.tx_id);
-        if (txResult.isErr()) {
-          return Result.err(txResult.error);
+        const cursorResult = await checkTransactionForMatchingEvent(
+          context,
+          item.transaction.tx_id,
+          contractId,
+        );
+        if (cursorResult.isErr()) {
+          return Result.err(cursorResult.error);
         }
 
-        const fullTx = txResult.value;
-        if (fullTx.event_count > 0) {
-          // oxlint-disable-next-line no-await-in-loop
-          const matchingEventResult = await findFirstMatchingContractEvent(
-            context,
-            fullTx.tx_id,
-            contractId,
-          );
-          if (matchingEventResult.isErr()) {
-            return Result.err(matchingEventResult.error);
-          }
-
-          const matchingEvent = matchingEventResult.value;
-          if (matchingEvent) {
-            const firstCursor = buildLogsCursor({
-              blockHeight: fullTx.block.height,
-              microblockSequence: 0,
-              txIndex: fullTx.block.tx_index,
-              eventIndex: matchingEvent.event_index,
-            });
-            const duration = stopClock();
-            context.logger.info({
-              service: "getContractEventsFirstCursor",
-              msg: `Found first cursor for ${contractId} at block ${fullTx.block.height}`,
-              block: fullTx.block.height,
-              duration,
-            });
-            return Result.ok(firstCursor);
-          }
+        if (cursorResult.value) {
+          const firstCursor = buildLogsCursor(cursorResult.value);
+          const duration = stopClock();
+          context.logger.info({
+            service: "getContractEventsFirstCursor",
+            msg: `Found first cursor for ${contractId} at block ${cursorResult.value.blockHeight}`,
+            block: cursorResult.value.blockHeight,
+            duration,
+          });
+          return Result.ok(firstCursor);
         }
       }
 
