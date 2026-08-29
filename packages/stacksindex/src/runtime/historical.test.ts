@@ -2132,7 +2132,10 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
-      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+      if (
+        url.includes(`/extended/v3/principals/${contractId}/transactions`) &&
+        url.split("?")[1]?.split("&").includes("cursor=100:0:0")
+      ) {
         return {
           statusCode: 200,
           body: mockBody({
