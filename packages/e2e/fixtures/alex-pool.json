@@ -1,7 +1,6 @@
 {
   "GET https://api.hiro.so/extended/v1/contract/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "tx_id": "0xalex_tx_deploy",
       "canonical": true,
@@ -12,21 +11,33 @@
   },
   "GET https://api.hiro.so/extended/v3/principals/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01/transactions?limit=50&cursor=47120:0:0": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "limit": 50,
       "total": 2,
-      "cursor": { "next": null, "previous": null, "current": "47120:0:0" },
-      "results": [{ "transaction": { "tx_id": "0xalex_tx_1" } }]
+      "cursor": {
+        "next": null,
+        "previous": null,
+        "current": "47120:0:0"
+      },
+      "results": [
+        {
+          "transaction": {
+            "tx_id": "0xalex_tx_1"
+          }
+        }
+      ]
     }
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xalex_tx_1/events?limit=50": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "total": 1,
       "limit": 50,
-      "cursor": { "next": null, "previous": null, "current": "0" },
+      "cursor": {
+        "next": null,
+        "previous": null,
+        "current": "0"
+      },
       "results": [
         {
           "event_index": 0,
@@ -45,14 +56,16 @@
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xalex_tx_1": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "tx_id": "0xalex_tx_1",
       "event_count": 1,
       "type": "contract_call",
       "status": "success",
       "fee_rate": "5000",
-      "sender": { "address": "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9", "nonce": 1 },
+      "sender": {
+        "address": "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+        "nonce": 1
+      },
       "sponsor": null,
       "block": {
         "hash": "0xalex_block_47120",
@@ -82,7 +95,6 @@
   },
   "GET https://api.hiro.so/extended/v2/blocks/0xalex_block_47120": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "canonical": true,
       "height": 47120,
@@ -108,7 +120,6 @@
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01/logs?limit=100&cursor=47120:0:0:0": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "results": [
         {
@@ -134,7 +145,6 @@
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01/logs?limit=100&cursor=47125:0:1:0": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "results": [
         {
@@ -160,14 +170,16 @@
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xalex_tx_2": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "tx_id": "0xalex_tx_2",
       "event_count": 1,
       "type": "contract_call",
       "status": "success",
       "fee_rate": "5000",
-      "sender": { "address": "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9", "nonce": 2 },
+      "sender": {
+        "address": "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+        "nonce": 2
+      },
       "sponsor": null,
       "block": {
         "hash": "0xalex_block_47125",
@@ -197,7 +209,6 @@
   },
   "GET https://api.hiro.so/extended/v2/blocks/0xalex_block_47125": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "canonical": true,
       "height": 47125,
@@ -223,7 +234,6 @@
   },
   "POST https://api.hiro.so/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/fixed-weight-pool-v1-01/get-pool-count?tip=47120": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "okay": true,
       "result": "0x070100000000000000000000000000000001"
@@ -231,7 +241,6 @@
   },
   "POST https://api.hiro.so/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/fixed-weight-pool-v1-01/get-pool-count?tip=47125": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "okay": true,
       "result": "0x070100000000000000000000000000000002"

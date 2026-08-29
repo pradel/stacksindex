@@ -1,9 +1,6 @@
 {
   "GET https://api.hiro.so/extended/v1/contract/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "tx_id": "0xsatoshibles_deploy",
       "canonical": true,
@@ -13,9 +10,6 @@
   },
   "GET https://api.hiro.so/extended/v3/principals/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/transactions?limit=50&cursor=32000:0:0": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "limit": 50,
       "total": 1,
@@ -35,9 +29,6 @@
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xmulti_sat_tx_1/events?limit=50": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "total": 1,
       "limit": 50,
@@ -64,9 +55,6 @@
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xmulti_sat_tx_1": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "tx_id": "0xmulti_sat_tx_1",
       "event_count": 1,
@@ -89,9 +77,6 @@
   },
   "GET https://api.hiro.so/extended/v2/blocks/0xmulti_block_32000": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "canonical": true,
       "height": 32000,
@@ -103,9 +88,6 @@
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?limit=100&cursor=32000:0:0:0": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "results": [
         {
@@ -131,9 +113,6 @@
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?limit=100&cursor=32010:0:0:0": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "results": [
         {
@@ -159,9 +138,6 @@
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xmulti_sat_tx_2": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "tx_id": "0xmulti_sat_tx_2",
       "event_count": 1,
@@ -184,9 +160,6 @@
   },
   "GET https://api.hiro.so/extended/v2/blocks/0xmulti_block_32010": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "canonical": true,
       "height": 32010,
@@ -198,9 +171,6 @@
   },
   "GET https://api.hiro.so/extended/v1/contract/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "tx_id": "0xalex_deploy",
       "canonical": true,
@@ -210,9 +180,6 @@
   },
   "GET https://api.hiro.so/extended/v3/principals/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01/transactions?limit=50&cursor=32005:0:0": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "limit": 50,
       "total": 1,
@@ -232,9 +199,6 @@
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xmulti_alex_tx_1/events?limit=50": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "total": 1,
       "limit": 50,
@@ -261,9 +225,6 @@
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xmulti_alex_tx_1": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "tx_id": "0xmulti_alex_tx_1",
       "event_count": 1,
@@ -286,9 +247,6 @@
   },
   "GET https://api.hiro.so/extended/v2/blocks/0xmulti_block_32005": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "canonical": true,
       "height": 32005,
@@ -300,9 +258,6 @@
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01/logs?limit=100&cursor=32005:0:0:0": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "results": [
         {
@@ -328,9 +283,6 @@
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01/logs?limit=100&cursor=32015:0:0:0": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "results": [
         {
@@ -356,9 +308,6 @@
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xmulti_alex_tx_2": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "tx_id": "0xmulti_alex_tx_2",
       "event_count": 1,
@@ -381,9 +330,6 @@
   },
   "GET https://api.hiro.so/extended/v2/blocks/0xmulti_block_32015": {
     "statusCode": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
     "body": {
       "canonical": true,
       "height": 32015,

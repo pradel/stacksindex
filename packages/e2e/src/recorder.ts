@@ -105,14 +105,8 @@ export function createScenarioRecorder(fixtureFileName: string): ScenarioRecorde
         }
       })();
 
-      const headersRecord: Record<string, string> = {};
-      liveRes.headers.forEach((value, headerName) => {
-        headersRecord[headerName] = value;
-      });
-
       const entry: FixtureEntry = {
         statusCode: liveRes.status,
-        headers: headersRecord,
         body: bodyData,
       };
 
@@ -121,7 +115,7 @@ export function createScenarioRecorder(fixtureFileName: string): ScenarioRecorde
 
       return {
         statusCode: entry.statusCode,
-        headers: entry.headers,
+        headers: { "content-type": "application/json" },
         body: {
           json: () => Promise.resolve(entry.body),
           text: () => Promise.resolve(text),

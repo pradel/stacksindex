@@ -1,7 +1,6 @@
 {
   "GET https://api.hiro.so/extended/v1/contract/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "tx_id": "0xsatoshibles_deploy",
       "canonical": true,
@@ -12,21 +11,33 @@
   },
   "GET https://api.hiro.so/extended/v3/principals/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/transactions?limit=50&cursor=32000:0:0": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "limit": 50,
       "total": 2,
-      "cursor": { "next": null, "previous": null, "current": "32000:0:0" },
-      "results": [{ "transaction": { "tx_id": "0xsatoshibles_tx_1" } }]
+      "cursor": {
+        "next": null,
+        "previous": null,
+        "current": "32000:0:0"
+      },
+      "results": [
+        {
+          "transaction": {
+            "tx_id": "0xsatoshibles_tx_1"
+          }
+        }
+      ]
     }
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xsatoshibles_tx_1/events?limit=50": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "total": 1,
       "limit": 50,
-      "cursor": { "next": null, "previous": null, "current": "0" },
+      "cursor": {
+        "next": null,
+        "previous": null,
+        "current": "0"
+      },
       "results": [
         {
           "event_index": 0,
@@ -45,14 +56,16 @@
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xsatoshibles_tx_1": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "tx_id": "0xsatoshibles_tx_1",
       "event_count": 1,
       "type": "contract_call",
       "status": "success",
       "fee_rate": "2000",
-      "sender": { "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C", "nonce": 1 },
+      "sender": {
+        "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C",
+        "nonce": 1
+      },
       "sponsor": null,
       "block": {
         "hash": "0xsatoshibles_block_32000",
@@ -82,7 +95,6 @@
   },
   "GET https://api.hiro.so/extended/v2/blocks/0xsatoshibles_block_32000": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "canonical": true,
       "height": 32000,
@@ -108,7 +120,6 @@
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?limit=100&cursor=32000:0:0:0": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "results": [
         {
@@ -134,7 +145,6 @@
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?limit=100&cursor=32010:0:2:0": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "results": [
         {
@@ -160,14 +170,16 @@
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xsatoshibles_tx_2": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "tx_id": "0xsatoshibles_tx_2",
       "event_count": 1,
       "type": "contract_call",
       "status": "success",
       "fee_rate": "2000",
-      "sender": { "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C", "nonce": 2 },
+      "sender": {
+        "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C",
+        "nonce": 2
+      },
       "sponsor": null,
       "block": {
         "hash": "0xsatoshibles_block_32010",
@@ -197,7 +209,6 @@
   },
   "GET https://api.hiro.so/extended/v2/blocks/0xsatoshibles_block_32010": {
     "statusCode": 200,
-    "headers": { "content-type": "application/json" },
     "body": {
       "canonical": true,
       "height": 32010,
