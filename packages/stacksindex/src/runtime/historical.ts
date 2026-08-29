@@ -173,7 +173,7 @@ async function initContractFromScratch(
         chainId: 1,
         cursor: null,
         lastBlockHeight: filter.endBlock ?? 0,
-        isComplete: true,
+        isComplete: filter.endBlock !== undefined,
       },
       { db: context.db },
     );
@@ -234,7 +234,7 @@ async function initContractFromSaved(
 ): Promise<Result<ContractSyncState, StacksApiError>> {
   const savedHeight = Number(saved.lastBlockHeight);
   const isAlreadyComplete =
-    saved.isComplete && (filter.endBlock === undefined || savedHeight >= filter.endBlock);
+    saved.isComplete && filter.endBlock !== undefined && savedHeight >= filter.endBlock;
 
   if (isAlreadyComplete) {
     context.logger.info({
@@ -296,7 +296,7 @@ async function initContractFromSaved(
         chainId: 1,
         cursor: null,
         lastBlockHeight: filter.endBlock ?? savedHeight,
-        isComplete: true,
+        isComplete: filter.endBlock !== undefined,
       },
       { db: context.db },
     );
@@ -516,16 +516,13 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     currentHeight: number,
     nextCursor: string | null,
   ): Promise<void> {
-    const wasInitialPage = lowestState.isInitialPage ?? false;
     lowestState.isInitialPage = false;
     lowestState.syncedBlockHeight = currentHeight - 1;
 
     if (nextCursor) {
       const lastBlockHeight = parseLogsCursor(nextCursor).blockHeight;
       const { endBlock } = lowestState;
-      const isPastEndBlock =
-        endBlock !== undefined &&
-        (lastBlockHeight > endBlock || (!wasInitialPage && currentHeight >= endBlock));
+      const isPastEndBlock = endBlock !== undefined && lastBlockHeight > endBlock;
 
       if (endBlock !== undefined && isPastEndBlock) {
         context.logger.info({
@@ -567,7 +564,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           chainId: 1,
           cursor: null,
           lastBlockHeight: currentHeight,
-          isComplete: true,
+          isComplete: lowestState.endBlock !== undefined,
         },
         { db: context.db },
       );
@@ -592,17 +589,16 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       await migrate(context.db);
 
       const runClock = startClock();
-
       context.logger.info({
         service: "historicalRuntime",
-        msg: `Starting historical indexer for ${resolvedFilters.length} contract(s)`,
+        msg: "Starting historical indexing",
+        contracts: resolvedFilters.map((filter) => filter.contractId),
       });
 
-      const filterMap = new Map<string, ResolvedFilter>();
+      const filterMap = new Map(resolvedFilters.map((filter) => [filter.contractId, filter]));
       const handlers: Record<string, EventHandler | undefined> = {};
       for (const filter of resolvedFilters) {
         handlers[filter.contractId] = filter.handler;
-        filterMap.set(filter.contractId, filter);
       }
       const indexing = createIndexing({
         logger: context.logger,
@@ -618,7 +614,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       const states = statesResult.value;
 
       while (states.some((state) => !state.done)) {
-        // Find contract with lowest block height cursor
+        // Fair scheduling: find contract with lowest cursor block height
         let lowestState: ContractSyncState | null = null;
         let lowestHeight = Number.MAX_SAFE_INTEGER;
 
@@ -665,11 +661,12 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
               .map((event) => event.tx_id),
           ),
         ];
-        const existingTxIds = await syncStore.getExistingTransactions(
+        const existingTxs = await syncStore.getExistingTransactions(
           { txIds, chainId: 1 },
           { db: context.db },
         );
-        const missingTxIds = txIds.filter((txId) => !existingTxIds.includes(txId));
+        const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
+        const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
         context.logger.debug({
           service: "historicalRuntime",
           msg: `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
@@ -693,11 +690,17 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           // oxlint-disable-next-line typescript/no-unnecessary-condition
           (event): event is SmartContractLogEvent => event.event_type === "smart_contract_log",
         );
-        const txMap = new Map(transactions.map((transaction) => [transaction.tx_id, transaction]));
+        const txBlockHeights = new Map<string, number>();
+        for (const existingTx of existingTxs) {
+          txBlockHeights.set(existingTx.txId, Number(existingTx.blockHeight));
+        }
+        for (const transaction of transactions) {
+          txBlockHeights.set(transaction.tx_id, transaction.block.height);
+        }
         const eventsWithBlockHeight = smartContractLogs
           .map((event) => {
-            const tx = txMap.get(event.tx_id);
-            return { event, blockHeight: tx?.block.height ?? 0 };
+            const blockHeight = txBlockHeights.get(event.tx_id) ?? 0;
+            return { event, blockHeight };
           })
           .filter((item) => item.blockHeight > 0);
 

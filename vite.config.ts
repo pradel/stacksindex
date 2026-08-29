@@ -44,6 +44,7 @@ export default defineConfig({
       "vitest/require-test-timeout": "off",
       "vitest/require-mock-type-parameters": "off",
       "vitest/prefer-to-be-truthy": "off",
+      "vitest/prefer-to-be-falsy": "off",
       "vitest/no-hooks": "off",
       "vitest/prefer-import-in-mock": "off",
       "vitest/prefer-expect-assertions": "off",

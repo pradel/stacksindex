@@ -294,7 +294,7 @@ describe("historical runtime", () => {
       throw new Error("Expected progress to be defined");
     }
     expect(progress.cursor).toBeNull();
-    expect(progress.isComplete).toBe(true);
+    expect(progress.isComplete).toBe(false);
     expect(Number(progress.lastBlockHeight)).toBe(200);
   });
 
@@ -3410,5 +3410,263 @@ describe("historical runtime with handlers", () => {
       isComplete: true,
       lastBlockHeight: 150n,
     });
+  });
+
+  test("resumes sync across consecutive runs with no endBlock instead of skipping", async () => {
+    const contractId = "SP123.token";
+    const handledHeights: number[] = [];
+    const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
+      handledHeights.push(event.block_height);
+      return Promise.resolve();
+    });
+
+    // Contract was synced up to block 100 in an earlier unbounded run (isComplete: false, cursor: null)
+    await syncStore.upsertSyncProgress(
+      {
+        contractId,
+        chainId: 1,
+        cursor: null,
+        lastBlockHeight: 100,
+        isComplete: false,
+      },
+      { db: testDb.db },
+    );
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 50,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 1,
+            cursor: { next: null, previous: null, current: "150:0:0" },
+            results: [{ transaction: { tx_id: "tx-150", block: { height: 150, tx_index: 0 } } }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-150/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=150:0:0:0`)
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            results: [
+              {
+                tx_id: "tx-150",
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 1,
+            next_cursor: null,
+            prev_cursor: null,
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-150")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-150",
+            event_count: 1,
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP sender", nonce: 0 },
+            sponsor: null,
+            block: {
+              hash: "block-150",
+              height: 150,
+              time: 1500,
+              tx_index: 0,
+            },
+            bitcoin_block: {
+              height: 150,
+              time: 1500,
+            },
+            events: [
+              {
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/extended/v2/blocks/block-150")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            canonical: true,
+            height: 150,
+            hash: "block-150",
+            block_time: 1500,
+            block_time_iso: "",
+            tenure_height: 150,
+            index_block_hash: "",
+            parent_block_hash: "",
+            parent_index_block_hash: "",
+            burn_block_time: 1500,
+            burn_block_time_iso: "",
+            burn_block_hash: "",
+            burn_block_height: 150,
+            miner_txid: "",
+            tx_count: 1,
+            execution_cost_read_count: 0,
+            execution_cost_read_length: 0,
+            execution_cost_runtime: 0,
+            execution_cost_write_count: 0,
+            execution_cost_write_length: 0,
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const result = await runtime.run([{ contractId, handler }]);
+
+    expect(result.isOk()).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handledHeights).toStrictEqual([150]);
+
+    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    expect(progress).toMatchObject({
+      cursor: null,
+      isComplete: false,
+      lastBlockHeight: 150n,
+    });
+  });
+
+  test("resolves block height for events whose transactions already exist in sync store", async () => {
+    const contractId = "SP123.token";
+    const handledHeights: number[] = [];
+    const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
+      handledHeights.push(event.block_height);
+      return Promise.resolve();
+    });
+
+    // Pre-insert block and transaction into DB
+    await testDb.db.insert(blocksTable).values({
+      chainId: 1n,
+      height: 100n,
+      hash: "block-100",
+      blockTime: 1000n,
+      tenureHeight: 100n,
+    });
+    await testDb.db.insert(transactionsTable).values({
+      chainId: 1n,
+      txId: "tx-1",
+      blockHeight: 100n,
+      blockHash: "block-100",
+      txIndex: 0,
+      txType: "contract_call",
+      senderAddress: "SP sender",
+      feeRate: 1000n,
+      nonce: 0n,
+      txStatus: "success",
+      canonical: true,
+    });
+
+    // Pre-seed sync progress with cursor pointing to block 100
+    await syncStore.upsertSyncProgress(
+      {
+        contractId,
+        chainId: 1,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+        isComplete: false,
+      },
+      { db: testDb.db },
+    );
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+      if (
+        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            results: [
+              {
+                tx_id: "tx-1",
+                event_index: 0,
+                event_type: "smart_contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+            limit: 100,
+            offset: 0,
+            total: 1,
+            next_cursor: null,
+            prev_cursor: null,
+          }),
+        };
+      }
+      // Note: /extended/v3/transactions/tx-1 should NOT be called because tx-1 is already in DB
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const result = await runtime.run([{ contractId, handler }]);
+
+    expect(result.isOk()).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handledHeights).toStrictEqual([100]);
+
+    // Verify event was saved with block height 100 from existing transaction
+    const savedEvents = await testDb.db.select().from(eventsTable);
+    expect(savedEvents).toHaveLength(1);
+    expect(Number(savedEvents[0].blockHeight)).toBe(100);
   });
 });
