@@ -27,20 +27,176 @@ export function normalizeKey(method: string, rawUrl: string): string {
   }
 }
 
+function sanitizeContract(body: Record<string, unknown>): Record<string, unknown> {
+  return {
+    contract_id: body.contract_id,
+    block_height: body.block_height,
+    tx_id: body.tx_id,
+    canonical: body.canonical ?? true,
+    clarity_version: body.clarity_version ?? null,
+    source_code: "",
+    abi: "{}",
+  };
+}
+
+function sanitizePrincipalTransactions(body: Record<string, unknown>): Record<string, unknown> {
+  const results = Array.isArray(body.results)
+    ? body.results.map((item: unknown) => {
+        if (!item || typeof item !== "object") {
+          return item;
+        }
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        const itemObj = item as Record<string, unknown>;
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        const tx = itemObj.transaction as Record<string, unknown> | undefined;
+        if (!tx) {
+          return itemObj;
+        }
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        const block = tx.block as Record<string, unknown> | undefined;
+        return {
+          transaction: {
+            tx_id: tx.tx_id,
+            block: block
+              ? {
+                  height: block.height,
+                  tx_index: block.tx_index,
+                }
+              : undefined,
+          },
+        };
+      })
+    : body.results;
+
+  return {
+    total: body.total,
+    limit: body.limit,
+    cursor: body.cursor,
+    results,
+  };
+}
+
+function sanitizeTransactionEvents(body: Record<string, unknown>): Record<string, unknown> {
+  return {
+    total: body.total,
+    limit: body.limit,
+    cursor: body.cursor,
+    results: body.results,
+  };
+}
+
+function sanitizeContractLogs(body: Record<string, unknown>): Record<string, unknown> {
+  return {
+    limit: body.limit,
+    offset: body.offset,
+    total: body.total,
+    next_cursor: body.next_cursor ?? null,
+    prev_cursor: body.prev_cursor ?? null,
+    results: body.results,
+  };
+}
+
+function sanitizeTransaction(body: Record<string, unknown>): Record<string, unknown> {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const block = body.block as Record<string, unknown> | undefined;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const bitcoinBlock = body.bitcoin_block as Record<string, unknown> | undefined;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const sender = body.sender as Record<string, unknown> | undefined;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const sponsor = body.sponsor as Record<string, unknown> | undefined;
+
+  return {
+    tx_id: body.tx_id,
+    event_count: body.event_count,
+    type: body.type,
+    status: body.status,
+    fee_rate: body.fee_rate,
+    sender: sender
+      ? {
+          address: sender.address,
+          nonce: sender.nonce,
+        }
+      : undefined,
+    sponsor: sponsor ? { address: sponsor.address } : null,
+    block: block
+      ? {
+          hash: block.hash,
+          height: block.height,
+          time: block.time,
+          tx_index: block.tx_index,
+          index_hash: block.index_hash,
+        }
+      : undefined,
+    bitcoin_block: bitcoinBlock
+      ? {
+          height: bitcoinBlock.height,
+          time: bitcoinBlock.time,
+        }
+      : undefined,
+    canonical: body.canonical ?? true,
+    events: body.events,
+  };
+}
+
+function sanitizeBlock(body: Record<string, unknown>): Record<string, unknown> {
+  return {
+    canonical: body.canonical ?? true,
+    height: body.height,
+    hash: body.hash,
+    block_time: body.block_time,
+    block_time_iso: body.block_time_iso,
+    tenure_height: body.tenure_height,
+    index_block_hash: body.index_block_hash,
+    parent_block_hash: body.parent_block_hash,
+    parent_index_block_hash: body.parent_index_block_hash,
+    burn_block_time: body.burn_block_time,
+    burn_block_time_iso: body.burn_block_time_iso,
+    burn_block_hash: body.burn_block_hash,
+    burn_block_height: body.burn_block_height,
+    miner_txid: body.miner_txid,
+    tx_count: body.tx_count,
+  };
+}
+
+function sanitizeStatus(body: Record<string, unknown>): Record<string, unknown> {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const chainTip = body.chain_tip as Record<string, unknown> | undefined;
+  return {
+    server_version: body.server_version,
+    status: body.status,
+    chain_tip: chainTip ? { block_height: chainTip.block_height } : undefined,
+  };
+}
+
 export function sanitizePayload(rawUrl: string, body: unknown): unknown {
   if (!body || typeof body !== "object") {
     return body;
   }
 
-  // Contract response: strip huge source_code and abi
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const obj = body as Record<string, unknown>;
+
   if (rawUrl.includes("/extended/v1/contract/")) {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const contract = body as Record<string, unknown>;
-    return {
-      ...contract,
-      source_code: "",
-      abi: "{}",
-    };
+    return sanitizeContract(obj);
+  }
+  if (rawUrl.includes("/extended/v3/principals/") && rawUrl.includes("/transactions")) {
+    return sanitizePrincipalTransactions(obj);
+  }
+  if (rawUrl.includes("/extended/v3/transactions/") && rawUrl.includes("/events")) {
+    return sanitizeTransactionEvents(obj);
+  }
+  if (rawUrl.includes("/extended/v2/smart-contracts/") && rawUrl.includes("/logs")) {
+    return sanitizeContractLogs(obj);
+  }
+  if (rawUrl.includes("/extended/v3/transactions/")) {
+    return sanitizeTransaction(obj);
+  }
+  if (rawUrl.includes("/extended/v2/blocks/")) {
+    return sanitizeBlock(obj);
+  }
+  if (rawUrl.endsWith("/extended") || rawUrl.includes("/extended/v1/status")) {
+    return sanitizeStatus(obj);
   }
 
   return body;

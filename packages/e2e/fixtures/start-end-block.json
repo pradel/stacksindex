@@ -2,10 +2,10 @@
   "GET https://api.hiro.so/extended/v1/contract/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles": {
     "statusCode": 200,
     "body": {
-      "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
-      "canonical": true,
       "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
       "block_height": 47486,
+      "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
+      "canonical": true,
       "clarity_version": null,
       "source_code": "",
       "abi": "{}"
@@ -25,370 +25,82 @@
         {
           "transaction": {
             "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
-            "sender": {
-              "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-              "nonce": 296
-            },
-            "sponsor": null,
-            "fee_rate": "102000",
             "block": {
               "height": 47784,
-              "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-              "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
-              "time": 1644169830,
               "tx_index": 48
-            },
-            "bitcoin_block": {
-              "height": 722076,
-              "time": 1644169830
-            },
-            "status": "success",
-            "type": "contract_call",
-            "contract_call": {
-              "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-              "function_name": "list-in-ustx"
             }
-          },
-          "involvement": "affected",
-          "balance_changes": {
-            "stx": {
-              "sent": "0",
-              "received": "0",
-              "net": "0"
-            }
-          },
-          "affected_balances": {
-            "stx": false,
-            "ft": false,
-            "nft": false
           }
         },
         {
           "transaction": {
             "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
-            "sender": {
-              "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-              "nonce": 295
-            },
-            "sponsor": null,
-            "fee_rate": "102000",
             "block": {
               "height": 47784,
-              "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-              "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
-              "time": 1644169830,
               "tx_index": 34
-            },
-            "bitcoin_block": {
-              "height": 722076,
-              "time": 1644169830
-            },
-            "status": "success",
-            "type": "contract_call",
-            "contract_call": {
-              "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-              "function_name": "list-in-ustx"
             }
-          },
-          "involvement": "affected",
-          "balance_changes": {
-            "stx": {
-              "sent": "0",
-              "received": "0",
-              "net": "0"
-            }
-          },
-          "affected_balances": {
-            "stx": false,
-            "ft": false,
-            "nft": false
           }
         },
         {
           "transaction": {
             "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-            "sender": {
-              "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-              "nonce": 294
-            },
-            "sponsor": null,
-            "fee_rate": "300000",
             "block": {
               "height": 47784,
-              "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-              "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
-              "time": 1644169830,
               "tx_index": 28
-            },
-            "bitcoin_block": {
-              "height": 722076,
-              "time": 1644169830
-            },
-            "status": "success",
-            "type": "contract_call",
-            "contract_call": {
-              "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-              "function_name": "list-in-ustx"
             }
-          },
-          "involvement": "affected",
-          "balance_changes": {
-            "stx": {
-              "sent": "0",
-              "received": "0",
-              "net": "0"
-            }
-          },
-          "affected_balances": {
-            "stx": false,
-            "ft": false,
-            "nft": false
           }
         },
         {
           "transaction": {
             "tx_id": "0x551cb8f8512081b09438564d0883f65c65cf3c5b1fc595e84072ca7354894ea7",
-            "sender": {
-              "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C",
-              "nonce": 9
-            },
-            "sponsor": null,
-            "fee_rate": "6868400",
             "block": {
               "height": 47499,
-              "hash": "0xbb5fd6b498d8c92cdeb381889e0316f9f3342d3bb5dd7515f79ba2a586a352a4",
-              "index_hash": "0x4bd6b0020ee29a5181bbbd64b2a0fb0c2618b9d40c9fba017e9167562c8e838d",
-              "time": 1643949261,
               "tx_index": 6
-            },
-            "bitcoin_block": {
-              "height": 721738,
-              "time": 1643949261
-            },
-            "status": "success",
-            "type": "contract_call",
-            "contract_call": {
-              "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-              "function_name": "premint-many"
             }
-          },
-          "involvement": "affected",
-          "balance_changes": {
-            "stx": {
-              "sent": "0",
-              "received": "0",
-              "net": "0"
-            }
-          },
-          "affected_balances": {
-            "stx": false,
-            "ft": false,
-            "nft": false
           }
         },
         {
           "transaction": {
             "tx_id": "0xa3b71ffc99ffa9d2e136ce2f3f52e674ee2b4bf40b620c9ef29de9515458e610",
-            "sender": {
-              "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C",
-              "nonce": 8
-            },
-            "sponsor": null,
-            "fee_rate": "6868400",
             "block": {
               "height": 47498,
-              "hash": "0x4bc4a6865d8a5eec0c63543a19301ab2da5ec5b52c015400fed5963514207211",
-              "index_hash": "0xc6f376a5d33fef1bc57d6c896a35f47065c79201f94c01b3bc86e06d9b5e97e2",
-              "time": 1643948357,
               "tx_index": 51
-            },
-            "bitcoin_block": {
-              "height": 721737,
-              "time": 1643948357
-            },
-            "status": "success",
-            "type": "contract_call",
-            "contract_call": {
-              "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-              "function_name": "premint-many"
             }
-          },
-          "involvement": "affected",
-          "balance_changes": {
-            "stx": {
-              "sent": "0",
-              "received": "0",
-              "net": "0"
-            }
-          },
-          "affected_balances": {
-            "stx": false,
-            "ft": false,
-            "nft": false
           }
         },
         {
           "transaction": {
             "tx_id": "0x0b2f643ad48ac0eede31a71cf631725a282be60152e8546e5fe80d493d171122",
-            "sender": {
-              "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C",
-              "nonce": 7
-            },
-            "sponsor": null,
-            "fee_rate": "6868400",
             "block": {
               "height": 47495,
-              "hash": "0xd4ac14a713142d5aa6b08063d42a915263fa3e4723696ebc6432c2f5eeec7c49",
-              "index_hash": "0x3aae5ba07031ac9be64a3cc39ce60fafba18cfc4c8c37cba1a448a2e881a86d6",
-              "time": 1643944684,
               "tx_index": 27
-            },
-            "bitcoin_block": {
-              "height": 721733,
-              "time": 1643944684
-            },
-            "status": "success",
-            "type": "contract_call",
-            "contract_call": {
-              "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-              "function_name": "premint-many"
             }
-          },
-          "involvement": "affected",
-          "balance_changes": {
-            "stx": {
-              "sent": "0",
-              "received": "0",
-              "net": "0"
-            }
-          },
-          "affected_balances": {
-            "stx": false,
-            "ft": false,
-            "nft": false
           }
         },
         {
           "transaction": {
             "tx_id": "0xdfb34d373c5abfdae150a67e00d6e4654d3eec07b93840629abb6fcbbbda4ac7",
-            "sender": {
-              "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C",
-              "nonce": 6
-            },
-            "sponsor": null,
-            "fee_rate": "6868400",
             "block": {
               "height": 47490,
-              "hash": "0x1513e02642df791e1aa7b1a896d175d2be46c1655547d8bb676755ebe15c2859",
-              "index_hash": "0xe1fe028e5db834ffb2d5f45c4d195d8318ac4e066a6a6f367a12b15599dea757",
-              "time": 1643941946,
               "tx_index": 9
-            },
-            "bitcoin_block": {
-              "height": 721727,
-              "time": 1643941946
-            },
-            "status": "success",
-            "type": "contract_call",
-            "contract_call": {
-              "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-              "function_name": "premint-many"
             }
-          },
-          "involvement": "affected",
-          "balance_changes": {
-            "stx": {
-              "sent": "0",
-              "received": "0",
-              "net": "0"
-            }
-          },
-          "affected_balances": {
-            "stx": false,
-            "ft": false,
-            "nft": false
           }
         },
         {
           "transaction": {
             "tx_id": "0xbefd1dd1ccdec2de01c5be4cb1c9a63fb732261a472ae41d7fbe64c92f6ae494",
-            "sender": {
-              "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C",
-              "nonce": 5
-            },
-            "sponsor": null,
-            "fee_rate": "6868400",
             "block": {
               "height": 47489,
-              "hash": "0x00f4718df928a15773e00bb93cbe4db6d2af48f7201518a4552cc2ef1191a6bd",
-              "index_hash": "0x54edec63dcf75e7a9da84b85b129b347a49cabb45bc1ad715a4671764591c243",
-              "time": 1643940239,
               "tx_index": 31
-            },
-            "bitcoin_block": {
-              "height": 721726,
-              "time": 1643940239
-            },
-            "status": "success",
-            "type": "contract_call",
-            "contract_call": {
-              "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-              "function_name": "premint-many"
             }
-          },
-          "involvement": "affected",
-          "balance_changes": {
-            "stx": {
-              "sent": "0",
-              "received": "0",
-              "net": "0"
-            }
-          },
-          "affected_balances": {
-            "stx": false,
-            "ft": false,
-            "nft": false
           }
         },
         {
           "transaction": {
             "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
-            "sender": {
-              "address": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C",
-              "nonce": 2
-            },
-            "sponsor": null,
-            "fee_rate": "2000000",
             "block": {
               "height": 47486,
-              "hash": "0xfe15206ec5f6cf9ca3167179e5b71b65d37e89acb8efa47dcf3ec9cb1ccb816f",
-              "index_hash": "0x53cc6e920227ce802ee0350c15407710a43b097604a9a9264466a73d4fd5b40c",
-              "time": 1643938913,
               "tx_index": 13
-            },
-            "bitcoin_block": {
-              "height": 721723,
-              "time": 1643938913
-            },
-            "status": "success",
-            "type": "smart_contract",
-            "smart_contract": {
-              "clarity_version": null,
-              "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles"
             }
-          },
-          "involvement": "affected",
-          "balance_changes": {
-            "stx": {
-              "sent": "0",
-              "received": "0",
-              "net": "0"
-            }
-          },
-          "affected_balances": {
-            "stx": false,
-            "ft": false,
-            "nft": false
           }
         }
       ]
@@ -398,42 +110,27 @@
     "statusCode": 200,
     "body": {
       "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "300000",
       "sender": {
         "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
         "nonce": 294
       },
       "sponsor": null,
-      "fee_rate": "300000",
       "block": {
-        "height": 47784,
         "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
+        "height": 47784,
         "time": 1644169830,
-        "tx_index": 28
+        "tx_index": 28,
+        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9"
       },
       "bitcoin_block": {
         "height": 722076,
         "time": 1644169830
       },
-      "status": "success",
-      "parent_block": {
-        "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-        "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329"
-      },
-      "event_count": 1,
-      "execution_cost": {
-        "read_count": 5,
-        "read_length": 5720,
-        "runtime": 34606,
-        "write_count": 1,
-        "write_length": 113
-      },
-      "vm_error": null,
-      "type": "contract_call",
-      "contract_call": {
-        "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-        "function_name": "list-in-ustx"
-      }
+      "canonical": true
     }
   },
   "GET https://api.hiro.so/extended/v3/transactions/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d/events?limit=50": {
@@ -470,7 +167,6 @@
       "total": 3091,
       "next_cursor": "47884:2147483647:26:0",
       "prev_cursor": null,
-      "cursor": "47784:0:28:0",
       "results": [
         {
           "event_index": 0,
@@ -505,12 +201,7 @@
       "burn_block_hash": "0x000000000000000000078890d0b16f1578ae3ba6510cd766b0c5b077df675bb1",
       "burn_block_height": 722076,
       "miner_txid": "0x7d123bf6a22a8e7d3590bde0bb76f7c3c24ab059f1cab689a2ac999d1305321d",
-      "tx_count": 53,
-      "execution_cost_read_count": 147,
-      "execution_cost_read_length": 104022,
-      "execution_cost_runtime": 2026379,
-      "execution_cost_write_count": 36,
-      "execution_cost_write_length": 2202
+      "tx_count": 53
     }
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47884:2147483647:26:0&limit=100": {
@@ -521,7 +212,6 @@
       "total": 3091,
       "next_cursor": "47988:2147483647:30:0",
       "prev_cursor": "47784:0:28:0",
-      "cursor": "47884:2147483647:26:0",
       "results": [
         {
           "event_index": 0,
@@ -1830,210 +1520,135 @@
     "statusCode": 200,
     "body": {
       "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "102000",
       "sender": {
         "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
         "nonce": 295
       },
       "sponsor": null,
-      "fee_rate": "102000",
       "block": {
-        "height": 47784,
         "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
+        "height": 47784,
         "time": 1644169830,
-        "tx_index": 34
+        "tx_index": 34,
+        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9"
       },
       "bitcoin_block": {
         "height": 722076,
         "time": 1644169830
       },
-      "status": "success",
-      "parent_block": {
-        "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-        "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329"
-      },
-      "event_count": 1,
-      "execution_cost": {
-        "read_count": 5,
-        "read_length": 5720,
-        "runtime": 34606,
-        "write_count": 1,
-        "write_length": 113
-      },
-      "vm_error": null,
-      "type": "contract_call",
-      "contract_call": {
-        "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-        "function_name": "list-in-ustx"
-      }
+      "canonical": true
     }
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a": {
     "statusCode": 200,
     "body": {
       "tx_id": "0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "96991",
       "sender": {
         "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
         "nonce": 22
       },
       "sponsor": null,
-      "fee_rate": "96991",
       "block": {
-        "height": 47786,
         "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
-        "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
+        "height": 47786,
         "time": 1644171646,
-        "tx_index": 66
+        "tx_index": 66,
+        "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb"
       },
       "bitcoin_block": {
         "height": 722078,
         "time": 1644171646
       },
-      "status": "success",
-      "parent_block": {
-        "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
-        "index_hash": "0x0a9454d3988ac88b31eb309678097d630caeb5049de0e548fc8883771c7002f2"
-      },
-      "event_count": 1,
-      "execution_cost": {
-        "read_count": 5,
-        "read_length": 5720,
-        "runtime": 34606,
-        "write_count": 1,
-        "write_length": 113
-      },
-      "vm_error": null,
-      "type": "contract_call",
-      "contract_call": {
-        "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-        "function_name": "list-in-ustx"
-      }
+      "canonical": true
     }
   },
   "GET https://api.hiro.so/extended/v3/transactions/0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae": {
     "statusCode": 200,
     "body": {
       "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "102000",
       "sender": {
         "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
         "nonce": 296
       },
       "sponsor": null,
-      "fee_rate": "102000",
       "block": {
-        "height": 47784,
         "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
+        "height": 47784,
         "time": 1644169830,
-        "tx_index": 48
+        "tx_index": 48,
+        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9"
       },
       "bitcoin_block": {
         "height": 722076,
         "time": 1644169830
       },
-      "status": "success",
-      "parent_block": {
-        "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-        "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329"
-      },
-      "event_count": 1,
-      "execution_cost": {
-        "read_count": 5,
-        "read_length": 5720,
-        "runtime": 34606,
-        "write_count": 1,
-        "write_length": 113
-      },
-      "vm_error": null,
-      "type": "contract_call",
-      "contract_call": {
-        "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-        "function_name": "list-in-ustx"
-      }
+      "canonical": true
     }
   },
   "GET https://api.hiro.so/extended/v3/transactions/0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494": {
     "statusCode": 200,
     "body": {
       "tx_id": "0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "112200",
       "sender": {
         "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
         "nonce": 21
       },
       "sponsor": null,
-      "fee_rate": "112200",
       "block": {
-        "height": 47786,
         "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
-        "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
+        "height": 47786,
         "time": 1644171646,
-        "tx_index": 58
+        "tx_index": 58,
+        "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb"
       },
       "bitcoin_block": {
         "height": 722078,
         "time": 1644171646
       },
-      "status": "success",
-      "parent_block": {
-        "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
-        "index_hash": "0x0a9454d3988ac88b31eb309678097d630caeb5049de0e548fc8883771c7002f2"
-      },
-      "event_count": 1,
-      "execution_cost": {
-        "read_count": 5,
-        "read_length": 5720,
-        "runtime": 34606,
-        "write_count": 1,
-        "write_length": 113
-      },
-      "vm_error": null,
-      "type": "contract_call",
-      "contract_call": {
-        "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-        "function_name": "list-in-ustx"
-      }
+      "canonical": true
     }
   },
   "GET https://api.hiro.so/extended/v3/transactions/0x3c1593a34589e64780c8d6a0bff94d91187efabbd93a4e5dc082c9a7bbac27ed": {
     "statusCode": 200,
     "body": {
       "tx_id": "0x3c1593a34589e64780c8d6a0bff94d91187efabbd93a4e5dc082c9a7bbac27ed",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "97156",
       "sender": {
         "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
         "nonce": 23
       },
       "sponsor": null,
-      "fee_rate": "97156",
       "block": {
-        "height": 47786,
         "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
-        "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
+        "height": 47786,
         "time": 1644171646,
-        "tx_index": 3
+        "tx_index": 3,
+        "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb"
       },
       "bitcoin_block": {
         "height": 722078,
         "time": 1644171646
       },
-      "status": "success",
-      "parent_block": {
-        "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
-        "index_hash": "0x0a9454d3988ac88b31eb309678097d630caeb5049de0e548fc8883771c7002f2"
-      },
-      "event_count": 1,
-      "execution_cost": {
-        "read_count": 5,
-        "read_length": 5720,
-        "runtime": 34606,
-        "write_count": 1,
-        "write_length": 113
-      },
-      "vm_error": null,
-      "type": "contract_call",
-      "contract_call": {
-        "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-        "function_name": "list-in-ustx"
-      }
+      "canonical": true
     }
   },
   "GET https://api.hiro.so/extended/v2/blocks/0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794": {
@@ -2053,12 +1668,7 @@
       "burn_block_hash": "0x0000000000000000000a36a2c9666bb9a986727b339090e4094465504e733ff5",
       "burn_block_height": 722078,
       "miner_txid": "0x820cbcd1d7ce89d1c490af5e8c91d9039568d094a5781e895e487fc4d956a59e",
-      "tx_count": 71,
-      "execution_cost_read_count": 158,
-      "execution_cost_read_length": 167774,
-      "execution_cost_runtime": 1760059,
-      "execution_cost_write_count": 44,
-      "execution_cost_write_length": 4101
+      "tx_count": 71
     }
   }
 }
