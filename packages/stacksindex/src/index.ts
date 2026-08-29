@@ -7,6 +7,7 @@ export { createHistoricalRuntime } from "./runtime/historical.ts";
 export type { Filter, HistoricalRuntimeContext } from "./runtime/historical.ts";
 export { datasourceStacksApi } from "./datasources/api/index.ts";
 export type { CallReadResponse, DatasourceStacksApiContext } from "./datasources/api/index.ts";
+export { FilterValidationError, HandlerExecutionError } from "./lib/errors.ts";
 export { StacksApiUnexpectedError } from "./datasources/api/errors.ts";
 export type { StacksApiError } from "./datasources/api/errors.ts";
 export {

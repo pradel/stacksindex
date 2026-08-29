@@ -1,4 +1,3 @@
-// oxlint-disable vitest/prefer-to-be-falsy
 import { ClarityTypeID, type ClarityValue } from "@stacks/codec";
 import { describe, expect, test } from "vite-plus/test";
 
@@ -34,7 +33,6 @@ describe("codec", () => {
         }),
       ).toBe(true);
 
-      // oxlint-disable-next-line vitest/prefer-to-be-falsy
       expect(
         cvToJSON({
           type_id: ClarityTypeID.BoolFalse,
