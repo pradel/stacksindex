@@ -263,8 +263,8 @@ export function createScenarioRecorder(fixtureFileName: string): ScenarioRecorde
       const method = init?.method ?? "GET";
       const key = normalizeKey(method, rawUrl);
 
-      // Replay mode if fixture key exists and not explicitly forced RECORD=true
-      if (!process.env.RECORD && key in archive) {
+      // Replay mode when recording is not required and the fixture key exists.
+      if (!shouldRecord && key in archive) {
         const entry = archive[key];
         return {
           statusCode: entry.statusCode,
@@ -295,6 +295,9 @@ export function createScenarioRecorder(fixtureFileName: string): ScenarioRecorde
         });
 
         if (liveRes.status === 429) {
+          if (attempt === 4) {
+            throw new Error(`Rate limited after 5 attempts: ${rawUrl}`);
+          }
           const retryAfterSec = Number(liveRes.headers.get("retry-after") ?? 1);
           const waitMs = Math.max(retryAfterSec * 1000, 1000);
           // oxlint-disable-next-line no-await-in-loop
