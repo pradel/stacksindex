@@ -164,6 +164,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
    */
   async getContractEventsFirstCursor(
     contractId: string,
+    options?: { startBlock?: number },
   ): Promise<Result<string | null, StacksApiError>> {
     const stopClock = startClock();
     const ADDRESS_TX_LIMIT = 50;
@@ -179,15 +180,20 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
     }
 
     const { block_height: deploymentBlockHeight } = contractResult.value;
+    const initialBlockHeight =
+      options?.startBlock === undefined
+        ? deploymentBlockHeight
+        : Math.max(deploymentBlockHeight, options.startBlock);
 
     context.logger.info({
       service: "getContractEventsFirstCursor",
-      msg: `Looking for first event of ${contractId} starting at block ${deploymentBlockHeight}`,
+      msg: `Looking for first event of ${contractId} starting at block ${initialBlockHeight}`,
       deploymentBlockHeight,
+      initialBlockHeight,
     });
 
     let currentCursor: string | null = buildTransactionCursor({
-      blockHeight: deploymentBlockHeight,
+      blockHeight: initialBlockHeight,
       microblockSequence: 0,
       txIndex: 0,
     });
@@ -215,26 +221,32 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
 
       // Iterate from oldest to newest within the page
       for (const item of results.slice().reverse()) {
-        // oxlint-disable-next-line no-await-in-loop
-        const cursorResult = await checkTransactionForMatchingEvent(
-          context,
-          item.transaction.tx_id,
-          contractId,
-        );
-        if (cursorResult.isErr()) {
-          return Result.err(cursorResult.error);
-        }
+        const itemBlockHeight = item.transaction.block.height;
+        const isBeforeStart =
+          options?.startBlock !== undefined && itemBlockHeight < options.startBlock;
 
-        if (cursorResult.value) {
-          const firstCursor = buildLogsCursor(cursorResult.value);
-          const duration = stopClock();
-          context.logger.info({
-            service: "getContractEventsFirstCursor",
-            msg: `Found first cursor for ${contractId} at block ${cursorResult.value.blockHeight}`,
-            block: cursorResult.value.blockHeight,
-            duration,
-          });
-          return Result.ok(firstCursor);
+        if (!isBeforeStart) {
+          // oxlint-disable-next-line no-await-in-loop
+          const cursorResult = await checkTransactionForMatchingEvent(
+            context,
+            item.transaction.tx_id,
+            contractId,
+          );
+          if (cursorResult.isErr()) {
+            return Result.err(cursorResult.error);
+          }
+
+          if (cursorResult.value) {
+            const firstCursor = buildLogsCursor(cursorResult.value);
+            const duration = stopClock();
+            context.logger.info({
+              service: "getContractEventsFirstCursor",
+              msg: `Found first cursor for ${contractId} at block ${cursorResult.value.blockHeight}`,
+              block: cursorResult.value.blockHeight,
+              duration,
+            });
+            return Result.ok(firstCursor);
+          }
         }
       }
 

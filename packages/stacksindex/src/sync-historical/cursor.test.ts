@@ -108,9 +108,9 @@ describe("getContractEventsFirstCursor", () => {
             total: 3,
             cursor: { next: null, previous: null, current: "curr" },
             results: [
-              { transaction: { tx_id: "tx-3" } },
-              { transaction: { tx_id: "tx-2" } },
-              { transaction: { tx_id: "tx-1" } },
+              { transaction: { tx_id: "tx-3", block: { height: 100, tx_index: 2 } } },
+              { transaction: { tx_id: "tx-2", block: { height: 100, tx_index: 1 } } },
+              { transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } },
             ],
           }),
         };
@@ -180,7 +180,10 @@ describe("getContractEventsFirstCursor", () => {
             limit: 50,
             total: 2,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-2" } }, { transaction: { tx_id: "tx-1" } }],
+            results: [
+              { transaction: { tx_id: "tx-2", block: { height: 200, tx_index: 1 } } },
+              { transaction: { tx_id: "tx-1", block: { height: 200, tx_index: 0 } } },
+            ],
           }),
         };
       }
@@ -213,8 +216,29 @@ describe("getContractEventsFirstCursor", () => {
             event_count: 1,
             block: {
               height: 200,
-              tx_index: 3,
+              tx_index: 0,
             },
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-2/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 1,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
           }),
         };
       }
@@ -223,10 +247,10 @@ describe("getContractEventsFirstCursor", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-2",
-            event_count: 0,
+            event_count: 1,
             block: {
-              height: 201,
-              tx_index: 0,
+              height: 200,
+              tx_index: 1,
             },
           }),
         };
@@ -238,10 +262,10 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBeNull();
+    expect((result as any).value).toBe("200:0:1:1");
   });
 
-  test("returns null when no transactions contain contract events", async () => {
+  test("returns null when all transactions have event_count 0", async () => {
     mockRequest.mockImplementation((url: string) => {
       if (url.includes(`/extended/v1/contract/${contractId}`)) {
         return {
@@ -261,7 +285,10 @@ describe("getContractEventsFirstCursor", () => {
             limit: 50,
             total: 2,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-2" } }, { transaction: { tx_id: "tx-1" } }],
+            results: [
+              { transaction: { tx_id: "tx-2", block: { height: 201, tx_index: 0 } } },
+              { transaction: { tx_id: "tx-1", block: { height: 200, tx_index: 3 } } },
+            ],
           }),
         };
       }
@@ -323,7 +350,7 @@ describe("getContractEventsFirstCursor", () => {
             limit: 50,
             total: 60,
             cursor: { next: null, previous: "page_2_cursor", current: "1:0:0" },
-            results: [{ transaction: { tx_id: "tx-none" } }],
+            results: [{ transaction: { tx_id: "tx-none", block: { height: 1, tx_index: 0 } } }],
           }),
         };
       }
@@ -338,7 +365,7 @@ describe("getContractEventsFirstCursor", () => {
             limit: 50,
             total: 60,
             cursor: { next: "1:0:0", previous: null, current: "page_2_cursor" },
-            results: [{ transaction: { tx_id: "tx-1" } }],
+            results: [{ transaction: { tx_id: "tx-1", block: { height: 2, tx_index: 0 } } }],
           }),
         };
       }
@@ -448,7 +475,7 @@ describe("getContractEventsFirstCursor", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1" } }],
+            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
           }),
         };
       }
@@ -465,6 +492,150 @@ describe("getContractEventsFirstCursor", () => {
     const sync = createHistoricalSync(context);
     const result = await sync.getContractEventsFirstCursor(contractId);
     expect(result.isErr()).toBe(true);
+  });
+
+  test("uses startBlock when startBlock is greater than deployment block height", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
+      if (
+        url.includes(
+          `/extended/v3/principals/${contractId}/transactions?limit=50&cursor=150%3A0%3A0`,
+        )
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 1,
+            cursor: { next: null, previous: null, current: "150:0:0" },
+            results: [{ transaction: { tx_id: "tx-150", block: { height: 150, tx_index: 0 } } }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-150/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-150")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-150",
+            event_count: 1,
+            block: {
+              height: 150,
+              tx_index: 0,
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const sync = createHistoricalSync(context);
+    const result = await sync.getContractEventsFirstCursor(contractId, { startBlock: 150 });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.unwrap()).toBe("150:0:0:0");
+  });
+
+  test("uses deployment block height when startBlock is less than deployment block height", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 100,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
+      if (
+        url.includes(
+          `/extended/v3/principals/${contractId}/transactions?limit=50&cursor=100%3A0%3A0`,
+        )
+      ) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 1,
+            cursor: { next: null, previous: null, current: "100:0:0" },
+            results: [{ transaction: { tx_id: "tx-100", block: { height: 100, tx_index: 0 } } }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-100/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "", repr: "" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-100")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-100",
+            event_count: 1,
+            block: {
+              height: 100,
+              tx_index: 0,
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const sync = createHistoricalSync(context);
+    const result = await sync.getContractEventsFirstCursor(contractId, { startBlock: 50 });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.unwrap()).toBe("100:0:0:0");
   });
 });
 
