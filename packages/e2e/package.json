@@ -1,23 +1,22 @@
 {
-  "name": "dex-alex",
+  "name": "stacksindex-e2e",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm build && node --env-file-if-exists=.env dist/index.mjs",
-    "build": "vp pack",
     "test": "vp test",
-    "studio": "drizzle-kit studio"
+    "check": "vp check",
+    "record": "RECORD=true vp test"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.4.5",
     "better-result": "3.0.1",
     "drizzle-orm": "0.45.2",
-    "stacksindex": "workspace:*"
+    "stacksindex": "workspace:*",
+    "undici": "8.10.0"
   },
   "devDependencies": {
     "@types/node": "26.4.0",
-    "drizzle-kit": "0.31.10",
     "typescript": "7.0.2",
     "vite-plus": "catalog:"
   }

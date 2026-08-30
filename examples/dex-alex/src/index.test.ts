@@ -1,4 +1,5 @@
 // oxlint-disable typescript/no-unsafe-type-assertion
+// oxlint-disable typescript/no-unnecessary-type-assertion
 // Integration tests for the ALEX handler, run against an in-memory PGlite
 // Database. Read-only call results are real Clarity hex built with the
 // @stacks/transactions builders; print events are passed pre-decoded, exactly

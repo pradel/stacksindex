@@ -154,11 +154,11 @@ function handleTxMultiple(url: string): { statusCode: number; body: unknown } | 
 
 /** Serves `GET /extended/v1/tx/{id}` (used by first-cursor discovery). */
 function handleTxSingle(url: string): { statusCode: number; body: unknown } | undefined {
-  const match = /\/extended\/v1\/tx\/([^/?]+)$/u.exec(url);
-  if (match === null) {
+  const match = /\/extended\/v1\/tx\/(?<id>[^/?]+)$/u.exec(url);
+  if (match?.groups === undefined) {
     return undefined;
   }
-  const tx = txRegistry.get(match[1]);
+  const tx = txRegistry.get(match.groups.id);
   return tx === undefined ? undefined : { statusCode: 200, body: mockBody(tx) };
 }
 

@@ -60,12 +60,12 @@ export type HandlerEvent = SmartContractLogEvent & {
 };
 
 export interface IndexingClient {
-  callReadOnly(
+  callReadOnly: (
     contractId: string,
     functionName: string,
     /** `tip` is overridden by the runtime with the block being processed. */
     options?: { args?: string[]; sender?: string; tip?: number },
-  ): Promise<Result<CallReadResponse, StacksApiError>>;
+  ) => Promise<Result<CallReadResponse, StacksApiError>>;
 }
 
 export interface HandlerContext {

@@ -8,7 +8,7 @@
     "prepare": "vp config"
   },
   "devDependencies": {
-    "vite-plus": "0.1.24"
+    "vite-plus": "catalog:"
   },
   "packageManager": "pnpm@11.24.0"
 }

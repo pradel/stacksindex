@@ -1,6 +1,7 @@
 // oxlint-disable typescript/no-unsafe-member-access
 // oxlint-disable typescript/no-unsafe-type-assertion
 // oxlint-disable typescript/no-explicit-any
+// oxlint-disable vitest/expect-expect
 import { Result } from "better-result";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
