@@ -1957,6 +1957,10 @@ describe("historical runtime with handlers", () => {
                 time: 1000,
                 tx_index: 0,
               },
+              bitcoin_block: {
+                height: 1234,
+                time: 1000,
+              },
               events: [
                 {
                   event_index: 0,

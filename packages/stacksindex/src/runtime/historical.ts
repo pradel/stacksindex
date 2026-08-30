@@ -6,7 +6,6 @@ import { migrate } from "../database/index.ts";
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
   datasourceStacksApi,
-  type BlockApiResponse,
   type SmartContractLogEvent,
   type TransactionApiResponse,
 } from "../datasources/api/index.ts";
@@ -17,6 +16,7 @@ import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 import { createHistoricalSync, parseLogsCursor } from "../sync-historical/index.ts";
+import type { BlockData } from "../sync-store/encode.ts";
 import { syncStore } from "../sync-store/index.ts";
 
 const BATCH_SIZE = 5;
@@ -478,35 +478,6 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     return Result.ok(transactions);
   }
 
-  async function fetchMissingBlocks(
-    transactions: TransactionApiResponse[],
-  ): Promise<Result<BlockApiResponse[], StacksApiError>> {
-    const blockHashes = [...new Set(transactions.map((transaction) => transaction.block.hash))];
-    const existingBlockHashes = await syncStore.getExistingBlocks(
-      { blockHashes, chainId: 1 },
-      { db: context.db },
-    );
-    const missingBlockHashes = blockHashes.filter((hash) => !existingBlockHashes.includes(hash));
-    context.logger.debug({
-      service: "historicalRuntime",
-      msg: `Blocks: ${blockHashes.length} total, ${missingBlockHashes.length} missing`,
-    });
-
-    const blocks: BlockApiResponse[] = [];
-    for (const chunk of chunkArray(missingBlockHashes, BATCH_SIZE)) {
-      const blockResults = await Promise.all(
-        chunk.map((hash) => datasourceStacksApi.getBlock(context, hash)),
-      );
-      for (const blockResult of blockResults) {
-        if (blockResult.isErr()) {
-          return Result.err(blockResult.error);
-        }
-        blocks.push(blockResult.value);
-      }
-    }
-    return Result.ok(blocks);
-  }
-
   async function advanceContractSyncState(
     lowestState: ContractSyncState,
     currentHeight: number,
@@ -567,6 +538,111 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     }
   }
 
+  function findLowestState(states: ContractSyncState[]): ContractSyncState | null {
+    let lowestState: ContractSyncState | null = null;
+    let lowestHeight = Number.MAX_SAFE_INTEGER;
+
+    for (const state of states) {
+      if (!state.done && state.cursor !== null) {
+        const height = parseLogsCursor(state.cursor).blockHeight;
+        if (height < lowestHeight) {
+          lowestHeight = height;
+          lowestState = state;
+        }
+      }
+    }
+    return lowestState;
+  }
+
+  async function syncContractBatch(
+    lowestState: ContractSyncState,
+  ): Promise<Result<void, StacksApiError>> {
+    if (lowestState.cursor === null) {
+      return Result.ok(undefined);
+    }
+
+    const logsResult = await datasourceStacksApi.getContractLogs(context, lowestState.contractId, {
+      cursor: lowestState.cursor,
+    });
+    if (logsResult.isErr()) {
+      return Result.err(logsResult.error);
+    }
+
+    const { results: events, next_cursor: nextCursor } = logsResult.value;
+    const currentHeight = parseLogsCursor(lowestState.cursor).blockHeight;
+    context.logger.info({
+      service: "historicalRuntime",
+      msg: `Syncing ${lowestState.contractId}`,
+      block: currentHeight,
+      events: events.length,
+    });
+
+    const txIds = [
+      ...new Set(
+        events
+          .slice()
+          .reverse()
+          .map((event) => event.tx_id),
+      ),
+    ];
+    const existingTxs = await syncStore.getExistingTransactions(
+      { txIds, chainId: 1 },
+      { db: context.db },
+    );
+    const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
+    const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
+
+    const txResult = await fetchMissingTransactions(missingTxIds, lowestState.endBlock);
+    if (txResult.isErr()) {
+      return Result.err(txResult.error);
+    }
+    const transactions = txResult.value;
+
+    const blockMap = new Map<number, BlockData>();
+    for (const transaction of transactions) {
+      if (!blockMap.has(transaction.block.height)) {
+        blockMap.set(transaction.block.height, {
+          height: transaction.block.height,
+          hash: transaction.block.hash,
+          burn_block_time: transaction.bitcoin_block.time,
+          burn_block_height: transaction.bitcoin_block.height,
+        });
+      }
+    }
+    const blocks = Array.from(blockMap.values());
+
+    const smartContractLogs = events.filter(
+      // oxlint-disable-next-line typescript/no-unnecessary-condition
+      (event): event is SmartContractLogEvent => event.event_type === "smart_contract_log",
+    );
+    const txBlockHeights = new Map<string, number>();
+    for (const existingTx of existingTxs) {
+      txBlockHeights.set(existingTx.txId, Number(existingTx.blockHeight));
+    }
+    for (const transaction of transactions) {
+      txBlockHeights.set(transaction.tx_id, transaction.block.height);
+    }
+    const eventsWithBlockHeight = smartContractLogs
+      .map((event) => {
+        const blockHeight = txBlockHeights.get(event.tx_id) ?? 0;
+        return { event, blockHeight };
+      })
+      .filter((item) => item.blockHeight > 0);
+
+    const chainId = 1;
+
+    await context.db.transaction(async (tx) => {
+      await Promise.all([
+        syncStore.insertBlocks({ blocks, chainId }, { db: tx }),
+        syncStore.insertTransactions({ transactions, chainId }, { db: tx }),
+        syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }, { db: tx }),
+      ]);
+    });
+
+    await advanceContractSyncState(lowestState, currentHeight, nextCursor);
+    return Result.ok(undefined);
+  }
+
   return {
     async run(
       filters: Filter[],
@@ -609,107 +685,15 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       const states = statesResult.value;
 
       while (states.some((state) => !state.done)) {
-        // Fair scheduling: find contract with lowest cursor block height
-        let lowestState: ContractSyncState | null = null;
-        let lowestHeight = Number.MAX_SAFE_INTEGER;
-
-        for (const state of states) {
-          if (!state.done && state.cursor !== null) {
-            const height = parseLogsCursor(state.cursor).blockHeight;
-            if (height < lowestHeight) {
-              lowestHeight = height;
-              lowestState = state;
-            }
-          }
-        }
-
-        // All contracts done
-        if (!lowestState || lowestState.cursor === null) {
+        const lowestState = findLowestState(states);
+        if (!lowestState) {
           break;
         }
 
-        // Fetch one page of events
-        const logsResult = await datasourceStacksApi.getContractLogs(
-          context,
-          lowestState.contractId,
-          { cursor: lowestState.cursor },
-        );
-        if (logsResult.isErr()) {
-          return Result.err(logsResult.error);
+        const syncResult = await syncContractBatch(lowestState);
+        if (syncResult.isErr()) {
+          return Result.err(syncResult.error);
         }
-
-        const { results: events, next_cursor: nextCursor } = logsResult.value;
-        const currentHeight = parseLogsCursor(lowestState.cursor).blockHeight;
-        context.logger.info({
-          service: "historicalRuntime",
-          msg: `Syncing ${lowestState.contractId}`,
-          block: currentHeight,
-          events: events.length,
-        });
-
-        // Batch fetch transactions (deduplicated by tx_id) in chronological order
-        const txIds = [
-          ...new Set(
-            events
-              .slice()
-              .reverse()
-              .map((event) => event.tx_id),
-          ),
-        ];
-        const existingTxs = await syncStore.getExistingTransactions(
-          { txIds, chainId: 1 },
-          { db: context.db },
-        );
-        const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
-        const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
-        context.logger.debug({
-          service: "historicalRuntime",
-          msg: `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
-        });
-
-        const txResult = await fetchMissingTransactions(missingTxIds, lowestState.endBlock);
-        if (txResult.isErr()) {
-          return Result.err(txResult.error);
-        }
-        const transactions = txResult.value;
-
-        const blockResult = await fetchMissingBlocks(transactions);
-        if (blockResult.isErr()) {
-          return Result.err(blockResult.error);
-        }
-        const blocks = blockResult.value;
-
-        // Store blocks, transactions, and events
-        // Only smart_contract_log events have a `value` field; skip other event types.
-        const smartContractLogs = events.filter(
-          // oxlint-disable-next-line typescript/no-unnecessary-condition
-          (event): event is SmartContractLogEvent => event.event_type === "smart_contract_log",
-        );
-        const txBlockHeights = new Map<string, number>();
-        for (const existingTx of existingTxs) {
-          txBlockHeights.set(existingTx.txId, Number(existingTx.blockHeight));
-        }
-        for (const transaction of transactions) {
-          txBlockHeights.set(transaction.tx_id, transaction.block.height);
-        }
-        const eventsWithBlockHeight = smartContractLogs
-          .map((event) => {
-            const blockHeight = txBlockHeights.get(event.tx_id) ?? 0;
-            return { event, blockHeight };
-          })
-          .filter((item) => item.blockHeight > 0);
-
-        const chainId = 1;
-
-        await context.db.transaction(async (tx) => {
-          await Promise.all([
-            syncStore.insertBlocks({ blocks, chainId }, { db: tx }),
-            syncStore.insertTransactions({ transactions, chainId }, { db: tx }),
-            syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }, { db: tx }),
-          ]);
-        });
-
-        await advanceContractSyncState(lowestState, currentHeight, nextCursor);
 
         // Incremental indexing: process all events up to the safe block height
         const safeHeight = getSafeBlockHeight(states);

@@ -8,7 +8,7 @@ import type {
   SmartContractLogEvent,
   TransactionApiResponse,
 } from "../datasources/api/index.ts";
-import { encodeBlock, encodeEvent, encodeTransaction } from "./encode.js";
+import { encodeBlock, encodeEvent, encodeTransaction, type BlockData } from "./encode.js";
 import {
   blocksTable,
   checkpointsTable,
@@ -17,11 +17,11 @@ import {
   transactionsTable,
 } from "./schema.js";
 
-interface Context {
+export interface Context {
   db:
-    | NodePgDatabase
-    | PgliteDatabase
-    // Accept Drizzle transaction objects from db.transaction(). Generic params
+    | NodePgDatabase<Record<string, unknown>>
+    | PgliteDatabase<Record<string, unknown>>
+    // PgTransaction is generic over TQueryResult and TSchema; using any for schema/query result types
     // Are intentionally broad to accept PgliteTransaction with any schema.
     // oxlint-disable-next-line typescript-eslint/no-explicit-any
     | PgTransaction<PgQueryResultHKT, any, any>;
@@ -29,7 +29,7 @@ interface Context {
 
 export const syncStore = {
   insertBlocks: async (
-    { blocks, chainId }: { blocks: BlockApiResponse[]; chainId: number },
+    { blocks, chainId }: { blocks: (BlockData | BlockApiResponse)[]; chainId: number },
     context: Context,
   ) => {
     if (blocks.length === 0) {

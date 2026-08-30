@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "vp test",
+    "bench": "vp test src/benchmarks --run",
     "check": "vp check",
     "record": "RECORD=true vp test"
   },
