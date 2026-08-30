@@ -2,6 +2,7 @@ import { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
+import type { StacksApiError } from "../datasources/api/errors.ts";
 import { datasourceStacksApi } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
@@ -39,19 +40,39 @@ export const createIndexing = (context: IndexingContext) => ({
     const handlerClock = startClock();
     try {
       const client: IndexingClient = {
-        callReadOnly(contractId, functionName, options) {
-          return datasourceStacksApi.callReadFunction(
-            {
-              logger: context.logger,
-              api: context.api,
-            },
-            contractId,
-            functionName,
-            {
-              ...options,
-              tip: options?.tip ?? event.block_height,
-            },
-          );
+        // oxlint-disable-next-line typescript/no-explicit-any
+        callReadOnly(...args: [any, ...any[]]): Promise<Result<any, StacksApiError>> {
+          const apiContext = {
+            logger: context.logger,
+            api: context.api,
+          };
+
+          // oxlint-disable-next-line typescript/no-unsafe-assignment
+          const [firstArg, secondArg, thirdArg] = args;
+          if (typeof firstArg === "object" && firstArg !== null && "abi" in firstArg) {
+            // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-member-access
+            const customTip = firstArg.tip;
+            // oxlint-disable-next-line typescript/no-unsafe-argument, typescript/no-unsafe-type-assertion
+            return datasourceStacksApi.typedCallReadFunction(apiContext, {
+              // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+              ...(firstArg as Parameters<typeof datasourceStacksApi.typedCallReadFunction>[1]),
+              tip: typeof customTip === "number" ? customTip : event.block_height,
+            });
+          }
+
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const contractId = firstArg as string;
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const functionName = secondArg as string;
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const options = thirdArg as
+            | { args?: string[]; sender?: string; tip?: number }
+            | undefined;
+
+          return datasourceStacksApi.callReadFunction(apiContext, contractId, functionName, {
+            ...options,
+            tip: options?.tip ?? event.block_height,
+          });
         },
       };
 

@@ -1,14 +1,9 @@
 import { eq } from "drizzle-orm";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
-import {
-  decodeHex,
-  encodeUint,
-  type EventHandler,
-  type IndexingClient,
-  type Logger,
-} from "indexer";
+import { decodeHex, type EventHandler, type IndexingClient, type Logger } from "indexer";
 import { z } from "zod";
 
+import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
 import { poolTable, swapTable, tokenTable } from "./schema.ts";
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -16,40 +11,6 @@ export type AppDatabase = PgliteDatabase<any>;
 
 export const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
 export const CHAIN_ID = 1n;
-
-// Schemas for contract read-only responses
-const uintResultSchema = z.union([
-  z.object({ ok: z.bigint() }).transform((val) => val.ok),
-  z.bigint(),
-]);
-
-const stringResultSchema = z.union([
-  z.object({ ok: z.string() }).transform((val) => val.ok),
-  z.string(),
-]);
-
-const poolContractsResultSchema = z.union([
-  z
-    .object({
-      ok: z.object({
-        "token-x": z.string(),
-        "token-y": z.string(),
-      }),
-    })
-    .transform((val) => ({
-      tokenX: val.ok["token-x"],
-      tokenY: val.ok["token-y"],
-    })),
-  z
-    .object({
-      "token-x": z.string(),
-      "token-y": z.string(),
-    })
-    .transform((val) => ({
-      tokenX: val["token-x"],
-      tokenY: val["token-y"],
-    })),
-]);
 
 // Zod schemas for contract log events (validating decoded JSON object)
 export const poolCreatedLogSchema = z
@@ -162,57 +123,42 @@ export async function discoverTokens({
     return;
   }
 
-  const detailsResults = await Promise.all(
-    missingTokens.map(async (tokenAddress) => {
-      const [decimalsRes, symbolRes] = await Promise.all([
-        client.callReadOnly(tokenAddress, "get-decimals"),
-        client.callReadOnly(tokenAddress, "get-symbol"),
-      ]);
-      return { tokenAddress, decimalsRes, symbolRes };
-    }),
-  );
-
-  const insertOps = [];
-  for (const { tokenAddress, decimalsRes, symbolRes } of detailsResults) {
-    if (!decimalsRes.isOk() || !decimalsRes.value.okay) {
+  for (const tokenAddress of missingTokens) {
+    const decimalsRes = await client.callReadOnly({
+      abi: sip010Abi,
+      contractId: tokenAddress,
+      functionName: "get-decimals",
+    });
+    if (!decimalsRes.isOk() || decimalsRes.value.ok === undefined) {
       throw new Error(
         `Failed to fetch decimals for token ${tokenAddress}: ${
-          decimalsRes.isErr() ? decimalsRes.error.message : "call-read response not okay"
+          decimalsRes.isErr() ? decimalsRes.error.message : "contract call returned error"
         }`,
       );
     }
-    if (!symbolRes.isOk() || !symbolRes.value.okay) {
-      throw new Error(
-        `Failed to fetch symbol for token ${tokenAddress}: ${
-          symbolRes.isErr() ? symbolRes.error.message : "call-read response not okay"
-        }`,
-      );
-    }
+    const decimals = Number(decimalsRes.value.ok);
 
-    const decimalsParsed = uintResultSchema.safeParse(decodeHex(decimalsRes.value.result));
-    if (!decimalsParsed.success) {
-      throw new Error(`Failed to decode decimals for token ${tokenAddress}`);
-    }
-    const decimals = Number(decimalsParsed.data);
+    const symbolRes = await client.callReadOnly({
+      abi: sip010Abi,
+      contractId: tokenAddress,
+      functionName: "get-symbol",
+    });
+    const symbol =
+      symbolRes.isOk() && symbolRes.value.ok !== undefined
+        ? symbolRes.value.ok
+        : (tokenAddress.split(".")[1] ?? "");
 
-    const symbolParsed = stringResultSchema.safeParse(decodeHex(symbolRes.value.result));
-    const symbol = symbolParsed.success ? symbolParsed.data : tokenAddress.split(".")[1];
+    await db
+      .insert(tokenTable)
+      .values({
+        address: tokenAddress,
+        chainId,
+        symbol,
+        decimals,
+      })
+      .onConflictDoNothing();
 
-    insertOps.push(
-      db
-        .insert(tokenTable)
-        .values({
-          address: tokenAddress,
-          chainId,
-          symbol,
-          decimals,
-        })
-        .onConflictDoNothing(),
-    );
     logger.info({ msg: "Discovered token", token: tokenAddress, symbol, decimals });
-  }
-  if (insertOps.length > 0) {
-    await Promise.all(insertOps);
   }
 }
 
@@ -233,31 +179,37 @@ export async function syncPoolTokens({
   poolContract,
   poolToken,
 }: SyncPoolTokensParams): Promise<void> {
-  const countResult = await client.callReadOnly(poolContract, "get-pool-count");
-  if (!countResult.isOk() || !countResult.value.okay) {
+  const countResult = await client.callReadOnly({
+    abi: fixedWeightPoolAbi,
+    contractId: poolContract,
+    functionName: "get-pool-count",
+  });
+  if (!countResult.isOk() || countResult.value.ok === undefined) {
     throw new Error(
       `Failed to fetch pool count from ${poolContract}: ${
-        countResult.isErr() ? countResult.error.message : "call-read response not okay"
+        countResult.isErr() ? countResult.error.message : "contract call returned error"
       }`,
     );
   }
 
-  const poolId = uintResultSchema.parse(decodeHex(countResult.value.result));
+  const poolId = countResult.value.ok;
 
-  const contractsResult = await client.callReadOnly(poolContract, "get-pool-contracts", {
-    args: [encodeUint(poolId)],
+  const contractsResult = await client.callReadOnly({
+    abi: fixedWeightPoolAbi,
+    contractId: poolContract,
+    functionName: "get-pool-contracts",
+    functionArgs: [poolId],
   });
-  if (!contractsResult.isOk() || !contractsResult.value.okay) {
+  if (!contractsResult.isOk() || contractsResult.value.ok === undefined) {
     throw new Error(
       `Failed to fetch pool contracts for pool ${poolToken} (poolId: ${poolId}): ${
-        contractsResult.isErr() ? contractsResult.error.message : "call-read response not okay"
+        contractsResult.isErr() ? contractsResult.error.message : "contract call returned error"
       }`,
     );
   }
 
-  const { tokenX, tokenY } = poolContractsResultSchema.parse(
-    decodeHex(contractsResult.value.result),
-  );
+  const tokenX = contractsResult.value.ok["token-x"];
+  const tokenY = contractsResult.value.ok["token-y"];
 
   await discoverTokens({
     client,

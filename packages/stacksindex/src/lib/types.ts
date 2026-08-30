@@ -1,9 +1,18 @@
+// oxlint-disable typescript/method-signature-style
+
 import type { Result } from "better-result";
+import type { ClarityAbi } from "clarity-abitype";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
-import type { CallReadResponse, SmartContractLogEvent } from "../datasources/api/index.ts";
+import type {
+  CallReadResponse,
+  ContractFunctionName,
+  SmartContractLogEvent,
+  TypedCallReadOnlyFunctionParameters,
+  TypedCallReadOnlyFunctionReturnType,
+} from "../datasources/api/index.ts";
 
 export interface LogEvent {
   type: "log";
@@ -19,11 +28,18 @@ export type HandlerEvent = SmartContractLogEvent & {
 };
 
 export interface IndexingClient {
-  callReadOnly: (
+  callReadOnly<
+    const TAbi extends ClarityAbi | readonly unknown[],
+    TFunctionName extends ContractFunctionName<TAbi, "read_only">,
+  >(
+    options: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName>,
+  ): Promise<Result<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError>>;
+
+  callReadOnly(
     contractId: string,
     functionName: string,
     options?: { args?: string[]; sender?: string; tip?: number },
-  ) => Promise<Result<CallReadResponse, StacksApiError>>;
+  ): Promise<Result<CallReadResponse, StacksApiError>>;
 }
 
 // oxlint-disable-next-line typescript/no-explicit-any

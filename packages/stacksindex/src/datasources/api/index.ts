@@ -1,5 +1,6 @@
 import type { paths } from "@stacks/blockchain-api-client";
 import { Result } from "better-result";
+import type { ClarityAbi } from "clarity-abitype";
 import { request } from "undici";
 
 import { sleep, startClock } from "../../lib/timer.ts";
@@ -11,6 +12,23 @@ import {
   StacksApiResponseError,
   StacksApiUnexpectedError,
 } from "./errors.ts";
+import {
+  type ContractFunctionArgs,
+  type ContractFunctionName,
+  type ContractFunctionReturnType,
+  typedCallReadFunction,
+  type TypedCallReadOnlyFunctionParameters,
+  type TypedCallReadOnlyFunctionReturnType,
+} from "./read-only.ts";
+
+export type {
+  ContractFunctionArgs,
+  ContractFunctionName,
+  ContractFunctionReturnType,
+  TypedCallReadOnlyFunctionParameters,
+  TypedCallReadOnlyFunctionReturnType,
+};
+export { typedCallReadFunction };
 
 export type BlockApiResponse =
   paths["/extended/v2/blocks/{height_or_hash}"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -90,6 +108,7 @@ export interface DatasourceStacksApiContext {
 export interface CallReadResponse {
   okay: boolean;
   result: string;
+  cause?: string;
 }
 
 interface RequestOptions<QueryT = unknown> {
@@ -368,5 +387,19 @@ export const datasourceStacksApi = {
         arguments: args,
       },
     });
+  },
+
+  typedCallReadFunction<
+    const TAbi extends ClarityAbi | readonly unknown[],
+    TFunctionName extends ContractFunctionName<TAbi, "read_only">,
+  >(
+    context: DatasourceStacksApiContext,
+    parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName>,
+  ) {
+    return typedCallReadFunction(
+      context,
+      (ctx, cId, fn, opts) => this.callReadFunction(ctx, cId, fn, opts),
+      parameters,
+    );
   },
 };
