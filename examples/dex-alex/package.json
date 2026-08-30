@@ -6,13 +6,14 @@
   "scripts": {
     "dev": "pnpm build && node --env-file-if-exists=.env dist/index.mjs",
     "build": "vp pack",
+    "test": "vp test",
     "studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite": "0.4.5",
+    "better-result": "3.0.1",
     "drizzle-orm": "0.45.2",
-    "indexer": "workspace:*",
-    "zod": "4.4.3"
+    "stacksindex": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "26.4.0",

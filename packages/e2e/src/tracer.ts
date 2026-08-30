@@ -1,4 +1,4 @@
-import { decodeHex, type HandlerEvent } from "indexer";
+import type { HandlerEvent } from "stacksindex";
 
 export interface RecordedTraceEvent {
   contractId: string;
@@ -37,15 +37,6 @@ export function createTraceCollector(): TraceCollector {
 
   return {
     record(contractId: string, event: HandlerEvent) {
-      let decoded: unknown = null;
-      try {
-        if (event.contract_log.value.hex) {
-          decoded = decodeHex(event.contract_log.value.hex);
-        }
-      } catch {
-        decoded = event.contract_log.value.repr;
-      }
-
       events.push({
         contractId,
         blockHeight: event.block_height,
@@ -57,7 +48,7 @@ export function createTraceCollector(): TraceCollector {
         senderAddress: event.sender_address,
         valueHex: event.contract_log.value.hex,
         valueRepr: event.contract_log.value.repr,
-        decoded,
+        decoded: event.decoded ?? event.contract_log.value.repr,
         recordedAt: Date.now(),
       });
     },

@@ -1,5 +1,5 @@
 {
-  "name": "indexer-e2e",
+  "name": "stacksindex-e2e",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,11 +9,10 @@
     "record": "RECORD=true vp test"
   },
   "dependencies": {
-    "@electric-sql/pglite": "0.5.8",
-    "@stacks/codec": "2.1.0",
+    "@electric-sql/pglite": "0.4.5",
     "better-result": "3.0.1",
     "drizzle-orm": "0.45.2",
-    "indexer": "workspace:*",
+    "stacksindex": "workspace:*",
     "undici": "8.10.0"
   },
   "devDependencies": {

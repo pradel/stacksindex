@@ -1,11 +1,13 @@
 // oxlint-disable typescript/no-unsafe-member-access
 // oxlint-disable typescript/no-unsafe-type-assertion
 // oxlint-disable typescript/no-explicit-any
+// oxlint-disable vitest/expect-expect
 import { Result } from "better-result";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createLogger } from "../../logger/index.ts";
 import {
+  type StacksApiError,
   StacksApiParseError,
   StacksApiRateLimitError,
   StacksApiResponseError,
@@ -27,6 +29,28 @@ const mockBody = (data: unknown) => ({
 const context = {
   logger: createLogger({ level: 0 }),
 };
+
+// Deep-equality on TaggedError instances trips better-result's iterator panic,
+// So compare the tag and fields instead.
+interface TaggedErrorFields {
+  _tag: string;
+}
+
+function expectTaggedError(
+  result: Result<unknown, StacksApiError>,
+  expected: TaggedErrorFields,
+): void {
+  expect(result.isErr()).toBe(true);
+  if (!result.isErr()) {
+    throw new Error("expected error result");
+  }
+  const error = result.error as unknown as Record<string, unknown>;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const expectedFields = expected as unknown as Record<string, unknown>;
+  for (const [key, value] of Object.entries(expectedFields)) {
+    expect(error[key]).toStrictEqual(value);
+  }
+}
 
 describe("aPI DataSource", () => {
   beforeEach(() => {
@@ -58,14 +82,15 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "404");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toBeInstanceOf(StacksApiResponseError);
-      expect((result as any).error).toMatchObject({
-        status: 404,
-        statusText: "Not Found",
-        path: "/extended/v3/transactions/404",
-        errorData: { error: "Not found" },
-      });
+      expectTaggedError(
+        result,
+        new StacksApiResponseError({
+          status: 404,
+          statusText: "Not Found",
+          path: "/extended/v1/tx/404",
+          errorData: { error: "Not found" },
+        }),
+      );
     });
 
     test("returns StacksApiResponseError on 500", async () => {
@@ -78,14 +103,15 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toBeInstanceOf(StacksApiResponseError);
-      expect((result as any).error).toMatchObject({
-        status: 400,
-        statusText: "Bad Request",
-        path: "/extended/v3/transactions/500",
-        errorData: { error: "Bad request" },
-      });
+      expectTaggedError(
+        result,
+        new StacksApiResponseError({
+          status: 400,
+          statusText: "Bad Request",
+          path: "/extended/v1/tx/500",
+          errorData: { error: "Bad request" },
+        }),
+      );
     });
 
     test("returns StacksApiParseError on invalid JSON", async () => {
@@ -101,12 +127,13 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "parse-error");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toBeInstanceOf(StacksApiParseError);
-      expect((result as any).error).toMatchObject({
-        message: "Unexpected end of JSON input",
-        cause: new Error("Unexpected end of JSON input"),
-      });
+      expectTaggedError(
+        result,
+        new StacksApiParseError({
+          message: "Unexpected end of JSON input",
+          cause: new Error("Unexpected end of JSON input"),
+        }),
+      );
     });
 
     test("returns StacksApiResponseError with text error data when JSON fails on error response", async () => {
@@ -122,14 +149,15 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toBeInstanceOf(StacksApiResponseError);
-      expect((result as any).error).toMatchObject({
-        status: 400,
-        statusText: "Bad Request",
-        path: "/extended/v3/transactions/500",
-        errorData: "Bad Request",
-      });
+      expectTaggedError(
+        result,
+        new StacksApiResponseError({
+          status: 400,
+          statusText: "Bad Request",
+          path: "/extended/v1/tx/500",
+          errorData: "Bad Request",
+        }),
+      );
     });
 
     test("returns StacksApiResponseError with null error data when both JSON and text fail", async () => {
@@ -145,14 +173,15 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "500");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toBeInstanceOf(StacksApiResponseError);
-      expect((result as any).error).toMatchObject({
-        status: 400,
-        statusText: "Bad Request",
-        path: "/extended/v3/transactions/500",
-        errorData: null,
-      });
+      expectTaggedError(
+        result,
+        new StacksApiResponseError({
+          status: 400,
+          statusText: "Bad Request",
+          path: "/extended/v1/tx/500",
+          errorData: null,
+        }),
+      );
     });
 
     test("returns StacksApiUnexpectedError when request throws unexpected error", async () => {
@@ -162,13 +191,14 @@ describe("aPI DataSource", () => {
 
       const result = await datasourceStacksApi.getTransaction(context, "network-error");
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toBeInstanceOf(StacksApiUnexpectedError);
-      expect((result as any).error).toMatchObject({
-        path: "/extended/v3/transactions/network-error",
-        message: "Unexpected Stacks API error",
-        cause: new Error("Network error"),
-      });
+      expectTaggedError(
+        result,
+        new StacksApiUnexpectedError({
+          path: "/extended/v1/tx/network-error",
+          message: "Unexpected Stacks API error",
+          cause: new Error("Network error"),
+        }),
+      );
     });
 
     test("retries on 429 after retryAfter seconds and eventually succeeds", async () => {
@@ -212,12 +242,13 @@ describe("aPI DataSource", () => {
 
       const result = await promise;
 
-      expect(result.isErr()).toBe(true);
-      expect((result as any).error).toBeInstanceOf(StacksApiRateLimitError);
-      expect((result as any).error).toMatchObject({
-        path: "/extended/v3/transactions/0xabc123",
-        retryAfter: 1,
-      });
+      expectTaggedError(
+        result,
+        new StacksApiRateLimitError({
+          path: "/extended/v1/tx/0xabc123",
+          retryAfter: 1,
+        }),
+      );
       expect(mockRequest).toHaveBeenCalledTimes(4);
 
       vi.useRealTimers();
@@ -250,194 +281,51 @@ describe("aPI DataSource", () => {
     });
   });
 
-  describe("getBlock", () => {
-    test("returns block data on 200 by hash", async () => {
+  describe("getBlockByHash", () => {
+    test("returns block data on 200", async () => {
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe("https://api.hiro.so/extended/v2/blocks/0xabc123");
         return {
           statusCode: 200,
-          body: mockBody({ hash: "0xabc123", height: 123_456 }),
+          body: mockBody({ hash: "0xabc123", block_height: 123_456 }),
         };
       });
 
-      const result = await datasourceStacksApi.getBlock(context, "0xabc123");
-      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", height: 123_456 }));
-    });
-
-    test("returns block data on 200 by height", async () => {
-      mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe("https://api.hiro.so/extended/v2/blocks/123456");
-        return {
-          statusCode: 200,
-          body: mockBody({ hash: "0xabc123", height: 123_456 }),
-        };
-      });
-
-      const result = await datasourceStacksApi.getBlock(context, 123_456);
-      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", height: 123_456 }));
-    });
-  });
-
-  describe("getBlockTransactions", () => {
-    test("returns block transactions on 200 with cursor and limit", async () => {
-      const mockResponse = {
-        total: 1,
-        limit: 20,
-        cursor: {
-          next: "100:0:1",
-          previous: null,
-          current: "100:0:0",
-        },
-        results: [
-          {
-            tx_id: "0xtx123",
-            type: "contract_call",
-            status: "success",
-          },
-        ],
-      };
-
-      mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe(
-          "https://api.hiro.so/extended/v3/blocks/0xabc123/transactions?limit=20&cursor=100%3A0%3A0",
-        );
-        return {
-          statusCode: 200,
-          body: mockBody(mockResponse),
-        };
-      });
-
-      const result = await datasourceStacksApi.getBlockTransactions(context, "0xabc123", {
-        limit: 20,
-        cursor: "100:0:0",
-      });
-      expect(result).toStrictEqual(Result.ok(mockResponse));
-    });
-
-    test("returns block transactions by height", async () => {
-      const mockResponse = {
-        total: 0,
-        limit: 20,
-        cursor: {
-          next: null,
-          previous: null,
-          current: null,
-        },
-        results: [],
-      };
-
-      mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe("https://api.hiro.so/extended/v3/blocks/123456/transactions");
-        return {
-          statusCode: 200,
-          body: mockBody(mockResponse),
-        };
-      });
-
-      const result = await datasourceStacksApi.getBlockTransactions(context, 123_456);
-      expect(result).toStrictEqual(Result.ok(mockResponse));
+      const result = await datasourceStacksApi.getBlockByHash(context, "0xabc123");
+      expect(result).toStrictEqual(Result.ok({ hash: "0xabc123", block_height: 123_456 }));
     });
   });
 
   describe("getTransaction", () => {
     test("returns transaction data on 200", async () => {
-      const mockTx = {
-        tx_id: "0xtx123",
-        type: "contract_call",
-        status: "success",
-        fee_rate: "1000",
-        sender: { address: "SP123", nonce: 1 },
-        block: { hash: "0xblock", height: 123_456, time: 1000, tx_index: 0 },
-      };
-
       mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe("https://api.hiro.so/extended/v3/transactions/0xtx123");
+        expect(url).toBe("https://api.hiro.so/extended/v1/tx/0xtx123");
         return {
           statusCode: 200,
-          body: mockBody(mockTx),
+          body: mockBody({ tx_id: "0xtx123", tx_status: "success", block_height: 123_456 }),
         };
       });
 
       const result = await datasourceStacksApi.getTransaction(context, "0xtx123");
-      expect(result).toStrictEqual(Result.ok(mockTx));
-    });
-
-    test("includes optional fields when requested", async () => {
-      mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe(
-          "https://api.hiro.so/extended/v3/transactions/0xtx123?include=result%2Cpost_conditions",
-        );
-        return {
-          statusCode: 200,
-          body: mockBody({ tx_id: "0xtx123" }),
-        };
-      });
-
-      const result = await datasourceStacksApi.getTransaction(context, "0xtx123", {
-        include: ["result", "post_conditions"],
-      });
-      expect(result).toStrictEqual(Result.ok({ tx_id: "0xtx123" }));
+      expect(result).toStrictEqual(
+        Result.ok({ tx_id: "0xtx123", tx_status: "success", block_height: 123_456 }),
+      );
     });
   });
 
-  describe("getTransactionEvents", () => {
-    test("returns transaction events on 200", async () => {
-      const txId = "0xtx123";
+  describe("getAddressTransactions", () => {
+    test("returns address transactions on 200", async () => {
+      const address = "SP123.token";
       const mockResponse = {
         limit: 50,
-        total: 1,
-        cursor: { next: null, previous: null, current: "0" },
-        results: [
-          {
-            event_index: 0,
-            type: "contract_log",
-            contract_log: {
-              contract_id: "SP123.token",
-              topic: "print",
-              value: { hex: "0x01", repr: "123" },
-            },
-          },
-        ],
-      };
-
-      mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe(`https://api.hiro.so/extended/v3/transactions/${txId}/events?limit=50`);
-        return {
-          statusCode: 200,
-          body: mockBody(mockResponse),
-        };
-      });
-
-      const result = await datasourceStacksApi.getTransactionEvents(context, txId, { limit: 50 });
-      expect(result).toStrictEqual(Result.ok(mockResponse));
-    });
-  });
-
-  describe("getPrincipalTransactions", () => {
-    test("returns principal transactions on 200 with cursor", async () => {
-      const principal = "SP123.token";
-      const mockResponse = {
-        limit: 50,
+        offset: 100,
         total: 200,
-        cursor: { next: "next_cursor_1", previous: null, current: "curr_1" },
-        results: [
-          {
-            transaction: {
-              tx_id: "0xtx123",
-              type: "contract_call",
-              status: "success",
-              fee_rate: "1000",
-              sender: { address: principal, nonce: 0 },
-              block: { hash: "0xblock", height: 123_456, time: 1000, tx_index: 0 },
-            },
-            involvement: "sender",
-          },
-        ],
+        results: [{ tx_id: "0xtx123", block_height: 123_456 }],
       };
 
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe(
-          `https://api.hiro.so/extended/v3/principals/${principal}/transactions?limit=50&cursor=curr_1`,
+          `https://api.hiro.so/extended/v1/address/${address}/transactions?limit=50&offset=100&exclude_function_args=true`,
         );
         return {
           statusCode: 200,
@@ -445,37 +333,11 @@ describe("aPI DataSource", () => {
         };
       });
 
-      const result = await datasourceStacksApi.getPrincipalTransactions(context, principal, {
+      const result = await datasourceStacksApi.getAddressTransactions(context, address, {
         limit: 50,
-        cursor: "curr_1",
+        offset: 100,
       });
       expect(result).toStrictEqual(Result.ok(mockResponse));
-    });
-  });
-
-  describe("getContract", () => {
-    test("returns contract info on 200", async () => {
-      const contractId = "SP123.token";
-      const mockContract = {
-        tx_id: "0xtx123",
-        canonical: true,
-        contract_id: contractId,
-        block_height: 123_456,
-        clarity_version: 2,
-        source_code: "(define-data-var x int 0)",
-        abi: null,
-      };
-
-      mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe(`https://api.hiro.so/extended/v1/contract/${contractId}`);
-        return {
-          statusCode: 200,
-          body: mockBody(mockContract),
-        };
-      });
-
-      const result = await datasourceStacksApi.getContract(context, contractId);
-      expect(result).toStrictEqual(Result.ok(mockContract));
     });
   });
 
@@ -529,95 +391,128 @@ describe("aPI DataSource", () => {
     });
   });
 
-  describe("baseUrl and apiKey configuration", () => {
-    test("uses custom baseUrl", async () => {
-      const customContext = {
-        ...context,
-        api: {
-          baseUrl: "https://custom-stacks-node.example.com",
-        },
-      };
-
-      mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe("https://custom-stacks-node.example.com/extended/v3/transactions/0xtx123");
+  describe("custom baseUrl and apiKey", () => {
+    test("uses custom baseUrl when provided", async () => {
+      mockRequest.mockImplementation((url: string, init: Record<string, unknown>) => {
+        expect(url).toBe("https://api.testnet.hiro.so/extended/v1/tx/0xtx123");
+        expect(init.headers).toBeUndefined();
         return {
           statusCode: 200,
-          body: mockBody({ tx_id: "0xtx123", block: { height: 123_456 } }),
+          body: mockBody({ tx_id: "0xtx123" }),
         };
       });
 
-      const result = await datasourceStacksApi.getTransaction(customContext, "0xtx123");
-      expect(result).toStrictEqual(Result.ok({ tx_id: "0xtx123", block: { height: 123_456 } }));
-    });
-
-    test("sends x-api-key header when apiKey is provided", async () => {
-      const apiKeyContext = {
-        ...context,
-        api: {
-          apiKey: "my-test-api-key",
-        },
-      };
-
-      mockRequest.mockImplementation((url: string, init: { headers: Record<string, string> }) => {
-        expect(url).toBe("https://api.hiro.so/extended/v3/transactions/0xtx123");
-        expect(init.headers["x-api-key"]).toBe("my-test-api-key");
-        return {
-          statusCode: 200,
-          body: mockBody({ tx_id: "0xtx123", block: { height: 123_456 } }),
-        };
-      });
-
-      const result = await datasourceStacksApi.getTransaction(apiKeyContext, "0xtx123");
-      expect(result).toStrictEqual(Result.ok({ tx_id: "0xtx123", block: { height: 123_456 } }));
-    });
-
-    test("does not send x-api-key header when apiKey is not provided", async () => {
-      mockRequest.mockImplementation((_url: string, init: { headers: Record<string, string> }) => {
-        expect(init.headers["x-api-key"]).toBeUndefined();
-        return {
-          statusCode: 200,
-          body: mockBody({ tx_id: "0xtx123", block: { height: 123_456 } }),
-        };
-      });
-
-      const result = await datasourceStacksApi.getTransaction(context, "0xtx123");
-      expect(result).toStrictEqual(Result.ok({ tx_id: "0xtx123", block: { height: 123_456 } }));
-    });
-
-    test("sends both x-api-key and content-type on POST requests", async () => {
-      const apiKeyContext = {
-        ...context,
-        api: {
-          baseUrl: "https://custom-stacks-node.example.com",
-          apiKey: "my-test-api-key",
-        },
-      };
-
-      mockRequest.mockImplementation(
-        (url: string, init: { method: string; headers: Record<string, string>; body: string }) => {
-          expect(url).toBe(
-            "https://custom-stacks-node.example.com/v2/contracts/call-read/SP123/contract/my-function",
-          );
-          expect(init.method).toBe("POST");
-          expect(init.headers["x-api-key"]).toBe("my-test-api-key");
-          expect(init.headers["content-type"]).toBe("application/json");
-          expect(JSON.parse(init.body)).toMatchObject({
-            sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
-            arguments: [],
-          });
-          return {
-            statusCode: 200,
-            body: mockBody({ okay: true, result: "0x01" }),
-          };
-        },
+      const result = await datasourceStacksApi.getTransaction(
+        { logger: context.logger, baseUrl: "https://api.testnet.hiro.so" },
+        "0xtx123",
       );
+      expect(result.isOk()).toBe(true);
+    });
+
+    test("defaults to mainnet api.hiro.so", async () => {
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe("https://api.hiro.so/extended/v1/tx/0xtx123");
+        return {
+          statusCode: 200,
+          body: mockBody({ tx_id: "0xtx123" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction(
+        { logger: context.logger },
+        "0xtx123",
+      );
+      expect(result.isOk()).toBe(true);
+    });
+
+    test("sends x-api-key header when apiKey provided", async () => {
+      mockRequest.mockImplementation((url: string, init: Record<string, unknown>) => {
+        expect(init.headers).toStrictEqual({ "x-api-key": "test-key" });
+        return {
+          statusCode: 200,
+          body: mockBody({ tx_id: "0xtx123" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransaction(
+        { logger: context.logger, apiKey: "test-key" },
+        "0xtx123",
+      );
+      expect(result.isOk()).toBe(true);
+    });
+
+    test("sends content-type and x-api-key together on POST", async () => {
+      mockRequest.mockImplementation((url: string, init: Record<string, unknown>) => {
+        expect(init.method).toBe("POST");
+        expect(init.headers).toStrictEqual({
+          "content-type": "application/json",
+          "x-api-key": "test-key",
+        });
+        return {
+          statusCode: 200,
+          body: mockBody({ okay: true, result: "0x03" }),
+        };
+      });
 
       const result = await datasourceStacksApi.callReadFunction(
-        apiKeyContext,
-        "SP123.contract",
-        "my-function",
+        { logger: context.logger, apiKey: "test-key" },
+        "SP123.token",
+        "get-decimals",
       );
-      expect(result).toStrictEqual(Result.ok({ okay: true, result: "0x01" }));
+      expect(result.isOk()).toBe(true);
+    });
+
+    test("passes tip as a query parameter", async () => {
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe(
+          "https://api.hiro.so/v2/contracts/call-read/SP123/token/get-decimals?tip=150450",
+        );
+        return {
+          statusCode: 200,
+          body: mockBody({ okay: true, result: "0x03" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.callReadFunction(
+        { logger: context.logger },
+        "SP123.token",
+        "get-decimals",
+        { tip: 150_450 },
+      );
+      expect(result.isOk()).toBe(true);
+    });
+
+    test("omits tip query parameter when not provided", async () => {
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe("https://api.hiro.so/v2/contracts/call-read/SP123/token/get-pool-count");
+        return {
+          statusCode: 200,
+          body: mockBody({ okay: true, result: "0x03" }),
+        };
+      });
+
+      const result = await datasourceStacksApi.callReadFunction(
+        { logger: context.logger },
+        "SP123.token",
+        "get-pool-count",
+      );
+      expect(result.isOk()).toBe(true);
+    });
+
+    test("returns parse error for contract ids without a contract name", async () => {
+      const result = await datasourceStacksApi.callReadFunction(
+        { logger: context.logger },
+        "SP123",
+        "get-pool-count",
+      );
+      expectTaggedError(
+        result,
+        new StacksApiParseError({
+          message: 'Invalid contract id, expected "address.contract-name": SP123',
+          cause: null,
+        }),
+      );
+      expect(mockRequest).not.toHaveBeenCalled();
     });
   });
 });

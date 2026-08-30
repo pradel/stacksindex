@@ -5,43 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1775126351280,
-      "tag": "0000_glamorous_proemial_gods",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1775138004887,
-      "tag": "0001_dear_juggernaut",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1745568600000,
-      "tag": "0002_add_sync_progress",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1777129134793,
-      "tag": "0003_cold_silvermane",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1787907732658,
-      "tag": "0004_abnormal_spectrum",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1788018164156,
-      "tag": "0005_elite_gateway",
+      "when": 1787732908399,
+      "tag": "0000_init",
       "breakpoints": true
     }
   ]

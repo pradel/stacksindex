@@ -1,12 +1,12 @@
 # Stacks Blockchain Indexer Architecture
 
-A blockchain indexer fetches raw data from a Stacks node, caches it locally, and transforms it into queryable tables through user-defined handlers.
+A blockchain indexer fetches raw data from the Stacks API, caches it locally, and transforms it into queryable tables through user-defined handlers.
 
-This architecture assumes a single Stacks network per indexer instance.
+This architecture assumes a single Stacks network per indexer instance. The current POC implements historical sync only; realtime tailing and a read API are future work.
 
 ## Architecture Overview
 
-```
+```text
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │    Stacks    │────▶│    Syncer    │────▶│   Indexer    │────▶│     API      │
 │     API      │     │              │     │              │     │   (read)     │
@@ -27,10 +27,10 @@ Fetches raw blockchain data from the Stacks API and stores it in the sync store.
 
 Responsibilities:
 
-- Fetch events using cursor-based pagination
-- Fetch transactions and blocks for event context
+- Fetch `smart_contract_log` events using cursor-based pagination
+- Batch-fetch transactions (`/extended/v1/tx/multiple`) and blocks for context
 - Track sync progress with cursors and block heights
-- Handle historical backfill and realtime updates
+- Handle historical backfill (realtime updates are future work)
 
 ### Sync Store
 
@@ -48,7 +48,7 @@ PostgreSQL tables defined by the user's schema. These store the transformed/inde
 
 Users configure the indexer with four elements:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                      CONFIGURATION                          │
 ├─────────────────┬───────────────────────────────────────────┤
@@ -64,18 +64,19 @@ Users configure the indexer with four elements:
 
 ### Network
 
-Define the Stacks network to connect to:
+Configured on the runtime via `network`:
 
-- API endpoint URL (e.g., `https://api.hiro.so`)
-- Polling interval for new blocks
+- `"mainnet"` / `"testnet"` presets, or `{ url, chainId? }` for custom endpoints
+- Optional `apiKey`, sent as the `x-api-key` header
 
 ### Contracts
 
-Define what events to capture:
+Defined as filters on `runtime.run([...])`:
 
-- Contract ID(s) (e.g., `SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles`)
-- Event types to filter (e.g., `smart_contract_log`)
-- Block range (start/end)
+- `contractId` (e.g., `SP….fixed-weight-pool-v1-01`)
+- Optional block range: `startBlock` (skip older events when processing) and
+  `endBlock` (stop syncing/processing at this height, inclusive)
+- Only `smart_contract_log` events are persisted in the POC
 
 ### Schema
 
@@ -87,17 +88,20 @@ Define output tables using standard SQL types:
 
 ### Handlers
 
-Define transformation logic:
+One handler per contract filter. Each receives:
 
-- One function per event type
-- Receives decoded event data
-- Writes to user tables via database API
+- `event` — raw log fields plus `decoded` (the parsed Clarity value) and sync
+  metadata (`block_height`, `block_time`, `tx_index`, `sender_address`)
+- `context.db` — database handle for derived writes
+- `context.client` — read-only contract calls against the configured network,
+  pinned to the chain tip of the block being processed (`?tip=` on
+  `/v2/contracts/call-read`) so reads stay deterministic across runs
 
 ## Stacks Event Structure
 
 Events from the Stacks API have this structure:
 
-```
+```text
 Event {
     event_index: number
     event_type: string              -- "smart_contract_log", "stx_transfer", etc.
@@ -120,7 +124,7 @@ Key differences from EVM:
 
 ## Data Flow
 
-```
+```text
 1. SYNC PHASE (Historical)
 
    ┌──────────────────────────────────────────────────────────┐
@@ -131,11 +135,10 @@ Key differences from EVM:
                              │
                              ▼
    ┌──────────────────────────────────────────────────────────┐
-   │  For each event:                                         │
-   │  - Extract tx_id                                         │
-   │  - Fetch transaction: GET /extended/v3/transactions/{tx_id}│
-   │  - Extract block.hash from transaction (reorg-proof)     │
-   │  - Fetch block: GET /extended/v2/blocks/{block_hash}     │
+   │  Deduplicate tx_ids, then batch fetch missing txs        │
+   │  GET /extended/v1/tx/multiple?tx_id=…&tx_id=…            │
+   │  Deduplicate block hashes, then batch fetch missing      │
+   │  blocks: GET /extended/v2/blocks/{block_hash}            │
    └────────────────────────┬─────────────────────────────────┘
                              │
                              ▼
@@ -172,7 +175,7 @@ Key differences from EVM:
 
 The Stacks API v2 uses a cursor with the structure:
 
-```
+```text
 block_height:microblock_sequence:tx_index:event_index
 ```
 
@@ -180,13 +183,18 @@ Example: `100:0:5:2` means block height 100, microblock sequence 0, transaction 
 
 This cursor format is opaque and passed directly to subsequent API requests to paginate through historical events.
 
+Note: first-cursor discovery walks `/extended/v1/address/{contract}/transactions`
+backwards, which can time out on very large contracts. Operators can seed a
+resume cursor directly via `syncStore.upsertSyncProgress` to start from a known
+position instead.
+
 ## Sync Modes
 
 ### Historical Sync
 
 Fetches past blockchain data using cursor-based pagination, from oldest to newest.
 
-```
+```text
 Block 0 ──────────────────────────────────────▶ Latest Block
          [page 1] → [page 2] → [page 3] → ...
                         │
@@ -201,11 +209,12 @@ Block 0 ────────────────────────
 - Save cursor to enable resume after restart
 ```
 
-### Realtime Sync
+### Realtime Sync (planned)
 
-Polls for new blocks after historical sync completes, then fetches events for new blocks.
+Not implemented in the POC. The plan: poll for new blocks after historical sync
+completes, then fetch events for new blocks.
 
-```
+```text
               poll         poll         poll
                │            │            │
                ▼            ▼            ▼
@@ -226,36 +235,39 @@ Polls for new blocks after historical sync completes, then fetches events for ne
 
 ### Filter
 
-Defines what blockchain data to fetch:
+Defines what blockchain data to fetch and process:
 
-```
+```text
 Filter {
-    contract_id: string              -- e.g., "SP6P4EJF...satoshibles"
-    event_types: string[] | null     -- Filter locally: ["smart_contract_log"]
-    start_block: number              -- Default: 0
-    end_block: number | null         -- null = ongoing (realtime)
+    contractId: string               -- e.g., "SP6P4EJF...satoshibles"
+    handler: EventHandler            -- async (event, context) => void
+    startBlock?: number              -- skip events below this height
+    endBlock?: number                -- inclusive upper bound on processing
 }
 ```
+
+Only `smart_contract_log` events are stored in the POC. `endBlock` bounds
+processing only: rows above it may still be fetched and retained in the sync
+store, but they are never dispatched to handlers. Bounds are enforced at
+dispatch time, so out-of-range rows can exist in the sync store without ever
+reaching handlers.
 
 ### Event (Decoded)
 
 Event passed to handlers after decoding:
 
-```
-Event {
-    -- Raw event data
+```text
+HandlerEvent {
+    -- Raw log data (from the Stacks API)
     event_index: number
-    event_type: string
+    event_type: string               -- always "smart_contract_log"
     tx_id: string
-    contract_id: string
-    topic: string
-    value_hex: string
-    value_repr: string
+    contract_log: { contract_id, topic, value: { hex, repr } }
 
-    -- Decoded Clarity value (parsed from repr or hex)
-    args: object
+    -- Decoded Clarity value (undefined when decoding fails)
+    decoded: ClarityValue | undefined
 
-    -- Context (from transaction)
+    -- Context (enriched from transaction + block)
     block_height: number
     block_time: number
     tx_index: number
@@ -267,7 +279,7 @@ Event {
 
 Tracks indexing progress:
 
-```
+```text
 Checkpoint {
     block_height: number             -- Last fully processed block
     block_time: number
@@ -278,16 +290,16 @@ Checkpoint {
 
 On startup, the indexer:
 
-1. Reads the `_checkpoint` table to find the last processed block
+1. Reads the `checkpoints` table to find the last processed block
 2. Reads `sync_progress` to find the last cursor for each contract
 3. Resumes syncing from the saved cursor
 4. Resumes indexing from the checkpoint block
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                     ON STARTUP                          │
 ├─────────────────────────────────────────────────────────┤
-│  1. Read _checkpoint table                              │
+│  1. Read checkpoints table                              │
 │     └─▶ last_block = 1000                               │
 │                                                         │
 │  2. Read sync_progress table                            │
@@ -304,9 +316,9 @@ On startup, the indexer:
 
 ## Summary
 
-| Component  | Purpose                          | Storage            |
-| ---------- | -------------------------------- | ------------------ |
-| Syncer     | Fetch events, txs, blocks        | sync\_\* tables    |
-| Sync Store | Cache raw Stacks data            | PostgreSQL         |
-| Indexer    | Execute handlers, transform data | user tables        |
-| Checkpoint | Track progress, enable recovery  | \_checkpoint table |
+| Component  | Purpose                          | Storage           |
+| ---------- | -------------------------------- | ----------------- |
+| Syncer     | Fetch events, txs, blocks        | sync\_\* tables   |
+| Sync Store | Cache raw Stacks data            | PostgreSQL        |
+| Indexer    | Execute handlers, transform data | user tables       |
+| Checkpoint | Track progress, enable recovery  | checkpoints table |

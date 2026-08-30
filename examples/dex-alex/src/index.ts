@@ -1,72 +1,109 @@
-import fs from "node:fs";
-import process from "node:process";
+import { mkdirSync } from "node:fs";
+import { env } from "node:process";
 
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
-import { createDatabase, createHistoricalRuntime, createLogger } from "indexer";
+import { migrate as migrateApp } from "drizzle-orm/pglite/migrator";
+import {
+  createHistoricalRuntime,
+  createLogger,
+  migrate as migrateIndexer,
+  parseCursor,
+  syncStore,
+  type HistoricalRuntimeContext,
+} from "stacksindex";
 
-import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
+import { POOL_CONTRACT, createAlexHandler } from "./handler.ts";
 
-const apiKey = process.env.HIRO_API_KEY;
-
-fs.mkdirSync("./data", { recursive: true });
-
-const appClient = new PGlite("./data/app.db");
-await appClient.waitReady;
-const appDb = drizzle({ client: appClient });
-
-await migrate(appDb, { migrationsFolder: "./drizzle" });
-
-const indexerDatabase = await createDatabase({
-  kind: "pglite",
-  directory: "./data/indexer.db",
-});
-
-const logger = createLogger({
-  level: 2,
-});
-
-let isShuttingDown = false;
-async function shutdown(code: number) {
-  if (isShuttingDown) {
-    return;
+function optionalNumberEnv(name: string): number | undefined {
+  const raw = env[name];
+  if (raw === undefined || raw === "") {
+    return undefined;
   }
-  isShuttingDown = true;
-  try {
-    await appClient.close();
-  } catch {
-    // Ignore error on close
-  }
-  try {
-    await indexerDatabase.close();
-  } catch {
-    // Ignore error on close
-  }
-  process.exit(code);
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
 }
 
-process.on("SIGINT", () => {
-  // oxlint-disable-next-line eslint/no-void
-  void shutdown(0);
-});
-process.on("SIGTERM", () => {
-  // oxlint-disable-next-line eslint/no-void
-  void shutdown(0);
-});
+/**
+ * Seed a resume cursor so operators (and the E2E acceptance run) can start
+ * syncing from a known position instead of walking a contract's full history —
+ * the Hiro address-transactions endpoint can time out on very large contracts.
+ */
+async function seedProgress(db: HistoricalRuntimeContext["db"], cursor: string): Promise<void> {
+  // Validate the cursor format via parseCursor before seeding.
+  const { blockHeight } = parseCursor(cursor);
+  await syncStore.upsertSyncProgress(
+    { contractId: POOL_CONTRACT, chainId: 1, cursor, lastBlockHeight: blockHeight },
+    { db },
+  );
+}
 
-const runtime = createHistoricalRuntime({ logger, db: indexerDatabase.db, api: { apiKey } });
+async function main(): Promise<void> {
+  const logger = createLogger({ level: 2 });
+  const apiKey = env.HIRO_API_KEY;
 
-const result = await runtime.run([
-  {
-    contractId: POOL_CONTRACT,
-    handler: createPoolHandler({ db: appDb, logger }),
-  },
-]);
+  // PGlite does not create parent directories.
+  mkdirSync("./data", { recursive: true });
 
-if (result.isErr()) {
-  logger.error({ msg: "Error running historical sync", error: result.error });
-  await shutdown(1);
-} else {
-  await shutdown(0);
+  const appClient = new PGlite("./data/app.db");
+  const appDb = drizzle({ client: appClient });
+  await migrateApp(appDb, { migrationsFolder: "./drizzle" });
+
+  const indexerClient = new PGlite("./data/indexer.db");
+  const indexerDb = drizzle({ client: indexerClient });
+  // The runtime auto-migrates too; run it eagerly so the seed below operates
+  // On an up-to-date sync-store schema.
+  await migrateIndexer(indexerDb);
+
+  const seedCursor = env.SEED_CURSOR;
+  if (seedCursor !== undefined && seedCursor !== "") {
+    try {
+      await seedProgress(indexerDb, seedCursor);
+      logger.info({ msg: "Seeded sync progress", cursor: seedCursor });
+    } catch (error) {
+      logger.error({ msg: "Invalid SEED_CURSOR", cursor: seedCursor, error });
+      // oxlint-disable-next-line no-undef
+      process.exitCode = 1;
+      await indexerClient.close();
+      await appClient.close();
+      return;
+    }
+  }
+
+  const runtimeOptions: HistoricalRuntimeContext = {
+    logger,
+    db: indexerDb,
+    network: "mainnet",
+  };
+  if (apiKey !== undefined) {
+    runtimeOptions.apiKey = apiKey;
+    logger.info({ msg: "Using Hiro API key from environment" });
+  }
+
+  const startBlock = optionalNumberEnv("START_BLOCK");
+  const endBlock = optionalNumberEnv("END_BLOCK");
+
+  const runtime = createHistoricalRuntime(runtimeOptions);
+
+  const result = await runtime.run([
+    {
+      contractId: POOL_CONTRACT,
+      handler: createAlexHandler({ appDb, logger }),
+      startBlock,
+      endBlock,
+    },
+  ]);
+
+  if (result.isErr()) {
+    logger.error({ msg: "Historical sync failed", error: result.error });
+    // oxlint-disable-next-line no-undef
+    process.exitCode = 1;
+  }
+
+  await indexerClient.close();
+  await appClient.close();
+}
+
+if (env.NODE_ENV !== "test") {
+  await main();
 }

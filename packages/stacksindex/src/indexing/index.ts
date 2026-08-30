@@ -2,69 +2,52 @@ import { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
-import { datasourceStacksApi } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
-import type { HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
+import type { FilterBounds, HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 
 interface IndexingContext {
   logger: Logger;
   db: NodePgDatabase | PgliteDatabase;
+  client: HandlerContext["client"];
   handlers: Handlers;
-  api?: {
-    baseUrl?: string;
-    apiKey?: string;
-  };
+  bounds: Record<string, FilterBounds | undefined>;
 }
 
 export const createIndexing = (context: IndexingContext) => ({
   async executeEvent(event: HandlerEvent): Promise<Result<void, HandlerExecutionError>> {
-    const endClock = startClock();
     const handler = context.handlers[event.contract_log.contract_id];
 
     if (handler === undefined) {
-      const duration = endClock();
       context.logger.debug({
         msg: "No handler found for event",
         contractId: event.contract_log.contract_id,
         eventType: event.event_type,
         blockHeight: event.block_height,
-        txIndex: event.tx_index,
-        duration,
+      });
+      return Result.ok(undefined);
+    }
+
+    const bounds = context.bounds[event.contract_log.contract_id];
+    const { startBlock, endBlock } = bounds ?? {};
+    if (
+      (startBlock !== undefined && event.block_height < startBlock) ||
+      (endBlock !== undefined && event.block_height > endBlock)
+    ) {
+      context.logger.debug({
+        msg: "Event outside filter bounds, skipping",
+        contractId: event.contract_log.contract_id,
+        blockHeight: event.block_height,
+        startBlock,
+        endBlock,
       });
       return Result.ok(undefined);
     }
 
     const handlerClock = startClock();
     try {
-      const client: IndexingClient = {
-        callReadOnly(contractId, functionName, options) {
-          return datasourceStacksApi.callReadFunction(
-            {
-              logger: context.logger,
-              api: context.api,
-            },
-            contractId,
-            functionName,
-            {
-              ...options,
-              tip: options?.tip ?? event.block_height,
-            },
-          );
-        },
-      };
-
-      await handler(event, { db: context.db, client });
-      const duration = handlerClock();
-      context.logger.debug({
-        msg: "Executed event handler",
-        contractId: event.contract_log.contract_id,
-        eventType: event.event_type,
-        blockHeight: event.block_height,
-        txIndex: event.tx_index,
-        duration,
-      });
+      await handler(event, { db: context.db, client: context.client });
     } catch (err) {
       const duration = handlerClock();
       context.logger.error({
@@ -72,7 +55,6 @@ export const createIndexing = (context: IndexingContext) => ({
         contractId: event.contract_log.contract_id,
         eventType: event.event_type,
         blockHeight: event.block_height,
-        txIndex: event.tx_index,
         error: err,
         duration,
       });
@@ -84,13 +66,12 @@ export const createIndexing = (context: IndexingContext) => ({
       );
     }
 
-    const duration = endClock();
+    const duration = handlerClock();
     context.logger.debug({
-      msg: "Executed event",
+      msg: "Executed event handler",
       contractId: event.contract_log.contract_id,
       eventType: event.event_type,
       blockHeight: event.block_height,
-      txIndex: event.tx_index,
       duration,
     });
 

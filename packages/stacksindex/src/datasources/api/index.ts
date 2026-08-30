@@ -1,4 +1,3 @@
-import type { paths } from "@stacks/blockchain-api-client";
 import { Result } from "better-result";
 import { request } from "undici";
 
@@ -12,120 +11,213 @@ import {
   StacksApiUnexpectedError,
 } from "./errors.ts";
 
-export type BlockApiResponse =
-  paths["/extended/v2/blocks/{height_or_hash}"]["get"]["responses"]["200"]["content"]["application/json"];
+export interface BlockApiResponse {
+  canonical: boolean;
+  height: number;
+  hash: string;
+  block_time: number;
+  block_time_iso: string;
+  tenure_height: number;
+  index_block_hash: string;
+  parent_block_hash: string;
+  parent_index_block_hash: string;
+  burn_block_time: number;
+  burn_block_time_iso: string;
+  burn_block_hash: string;
+  burn_block_height: number;
+  miner_txid: string;
+  tx_count: number;
+  execution_cost_read_count: number;
+  execution_cost_read_length: number;
+  execution_cost_runtime: number;
+  execution_cost_write_count: number;
+  execution_cost_write_length: number;
+}
 
-export type GetBlockQuery =
-  paths["/extended/v2/blocks/{height_or_hash}"]["get"]["parameters"]["query"];
+export interface TransactionApiResponse {
+  tx_id: string;
+  nonce: number;
+  fee_rate: string;
+  sender_address: string;
+  sponsored: boolean;
+  post_condition_mode: string;
+  // oxlint-disable-next-line typescript/no-explicit-any
+  post_conditions: any[];
+  anchor_mode: string;
+  block_hash: string;
+  block_height: number;
+  block_time: number;
+  block_time_iso: string;
+  burn_block_time: number;
+  burn_block_height: number;
+  burn_block_time_iso: string;
+  parent_burn_block_time: number;
+  parent_burn_block_time_iso: string;
+  canonical: boolean;
+  tx_index: number;
+  tx_status: string;
+  tx_result: {
+    hex: string;
+    repr: string;
+  } | null;
+  event_count: number;
+  parent_block_hash: string;
+  is_unanchored: boolean;
+  microblock_hash: string;
+  microblock_sequence: number;
+  microblock_canonical: boolean;
+  execution_cost_read_count: number;
+  execution_cost_read_length: number;
+  execution_cost_runtime: number;
+  execution_cost_write_count: number;
+  execution_cost_write_length: number;
+  vm_error: null | string;
+  events: ContractEvent[];
+  tx_type: string;
+}
 
-export type BlockTransactionsApiResponse =
-  paths["/extended/v3/blocks/{height_or_hash}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
+export interface AddressTransactionsResponse {
+  limit: number;
+  offset: number;
+  total: number;
+  results: TransactionApiResponse[];
+}
 
-export type GetBlockTransactionsQuery =
-  paths["/extended/v3/blocks/{height_or_hash}/transactions"]["get"]["parameters"]["query"];
+export interface ContractLogsResponse {
+  limit: number;
+  offset: number;
+  total: number;
+  next_cursor: string | null;
+  prev_cursor: string | null;
+  results: ContractEvent[];
+}
 
-export type GetContractLogsQuery =
-  paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["parameters"]["query"];
+export type BatchTransactionResult =
+  | { found: true; result: TransactionApiResponse }
+  | { found: false; tx_id: string };
 
-export type GetTransactionQuery =
-  paths["/extended/v3/transactions/{tx_id}"]["get"]["parameters"]["query"];
+interface AbstractTransactionEvent {
+  event_index: number;
+}
 
-export type GetPrincipalTransactionsQuery =
-  paths["/extended/v3/principals/{principal}/transactions"]["get"]["parameters"]["query"];
+export interface SmartContractLogEvent extends AbstractTransactionEvent {
+  event_type: "smart_contract_log";
+  tx_id: string;
+  contract_log: {
+    contract_id: string;
+    topic: string;
+    value: {
+      hex: string;
+      repr: string;
+    };
+  };
+}
 
-export type GetTransactionEventsQuery =
-  paths["/extended/v3/transactions/{tx_id}/events"]["get"]["parameters"]["query"];
+export interface StxLockEvent extends AbstractTransactionEvent {
+  event_type: "stx_lock";
+  tx_id: string;
+  stx_lock_event: {
+    locked_amount: string;
+    unlock_height: number;
+    locked_address: string;
+  };
+}
 
-export type TransactionEventsResponse =
-  paths["/extended/v3/transactions/{tx_id}/events"]["get"]["responses"]["200"]["content"]["application/json"];
+export interface StxAssetEvent extends AbstractTransactionEvent {
+  event_type: "stx_asset";
+  tx_id: string;
+  asset: {
+    asset_event_type: "transfer" | "mint" | "burn";
+    sender: string;
+    recipient: string;
+    amount: string;
+    memo?: string;
+  };
+}
 
-export type TransactionEvent = TransactionEventsResponse["results"][number];
+export interface FungibleTokenAssetEvent extends AbstractTransactionEvent {
+  event_type: "fungible_token_asset";
+  tx_id: string;
+  asset: {
+    asset_event_type: "transfer" | "mint" | "burn";
+    asset_id: string;
+    sender: string;
+    recipient: string;
+    amount: string;
+  };
+}
 
-export type TransactionApiResponse = Extract<
-  paths["/extended/v3/transactions/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
-  { block: unknown }
-> & {
-  canonical?: boolean;
-};
+export interface NonFungibleTokenAssetEvent extends AbstractTransactionEvent {
+  event_type: "non_fungible_token_asset";
+  tx_id: string;
+  asset: {
+    asset_event_type: "transfer" | "mint" | "burn";
+    asset_id: string;
+    sender: string;
+    recipient: string;
+    value: {
+      hex: string;
+      repr: string;
+    };
+  };
+}
 
-export type PrincipalTransactionsResponse =
-  paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
-
-export type ContractApiResponse =
-  paths["/extended/v1/contract/{contract_id}"]["get"]["responses"]["200"]["content"]["application/json"];
-
-export type ContractLogsResponse =
-  paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
-
-export type ApiStatusResponse =
-  paths["/extended"]["get"]["responses"]["200"]["content"]["application/json"];
-
-type MinedV1Transaction = Extract<
-  paths["/extended/v1/tx/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
-  { block_height: number }
->;
-
-export type ContractEvent = MinedV1Transaction["events"][number];
-
-export type SmartContractLogEvent = Extract<ContractEvent, { event_type: "smart_contract_log" }>;
-export type StxLockEvent = Extract<ContractEvent, { event_type: "stx_lock" }>;
-export type StxAssetEvent = Extract<ContractEvent, { event_type: "stx_asset" }>;
-export type FungibleTokenAssetEvent = Extract<
-  ContractEvent,
-  { event_type: "fungible_token_asset" }
->;
-export type NonFungibleTokenAssetEvent = Extract<
-  ContractEvent,
-  { event_type: "non_fungible_token_asset" }
->;
+export type ContractEvent =
+  | SmartContractLogEvent
+  | StxLockEvent
+  | StxAssetEvent
+  | FungibleTokenAssetEvent
+  | NonFungibleTokenAssetEvent;
 
 export interface DatasourceStacksApiContext {
   logger: Logger;
-  api?: {
-    baseUrl?: string;
-    apiKey?: string;
-  };
+  /** Base URL of the Stacks API. Defaults to `https://api.hiro.so`. */
+  baseUrl?: string;
+  /** Optional Hiro API key, sent as the `x-api-key` header. */
+  apiKey?: string;
 }
+
+const DEFAULT_BASE_URL = "https://api.hiro.so";
 
 export interface CallReadResponse {
   okay: boolean;
   result: string;
 }
 
-interface RequestOptions<QueryT = unknown> {
+interface RequestOptions {
   path: string;
   method: "GET" | "POST";
-  query?: QueryT;
+  query?: Record<string, string | string[] | number | number[] | bigint | bigint[] | null>;
   body?: unknown;
 }
 
 export const datasourceStacksApi = {
-  async _request<ResponseT, QueryT extends Record<string, unknown> | undefined>(
+  async _request<ResponseT>(
     context: DatasourceStacksApiContext,
-    options: RequestOptions<QueryT>,
+    options: RequestOptions,
   ): Promise<Result<ResponseT, StacksApiError>> {
-    return this._requestWithRetry<ResponseT, QueryT>(context, options, 0);
+    return this._requestWithRetry(context, options, 0);
   },
 
-  async _requestWithRetry<ResponseT, QueryT extends Record<string, unknown> | undefined>(
+  async _requestWithRetry<ResponseT>(
     context: DatasourceStacksApiContext,
-    options: RequestOptions<QueryT>,
+    options: RequestOptions,
     attempt: number,
   ): Promise<Result<ResponseT, StacksApiError>> {
     const maxRateLimitRetries = 3;
     const { path, method } = options;
 
-    const baseUrl = context.api?.baseUrl ?? "https://api.hiro.so";
-    let url = `${baseUrl}${path}`;
+    let url = `${context.baseUrl ?? DEFAULT_BASE_URL}${path}`;
     if (options.query) {
       const parts: string[] = [];
       for (const [key, value] of Object.entries(options.query)) {
         const vals = Array.isArray(value) ? value : [value];
         for (const entry of vals) {
-          if (entry !== null && entry !== undefined) {
-            // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access
-            const str: string = typeof entry === "string" ? entry : entry.toString();
-            parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(str)}`);
+          if (entry !== null) {
+            // Values are known-safe identifiers (tx ids, principals, numeric
+            // Cursors); colons must remain literal for cursor pagination.
+            const str = typeof entry === "string" ? entry : entry.toString();
+            parts.push(`${key}=${str}`);
           }
         }
       }
@@ -145,14 +237,16 @@ export const datasourceStacksApi = {
 
           const requestInit: Record<string, unknown> = { method };
           const requestHeaders: Record<string, string> = {};
-          if (context.api?.apiKey) {
-            requestHeaders["x-api-key"] = context.api.apiKey;
-          }
           if (options.body !== undefined) {
             requestHeaders["content-type"] = "application/json";
             requestInit.body = JSON.stringify(options.body);
           }
-          requestInit.headers = requestHeaders;
+          if (context.apiKey !== undefined) {
+            requestHeaders["x-api-key"] = context.apiKey;
+          }
+          if (Object.keys(requestHeaders).length > 0) {
+            requestInit.headers = requestHeaders;
+          }
 
           const { statusCode, statusText, body, headers } = await request(url, requestInit);
 
@@ -160,8 +254,7 @@ export const datasourceStacksApi = {
           if (duration > 15000) {
             context.logger.warn({
               service: "datasourceStacksApi",
-              msg: `Slow API call`,
-              path,
+              msg: `Slow API call ${path}`,
               duration,
             });
           }
@@ -179,8 +272,7 @@ export const datasourceStacksApi = {
             duration = stopClock();
             context.logger.trace({
               service: "datasourceStacksApi",
-              msg: `error response ${statusCode}`,
-              path,
+              msg: `${path} error response ${statusCode}`,
               duration,
             });
 
@@ -199,7 +291,6 @@ export const datasourceStacksApi = {
             context.logger.trace({
               service: "datasourceStacksApi",
               msg: `${path} response`,
-              path,
               duration,
             });
 
@@ -244,7 +335,6 @@ export const datasourceStacksApi = {
       context.logger.debug({
         service: "datasourceStacksApi",
         msg: `${path} rate limited, retrying after ${result.error.retryAfter}s, attempt ${attempt + 1}`,
-        path,
       });
       await sleep(delayMs);
       return this._requestWithRetry(context, options, attempt + 1);
@@ -253,97 +343,75 @@ export const datasourceStacksApi = {
     return result;
   },
 
-  getBlock(
-    context: DatasourceStacksApiContext,
-    heightOrHash: string | number,
-    options?: GetBlockQuery,
-  ) {
-    return this._request<BlockApiResponse, GetBlockQuery>(context, {
-      path: `/extended/v2/blocks/${heightOrHash}`,
+  getBlockByHash(context: DatasourceStacksApiContext, hash: string) {
+    return this._request<BlockApiResponse>(context, {
+      path: `/extended/v2/blocks/${hash}`,
       method: "GET",
-      query: options,
     });
   },
 
-  getBlockTransactions(
-    context: DatasourceStacksApiContext,
-    heightOrHash: string | number,
-    options: GetBlockTransactionsQuery = {},
-  ) {
-    return this._request<BlockTransactionsApiResponse, GetBlockTransactionsQuery>(context, {
-      path: `/extended/v3/blocks/${heightOrHash}/transactions`,
+  getTransaction(context: DatasourceStacksApiContext, txId: string) {
+    return this._request<TransactionApiResponse>(context, {
+      path: `/extended/v1/tx/${txId}`,
       method: "GET",
-      query: options,
     });
   },
 
-  getTransaction(
+  async getTransactions(
     context: DatasourceStacksApiContext,
-    txId: string,
-    options: GetTransactionQuery = {},
-  ) {
-    const { include } = options;
-    return this._request<TransactionApiResponse, { include?: string | null }>(context, {
-      path: `/extended/v3/transactions/${txId}`,
+    txIds: string[],
+  ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
+    if (txIds.length === 0) {
+      return Result.ok([]);
+    }
+
+    const mapResult = await this._request<Record<string, BatchTransactionResult>>(context, {
+      path: "/extended/v1/tx/multiple",
       method: "GET",
-      query: { include: include && include.length > 0 ? include.join(",") : null },
+      query: { tx_id: txIds },
     });
+    if (mapResult.isErr()) {
+      return Result.err(mapResult.error);
+    }
+
+    const results = txIds
+      .map((txId) => {
+        const entry = mapResult.value[txId];
+        if (entry.found) {
+          return entry.result;
+        }
+        return null;
+      })
+      .filter((entry) => entry !== null);
+
+    return Result.ok(results);
   },
 
-  getTransactionEvents(
+  getAddressTransactions(
     context: DatasourceStacksApiContext,
-    txId: string,
-    options: GetTransactionEventsQuery = {},
+    address: string,
+    options: { limit?: number; offset?: number; exclude_function_args?: boolean } = {},
   ) {
-    const { limit = 50, cursor, ...rest } = options;
-    const path = `/extended/v3/transactions/${txId}/events`;
-    return this._request<TransactionEventsResponse, GetTransactionEventsQuery>(context, {
+    const { limit = 50, offset = 0, exclude_function_args = true } = options;
+    const path = `/extended/v1/address/${address}/transactions`;
+    return this._request<AddressTransactionsResponse>(context, {
       path,
       method: "GET",
-      query: { limit, cursor, ...rest },
-    });
-  },
-
-  getPrincipalTransactions(
-    context: DatasourceStacksApiContext,
-    principal: string,
-    options: GetPrincipalTransactionsQuery = {},
-  ) {
-    const { limit = 50, cursor, ...rest } = options;
-    const path = `/extended/v3/principals/${principal}/transactions`;
-    return this._request<PrincipalTransactionsResponse, GetPrincipalTransactionsQuery>(context, {
-      path,
-      method: "GET",
-      query: { limit, cursor, ...rest },
-    });
-  },
-
-  getContract(context: DatasourceStacksApiContext, contractId: string) {
-    const path = `/extended/v1/contract/${contractId}`;
-    return this._request<ContractApiResponse, undefined>(context, {
-      path,
-      method: "GET",
+      query: { limit, offset, exclude_function_args: String(exclude_function_args) },
     });
   },
 
   getContractLogs(
     context: DatasourceStacksApiContext,
     contractId: string,
-    options: GetContractLogsQuery = {},
+    options: { limit?: number; cursor?: string | null } = {},
   ) {
-    const { limit = 100, cursor, ...rest } = options;
+    const { limit = 100, cursor } = options;
     const path = `/extended/v2/smart-contracts/${contractId}/logs`;
-    return this._request<ContractLogsResponse, GetContractLogsQuery>(context, {
+    return this._request<ContractLogsResponse>(context, {
       path,
       method: "GET",
-      query: { limit, cursor, ...rest },
-    });
-  },
-
-  getStatus(context: DatasourceStacksApiContext) {
-    return this._request<ApiStatusResponse, undefined>(context, {
-      path: "/extended/v1/status",
-      method: "GET",
+      query: { limit, cursor: cursor ?? null },
     });
   },
 
@@ -351,17 +419,34 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     contractId: string,
     functionName: string,
-    options: { args?: string[]; sender?: string; tip?: number } = {},
+    options: {
+      args?: string[];
+      sender?: string;
+      /** Chain tip (block height) to query; defaults to the current tip. */
+      tip?: number;
+    } = {},
   ) {
     const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip } = options;
-    const [contractAddress, contractName] = contractId.split(".");
-    const path =
-      contractAddress && contractName
-        ? `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`
-        : `/v2/contracts/call-read/${contractId}/${functionName}`;
-    return this._request<CallReadResponse, { tip?: number | null }>(context, {
+    // The call-read endpoint takes address, contract name, and function as
+    // Separate path segments. Ids arrive as "address.contract-name".
+    const dotIndex = contractId.indexOf(".");
+    if (dotIndex === -1) {
+      return Promise.resolve(
+        Result.err(
+          new StacksApiParseError({
+            message: `Invalid contract id, expected "address.contract-name": ${contractId}`,
+            cause: null,
+          }),
+        ),
+      );
+    }
+    const address = contractId.slice(0, dotIndex);
+    const contractName = contractId.slice(dotIndex + 1);
+    const path = `/v2/contracts/call-read/${address}/${contractName}/${functionName}`;
+    return this._request<CallReadResponse>(context, {
       path,
       method: "POST",
+      // Null query entries are dropped by the builder -> omitted from the URL.
       query: { tip: tip ?? null },
       body: {
         sender,

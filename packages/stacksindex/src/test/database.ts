@@ -1,8 +1,9 @@
+import path from "node:path";
+
 import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
-
-import { migrate } from "../database/index.ts";
+import { migrate } from "drizzle-orm/pglite/migrator";
 
 export interface TestDatabase {
   db: PgliteDatabase;
@@ -16,7 +17,9 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   const client = new PGlite();
   const db = drizzle({ client });
 
-  await migrate(db);
+  await migrate(db, {
+    migrationsFolder: path.resolve(import.meta.dirname, "../../drizzle"),
+  });
 
   return {
     db,

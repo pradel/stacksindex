@@ -15,8 +15,8 @@ export const encodeBlock = ({
   chainId: BigInt(chainId),
   height: BigInt(block.height),
   hash: block.hash,
-  blockTime: BigInt(block.burn_block_time),
-  tenureHeight: BigInt(block.burn_block_height),
+  blockTime: BigInt(block.block_time),
+  tenureHeight: BigInt(block.tenure_height),
 });
 
 export const encodeTransaction = ({
@@ -28,15 +28,15 @@ export const encodeTransaction = ({
 }): typeof syncSchema.transactionsTable.$inferInsert => ({
   txId: transaction.tx_id,
   chainId: BigInt(chainId),
-  blockHeight: BigInt(transaction.block.height),
-  blockHash: transaction.block.hash,
-  txIndex: transaction.block.tx_index,
-  txType: transaction.type,
-  senderAddress: transaction.sender.address,
+  blockHeight: BigInt(transaction.block_height),
+  blockHash: transaction.block_hash,
+  txIndex: transaction.tx_index,
+  txType: transaction.tx_type,
+  senderAddress: transaction.sender_address,
   feeRate: BigInt(transaction.fee_rate),
-  nonce: BigInt(transaction.sender.nonce),
-  txStatus: transaction.status,
-  canonical: typeof transaction.canonical === "boolean" ? transaction.canonical : true,
+  nonce: BigInt(transaction.nonce),
+  txStatus: transaction.tx_status,
+  canonical: transaction.canonical,
 });
 
 export const encodeEvent = ({

@@ -1,7 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
-import { migrate } from "indexer";
+import { migrate } from "stacksindex";
 
 export interface TestDatabase {
   db: PgliteDatabase;

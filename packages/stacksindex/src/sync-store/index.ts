@@ -63,7 +63,7 @@ export const syncStore = {
   getExistingTransactions: async (
     { txIds, chainId }: { txIds: string[]; chainId: number },
     context: Context,
-  ) => {
+  ): Promise<{ txId: string; blockHeight: number }[]> => {
     if (txIds.length === 0) {
       return [];
     }
@@ -75,7 +75,7 @@ export const syncStore = {
         and(eq(transactionsTable.chainId, BigInt(chainId)), inArray(transactionsTable.txId, txIds)),
       );
 
-    return result;
+    return result.map((row) => ({ txId: row.txId, blockHeight: Number(row.blockHeight) }));
   },
 
   getExistingBlocks: async (
@@ -118,13 +118,11 @@ export const syncStore = {
       chainId,
       cursor,
       lastBlockHeight,
-      isComplete = false,
     }: {
       contractId: string;
       chainId: number;
-      cursor: string | null;
+      cursor: string;
       lastBlockHeight: number;
-      isComplete?: boolean;
     },
     context: Context,
   ) => {
@@ -135,14 +133,12 @@ export const syncStore = {
         contractId,
         cursor,
         lastBlockHeight: BigInt(lastBlockHeight),
-        isComplete,
       })
       .onConflictDoUpdate({
         target: [syncProgressTable.chainId, syncProgressTable.contractId],
         set: {
           cursor,
           lastBlockHeight: BigInt(lastBlockHeight),
-          isComplete,
         },
       });
   },
@@ -151,10 +147,7 @@ export const syncStore = {
     {
       events,
       chainId,
-    }: {
-      events: { event: SmartContractLogEvent; blockHeight: number }[];
-      chainId: number;
-    },
+    }: { events: { event: SmartContractLogEvent; blockHeight: number }[]; chainId: number },
     context: Context,
   ) => {
     if (events.length === 0) {

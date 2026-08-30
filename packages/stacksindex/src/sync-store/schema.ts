@@ -1,4 +1,4 @@
-import { bigint, boolean, index, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { pgTable, primaryKey, text, integer, bigint, boolean, index } from "drizzle-orm/pg-core";
 
 export const blocksTable = pgTable(
   "blocks",
@@ -46,9 +46,8 @@ export const syncProgressTable = pgTable(
   (table) => ({
     chainId: table.bigint({ mode: "bigint" }).notNull(),
     contractId: text("contract_id").notNull(),
-    cursor: text("cursor"),
+    cursor: text("cursor").notNull(),
     lastBlockHeight: table.bigint({ mode: "bigint" }).notNull(),
-    isComplete: boolean("is_complete").notNull().default(false),
   }),
   (table) => [
     primaryKey({

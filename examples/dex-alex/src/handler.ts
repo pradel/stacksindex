@@ -1,434 +1,391 @@
 import { eq } from "drizzle-orm";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import {
-  decodeHex,
-  encodeUint,
+  ClarityType,
+  decodeClarityValueUnwrapped,
+  type ClarityValue,
   type EventHandler,
+  type HandlerEvent,
   type IndexingClient,
   type Logger,
-} from "indexer";
-import { z } from "zod";
+} from "stacksindex";
 
+import {
+  encodeUint,
+  extractBool,
+  extractField,
+  extractPrincipal,
+  extractString,
+  extractUint,
+  principalFromValue,
+} from "./clarity.ts";
 import { poolTable, swapTable, tokenTable } from "./schema.ts";
 
-// oxlint-disable-next-line typescript/no-explicit-any
-export type AppDatabase = PgliteDatabase<any>;
+type AppDatabase = NodePgDatabase | PgliteDatabase;
 
 export const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
-export const CHAIN_ID = 1n;
 
-// Schemas for contract read-only responses
-const uintResultSchema = z.union([
-  z.object({ ok: z.bigint() }).transform((val) => val.ok),
-  z.bigint(),
-]);
-
-const stringResultSchema = z.union([
-  z.object({ ok: z.string() }).transform((val) => val.ok),
-  z.string(),
-]);
-
-const poolContractsResultSchema = z.union([
-  z
-    .object({
-      ok: z.object({
-        "token-x": z.string(),
-        "token-y": z.string(),
-      }),
-    })
-    .transform((val) => ({
-      tokenX: val.ok["token-x"],
-      tokenY: val.ok["token-y"],
-    })),
-  z
-    .object({
-      "token-x": z.string(),
-      "token-y": z.string(),
-    })
-    .transform((val) => ({
-      tokenX: val["token-x"],
-      tokenY: val["token-y"],
-    })),
-]);
-
-// Zod schemas for contract log events (validating decoded JSON object)
-export const poolCreatedLogSchema = z
-  .object({
-    object: z.literal("pool"),
-    action: z.literal("created"),
-    data: z.object({
-      "pool-token": z.string(),
-      "balance-x": z.bigint().optional().default(0n),
-      "balance-y": z.bigint().optional().default(0n),
-      "total-supply": z.bigint().optional().default(0n),
-      "fee-rate-x": z.bigint().optional().default(0n),
-      "fee-rate-y": z.bigint().optional().default(0n),
-      "fee-to-address": z.string().optional().default(""),
-      "oracle-enabled": z.boolean().optional().default(false),
-    }),
-  })
-  .transform((val) => ({
-    action: "created" as const,
-    poolToken: val.data["pool-token"],
-    balanceX: val.data["balance-x"],
-    balanceY: val.data["balance-y"],
-    totalSupply: val.data["total-supply"],
-    feeRateX: val.data["fee-rate-x"],
-    feeRateY: val.data["fee-rate-y"],
-    feeToAddress: val.data["fee-to-address"],
-    oracleEnabled: val.data["oracle-enabled"],
-  }));
-
-export const poolSwapLogSchema = z
-  .object({
-    object: z.literal("pool"),
-    action: z.union([z.literal("swap-x-for-y"), z.literal("swap-y-for-x")]),
-    data: z.object({
-      "pool-token": z.string(),
-      "balance-x": z.bigint(),
-      "balance-y": z.bigint(),
-      "total-supply": z.bigint(),
-    }),
-  })
-  .transform((val) => ({
-    action: val.action,
-    poolToken: val.data["pool-token"],
-    balanceX: val.data["balance-x"],
-    balanceY: val.data["balance-y"],
-    totalSupply: val.data["total-supply"],
-  }));
-
-const otherPoolActionSchema = z.union([
-  z.literal("add-to-position"),
-  z.literal("reduce-position"),
-  z.literal("set-fee-to-address"),
-  z.literal("set-fee-rate-x"),
-  z.literal("set-fee-rate-y"),
-  z.literal("set-oracle-enabled"),
-  z.literal("set-oracle-average"),
-]);
-
-export const poolBalanceChangeLogSchema = z
-  .object({
-    object: z.literal("pool"),
-    action: otherPoolActionSchema,
-    data: z.object({
-      "pool-token": z.string(),
-      "balance-x": z.bigint(),
-      "balance-y": z.bigint(),
-      "total-supply": z.bigint(),
-    }),
-  })
-  .transform((val) => ({
-    action: val.action,
-    poolToken: val.data["pool-token"],
-    balanceX: val.data["balance-x"],
-    balanceY: val.data["balance-y"],
-    totalSupply: val.data["total-supply"],
-  }));
-
-export const poolLogSchema = z.union([
-  poolCreatedLogSchema,
-  poolSwapLogSchema,
-  poolBalanceChangeLogSchema,
-]);
-
-export type PoolLog = z.infer<typeof poolLogSchema>;
-
-export interface DiscoverTokensParams {
-  client: IndexingClient;
-  db: AppDatabase;
+export interface AlexHandlerContext {
+  /** Application database holding the derived tables. */
+  appDb: AppDatabase;
   logger: Logger;
-  chainId: bigint;
-  tokenAddresses: string[];
 }
 
-export async function discoverTokens({
-  client,
-  db,
-  logger,
-  chainId,
-  tokenAddresses,
-}: DiscoverTokensParams): Promise<void> {
-  const existingCheck = await Promise.all(
-    tokenAddresses.map((addr) =>
-      db.select().from(tokenTable).where(eq(tokenTable.address, addr)).limit(1),
-    ),
-  );
-
-  const missingTokens = tokenAddresses.filter((_addr, idx) => existingCheck[idx].length === 0);
-
-  if (missingTokens.length === 0) {
-    return;
-  }
-
-  const detailsResults = await Promise.all(
-    missingTokens.map(async (tokenAddress) => {
-      const [decimalsRes, symbolRes] = await Promise.all([
-        client.callReadOnly(tokenAddress, "get-decimals"),
-        client.callReadOnly(tokenAddress, "get-symbol"),
-      ]);
-      return { tokenAddress, decimalsRes, symbolRes };
-    }),
-  );
-
-  const insertOps = [];
-  for (const { tokenAddress, decimalsRes, symbolRes } of detailsResults) {
-    if (!decimalsRes.isOk() || !decimalsRes.value.okay) {
-      throw new Error(
-        `Failed to fetch decimals for token ${tokenAddress}: ${
-          decimalsRes.isErr() ? decimalsRes.error.message : "call-read response not okay"
-        }`,
-      );
-    }
-    if (!symbolRes.isOk() || !symbolRes.value.okay) {
-      throw new Error(
-        `Failed to fetch symbol for token ${tokenAddress}: ${
-          symbolRes.isErr() ? symbolRes.error.message : "call-read response not okay"
-        }`,
-      );
-    }
-
-    const decimalsParsed = uintResultSchema.safeParse(decodeHex(decimalsRes.value.result));
-    if (!decimalsParsed.success) {
-      throw new Error(`Failed to decode decimals for token ${tokenAddress}`);
-    }
-    const decimals = Number(decimalsParsed.data);
-
-    const symbolParsed = stringResultSchema.safeParse(decodeHex(symbolRes.value.result));
-    const symbol = symbolParsed.success ? symbolParsed.data : tokenAddress.split(".")[1];
-
-    insertOps.push(
-      db
-        .insert(tokenTable)
-        .values({
-          address: tokenAddress,
-          chainId,
-          symbol,
-          decimals,
-        })
-        .onConflictDoNothing(),
-    );
-    logger.info({ msg: "Discovered token", token: tokenAddress, symbol, decimals });
-  }
-  if (insertOps.length > 0) {
-    await Promise.all(insertOps);
-  }
+interface PrintEventData {
+  action?: string;
+  object?: string;
+  /** Nested `(data (...))` tuple value, kept wrapped for the extract* helpers. */
+  data?: ClarityValue;
 }
 
-export interface SyncPoolTokensParams {
-  client: IndexingClient;
-  db: AppDatabase;
-  logger: Logger;
-  chainId: bigint;
-  poolContract: string;
-  poolToken: string;
+function parsePrintEvent(event: HandlerEvent): PrintEventData | undefined {
+  const tuple = event.decoded;
+  if (tuple === undefined || tuple.type !== ClarityType.Tuple) {
+    return undefined;
+  }
+  return {
+    action: extractString(tuple, "action"),
+    object: extractString(tuple, "object"),
+    // Keep the nested tuple wrapped: downstream extract* helpers take a value.
+    data: extractField(tuple, "data"),
+  };
 }
 
-export async function syncPoolTokens({
-  client,
-  db,
-  logger,
-  chainId,
-  poolContract,
-  poolToken,
-}: SyncPoolTokensParams): Promise<void> {
-  const countResult = await client.callReadOnly(poolContract, "get-pool-count");
-  if (!countResult.isOk() || !countResult.value.okay) {
-    throw new Error(
-      `Failed to fetch pool count from ${poolContract}: ${
-        countResult.isErr() ? countResult.error.message : "call-read response not okay"
-      }`,
-    );
+async function readUint(
+  client: IndexingClient,
+  functionName: string,
+  args: string[] = [],
+): Promise<bigint | undefined> {
+  const result = await client.callReadOnly(POOL_CONTRACT, functionName, { args });
+  if (result.isErr() || !result.value.okay) {
+    return undefined;
   }
+  const decoded = decodeClarityValueUnwrapped(result.value.result);
+  return decoded !== undefined && decoded.type === ClarityType.UInt
+    ? BigInt(decoded.value)
+    : undefined;
+}
 
-  const poolId = uintResultSchema.parse(decodeHex(countResult.value.result));
-
-  const contractsResult = await client.callReadOnly(poolContract, "get-pool-contracts", {
+async function readPoolContracts(
+  client: IndexingClient,
+  poolId: bigint,
+): Promise<Record<string, ClarityValue> | undefined> {
+  const result = await client.callReadOnly(POOL_CONTRACT, "get-pool-contracts", {
     args: [encodeUint(poolId)],
   });
-  if (!contractsResult.isOk() || !contractsResult.value.okay) {
-    throw new Error(
-      `Failed to fetch pool contracts for pool ${poolToken} (poolId: ${poolId}): ${
-        contractsResult.isErr() ? contractsResult.error.message : "call-read response not okay"
-      }`,
-    );
+  if (result.isErr() || !result.value.okay) {
+    return undefined;
+  }
+  const decoded = decodeClarityValueUnwrapped(result.value.result);
+  return decoded !== undefined && decoded.type === ClarityType.Tuple ? decoded.value : undefined;
+}
+
+async function readSymbol(
+  client: IndexingClient,
+  tokenAddress: string,
+): Promise<string | undefined> {
+  const result = await client.callReadOnly(tokenAddress, "get-symbol");
+  if (result.isErr() || !result.value.okay) {
+    return undefined;
+  }
+  const decoded = decodeClarityValueUnwrapped(result.value.result);
+  return decoded !== undefined && decoded.type === ClarityType.StringASCII
+    ? decoded.value
+    : undefined;
+}
+
+async function readDecimals(
+  client: IndexingClient,
+  tokenAddress: string,
+): Promise<bigint | undefined> {
+  const result = await client.callReadOnly(tokenAddress, "get-decimals");
+  if (result.isErr() || !result.value.okay) {
+    return undefined;
+  }
+  const decoded = decodeClarityValueUnwrapped(result.value.result);
+  return decoded !== undefined && decoded.type === ClarityType.UInt
+    ? BigInt(decoded.value)
+    : undefined;
+}
+
+/** Fetch a single token's metadata and store it. */
+async function discoverToken(
+  context: AlexHandlerContext,
+  client: IndexingClient,
+  address: string,
+): Promise<void> {
+  const { appDb, logger } = context;
+  // Sequential by design: one read-only call set per new token.
+  // oxlint-disable-next-line no-await-in-loop
+  const decimals = await readDecimals(client, address);
+  // oxlint-disable-next-line no-await-in-loop
+  let symbol = await readSymbol(client, address);
+  if (decimals === undefined || symbol === undefined) {
+    logger.warn({ msg: "Incomplete token metadata", token: address });
+  }
+  symbol ??= address;
+  // oxlint-disable-next-line no-await-in-loop
+  await appDb
+    .insert(tokenTable)
+    .values({ address, chainId: 1n, symbol, decimals: Number(decimals ?? 0n) })
+    .onConflictDoNothing();
+  logger.info({ msg: "Discovered token", token: address, symbol });
+}
+
+async function findToken(appDb: AppDatabase, address: string): Promise<{ address: string } | null> {
+  const rows = await appDb
+    .select()
+    .from(tokenTable)
+    .where(eq(tokenTable.address, address))
+    .limit(1);
+  return rows.at(0) ?? null;
+}
+
+/** Resolve pool tokens via read-only calls and store any unknown ones. */
+async function discoverTokens(
+  appDb: AppDatabase,
+  logger: Logger,
+  client: IndexingClient,
+): Promise<{ tokenX?: string; tokenY?: string }> {
+  const poolCount = await readUint(client, "get-pool-count");
+  if (poolCount === undefined) {
+    logger.warn({ msg: "Failed to read pool count" });
+    return {};
   }
 
-  const { tokenX, tokenY } = poolContractsResultSchema.parse(
-    decodeHex(contractsResult.value.result),
-  );
+  // Pool ids are 1-based; the most recent creation has id == count.
+  const contracts = await readPoolContracts(client, poolCount);
+  if (contracts === undefined) {
+    logger.warn({ msg: "Failed to read pool contracts", poolId: poolCount.toString() });
+    return {};
+  }
 
-  await discoverTokens({
-    client,
-    db,
-    logger,
-    chainId,
-    tokenAddresses: [tokenX, tokenY],
-  });
+  const tokenX = principalFromValue(contracts["token-x"]);
+  const tokenY = principalFromValue(contracts["token-y"]);
 
-  await db.update(poolTable).set({ tokenX, tokenY }).where(eq(poolTable.address, poolToken));
+  for (const address of [tokenX, tokenY]) {
+    if (address === undefined) {
+      // oxlint-disable-next-line no-continue
+      continue;
+    }
+    // oxlint-disable-next-line no-await-in-loop
+    const known = await findToken(appDb, address);
+    if (known !== null) {
+      // oxlint-disable-next-line no-continue
+      continue;
+    }
+    // oxlint-disable-next-line no-await-in-loop
+    await discoverToken({ appDb, logger }, client, address);
+  }
+
+  return { tokenX, tokenY };
 }
 
-interface UpsertPoolBalancesParams {
-  db: AppDatabase;
-  poolToken: string;
-  chainId: bigint;
-  balanceX: bigint;
-  balanceY: bigint;
-  totalSupply: bigint;
-  blockTime: number;
-}
+async function handlePoolCreated(
+  context: AlexHandlerContext & { client: IndexingClient },
+  event: HandlerEvent,
+  data: ClarityValue,
+  poolToken: string,
+): Promise<void> {
+  const { appDb, logger } = context;
+  const feeRateX = extractUint(data, "fee-rate-x") ?? 0n;
+  const feeRateY = extractUint(data, "fee-rate-y") ?? 0n;
+  const feeToAddress = extractPrincipal(data, "fee-to-address") ?? "";
+  const oracleEnabled = extractBool(data, "oracle-enabled") ?? false;
 
-async function upsertPoolBalances({
-  db,
-  poolToken,
-  chainId,
-  balanceX,
-  balanceY,
-  totalSupply,
-  blockTime,
-}: UpsertPoolBalancesParams): Promise<void> {
-  await db
+  await appDb
     .insert(poolTable)
     .values({
       address: poolToken,
-      chainId,
-      balanceX,
-      balanceY,
-      totalSupply,
-      feeRateX: 0n,
-      feeRateY: 0n,
-      feeToAddress: "",
-      oracleEnabled: false,
-      createdAt: BigInt(blockTime),
+      chainId: 1n,
+      balanceX: 0n,
+      balanceY: 0n,
+      totalSupply: 0n,
+      feeRateX,
+      feeRateY,
+      feeToAddress,
+      oracleEnabled,
+      createdAt: BigInt(event.block_time),
     })
     .onConflictDoUpdate({
       target: [poolTable.address, poolTable.chainId],
-      set: {
-        balanceX,
-        balanceY,
-        totalSupply,
-      },
+      set: { feeRateX, feeRateY, feeToAddress, oracleEnabled },
+    });
+
+  try {
+    const { tokenX, tokenY } = await discoverTokens(appDb, logger, context.client);
+    if (tokenX !== undefined || tokenY !== undefined) {
+      await appDb.update(poolTable).set({ tokenX, tokenY }).where(eq(poolTable.address, poolToken));
+    }
+  } catch (err) {
+    logger.warn({ msg: "Failed to discover tokens", pool: poolToken, error: err });
+  }
+}
+
+/** Prefer amounts from the print payload; fall back to balance deltas. */
+interface Balances {
+  balanceX?: bigint;
+  balanceY?: bigint;
+}
+
+/** Prefer amounts from the print payload; fall back to balance deltas. */
+function resolveSwapAmounts(
+  action: string,
+  data: ClarityValue,
+  stored: Balances,
+  next: { balanceX: bigint; balanceY: bigint },
+): { amountIn: bigint; amountOut: bigint } {
+  const amountInFromArgs = extractUint(data, "dx");
+  const amountOutFromArgs = extractUint(data, "dy");
+  if (amountInFromArgs !== undefined && amountOutFromArgs !== undefined) {
+    return { amountIn: amountInFromArgs, amountOut: amountOutFromArgs };
+  }
+  if (action === "swap-x-for-y") {
+    return {
+      amountIn: next.balanceX - (stored.balanceX ?? next.balanceX),
+      amountOut: (stored.balanceY ?? next.balanceY) - next.balanceY,
+    };
+  }
+  return {
+    amountIn: next.balanceY - (stored.balanceY ?? next.balanceY),
+    amountOut: (stored.balanceX ?? next.balanceX) - next.balanceX,
+  };
+}
+
+async function handleSwap(
+  appDb: AppDatabase,
+  event: HandlerEvent,
+  action: string,
+  data: ClarityValue,
+  poolToken: string,
+  balanceX: bigint,
+  balanceY: bigint,
+): Promise<void> {
+  const poolRows = await appDb
+    .select()
+    .from(poolTable)
+    .where(eq(poolTable.address, poolToken))
+    .limit(1);
+  const pool = poolRows.at(0);
+
+  const { amountIn, amountOut } = resolveSwapAmounts(
+    action,
+    data,
+    { balanceX: pool?.balanceX, balanceY: pool?.balanceY },
+    { balanceX, balanceY },
+  );
+
+  await appDb
+    .insert(swapTable)
+    .values({
+      txId: event.tx_id,
+      chainId: 1n,
+      eventIndex: event.event_index,
+      poolAddress: poolToken,
+      action,
+      amountIn,
+      amountOut,
+      blockHeight: BigInt(event.block_height),
+      blockTime: BigInt(event.block_time),
+    })
+    .onConflictDoNothing();
+
+  await appDb
+    .insert(poolTable)
+    .values({
+      address: poolToken,
+      chainId: 1n,
+      balanceX,
+      balanceY,
+      totalSupply: extractUint(data, "total-supply") ?? pool?.totalSupply ?? 0n,
+      feeRateX: pool?.feeRateX ?? 0n,
+      feeRateY: pool?.feeRateY ?? 0n,
+      feeToAddress: pool?.feeToAddress ?? "",
+      oracleEnabled: pool?.oracleEnabled ?? false,
+      createdAt: BigInt(event.block_time),
+    })
+    .onConflictDoUpdate({
+      target: [poolTable.address, poolTable.chainId],
+      set: { balanceX, balanceY },
     });
 }
 
-export interface CreatePoolHandlerOptions {
-  db: AppDatabase;
-  logger: Logger;
-  chainId?: bigint;
-  poolContract?: string;
+async function syncPoolState(
+  appDb: AppDatabase,
+  event: HandlerEvent,
+  data: ClarityValue,
+  poolToken: string,
+  balanceX: bigint,
+  balanceY: bigint,
+): Promise<void> {
+  const poolRows = await appDb
+    .select()
+    .from(poolTable)
+    .where(eq(poolTable.address, poolToken))
+    .limit(1);
+  const pool = poolRows.at(0);
+  const totalSupply = extractUint(data, "total-supply") ?? pool?.totalSupply ?? 0n;
+  await appDb
+    .insert(poolTable)
+    .values({
+      address: poolToken,
+      chainId: 1n,
+      balanceX,
+      balanceY,
+      totalSupply,
+      feeRateX: pool?.feeRateX ?? 0n,
+      feeRateY: pool?.feeRateY ?? 0n,
+      feeToAddress: pool?.feeToAddress ?? "",
+      oracleEnabled: pool?.oracleEnabled ?? false,
+      createdAt: BigInt(event.block_time),
+    })
+    .onConflictDoUpdate({
+      target: [poolTable.address, poolTable.chainId],
+      set: { balanceX, balanceY, totalSupply },
+    });
 }
 
-export function createPoolHandler({
-  db,
-  logger,
-  chainId = CHAIN_ID,
-  poolContract = POOL_CONTRACT,
-}: CreatePoolHandlerOptions): EventHandler {
-  return async (event, { client }) => {
-    const decoded = decodeHex(event.contract_log.value.hex);
-    const parsed = poolLogSchema.safeParse(decoded);
-    if (!parsed.success) {
+/**
+ * Build the ALEX fixed-weight-pool event handler.
+ * Returns an `EventHandler` suitable for `runtime.run([{ contractId, handler }])`.
+ */
+export function createAlexHandler(context: AlexHandlerContext): EventHandler {
+  const { appDb } = context;
+
+  return async (event, ctx) => {
+    const print = parsePrintEvent(event);
+    if (print?.object !== "pool") {
       return;
     }
 
-    const log = parsed.data;
+    const { data } = print;
+    if (data === undefined) {
+      return;
+    }
+    const { action } = print;
+    if (action === undefined) {
+      return;
+    }
 
-    if (log.action === "created") {
-      await db
-        .insert(poolTable)
-        .values({
-          address: log.poolToken,
-          chainId,
-          balanceX: 0n,
-          balanceY: 0n,
-          totalSupply: 0n,
-          feeRateX: log.feeRateX,
-          feeRateY: log.feeRateY,
-          feeToAddress: log.feeToAddress,
-          oracleEnabled: log.oracleEnabled,
-          createdAt: BigInt(event.block_time),
-        })
-        .onConflictDoUpdate({
-          target: [poolTable.address, poolTable.chainId],
-          set: {
-            feeRateX: log.feeRateX,
-            feeRateY: log.feeRateY,
-            feeToAddress: log.feeToAddress,
-            oracleEnabled: log.oracleEnabled,
-          },
-        });
+    const poolToken = extractPrincipal(data, "pool-token") ?? "";
+    const balanceX = extractUint(data, "balance-x") ?? 0n;
+    const balanceY = extractUint(data, "balance-y") ?? 0n;
 
-      await syncPoolTokens({ client, db, logger, chainId, poolContract, poolToken: log.poolToken });
-    } else if (log.action === "swap-x-for-y" || log.action === "swap-y-for-x") {
-      const [pool] = await db
-        .select()
-        .from(poolTable)
-        .where(eq(poolTable.address, log.poolToken))
-        .limit(1);
-
-      let amountIn = 0n;
-      let amountOut = 0n;
-
-      // oxlint-disable-next-line typescript/no-unnecessary-condition
-      if (pool) {
-        if (log.action === "swap-x-for-y") {
-          amountIn = log.balanceX - pool.balanceX;
-          amountOut = pool.balanceY - log.balanceY;
-        } else {
-          amountIn = log.balanceY - pool.balanceY;
-          amountOut = pool.balanceX - log.balanceX;
-        }
+    switch (action) {
+      case "created": {
+        await handlePoolCreated({ ...context, client: ctx.client }, event, data, poolToken);
+        break;
       }
-
-      await db
-        .insert(swapTable)
-        .values({
-          txId: event.tx_id,
-          chainId,
-          eventIndex: event.event_index,
-          poolAddress: log.poolToken,
-          action: log.action,
-          amountIn,
-          amountOut,
-          blockHeight: BigInt(event.block_height),
-          blockTime: BigInt(event.block_time),
-        })
-        .onConflictDoNothing();
-
-      await upsertPoolBalances({
-        db,
-        poolToken: log.poolToken,
-        chainId,
-        balanceX: log.balanceX,
-        balanceY: log.balanceY,
-        totalSupply: log.totalSupply,
-        blockTime: event.block_time,
-      });
-
-      // oxlint-disable-next-line typescript/no-unnecessary-condition
-      if (pool && (!pool.tokenX || !pool.tokenY)) {
-        await syncPoolTokens({
-          client,
-          db,
-          logger,
-          chainId,
-          poolContract,
-          poolToken: log.poolToken,
-        });
+      case "swap-x-for-y":
+      case "swap-y-for-x": {
+        await handleSwap(appDb, event, action, data, poolToken, balanceX, balanceY);
+        break;
       }
-    } else {
-      // Liquidity added / removed or other pool balance changes
-      await upsertPoolBalances({
-        db,
-        poolToken: log.poolToken,
-        chainId,
-        balanceX: log.balanceX,
-        balanceY: log.balanceY,
-        totalSupply: log.totalSupply,
-        blockTime: event.block_time,
-      });
+      default: {
+        // Liquidity-added / liquidity-reduced: keep balances and supply in sync.
+        await syncPoolState(appDb, event, data, poolToken, balanceX, balanceY);
+      }
     }
   };
 }
