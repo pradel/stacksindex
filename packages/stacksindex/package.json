@@ -36,7 +36,7 @@
     "@stacks/codec": "2.1.0",
     "@stacks/transactions": "7.6.0",
     "better-result": "3.0.1",
-    "clarity-abitype": "0.6.0",
+    "clarity-abitype": "0.7.1",
     "consola": "3.4.2",
     "undici": "8.10.0"
   },

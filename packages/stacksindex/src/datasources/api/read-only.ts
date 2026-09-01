@@ -2,12 +2,11 @@ import { cvToHex } from "@stacks/transactions";
 import { Result } from "better-result";
 import type {
   ClarityAbi,
-  ClarityAbiAccess,
-  ClarityAbiArgsToPrimitiveTypes,
   ClarityAbiFunction,
-  ClarityAbiOutputToPrimitiveType,
-  ExtractAbiFunction,
-  ExtractAbiFunctionNames,
+  ContractFunctionArgs,
+  ContractFunctionName,
+  ContractFunctionReturnType,
+  UnionWiden,
 } from "clarity-abitype";
 import { primitivesToCVs } from "clarity-abitype/stacks-js";
 
@@ -15,50 +14,7 @@ import { decodeHex } from "../../codec/index.ts";
 import { type StacksApiError, StacksApiParseError, StacksApiUnexpectedError } from "./errors.ts";
 import type { CallReadResponse, DatasourceStacksApiContext } from "./index.ts";
 
-export type ContractFunctionName<
-  abi extends ClarityAbi | readonly unknown[] = ClarityAbi,
-  access extends ClarityAbiAccess = ClarityAbiAccess,
-> = abi extends ClarityAbi
-  ? ClarityAbi extends abi
-    ? string
-    : ExtractAbiFunctionNames<abi, access> extends infer functionName extends string
-      ? [functionName] extends [never]
-        ? string
-        : functionName
-      : string
-  : string;
-
-export type ContractFunctionArgs<
-  abi extends ClarityAbi | readonly unknown[] = ClarityAbi,
-  access extends ClarityAbiAccess = ClarityAbiAccess,
-  functionName extends ContractFunctionName<abi, access> = ContractFunctionName<abi, access>,
-> = abi extends ClarityAbi
-  ? ClarityAbi extends abi
-    ? readonly unknown[]
-    : functionName extends ExtractAbiFunctionNames<abi, access>
-      ? ExtractAbiFunction<abi, functionName, access>["args"] extends readonly []
-        ? readonly []
-        : ClarityAbiArgsToPrimitiveTypes<
-              ExtractAbiFunction<abi, functionName, access>["args"]
-            > extends infer args
-          ? [args] extends [never]
-            ? readonly unknown[]
-            : args
-          : readonly unknown[]
-      : readonly unknown[]
-  : readonly unknown[];
-
-export type ContractFunctionReturnType<
-  abi extends ClarityAbi | readonly unknown[] = ClarityAbi,
-  access extends ClarityAbiAccess = ClarityAbiAccess,
-  functionName extends ContractFunctionName<abi, access> = ContractFunctionName<abi, access>,
-> = abi extends ClarityAbi
-  ? ClarityAbi extends abi
-    ? unknown
-    : functionName extends ExtractAbiFunctionNames<abi, access>
-      ? ClarityAbiOutputToPrimitiveType<ExtractAbiFunction<abi, functionName, access>["outputs"]>
-      : unknown
-  : unknown;
+export type { ContractFunctionArgs, ContractFunctionName, ContractFunctionReturnType };
 
 export type TypedCallReadOnlyFunctionParameters<
   TAbi extends ClarityAbi | readonly unknown[] = ClarityAbi,
@@ -66,27 +22,30 @@ export type TypedCallReadOnlyFunctionParameters<
     TAbi,
     "read_only"
   >,
+  _allFunctionNames = ContractFunctionName<TAbi, "read_only">,
+  _allArgs = TAbi extends ClarityAbi
+    ? ClarityAbi extends TAbi
+      ? readonly unknown[]
+      : ContractFunctionArgs<TAbi, "read_only", TFunctionName>
+    : readonly unknown[],
 > = {
   abi: TAbi;
   contractId?: string;
   contractAddress?: string;
   contractName?: string;
-  functionName: TFunctionName;
+  functionName:
+    | _allFunctionNames
+    | (TFunctionName extends _allFunctionNames ? TFunctionName : never);
   sender?: string;
   senderAddress?: string;
   tip?: number;
-} & (readonly [] extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>
+} & (readonly [] extends _allArgs
   ? {
-      functionArgs?: ContractFunctionArgs<TAbi, "read_only", TFunctionName> | undefined;
-      args?: ContractFunctionArgs<TAbi, "read_only", TFunctionName> | undefined;
+      functionArgs?: UnionWiden<_allArgs> | undefined;
     }
-  :
-      | {
-          functionArgs: ContractFunctionArgs<TAbi, "read_only", TFunctionName>;
-        }
-      | {
-          args: ContractFunctionArgs<TAbi, "read_only", TFunctionName>;
-        });
+  : {
+      functionArgs: UnionWiden<_allArgs>;
+    });
 
 export type TypedCallReadOnlyFunctionReturnType<
   TAbi extends ClarityAbi | readonly unknown[] = ClarityAbi,
@@ -117,7 +76,6 @@ export async function typedCallReadFunction<
     contractAddress?: string;
     contractName?: string;
     functionArgs?: readonly unknown[];
-    args?: readonly unknown[];
     sender?: string;
     senderAddress?: string;
     tip?: number;
@@ -166,7 +124,7 @@ export async function typedCallReadFunction<
     );
   }
 
-  const rawArgs = params.functionArgs ?? params.args ?? [];
+  const rawArgs = params.functionArgs ?? [];
   // oxlint-disable-next-line init-declarations
   let hexArgs: string[];
   try {

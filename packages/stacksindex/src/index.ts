@@ -20,6 +20,7 @@ export type {
   ClarityAbiAccess,
   ClarityAbiArg,
   ClarityAbiFunction,
+  ContractFunctionParameters,
 } from "clarity-abitype";
 export { FilterValidationError, HandlerExecutionError } from "./lib/errors.ts";
 export { StacksApiUnexpectedError } from "./datasources/api/errors.ts";

@@ -99,8 +99,8 @@ importers:
         specifier: 3.0.1
         version: 3.0.1
       clarity-abitype:
-        specifier: 0.6.0
-        version: 0.6.0(@stacks/network@7.6.0)(@stacks/transactions@7.6.0)(typescript@7.0.2)
+        specifier: 0.7.1
+        version: 0.7.1(@stacks/network@7.6.0)(@stacks/transactions@7.6.0)(typescript@7.0.2)
       consola:
         specifier: 3.4.2
         version: 3.4.2
@@ -1432,14 +1432,14 @@ packages:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
     engines: {node: '>=18'}
 
-  clarity-abitype@0.6.0:
-    resolution: {integrity: sha512-4NhSWB/yuKQtl9u+7hk1xljYNfja2myu/I2VyQM+PexhCfCJ6lm7rGtfdbCGPR1HyEDEmdHwvHd66gAgAvxtpQ==}
+  clarity-abitype@0.7.1:
+    resolution: {integrity: sha512-0ToR38l5cK8tf5FbftUlG43NS1HnnEjgKUt8pPgSUM3nCg64B2PdzdOf3OfJKPi0LA9MAJCRMeYslt4qaB6pzQ==}
     peerDependencies:
       '@stacks/clarinet-sdk': '>= 3.0.0'
       '@stacks/connect': '>= 8.0.0'
       '@stacks/network': '>= 7.3.0'
       '@stacks/transactions': '>= 7.3.0'
-      typescript: '>=5.4.0 || >=6.0.0'
+      typescript: '>=5.4.0 || >=6.0.0 || >=7.0.0'
     peerDependenciesMeta:
       '@stacks/clarinet-sdk':
         optional: true
@@ -2915,7 +2915,7 @@ snapshots:
 
   chai@6.2.2: {}
 
-  clarity-abitype@0.6.0(@stacks/network@7.6.0)(@stacks/transactions@7.6.0)(typescript@7.0.2):
+  clarity-abitype@0.7.1(@stacks/network@7.6.0)(@stacks/transactions@7.6.0)(typescript@7.0.2):
     optionalDependencies:
       '@stacks/network': 7.6.0
       '@stacks/transactions': 7.6.0
