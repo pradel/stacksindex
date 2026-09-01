@@ -1,9 +1,15 @@
 import { Result } from "better-result";
+import type { ClarityAbi, ContractFunctionArgs, ContractFunctionName } from "clarity-abitype";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
-import { datasourceStacksApi } from "../datasources/api/index.ts";
+import {
+  datasourceStacksApi,
+  type DatasourceStacksApiContext,
+  type TypedCallReadOnlyFunctionParameters,
+  type UntypedCallReadOnlyFunctionParameters,
+} from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
 import type { HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
@@ -40,38 +46,36 @@ export const createIndexing = (context: IndexingContext) => ({
     const handlerClock = startClock();
     try {
       const client: IndexingClient = {
-        // oxlint-disable-next-line typescript/no-explicit-any
-        callReadOnly(options: any): Promise<Result<any, StacksApiError>> {
-          const apiContext = {
+        callReadOnly<
+          const TAbi extends ClarityAbi | readonly unknown[],
+          TFunctionName extends ContractFunctionName<TAbi, "read_only">,
+          const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
+        >(
+          options:
+            | TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>
+            | UntypedCallReadOnlyFunctionParameters,
+          // oxlint-disable-next-line typescript/no-explicit-any
+        ): Promise<Result<any, StacksApiError>> {
+          const apiContext: DatasourceStacksApiContext = {
             logger: context.logger,
             api: context.api,
           };
 
-          // oxlint-disable-next-line typescript/no-unsafe-member-access
-          if (options.abi !== undefined) {
-            // oxlint-disable-next-line typescript/no-unsafe-argument
+          if ("abi" in options) {
             return datasourceStacksApi.typedCallReadFunction(apiContext, {
               ...options,
-              // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-member-access
               tip: options.tip ?? event.block_height,
             });
           }
 
-          // oxlint-disable-next-line typescript/no-unsafe-member-access
           const contractId = `${options.contractAddress}.${options.contractName}`;
-          // oxlint-disable-next-line typescript/no-unsafe-member-access, typescript/no-unsafe-type-assertion
-          const sender = options.senderAddress as string | undefined;
-
           return datasourceStacksApi.callReadFunction(
             apiContext,
             contractId,
-            // oxlint-disable-next-line typescript/no-unsafe-argument, typescript/no-unsafe-member-access
             options.functionName,
             {
-              // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-member-access
               args: options.args,
-              sender,
-              // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-member-access
+              sender: options.senderAddress,
               tip: options.tip ?? event.block_height,
             },
           );
@@ -88,6 +92,7 @@ export const createIndexing = (context: IndexingContext) => ({
         txIndex: event.tx_index,
         duration,
       });
+      return Result.ok(undefined);
     } catch (err) {
       const duration = handlerClock();
       context.logger.error({
@@ -96,27 +101,15 @@ export const createIndexing = (context: IndexingContext) => ({
         eventType: event.event_type,
         blockHeight: event.block_height,
         txIndex: event.tx_index,
-        error: err,
         duration,
+        err,
       });
       return Result.err(
         new HandlerExecutionError({
-          cause: err instanceof Error ? err : new Error(String(err)),
           contractId: event.contract_log.contract_id,
+          cause: err,
         }),
       );
     }
-
-    const duration = endClock();
-    context.logger.debug({
-      msg: "Executed event",
-      contractId: event.contract_log.contract_id,
-      eventType: event.event_type,
-      blockHeight: event.block_height,
-      txIndex: event.tx_index,
-      duration,
-    });
-
-    return Result.ok(undefined);
   },
 });
