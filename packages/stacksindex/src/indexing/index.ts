@@ -1,8 +1,15 @@
 import { Result } from "better-result";
+import type { ClarityAbi, ContractFunctionArgs, ContractFunctionName } from "clarity-abitype";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
-import { datasourceStacksApi } from "../datasources/api/index.ts";
+import type { StacksApiError } from "../datasources/api/errors.ts";
+import {
+  datasourceStacksApi,
+  type DatasourceStacksApiContext,
+  type TypedCallReadOnlyFunctionParameters,
+  type UntypedCallReadOnlyFunctionParameters,
+} from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
 import type { HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
@@ -39,17 +46,37 @@ export const createIndexing = (context: IndexingContext) => ({
     const handlerClock = startClock();
     try {
       const client: IndexingClient = {
-        callReadOnly(contractId, functionName, options) {
-          return datasourceStacksApi.callReadFunction(
-            {
-              logger: context.logger,
-              api: context.api,
-            },
-            contractId,
-            functionName,
-            {
+        callReadOnly<
+          const TAbi extends ClarityAbi | readonly unknown[],
+          TFunctionName extends ContractFunctionName<TAbi, "read_only">,
+          const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
+        >(
+          options:
+            | TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>
+            | UntypedCallReadOnlyFunctionParameters,
+          // oxlint-disable-next-line typescript/no-explicit-any
+        ): Promise<Result<any, StacksApiError>> {
+          const apiContext: DatasourceStacksApiContext = {
+            logger: context.logger,
+            api: context.api,
+          };
+
+          if ("abi" in options) {
+            return datasourceStacksApi.typedCallReadFunction(apiContext, {
               ...options,
-              tip: options?.tip ?? event.block_height,
+              tip: options.tip ?? event.block_height,
+            });
+          }
+
+          const contractId = `${options.contractAddress}.${options.contractName}`;
+          return datasourceStacksApi.callReadFunction(
+            apiContext,
+            contractId,
+            options.functionName,
+            {
+              args: options.args,
+              sender: options.senderAddress,
+              tip: options.tip ?? event.block_height,
             },
           );
         },
@@ -65,6 +92,7 @@ export const createIndexing = (context: IndexingContext) => ({
         txIndex: event.tx_index,
         duration,
       });
+      return Result.ok(undefined);
     } catch (err) {
       const duration = handlerClock();
       context.logger.error({
@@ -73,27 +101,15 @@ export const createIndexing = (context: IndexingContext) => ({
         eventType: event.event_type,
         blockHeight: event.block_height,
         txIndex: event.tx_index,
-        error: err,
         duration,
+        error: err,
       });
       return Result.err(
         new HandlerExecutionError({
-          cause: err instanceof Error ? err : new Error(String(err)),
           contractId: event.contract_log.contract_id,
+          cause: err,
         }),
       );
     }
-
-    const duration = endClock();
-    context.logger.debug({
-      msg: "Executed event",
-      contractId: event.contract_log.contract_id,
-      eventType: event.event_type,
-      blockHeight: event.block_height,
-      txIndex: event.tx_index,
-      duration,
-    });
-
-    return Result.ok(undefined);
   },
 });
