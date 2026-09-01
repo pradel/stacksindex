@@ -100,6 +100,7 @@ export const createIndexing = (context: IndexingContext) => ({
         contractId: event.contract_log.contract_id,
         eventType: event.event_type,
         blockHeight: event.block_height,
+        txId: event.tx_id,
         txIndex: event.tx_index,
         duration,
         error: err,

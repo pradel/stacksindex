@@ -4,7 +4,7 @@ import { decodeHex, type EventHandler, type IndexingClient, type Logger } from "
 import { z } from "zod";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
-import { poolTable, swapTable, tokenTable } from "./schema.ts";
+import { poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
 
 // oxlint-disable-next-line typescript/no-explicit-any
 export type AppDatabase = PgliteDatabase<any>;
@@ -96,73 +96,74 @@ export const poolLogSchema = z.union([
 
 export type PoolLog = z.infer<typeof poolLogSchema>;
 
-export interface DiscoverTokensParams {
+export interface InsertTokenIfNotExistsParams {
   client: IndexingClient;
   db: AppDatabase;
   logger: Logger;
   chainId: bigint;
-  tokenAddresses: string[];
+  tokenAddress: string;
 }
 
-export async function discoverTokens({
+export async function insertTokenIfNotExists({
   client,
   db,
   logger,
   chainId,
-  tokenAddresses,
-}: DiscoverTokensParams): Promise<void> {
-  const existingCheck = await Promise.all(
-    tokenAddresses.map((addr) =>
-      db.select().from(tokenTable).where(eq(tokenTable.address, addr)).limit(1),
-    ),
-  );
+  tokenAddress,
+}: InsertTokenIfNotExistsParams): Promise<Token> {
+  const existingCheck = await db
+    .select()
+    .from(tokenTable)
+    .where(eq(tokenTable.address, tokenAddress))
+    .limit(1);
 
-  const missingTokens = tokenAddresses.filter((_addr, idx) => existingCheck[idx].length === 0);
-
-  if (missingTokens.length === 0) {
-    return;
+  if (existingCheck.length > 0) {
+    return existingCheck[0];
   }
 
-  for (const tokenAddress of missingTokens) {
-    const [contractAddress, contractName] = tokenAddress.split(".");
-    if (contractAddress && contractName) {
-      const decimalsRes = await client.callReadOnly({
-        abi: sip010Abi,
-        contractAddress,
-        contractName,
-        functionName: "get-decimals",
-      });
-      if (!decimalsRes.isOk() || decimalsRes.value.ok === undefined) {
-        throw new Error(
-          `Failed to fetch decimals for token ${tokenAddress}: ${
-            decimalsRes.isErr() ? decimalsRes.error.message : "contract call returned error"
-          }`,
-        );
-      }
-      const decimals = Number(decimalsRes.value.ok);
-
-      const symbolRes = await client.callReadOnly({
-        abi: sip010Abi,
-        contractAddress,
-        contractName,
-        functionName: "get-symbol",
-      });
-      const symbol =
-        symbolRes.isOk() && symbolRes.value.ok !== undefined ? symbolRes.value.ok : contractName;
-
-      await db
-        .insert(tokenTable)
-        .values({
-          address: tokenAddress,
-          chainId,
-          symbol,
-          decimals,
-        })
-        .onConflictDoNothing();
-
-      logger.info({ msg: "Discovered token", token: tokenAddress, symbol, decimals });
-    }
+  const [contractAddress, contractName] = tokenAddress.split(".");
+  if (!contractAddress || !contractName) {
+    throw new Error(`Invalid tokenAddress: ${tokenAddress}`);
   }
+
+  const decimalsRes = (
+    await client.callReadOnly({
+      abi: sip010Abi,
+      contractAddress,
+      contractName,
+      functionName: "get-decimals",
+    })
+  ).unwrap();
+
+  const symbolRes = (
+    await client.callReadOnly({
+      abi: sip010Abi,
+      contractAddress,
+      contractName,
+      functionName: "get-symbol",
+    })
+  ).unwrap();
+
+  if (decimalsRes.ok === undefined) {
+    throw new Error(
+      `Failed to fetch decimals for token ${tokenAddress}: contract returned error ${decimalsRes.error}`,
+    );
+  }
+  const decimals = Number(decimalsRes.ok);
+  const symbol = symbolRes.ok ?? "???";
+
+  const token: Token = {
+    address: tokenAddress,
+    chainId,
+    symbol,
+    decimals,
+  };
+
+  await db.insert(tokenTable).values(token).onConflictDoNothing();
+
+  logger.info({ msg: "Discovered token", token: tokenAddress, symbol, decimals });
+
+  return token;
 }
 
 export interface SyncPoolTokensParams {
@@ -186,46 +187,56 @@ export async function syncPoolTokens({
   if (!contractAddress || !contractName) {
     throw new Error(`Invalid poolContract: ${poolContract}`);
   }
-  const countResult = await client.callReadOnly({
-    abi: fixedWeightPoolAbi,
-    contractAddress,
-    contractName,
-    functionName: "get-pool-count",
-  });
-  if (!countResult.isOk() || countResult.value.ok === undefined) {
+  const countResult = (
+    await client.callReadOnly({
+      abi: fixedWeightPoolAbi,
+      contractAddress,
+      contractName,
+      functionName: "get-pool-count",
+    })
+  ).unwrap();
+
+  if (countResult.ok === undefined) {
     throw new Error(
-      `Failed to fetch pool count from ${poolContract}: ${
-        countResult.isErr() ? countResult.error.message : "contract call returned error"
-      }`,
+      `Failed to fetch pool count from ${poolContract}: contract returned error ${countResult.error}`,
     );
   }
 
-  const poolId = countResult.value.ok;
+  const poolId = countResult.ok;
 
-  const contractsResult = await client.callReadOnly({
-    abi: fixedWeightPoolAbi,
-    contractAddress,
-    contractName,
-    functionName: "get-pool-contracts",
-    functionArgs: [poolId],
-  });
-  if (!contractsResult.isOk() || contractsResult.value.ok === undefined) {
+  const contractsResult = (
+    await client.callReadOnly({
+      abi: fixedWeightPoolAbi,
+      contractAddress,
+      contractName,
+      functionName: "get-pool-contracts",
+      functionArgs: [poolId],
+    })
+  ).unwrap();
+
+  if (contractsResult.ok === undefined) {
     throw new Error(
-      `Failed to fetch pool contracts for pool ${poolToken} (poolId: ${poolId}): ${
-        contractsResult.isErr() ? contractsResult.error.message : "contract call returned error"
-      }`,
+      `Failed to fetch pool contracts for pool ${poolToken} (poolId: ${poolId}): contract returned error ${contractsResult.error}`,
     );
   }
 
-  const tokenX = contractsResult.value.ok["token-x"];
-  const tokenY = contractsResult.value.ok["token-y"];
+  const tokenX = contractsResult.ok["token-x"];
+  const tokenY = contractsResult.ok["token-y"];
 
-  await discoverTokens({
+  await insertTokenIfNotExists({
     client,
     db,
     logger,
     chainId,
-    tokenAddresses: [tokenX, tokenY],
+    tokenAddress: tokenX,
+  });
+
+  await insertTokenIfNotExists({
+    client,
+    db,
+    logger,
+    chainId,
+    tokenAddress: tokenY,
   });
 
   await db.update(poolTable).set({ tokenX, tokenY }).where(eq(poolTable.address, poolToken));
@@ -322,6 +333,8 @@ export function createPoolHandler({
         });
 
       await syncPoolTokens({ client, db, logger, chainId, poolContract, poolToken: log.poolToken });
+
+      logger.debug({ msg: "Pool created", pool: log.poolToken });
     } else if (log.action === "swap-x-for-y" || log.action === "swap-y-for-x") {
       const [pool] = await db
         .select()
@@ -357,6 +370,15 @@ export function createPoolHandler({
           blockTime: BigInt(event.block_time),
         })
         .onConflictDoNothing();
+
+      logger.debug({
+        msg: "Swap created",
+        pool: log.poolToken,
+        action: log.action,
+        amountIn,
+        amountOut,
+        txId: event.tx_id,
+      });
 
       await upsertPoolBalances({
         db,
