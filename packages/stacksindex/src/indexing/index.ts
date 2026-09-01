@@ -102,7 +102,7 @@ export const createIndexing = (context: IndexingContext) => ({
         blockHeight: event.block_height,
         txIndex: event.tx_index,
         duration,
-        err,
+        error: err,
       });
       return Result.err(
         new HandlerExecutionError({
