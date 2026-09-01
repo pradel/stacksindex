@@ -6,5 +6,6 @@ export default defineConfig({
     exports: true,
     publint: true,
     sourcemap: true,
+    attw: true,
   },
 });
