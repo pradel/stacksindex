@@ -15,6 +15,8 @@ export const tokenTable = pgTable(
   ],
 );
 
+export type Token = typeof tokenTable.$inferSelect;
+
 export const poolTable = pgTable(
   "pool",
   (table) => ({
