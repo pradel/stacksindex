@@ -49,13 +49,11 @@ export const createIndexing = (context: IndexingContext) => ({
 
           // oxlint-disable-next-line typescript/no-unsafe-member-access
           if (options.abi !== undefined) {
-            // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-member-access
-            const customTip = options.tip;
             // oxlint-disable-next-line typescript/no-unsafe-argument
             return datasourceStacksApi.typedCallReadFunction(apiContext, {
               ...options,
-              // oxlint-disable-next-line typescript/no-unsafe-assignment
-              tip: typeof customTip === "number" ? customTip : event.block_height,
+              // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-member-access
+              tip: options.tip ?? event.block_height,
             });
           }
 
