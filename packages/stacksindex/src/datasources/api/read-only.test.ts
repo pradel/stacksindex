@@ -148,7 +148,7 @@ describe("typedCallReadFunction", () => {
     );
   });
 
-  it("supports custom sender and tip properties", async () => {
+  it("supports custom senderAddress and tip properties", async () => {
     const mockCallRead = vi
       .fn<
         (
@@ -170,7 +170,7 @@ describe("typedCallReadFunction", () => {
       contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
       contractName: "test-token",
       functionName: "get-decimals",
-      sender: "SP12345SENDER",
+      senderAddress: "SP12345SENDER",
       tip: 100500,
     });
 

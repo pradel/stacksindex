@@ -30,8 +30,6 @@ export interface UntypedCallReadOnlyFunctionParameters {
   /** Hex-encoded Clarity values as arguments */
   args?: string[];
   /** The sender address for the simulated call */
-  sender?: string;
-  /** The sender address for the simulated call (alias) */
   senderAddress?: string;
   /** Block height tip to pin the read-only execution */
   tip?: number;
@@ -64,8 +62,6 @@ export type TypedCallReadOnlyFunctionParameters<
       | ContractFunctionName<TAbi, "read_only">
       | (TFunctionName extends ContractFunctionName<TAbi, "read_only"> ? TFunctionName : never);
     /** The sender address for the simulated call */
-    sender?: string;
-    /** The sender address for the simulated call (alias) */
     senderAddress?: string;
     /** Block height tip to pin the read-only execution */
     tip?: number;
@@ -115,7 +111,6 @@ export async function typedCallReadFunction<
     contractName: string;
     functionName: string;
     functionArgs?: readonly unknown[];
-    sender?: string;
     senderAddress?: string;
     tip?: number;
   };
@@ -126,7 +121,6 @@ export async function typedCallReadFunction<
     contractName,
     functionName,
     functionArgs = [],
-    sender,
     senderAddress,
     tip,
   } = params;
@@ -170,11 +164,11 @@ export async function typedCallReadFunction<
     );
   }
 
-  const senderAddr = senderAddress ?? sender ?? "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
+  const sender = senderAddress ?? "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
 
   const callResult = await callReadFn(context, `${contractAddress}.${contractName}`, functionName, {
     args: hexArgs,
-    sender: senderAddr,
+    sender,
     tip,
   });
 

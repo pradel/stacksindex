@@ -97,7 +97,7 @@ describe("indexing engine", () => {
         contractName: "contract",
         functionName: "get-something",
         args: ["0x01"],
-        sender: "ST123",
+        senderAddress: "ST123",
       });
 
       // Call with explicit options.tip - should use explicit tip

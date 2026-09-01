@@ -60,7 +60,7 @@ export const createIndexing = (context: IndexingContext) => ({
           // oxlint-disable-next-line typescript/no-unsafe-member-access
           const contractId = `${options.contractAddress}.${options.contractName}`;
           // oxlint-disable-next-line typescript/no-unsafe-member-access, typescript/no-unsafe-type-assertion
-          const sender = (options.senderAddress ?? options.sender) as string | undefined;
+          const sender = options.senderAddress as string | undefined;
 
           return datasourceStacksApi.callReadFunction(
             apiContext,
