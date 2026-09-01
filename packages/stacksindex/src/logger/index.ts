@@ -33,6 +33,19 @@ const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour12: false,
 });
 
+const serializeValue = (val: unknown): string => {
+  if (typeof val === "bigint") {
+    return val.toString();
+  }
+  try {
+    return JSON.stringify(val, (_key: string, value: unknown) =>
+      typeof value === "bigint" ? value.toString() : value,
+    );
+  } catch {
+    return String(val);
+  }
+};
+
 export function createLogger({ level }: { level: LogLevel }) {
   const consola = createConsola({
     level,
@@ -51,7 +64,7 @@ export function createLogger({ level }: { level: LogLevel }) {
               // oxlint-disable-next-line no-continue
               continue;
             }
-            keyText += ` ${key}=${JSON.stringify(args[key])}`;
+            keyText += ` ${key}=${serializeValue(args[key])}`;
           }
 
           let durationText = "";

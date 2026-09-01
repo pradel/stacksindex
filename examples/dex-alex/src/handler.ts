@@ -333,6 +333,8 @@ export function createPoolHandler({
         });
 
       await syncPoolTokens({ client, db, logger, chainId, poolContract, poolToken: log.poolToken });
+
+      logger.debug({ msg: "Pool created", pool: log.poolToken });
     } else if (log.action === "swap-x-for-y" || log.action === "swap-y-for-x") {
       const [pool] = await db
         .select()
@@ -368,6 +370,15 @@ export function createPoolHandler({
           blockTime: BigInt(event.block_time),
         })
         .onConflictDoNothing();
+
+      logger.debug({
+        msg: "Swap created",
+        pool: log.poolToken,
+        action: log.action,
+        amountIn,
+        amountOut,
+        txId: event.tx_id,
+      });
 
       await upsertPoolBalances({
         db,
