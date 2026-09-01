@@ -124,9 +124,11 @@ export async function discoverTokens({
   }
 
   for (const tokenAddress of missingTokens) {
+    const [contractAddress, contractName] = tokenAddress.split(".");
     const decimalsRes = await client.callReadOnly({
       abi: sip010Abi,
-      contractId: tokenAddress,
+      contractAddress,
+      contractName,
       functionName: "get-decimals",
     });
     if (!decimalsRes.isOk() || decimalsRes.value.ok === undefined) {
@@ -140,13 +142,12 @@ export async function discoverTokens({
 
     const symbolRes = await client.callReadOnly({
       abi: sip010Abi,
-      contractId: tokenAddress,
+      contractAddress,
+      contractName,
       functionName: "get-symbol",
     });
     const symbol =
-      symbolRes.isOk() && symbolRes.value.ok !== undefined
-        ? symbolRes.value.ok
-        : (tokenAddress.split(".")[1] ?? "");
+      symbolRes.isOk() && symbolRes.value.ok !== undefined ? symbolRes.value.ok : contractName;
 
     await db
       .insert(tokenTable)
@@ -179,9 +180,11 @@ export async function syncPoolTokens({
   poolContract,
   poolToken,
 }: SyncPoolTokensParams): Promise<void> {
+  const [contractAddress, contractName] = poolContract.split(".");
   const countResult = await client.callReadOnly({
     abi: fixedWeightPoolAbi,
-    contractId: poolContract,
+    contractAddress,
+    contractName,
     functionName: "get-pool-count",
   });
   if (!countResult.isOk() || countResult.value.ok === undefined) {
@@ -196,7 +199,8 @@ export async function syncPoolTokens({
 
   const contractsResult = await client.callReadOnly({
     abi: fixedWeightPoolAbi,
-    contractId: poolContract,
+    contractAddress,
+    contractName,
     functionName: "get-pool-contracts",
     functionArgs: [poolId],
   });

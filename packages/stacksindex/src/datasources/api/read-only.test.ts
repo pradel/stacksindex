@@ -59,7 +59,7 @@ const sampleTokenAbi = {
           name: "metadata",
           type: {
             tuple: [
-              { name: "tag", type: { "string-ascii": { length: 10 } } },
+              { name: "tag", type: { "string-ascii": { length: 16 } } },
               { name: "active", type: "bool" },
             ],
           },
@@ -107,7 +107,7 @@ describe("typedCallReadFunction", () => {
   const logger = createLogger({ level: 0 });
   const context: DatasourceStacksApiContext = { logger };
 
-  it("calls 0-argument read-only function and decodes response ok", async () => {
+  it("calls 0-argument read-only function and decodes response correctly", async () => {
     const mockCallRead = vi
       .fn<
         (
@@ -126,7 +126,8 @@ describe("typedCallReadFunction", () => {
 
     const result = await typedCallReadFunction(context, mockCallRead, {
       abi: sampleTokenAbi,
-      contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
+      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+      contractName: "test-token",
       functionName: "get-name",
     });
 
@@ -147,7 +148,7 @@ describe("typedCallReadFunction", () => {
     );
   });
 
-  it("supports contractAddress and contractName properties", async () => {
+  it("supports custom sender and tip properties", async () => {
     const mockCallRead = vi
       .fn<
         (
@@ -209,7 +210,8 @@ describe("typedCallReadFunction", () => {
 
     const result = await typedCallReadFunction(context, mockCallRead, {
       abi: sampleTokenAbi,
-      contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
+      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+      contractName: "test-token",
       functionName: "get-balance",
       functionArgs: ["SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
     });
@@ -246,7 +248,8 @@ describe("typedCallReadFunction", () => {
 
     const result = await typedCallReadFunction(context, mockCallRead, {
       abi: sampleTokenAbi,
-      contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
+      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+      contractName: "test-token",
       functionName: "get-pool-details",
       functionArgs: [
         1n,
@@ -280,7 +283,8 @@ describe("typedCallReadFunction", () => {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const params = {
       abi: sampleTokenAbi,
-      contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
+      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+      contractName: "test-token",
       functionName: "transfer",
       functionArgs: [100n, "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
     } as unknown as Parameters<typeof typedCallReadFunction>[2];
@@ -293,32 +297,6 @@ describe("typedCallReadFunction", () => {
       expect(result.error.message).toContain("not found in ABI or is not a read_only function");
     }
     expect(mockCallRead).not.toHaveBeenCalled();
-  });
-
-  it("returns error if contractId is malformed", async () => {
-    const mockCallRead =
-      vi.fn<
-        (
-          context: DatasourceStacksApiContext,
-          contractId: string,
-          functionName: string,
-          options?: { args?: string[]; sender?: string; tip?: number },
-        ) => Promise<Result<CallReadResponse, StacksApiUnexpectedError>>
-      >();
-
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const params = {
-      abi: sampleTokenAbi,
-      contractId: "INVALID_ID_WITHOUT_DOT",
-      functionName: "get-name",
-    } as unknown as Parameters<typeof typedCallReadFunction>[2];
-
-    const result = await typedCallReadFunction(context, mockCallRead, params);
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error.message).toContain("Invalid contractId");
-    }
   });
 
   it("returns error if argument count mismatches ABI", async () => {
@@ -335,7 +313,8 @@ describe("typedCallReadFunction", () => {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const params = {
       abi: sampleTokenAbi,
-      contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
+      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+      contractName: "test-token",
       functionName: "get-balance",
       functionArgs: [],
     } as unknown as Parameters<typeof typedCallReadFunction>[2];
@@ -368,7 +347,8 @@ describe("typedCallReadFunction", () => {
 
     const result = await typedCallReadFunction(context, mockCallRead, {
       abi: sampleTokenAbi,
-      contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
+      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+      contractName: "test-token",
       functionName: "get-name",
     });
 
@@ -399,7 +379,8 @@ describe("typedCallReadFunction", () => {
 
     const result = await typedCallReadFunction(context, mockCallRead, {
       abi: sampleTokenAbi,
-      contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
+      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+      contractName: "test-token",
       functionName: "get-name",
     });
 

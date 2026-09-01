@@ -2,7 +2,7 @@ import { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
-import { type StacksApiError, StacksApiUnexpectedError } from "../datasources/api/errors.ts";
+import type { StacksApiError } from "../datasources/api/errors.ts";
 import { datasourceStacksApi } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
@@ -59,30 +59,8 @@ export const createIndexing = (context: IndexingContext) => ({
             });
           }
 
-          // oxlint-disable-next-line init-declarations
-          let contractId: string;
           // oxlint-disable-next-line typescript/no-unsafe-member-access
-          if (options.contractAddress && options.contractName) {
-            // oxlint-disable-next-line typescript/no-unsafe-member-access
-            contractId = `${options.contractAddress}.${options.contractName}`;
-            // oxlint-disable-next-line typescript/no-unsafe-member-access
-          } else if (options.contractId) {
-            // oxlint-disable-next-line typescript/no-unsafe-assignment
-            ({ contractId } = options);
-          } else {
-            return Promise.resolve(
-              Result.err(
-                new StacksApiUnexpectedError({
-                  message:
-                    "Either contractId or both contractAddress and contractName must be provided",
-                  cause: new Error("Missing contract identification"),
-                  // oxlint-disable-next-line typescript/no-unsafe-member-access
-                  path: `/v2/contracts/call-read/${options.functionName}`,
-                }),
-              ),
-            );
-          }
-
+          const contractId = `${options.contractAddress}.${options.contractName}`;
           // oxlint-disable-next-line typescript/no-unsafe-member-access, typescript/no-unsafe-type-assertion
           const sender = (options.senderAddress ?? options.sender) as string | undefined;
 

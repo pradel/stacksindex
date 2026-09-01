@@ -93,7 +93,8 @@ describe("indexing engine", () => {
     const handler = vi.fn().mockImplementation(async (_event, ctx: HandlerContext) => {
       // Call without explicit tip - should inject event.block_height
       await ctx.client.callReadOnly({
-        contractId: "SP123.contract",
+        contractAddress: "SP123",
+        contractName: "contract",
         functionName: "get-something",
         args: ["0x01"],
         sender: "ST123",
@@ -101,7 +102,8 @@ describe("indexing engine", () => {
 
       // Call with explicit options.tip - should use explicit tip
       await ctx.client.callReadOnly({
-        contractId: "SP123.contract",
+        contractAddress: "SP123",
+        contractName: "contract",
         functionName: "get-something",
         tip: 99999,
       });
@@ -187,7 +189,8 @@ describe("indexing engine", () => {
     const handler = vi.fn().mockImplementation(async (_event, ctx: HandlerContext) => {
       handlerResult = await ctx.client.callReadOnly({
         abi: testAbi,
-        contractId: "SP123.contract",
+        contractAddress: "SP123",
+        contractName: "contract",
         functionName: "get-decimals",
       });
     });

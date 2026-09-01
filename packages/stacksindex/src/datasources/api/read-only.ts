@@ -21,12 +21,10 @@ export type { ContractFunctionArgs, ContractFunctionName, ContractFunctionReturn
  * Parameters for calling a read-only function without ABI (raw hex arguments).
  */
 export interface UntypedCallReadOnlyFunctionParameters {
-  /** The contract ID in "address.contract-name" format */
-  contractId?: string;
   /** The contract address */
-  contractAddress?: string;
+  contractAddress: string;
   /** The contract name */
-  contractName?: string;
+  contractName: string;
   /** The function name to call */
   functionName: string;
   /** Hex-encoded Clarity values as arguments */
@@ -57,12 +55,10 @@ export type TypedCallReadOnlyFunctionParameters<
   {
     /** The contract ABI */
     abi: TAbi;
-    /** The contract ID in "address.contract-name" format */
-    contractId?: string;
     /** The contract address */
-    contractAddress?: string;
+    contractAddress: string;
     /** The contract name */
-    contractName?: string;
+    contractName: string;
     /** The function name to call */
     functionName:
       | ContractFunctionName<TAbi, "read_only">
@@ -115,66 +111,46 @@ export async function typedCallReadFunction<
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const params = parameters as unknown as {
     abi: ClarityAbi;
+    contractAddress: string;
+    contractName: string;
     functionName: string;
-    contractId?: string;
-    contractAddress?: string;
-    contractName?: string;
     functionArgs?: readonly unknown[];
     sender?: string;
     senderAddress?: string;
     tip?: number;
   };
 
-  // oxlint-disable-next-line init-declarations
-  let contractAddress: string;
-  // oxlint-disable-next-line init-declarations
-  let contractName: string;
+  const {
+    abi,
+    contractAddress,
+    contractName,
+    functionName,
+    functionArgs = [],
+    sender,
+    senderAddress,
+    tip,
+  } = params;
 
-  if (params.contractAddress && params.contractName) {
-    ({ contractAddress, contractName } = params);
-  } else if (params.contractId) {
-    const parts = params.contractId.split(".");
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
-      return Result.err(
-        new StacksApiUnexpectedError({
-          message: `Invalid contractId: "${params.contractId}". Expected format: "address.contract-name"`,
-          cause: new Error(`Invalid contractId: "${params.contractId}"`),
-          path: `/v2/contracts/call-read/${params.contractId}/${params.functionName}`,
-        }),
-      );
-    }
-    [contractAddress, contractName] = parts;
-  } else {
-    return Result.err(
-      new StacksApiUnexpectedError({
-        message: "Either contractId or both contractAddress and contractName must be provided",
-        cause: new Error("Missing contract identification"),
-        path: `/v2/contracts/call-read/${params.functionName}`,
-      }),
-    );
-  }
-
-  const abiFunc = params.abi.functions.find(
-    (fn: ClarityAbiFunction) => fn.name === params.functionName && fn.access === "read_only",
+  const abiFunc = abi.functions.find(
+    (fn: ClarityAbiFunction) => fn.name === functionName && fn.access === "read_only",
   );
 
   if (!abiFunc) {
     return Result.err(
       new StacksApiUnexpectedError({
-        message: `Function "${params.functionName}" not found in ABI or is not a read_only function`,
-        cause: new Error(`Function "${params.functionName}" not found in ABI`),
-        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${params.functionName}`,
+        message: `Function "${functionName}" not found in ABI or is not a read_only function`,
+        cause: new Error(`Function "${functionName}" not found in ABI`),
+        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`,
       }),
     );
   }
 
-  const rawArgs = params.functionArgs ?? [];
-  if (rawArgs.length !== abiFunc.args.length) {
+  if (functionArgs.length !== abiFunc.args.length) {
     return Result.err(
       new StacksApiUnexpectedError({
-        message: `Function "${params.functionName}" expects ${abiFunc.args.length} argument(s), but received ${rawArgs.length}`,
-        cause: new Error(`Argument count mismatch for "${params.functionName}"`),
-        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${params.functionName}`,
+        message: `Function "${functionName}" expects ${abiFunc.args.length} argument(s), but received ${functionArgs.length}`,
+        cause: new Error(`Argument count mismatch for "${functionName}"`),
+        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`,
       }),
     );
   }
@@ -182,31 +158,25 @@ export async function typedCallReadFunction<
   // oxlint-disable-next-line init-declarations
   let hexArgs: string[];
   try {
-    const clarityArgs = primitivesToCVs(rawArgs, abiFunc.args);
+    const clarityArgs = primitivesToCVs(functionArgs, abiFunc.args);
     hexArgs = clarityArgs.map((cv) => cvToHex(cv));
   } catch (err) {
     return Result.err(
       new StacksApiUnexpectedError({
-        message: `Failed to encode arguments for function "${params.functionName}": ${err instanceof Error ? err.message : String(err)}`,
+        message: `Failed to encode arguments for function "${functionName}": ${err instanceof Error ? err.message : String(err)}`,
         cause: err,
-        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${params.functionName}`,
+        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`,
       }),
     );
   }
 
-  const sender =
-    params.senderAddress ?? params.sender ?? "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
+  const senderAddr = senderAddress ?? sender ?? "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
 
-  const callResult = await callReadFn(
-    context,
-    `${contractAddress}.${contractName}`,
-    params.functionName,
-    {
-      args: hexArgs,
-      sender,
-      tip: params.tip,
-    },
-  );
+  const callResult = await callReadFn(context, `${contractAddress}.${contractName}`, functionName, {
+    args: hexArgs,
+    sender: senderAddr,
+    tip,
+  });
 
   if (callResult.isErr()) {
     return callResult;
@@ -219,7 +189,7 @@ export async function typedCallReadFunction<
       new StacksApiUnexpectedError({
         message: `Read-only call failed: ${cause}`,
         cause: response,
-        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${params.functionName}`,
+        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`,
       }),
     );
   }

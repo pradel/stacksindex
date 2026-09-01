@@ -2053,8 +2053,10 @@ describe("historical runtime with handlers", () => {
         contractId,
         handler: async (_event, { client }) => {
           handlerCalled = true;
+          const [contractAddress, contractName] = contractId.split(".");
           const readResult = await client.callReadOnly({
-            contractId,
+            contractAddress,
+            contractName,
             functionName: "get-total-supply",
           });
           if (readResult.isOk() && readResult.value.okay) {
