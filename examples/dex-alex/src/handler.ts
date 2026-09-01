@@ -125,41 +125,43 @@ export async function discoverTokens({
 
   for (const tokenAddress of missingTokens) {
     const [contractAddress, contractName] = tokenAddress.split(".");
-    const decimalsRes = await client.callReadOnly({
-      abi: sip010Abi,
-      contractAddress,
-      contractName,
-      functionName: "get-decimals",
-    });
-    if (!decimalsRes.isOk() || decimalsRes.value.ok === undefined) {
-      throw new Error(
-        `Failed to fetch decimals for token ${tokenAddress}: ${
-          decimalsRes.isErr() ? decimalsRes.error.message : "contract call returned error"
-        }`,
-      );
+    if (contractAddress && contractName) {
+      const decimalsRes = await client.callReadOnly({
+        abi: sip010Abi,
+        contractAddress,
+        contractName,
+        functionName: "get-decimals",
+      });
+      if (!decimalsRes.isOk() || decimalsRes.value.ok === undefined) {
+        throw new Error(
+          `Failed to fetch decimals for token ${tokenAddress}: ${
+            decimalsRes.isErr() ? decimalsRes.error.message : "contract call returned error"
+          }`,
+        );
+      }
+      const decimals = Number(decimalsRes.value.ok);
+
+      const symbolRes = await client.callReadOnly({
+        abi: sip010Abi,
+        contractAddress,
+        contractName,
+        functionName: "get-symbol",
+      });
+      const symbol =
+        symbolRes.isOk() && symbolRes.value.ok !== undefined ? symbolRes.value.ok : contractName;
+
+      await db
+        .insert(tokenTable)
+        .values({
+          address: tokenAddress,
+          chainId,
+          symbol,
+          decimals,
+        })
+        .onConflictDoNothing();
+
+      logger.info({ msg: "Discovered token", token: tokenAddress, symbol, decimals });
     }
-    const decimals = Number(decimalsRes.value.ok);
-
-    const symbolRes = await client.callReadOnly({
-      abi: sip010Abi,
-      contractAddress,
-      contractName,
-      functionName: "get-symbol",
-    });
-    const symbol =
-      symbolRes.isOk() && symbolRes.value.ok !== undefined ? symbolRes.value.ok : contractName;
-
-    await db
-      .insert(tokenTable)
-      .values({
-        address: tokenAddress,
-        chainId,
-        symbol,
-        decimals,
-      })
-      .onConflictDoNothing();
-
-    logger.info({ msg: "Discovered token", token: tokenAddress, symbol, decimals });
   }
 }
 
@@ -181,6 +183,9 @@ export async function syncPoolTokens({
   poolToken,
 }: SyncPoolTokensParams): Promise<void> {
   const [contractAddress, contractName] = poolContract.split(".");
+  if (!contractAddress || !contractName) {
+    throw new Error(`Invalid poolContract: ${poolContract}`);
+  }
   const countResult = await client.callReadOnly({
     abi: fixedWeightPoolAbi,
     contractAddress,

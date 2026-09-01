@@ -1,3 +1,5 @@
+import type { ClarityAbi } from "indexer";
+
 export const sip010Abi = {
   functions: [
     {
@@ -31,7 +33,7 @@ export const sip010Abi = {
   maps: [],
   fungible_tokens: [],
   non_fungible_tokens: [],
-} as const;
+} as const satisfies ClarityAbi;
 
 export const fixedWeightPoolAbi = {
   functions: [
@@ -71,4 +73,4 @@ export const fixedWeightPoolAbi = {
   maps: [],
   fungible_tokens: [],
   non_fungible_tokens: [],
-} as const;
+} as const satisfies ClarityAbi;
