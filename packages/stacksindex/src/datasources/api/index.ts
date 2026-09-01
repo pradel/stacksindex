@@ -392,9 +392,10 @@ export const datasourceStacksApi = {
   typedCallReadFunction<
     const TAbi extends ClarityAbi | readonly unknown[],
     TFunctionName extends ContractFunctionName<TAbi, "read_only">,
+    const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
   >(
     context: DatasourceStacksApiContext,
-    parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName>,
+    parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
   ) {
     return typedCallReadFunction(
       context,

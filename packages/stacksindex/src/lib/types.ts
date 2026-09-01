@@ -8,6 +8,7 @@ import type { PgliteDatabase } from "drizzle-orm/pglite";
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import type {
   CallReadResponse,
+  ContractFunctionArgs,
   ContractFunctionName,
   SmartContractLogEvent,
   TypedCallReadOnlyFunctionParameters,
@@ -31,8 +32,9 @@ export interface IndexingClient {
   callReadOnly<
     const TAbi extends ClarityAbi | readonly unknown[],
     TFunctionName extends ContractFunctionName<TAbi, "read_only">,
+    const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
   >(
-    options: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName>,
+    options: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
   ): Promise<Result<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError>>;
 
   callReadOnly(

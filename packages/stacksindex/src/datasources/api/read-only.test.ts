@@ -344,7 +344,7 @@ describe("typedCallReadFunction", () => {
 
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
-      expect(result.error.message).toContain("Failed to encode arguments");
+      expect(result.error.message).toContain("expects 1 argument(s)");
     }
   });
 

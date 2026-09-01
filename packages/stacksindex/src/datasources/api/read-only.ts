@@ -6,6 +6,7 @@ import type {
   ContractFunctionArgs,
   ContractFunctionName,
   ContractFunctionReturnType,
+  UnionEvaluate,
   UnionWiden,
 } from "clarity-abitype";
 import { primitivesToCVs } from "clarity-abitype/stacks-js";
@@ -16,37 +17,54 @@ import type { CallReadResponse, DatasourceStacksApiContext } from "./index.ts";
 
 export type { ContractFunctionArgs, ContractFunctionName, ContractFunctionReturnType };
 
+/**
+ * Parameters for calling a read-only function with type safety.
+ */
 export type TypedCallReadOnlyFunctionParameters<
   TAbi extends ClarityAbi | readonly unknown[] = ClarityAbi,
   TFunctionName extends ContractFunctionName<TAbi, "read_only"> = ContractFunctionName<
     TAbi,
     "read_only"
   >,
-  _allFunctionNames = ContractFunctionName<TAbi, "read_only">,
-  _allArgs = TAbi extends ClarityAbi
-    ? ClarityAbi extends TAbi
-      ? readonly unknown[]
-      : ContractFunctionArgs<TAbi, "read_only", TFunctionName>
-    : readonly unknown[],
-> = {
-  abi: TAbi;
-  contractId?: string;
-  contractAddress?: string;
-  contractName?: string;
-  functionName:
-    | _allFunctionNames
-    | (TFunctionName extends _allFunctionNames ? TFunctionName : never);
-  sender?: string;
-  senderAddress?: string;
-  tip?: number;
-} & (readonly [] extends _allArgs
-  ? {
-      functionArgs?: UnionWiden<_allArgs> | undefined;
-    }
-  : {
-      functionArgs: UnionWiden<_allArgs>;
-    });
+  TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName> = ContractFunctionArgs<
+    TAbi,
+    "read_only",
+    TFunctionName
+  >,
+> = UnionEvaluate<
+  {
+    /** The contract ABI */
+    abi: TAbi;
+    /** The contract ID in "address.contract-name" format */
+    contractId?: string;
+    /** The contract address */
+    contractAddress?: string;
+    /** The contract name */
+    contractName?: string;
+    /** The function name to call */
+    functionName:
+      | ContractFunctionName<TAbi, "read_only">
+      | (TFunctionName extends ContractFunctionName<TAbi, "read_only"> ? TFunctionName : never);
+    /** The sender address for the simulated call */
+    sender?: string;
+    /** The sender address for the simulated call (alias) */
+    senderAddress?: string;
+    /** Block height tip to pin the read-only execution */
+    tip?: number;
+  } & (readonly [] extends TArgs
+    ? {
+        /** Function arguments (optional when function takes no arguments) */
+        functionArgs?: UnionWiden<TArgs> | undefined;
+      }
+    : {
+        /** Function arguments */
+        functionArgs: UnionWiden<TArgs>;
+      })
+>;
 
+/**
+ * Return type for calling a read-only function.
+ */
 export type TypedCallReadOnlyFunctionReturnType<
   TAbi extends ClarityAbi | readonly unknown[] = ClarityAbi,
   TFunctionName extends ContractFunctionName<TAbi, "read_only"> = ContractFunctionName<
@@ -55,9 +73,13 @@ export type TypedCallReadOnlyFunctionReturnType<
   >,
 > = ContractFunctionReturnType<TAbi, "read_only", TFunctionName>;
 
+/**
+ * Type-safe wrapper around Stacks API call-read endpoint.
+ */
 export async function typedCallReadFunction<
   const TAbi extends ClarityAbi | readonly unknown[],
   TFunctionName extends ContractFunctionName<TAbi, "read_only">,
+  const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
 >(
   context: DatasourceStacksApiContext,
   callReadFn: (
@@ -66,7 +88,7 @@ export async function typedCallReadFunction<
     functionName: string,
     options?: { args?: string[]; sender?: string; tip?: number },
   ) => Promise<Result<CallReadResponse, StacksApiError>>,
-  parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName>,
+  parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
 ): Promise<Result<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError>> {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const params = parameters as unknown as {
@@ -125,6 +147,16 @@ export async function typedCallReadFunction<
   }
 
   const rawArgs = params.functionArgs ?? [];
+  if (rawArgs.length !== abiFunc.args.length) {
+    return Result.err(
+      new StacksApiUnexpectedError({
+        message: `Function "${params.functionName}" expects ${abiFunc.args.length} argument(s), but received ${rawArgs.length}`,
+        cause: new Error(`Argument count mismatch for "${params.functionName}"`),
+        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${params.functionName}`,
+      }),
+    );
+  }
+
   // oxlint-disable-next-line init-declarations
   let hexArgs: string[];
   try {
