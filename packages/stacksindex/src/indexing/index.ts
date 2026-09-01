@@ -2,7 +2,7 @@ import { Result } from "better-result";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
-import type { StacksApiError } from "../datasources/api/errors.ts";
+import { type StacksApiError, StacksApiUnexpectedError } from "../datasources/api/errors.ts";
 import { datasourceStacksApi } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
@@ -41,38 +41,64 @@ export const createIndexing = (context: IndexingContext) => ({
     try {
       const client: IndexingClient = {
         // oxlint-disable-next-line typescript/no-explicit-any
-        callReadOnly(...args: [any, ...any[]]): Promise<Result<any, StacksApiError>> {
+        callReadOnly(options: any): Promise<Result<any, StacksApiError>> {
           const apiContext = {
             logger: context.logger,
             api: context.api,
           };
 
-          // oxlint-disable-next-line typescript/no-unsafe-assignment
-          const [firstArg, secondArg, thirdArg] = args;
-          if (typeof firstArg === "object" && firstArg !== null && "abi" in firstArg) {
+          // oxlint-disable-next-line typescript/no-unsafe-member-access
+          if (options.abi !== undefined) {
             // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-member-access
-            const customTip = firstArg.tip;
-            // oxlint-disable-next-line typescript/no-unsafe-argument, typescript/no-unsafe-type-assertion
+            const customTip = options.tip;
+            // oxlint-disable-next-line typescript/no-unsafe-argument
             return datasourceStacksApi.typedCallReadFunction(apiContext, {
-              // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-              ...(firstArg as Parameters<typeof datasourceStacksApi.typedCallReadFunction>[1]),
+              ...options,
+              // oxlint-disable-next-line typescript/no-unsafe-assignment
               tip: typeof customTip === "number" ? customTip : event.block_height,
             });
           }
 
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const contractId = firstArg as string;
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const functionName = secondArg as string;
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          const options = thirdArg as
-            | { args?: string[]; sender?: string; tip?: number }
-            | undefined;
+          // oxlint-disable-next-line init-declarations
+          let contractId: string;
+          // oxlint-disable-next-line typescript/no-unsafe-member-access
+          if (options.contractAddress && options.contractName) {
+            // oxlint-disable-next-line typescript/no-unsafe-member-access
+            contractId = `${options.contractAddress}.${options.contractName}`;
+            // oxlint-disable-next-line typescript/no-unsafe-member-access
+          } else if (options.contractId) {
+            // oxlint-disable-next-line typescript/no-unsafe-assignment
+            ({ contractId } = options);
+          } else {
+            return Promise.resolve(
+              Result.err(
+                new StacksApiUnexpectedError({
+                  message:
+                    "Either contractId or both contractAddress and contractName must be provided",
+                  cause: new Error("Missing contract identification"),
+                  // oxlint-disable-next-line typescript/no-unsafe-member-access
+                  path: `/v2/contracts/call-read/${options.functionName}`,
+                }),
+              ),
+            );
+          }
 
-          return datasourceStacksApi.callReadFunction(apiContext, contractId, functionName, {
-            ...options,
-            tip: options?.tip ?? event.block_height,
-          });
+          // oxlint-disable-next-line typescript/no-unsafe-member-access, typescript/no-unsafe-type-assertion
+          const sender = (options.senderAddress ?? options.sender) as string | undefined;
+
+          return datasourceStacksApi.callReadFunction(
+            apiContext,
+            contractId,
+            // oxlint-disable-next-line typescript/no-unsafe-argument, typescript/no-unsafe-member-access
+            options.functionName,
+            {
+              // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-member-access
+              args: options.args,
+              sender,
+              // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-member-access
+              tip: options.tip ?? event.block_height,
+            },
+          );
         },
       };
 

@@ -94,7 +94,7 @@ Define transformation logic:
 - Receives the raw event (`HandlerEvent`)
 - Receives `HandlerContext` with:
   - `db`: Database instance to write to user tables
-  - `client`: Provides `callReadOnly(contractId, functionName, options)` with automatic block pinning (`tip: event.block_height`) for time-travel contract state lookups
+  - `client`: Provides `callReadOnly(options)` with automatic block pinning (`tip: event.block_height`) for time-travel contract state lookups (supports both typed with `abi` and untyped calls)
 
 ## Stacks Event Structure
 
@@ -290,8 +290,8 @@ Context passed to handler execution:
 HandlerContext<TSchema> {
     db: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>   // Database instance
     client: {
-        callReadOnly: (contractId, functionName, options?) => Promise<Result<CallReadResponse, StacksApiError>>
-        // Automatically pinned to the event's historical block (tip: event.block_height)
+        callReadOnly: (options) => Promise<Result<...>>
+        // Supports typed calls (with abi) and untyped calls (with raw args), automatically pinned to tip: event.block_height
     }
 }
 ```

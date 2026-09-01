@@ -19,6 +19,7 @@ import {
   typedCallReadFunction,
   type TypedCallReadOnlyFunctionParameters,
   type TypedCallReadOnlyFunctionReturnType,
+  type UntypedCallReadOnlyFunctionParameters,
 } from "./read-only.ts";
 
 export type {
@@ -27,6 +28,7 @@ export type {
   ContractFunctionReturnType,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,
+  UntypedCallReadOnlyFunctionParameters,
 };
 export { typedCallReadFunction };
 

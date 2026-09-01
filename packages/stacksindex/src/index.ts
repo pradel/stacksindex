@@ -14,6 +14,7 @@ export type {
   DatasourceStacksApiContext,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,
+  UntypedCallReadOnlyFunctionParameters,
 } from "./datasources/api/index.ts";
 export type {
   ClarityAbi,

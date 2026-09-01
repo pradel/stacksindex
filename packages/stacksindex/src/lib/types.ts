@@ -13,6 +13,7 @@ import type {
   SmartContractLogEvent,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,
+  UntypedCallReadOnlyFunctionParameters,
 } from "../datasources/api/index.ts";
 
 export interface LogEvent {
@@ -38,9 +39,7 @@ export interface IndexingClient {
   ): Promise<Result<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError>>;
 
   callReadOnly(
-    contractId: string,
-    functionName: string,
-    options?: { args?: string[]; sender?: string; tip?: number },
+    options: UntypedCallReadOnlyFunctionParameters,
   ): Promise<Result<CallReadResponse, StacksApiError>>;
 }
 

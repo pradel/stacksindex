@@ -18,6 +18,28 @@ import type { CallReadResponse, DatasourceStacksApiContext } from "./index.ts";
 export type { ContractFunctionArgs, ContractFunctionName, ContractFunctionReturnType };
 
 /**
+ * Parameters for calling a read-only function without ABI (raw hex arguments).
+ */
+export interface UntypedCallReadOnlyFunctionParameters {
+  /** The contract ID in "address.contract-name" format */
+  contractId?: string;
+  /** The contract address */
+  contractAddress?: string;
+  /** The contract name */
+  contractName?: string;
+  /** The function name to call */
+  functionName: string;
+  /** Hex-encoded Clarity values as arguments */
+  args?: string[];
+  /** The sender address for the simulated call */
+  sender?: string;
+  /** The sender address for the simulated call (alias) */
+  senderAddress?: string;
+  /** Block height tip to pin the read-only execution */
+  tip?: number;
+}
+
+/**
  * Parameters for calling a read-only function with type safety.
  */
 export type TypedCallReadOnlyFunctionParameters<
