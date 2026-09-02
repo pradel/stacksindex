@@ -2,6 +2,7 @@ import console from "node:console";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import process from "node:process";
 import { URL } from "node:url";
 
 import { expect } from "vite-plus/test";
@@ -114,45 +115,49 @@ export function createBenchmarkTracker(): BenchmarkTracker {
 
 const inMemoryBenchmarks = new Map<string, BenchmarkSummary>();
 
-function getStorageFilePath(): string {
-  return path.join(os.tmpdir(), "stacksindex-e2e-benchmark-results.json");
+export function getBenchmarkRunDirectory(): string {
+  process.env.BENCHMARK_RUN_ID ??= `${process.ppid || process.pid}-${Date.now()}`;
+  return path.join(os.tmpdir(), "stacksindex-benchmarks", process.env.BENCHMARK_RUN_ID);
 }
 
 /**
- * Registers a scenario's benchmark summary in memory and syncs to a temporary cache file
- * so that results from Vitest worker threads can be aggregated across the entire test run.
+ * Registers a scenario's benchmark summary in memory and saves a dedicated file
+ * in the run directory so that concurrent Vitest worker threads don't contend or overwrite each other.
  */
 export function registerScenarioBenchmark(scenarioName: string, summary: BenchmarkSummary): void {
   inMemoryBenchmarks.set(scenarioName, summary);
   try {
-    const filePath = getStorageFilePath();
-    let data: Record<string, BenchmarkSummary> = {};
-    if (fs.existsSync(filePath)) {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      data = JSON.parse(fs.readFileSync(filePath, "utf8")) as Record<string, BenchmarkSummary>;
-    }
-    data[scenarioName] = summary;
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+    const runDir = getBenchmarkRunDirectory();
+    fs.mkdirSync(runDir, { recursive: true });
+    const sanitizedScenario = scenarioName.replace(/[^a-zA-Z0-9_-]/gu, "_");
+    const uniqueWorkerSuffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const workerFilePath = path.join(runDir, `${sanitizedScenario}-${uniqueWorkerSuffix}.json`);
+    fs.writeFileSync(workerFilePath, JSON.stringify({ scenarioName, summary }, null, 2), "utf8");
   } catch {
     // File writing is best-effort for cross-process aggregation
   }
 }
 
 /**
- * Loads all benchmark summaries recorded across scenarios.
+ * Loads all benchmark summaries recorded across scenarios for the current run.
  */
 export function loadAllScenarioBenchmarks(): Map<string, BenchmarkSummary> {
   const result = new Map<string, BenchmarkSummary>(inMemoryBenchmarks);
   try {
-    const filePath = getStorageFilePath();
-    if (fs.existsSync(filePath)) {
+    const runDir = getBenchmarkRunDirectory();
+    if (!fs.existsSync(runDir)) {
+      return result;
+    }
+    const jsonFiles = fs.readdirSync(runDir).filter((file) => file.endsWith(".json"));
+    for (const entry of jsonFiles) {
+      const filePath = path.join(runDir, entry);
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as Record<
-        string,
-        BenchmarkSummary
-      >;
-      for (const [name, summary] of Object.entries(data)) {
-        result.set(name, summary);
+      const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+        scenarioName?: string;
+        summary?: BenchmarkSummary;
+      };
+      if (data.scenarioName && data.summary) {
+        result.set(data.scenarioName, data.summary);
       }
     }
   } catch {
@@ -162,14 +167,14 @@ export function loadAllScenarioBenchmarks(): Map<string, BenchmarkSummary> {
 }
 
 /**
- * Clears scenario benchmarks from memory and deletes the temporary cache file.
+ * Clears scenario benchmarks from memory and deletes the run directory for the current run.
  */
 export function clearAllScenarioBenchmarks(): void {
   inMemoryBenchmarks.clear();
   try {
-    const filePath = getStorageFilePath();
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    const runDir = getBenchmarkRunDirectory();
+    if (fs.existsSync(runDir)) {
+      fs.rmSync(runDir, { recursive: true, force: true });
     }
   } catch {
     // Ignore removal errors
@@ -268,11 +273,11 @@ export function formatBenchmarkTable(benchmarks: Map<string, BenchmarkSummary>):
   const wEndpoint = maxEndpointLen + 2;
   const wCalls = maxCallsLen + 2;
 
-  const topBorder = `┌${"─".repeat(wScenario)}┬${"─".repeat(wEndpoint)}┬${"─".repeat(wCalls)}┐`;
-  const headerRow = `│ ${padRight(colScenarioHeader, maxScenarioLen)} │ ${padRight(colEndpointHeader, maxEndpointLen)} │ ${padLeft(colCallsHeader, maxCallsLen)} │`;
-  const headerSeparator = `├${"─".repeat(wScenario)}┼${"─".repeat(wEndpoint)}┼${"─".repeat(wCalls)}┤`;
-  const scenarioSeparator = `├${"─".repeat(wScenario)}┼${"─".repeat(wEndpoint)}┼${"─".repeat(wCalls)}┤`;
-  const bottomBorder = `└${"─".repeat(wScenario)}┴${"─".repeat(wEndpoint)}┴${"─".repeat(wCalls)}┘`;
+  const topBorder = `+${"-".repeat(wScenario)}+${"-".repeat(wEndpoint)}+${"-".repeat(wCalls)}+`;
+  const headerRow = `| ${padRight(colScenarioHeader, maxScenarioLen)} | ${padRight(colEndpointHeader, maxEndpointLen)} | ${padLeft(colCallsHeader, maxCallsLen)} |`;
+  const headerSeparator = `+${"-".repeat(wScenario)}+${"-".repeat(wEndpoint)}+${"-".repeat(wCalls)}+`;
+  const scenarioSeparator = `+${"-".repeat(wScenario)}+${"-".repeat(wEndpoint)}+${"-".repeat(wCalls)}+`;
+  const bottomBorder = `+${"-".repeat(wScenario)}+${"-".repeat(wEndpoint)}+${"-".repeat(wCalls)}+`;
 
   const lines: string[] = [
     "E2E API Call-Count Benchmark Summary",
@@ -283,7 +288,7 @@ export function formatBenchmarkTable(benchmarks: Map<string, BenchmarkSummary>):
 
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
-    const line = `│ ${padRight(row.scenario, maxScenarioLen)} │ ${padRight(row.endpoint, maxEndpointLen)} │ ${padLeft(row.calls, maxCallsLen)} │`;
+    const line = `| ${padRight(row.scenario, maxScenarioLen)} | ${padRight(row.endpoint, maxEndpointLen)} | ${padLeft(row.calls, maxCallsLen)} |`;
     lines.push(line);
 
     if (index + 1 < rows.length) {
@@ -296,7 +301,7 @@ export function formatBenchmarkTable(benchmarks: Map<string, BenchmarkSummary>):
 
   if (benchmarks.size > 1) {
     lines.push(scenarioSeparator);
-    const grandTotalLine = `│ ${padRight("Grand Total", maxScenarioLen)} │ ${padRight("All Scenarios", maxEndpointLen)} │ ${padLeft(String(grandTotal), maxCallsLen)} │`;
+    const grandTotalLine = `| ${padRight("Grand Total", maxScenarioLen)} | ${padRight("All Scenarios", maxEndpointLen)} | ${padLeft(String(grandTotal), maxCallsLen)} |`;
     lines.push(grandTotalLine);
   }
 

@@ -1,10 +1,13 @@
 // oxlint-disable vitest/max-expects
+import fs from "node:fs";
+
 import { describe, expect, test } from "vite-plus/test";
 
 import {
   clearAllScenarioBenchmarks,
   createBenchmarkTracker,
   formatBenchmarkTable,
+  getBenchmarkRunDirectory,
   loadAllScenarioBenchmarks,
   normalizeRoute,
   registerScenarioBenchmark,
@@ -126,7 +129,7 @@ describe("benchmark module", () => {
   });
 
   describe("scenario benchmark registry and table formatting", () => {
-    test("registers scenarios and formats ASCII table with grand total", () => {
+    test("registers scenarios in separate worker files and formats ASCII table with grand total", () => {
       clearAllScenarioBenchmarks();
 
       registerScenarioBenchmark("scenario-a", {
@@ -144,6 +147,12 @@ describe("benchmark module", () => {
         },
       });
 
+      // Verify isolated files are written to the unique run directory
+      const runDir = getBenchmarkRunDirectory();
+      expect(fs.existsSync(runDir)).toBe(true);
+      const workerFiles = fs.readdirSync(runDir);
+      expect(workerFiles.length).toBeGreaterThanOrEqual(2);
+
       const loaded = loadAllScenarioBenchmarks();
       expect(loaded.size).toBe(2);
 
@@ -154,8 +163,19 @@ describe("benchmark module", () => {
       expect(table).toContain("Grand Total");
       expect(table).toContain("8");
 
+      // Verify table uses ASCII-only characters (+, -, |) and no Unicode box-drawing chars
+      expect(table).toContain("+");
+      expect(table).toContain("-");
+      expect(table).toContain("|");
+      expect(table).not.toContain("┌");
+      expect(table).not.toContain("─");
+      expect(table).not.toContain("│");
+      expect(table).not.toContain("├");
+      expect(table).not.toContain("└");
+
       clearAllScenarioBenchmarks();
       expect(loadAllScenarioBenchmarks().size).toBe(0);
+      expect(fs.existsSync(runDir)).toBe(false);
     });
 
     test("returns empty string when no benchmarks are registered", () => {
