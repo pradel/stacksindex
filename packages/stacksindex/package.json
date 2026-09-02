@@ -1,6 +1,6 @@
 {
   "name": "stacksindex",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A simple, open-source historical indexer for the Stacks blockchain.",
   "homepage": "https://github.com/pradel/stacksindex#readme",
   "bugs": {
