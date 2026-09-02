@@ -10,7 +10,7 @@
     "build": "vp run -r build",
     "prepare": "vp config",
     "changeset": "changeset",
-    "version": "changeset version",
+    "version": "changeset version && vp check --fix",
     "release": "vp run build && cp README.md ./packages/stacksindex && changeset publish"
   },
   "devDependencies": {
