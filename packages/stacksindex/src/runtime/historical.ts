@@ -39,6 +39,7 @@ interface ResolvedFilter {
 export interface HistoricalRuntimeContext<TSchema extends Record<string, unknown> = any> {
   logger: Logger;
   db: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>;
+  chainId?: number;
   api?: {
     baseUrl?: string;
     apiKey?: string;
@@ -169,7 +170,7 @@ async function initContractFromScratch(
     await syncStore.upsertSyncProgress(
       {
         contractId: filter.contractId,
-        chainId: 1,
+        chainId: context.chainId ?? 1,
         cursor: null,
         lastBlockHeight: filter.endBlock ?? 0,
         isComplete: filter.endBlock !== undefined,
@@ -195,7 +196,7 @@ async function initContractFromScratch(
     await syncStore.upsertSyncProgress(
       {
         contractId: filter.contractId,
-        chainId: 1,
+        chainId: context.chainId ?? 1,
         cursor: null,
         lastBlockHeight: filter.endBlock,
         isComplete: true,
@@ -290,7 +291,7 @@ async function initContractFromSaved(
     await syncStore.upsertSyncProgress(
       {
         contractId: filter.contractId,
-        chainId: 1,
+        chainId: context.chainId ?? 1,
         cursor: null,
         lastBlockHeight: filter.endBlock ?? savedHeight,
         isComplete: filter.endBlock !== undefined,
@@ -316,7 +317,7 @@ async function initContractFromSaved(
     await syncStore.upsertSyncProgress(
       {
         contractId: filter.contractId,
-        chainId: 1,
+        chainId: context.chainId ?? 1,
         cursor: null,
         lastBlockHeight: filter.endBlock,
         isComplete: true,
@@ -349,7 +350,7 @@ async function initializeContractStates(
   const states: ContractSyncState[] = [];
   for (const filter of filters) {
     const saved = await syncStore.getSyncProgress(
-      { contractId: filter.contractId, chainId: 1 },
+      { contractId: filter.contractId, chainId: context.chainId ?? 1 },
       { db: context.db },
     );
 
@@ -368,12 +369,14 @@ async function initializeContractStates(
 }
 
 export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
+  const chainId = context.chainId ?? 1;
+
   async function processEventsUpTo(
     toBlockHeight: number,
     indexing: ReturnType<typeof createIndexing>,
     filterMap: Map<string, ResolvedFilter>,
   ): Promise<Result<void, StacksApiError | HandlerExecutionError>> {
-    const checkpoint = await syncStore.getCheckpoint({ chainId: 1 }, { db: context.db });
+    const checkpoint = await syncStore.getCheckpoint({ chainId }, { db: context.db });
     const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
 
     if (fromBlockHeight >= toBlockHeight) {
@@ -381,7 +384,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     }
 
     const rows = await syncStore.getEvents(
-      { chainId: 1, fromBlockHeight: fromBlockHeight + 1, toBlockHeight },
+      { chainId, fromBlockHeight: fromBlockHeight + 1, toBlockHeight },
       { db: context.db },
     );
 
@@ -433,7 +436,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     const lastRow = rows[rows.length - 1];
     await syncStore.upsertCheckpoint(
       {
-        chainId: 1,
+        chainId,
         blockHeight: Number(lastRow.blockHeight),
         blockTime: Number(lastRow.blockTime),
       },
@@ -483,7 +486,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
   ): Promise<Result<BlockApiResponse[], StacksApiError>> {
     const blockHashes = [...new Set(transactions.map((transaction) => transaction.block.hash))];
     const existingBlockHashes = await syncStore.getExistingBlocks(
-      { blockHashes, chainId: 1 },
+      { blockHashes, chainId },
       { db: context.db },
     );
     const missingBlockHashes = blockHashes.filter((hash) => !existingBlockHashes.includes(hash));
@@ -527,7 +530,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         await syncStore.upsertSyncProgress(
           {
             contractId: lowestState.contractId,
-            chainId: 1,
+            chainId,
             cursor: null,
             lastBlockHeight: endBlock,
             isComplete: true,
@@ -539,7 +542,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         await syncStore.upsertSyncProgress(
           {
             contractId: lowestState.contractId,
-            chainId: 1,
+            chainId,
             cursor: nextCursor,
             lastBlockHeight,
             isComplete: false,
@@ -556,7 +559,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       await syncStore.upsertSyncProgress(
         {
           contractId: lowestState.contractId,
-          chainId: 1,
+          chainId,
           cursor: null,
           lastBlockHeight: currentHeight,
           isComplete: lowestState.endBlock !== undefined,
@@ -657,7 +660,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
           ),
         ];
         const existingTxs = await syncStore.getExistingTransactions(
-          { txIds, chainId: 1 },
+          { txIds, chainId },
           { db: context.db },
         );
         const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
@@ -698,8 +701,6 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
             return { event, blockHeight };
           })
           .filter((item) => item.blockHeight > 0);
-
-        const chainId = 1;
 
         await context.db.transaction(async (tx) => {
           await Promise.all([

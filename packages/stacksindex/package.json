@@ -1,28 +1,30 @@
 {
-  "name": "indexer",
+  "name": "stacksindex",
   "version": "0.0.0",
-  "description": "A starter for creating a TypeScript package.",
-  "homepage": "https://github.com/author/library#readme",
+  "description": "A simple, open-source historical indexer for the Stacks blockchain.",
+  "homepage": "https://github.com/pradel/stacksindex#readme",
   "bugs": {
-    "url": "https://github.com/author/library/issues"
+    "url": "https://github.com/pradel/stacksindex/issues"
   },
   "license": "MIT",
-  "author": "Author Name <author.name@mail.com>",
+  "author": "Léo Pradel <pradel.leo@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/author/library.git"
+    "url": "git+https://github.com/pradel/stacksindex.git"
   },
   "files": [
     "dist",
     "drizzle"
   ],
   "type": "module",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": "./dist/index.mjs",
     "./package.json": "./package.json"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "vp pack",

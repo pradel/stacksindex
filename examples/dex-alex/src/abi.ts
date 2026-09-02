@@ -1,4 +1,4 @@
-import type { ClarityAbi } from "indexer";
+import type { ClarityAbi } from "stacksindex";
 
 export const sip010Abi = {
   functions: [

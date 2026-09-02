@@ -1,4 +1,4 @@
-import { decodeHex, type HandlerEvent } from "indexer";
+import { decodeHex, type HandlerEvent } from "stacksindex";
 
 export interface RecordedTraceEvent {
   contractId: string;

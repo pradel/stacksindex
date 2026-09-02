@@ -1,13 +1,21 @@
 {
+  "name": "stacksindex-root",
+  "version": "0.0.0",
   "private": true,
+  "description": "Monorepo for stacksindex",
   "type": "module",
   "scripts": {
     "ready": "vp fmt && vp lint && vp run -r test && vp run -r build",
     "test": "vp run -r test",
     "build": "vp run -r build",
-    "prepare": "vp config"
+    "prepare": "vp config",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "vp run build && cp README.md ./packages/stacksindex && changeset publish"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "1.0.0",
+    "@changesets/cli": "3.0.1",
     "vite-plus": "catalog:"
   },
   "packageManager": "pnpm@11.24.0"
