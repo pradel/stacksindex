@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
-import { decodeHex, type EventHandler, type IndexingClient, type Logger } from "indexer";
+import { decodeHex, type EventHandler, type IndexingClient, type Logger } from "stacksindex";
 import { z } from "zod";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";

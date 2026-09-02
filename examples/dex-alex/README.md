@@ -1,23 +1,28 @@
-# vite-plus-starter
+# ALEX DEX Pool Indexer Example
 
-A starter for creating a Vite Plus project.
+An end-to-end example demonstrating how to index ALEX DEX pool events using `stacksindex`.
 
-## Development
+## Features Demonstrated
 
-- Install dependencies:
+- **Historical Event Sync**: Indexes pool creation, swaps, and liquidity changes.
+- **Typed Read-Only Calls**: Uses Clarity ABIs to fetch pool tokens and decimals at the exact event block height.
+- **Relational Storage**: Stores derived data in PGlite tables (`pool`, `swap`, `token`) using Drizzle ORM.
 
-```bash
-vp install
-```
+## Running the Example
 
-- Run the unit tests:
+1. **Install dependencies**:
 
-```bash
-vp test
-```
+   ```bash
+   pnpm install
+   ```
 
-- Build the library:
+2. **Run migrations & start indexing**:
 
-```bash
-vp pack
-```
+   ```bash
+   pnpm dev
+   ```
+
+3. **Inspect indexed data with Drizzle Studio**:
+   ```bash
+   pnpm studio
+   ```

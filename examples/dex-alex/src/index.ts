@@ -4,7 +4,7 @@ import process from "node:process";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { createDatabase, createHistoricalRuntime, createLogger } from "indexer";
+import { createDatabase, createHistoricalRuntime, createLogger } from "stacksindex";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 

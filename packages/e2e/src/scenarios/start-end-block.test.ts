@@ -3,7 +3,7 @@
 // oxlint-disable typescript/no-unsafe-assignment
 // oxlint-disable typescript/no-explicit-any
 // oxlint-disable vitest/max-expects
-import { createHistoricalRuntime, createLogger, type EventHandler } from "indexer";
+import { createHistoricalRuntime, createLogger, type EventHandler } from "stacksindex";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createScenarioRecorder } from "../recorder.ts";

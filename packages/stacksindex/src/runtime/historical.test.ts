@@ -3986,4 +3986,152 @@ describe("historical runtime with handlers", () => {
       lastBlockHeight: 100n,
     });
   });
+
+  test("rejects invalid custom chainIds", () => {
+    const invalidChainIds = [
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+      Number.MIN_SAFE_INTEGER - 1,
+    ];
+
+    invalidChainIds.forEach((chainId) => {
+      expect(() =>
+        createHistoricalRuntime({ logger: context.logger, db: testDb.db, chainId }),
+      ).toThrow(`Invalid chainId: ${chainId}. Expected a safe integer.`);
+    });
+  });
+
+  test("supports custom chainId in context", async () => {
+    const contractId = "SP123.custom-chain";
+    const customChainId = 2147483648;
+    const handler = vi.fn();
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block_height: 50,
+            tx_id: "tx-deploy",
+            canonical: true,
+          }),
+        };
+      }
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 1,
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [{ transaction: { tx_id: "tx-1", block: { height: 50, tx_index: 0 } } }],
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            total: 1,
+            limit: 50,
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              {
+                event_index: 0,
+                type: "contract_log",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "0x01", repr: "u1" },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/extended/v2/smart-contracts") && url.includes("/logs")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 100,
+            total: 1,
+            results: [
+              {
+                event_index: 0,
+                event_type: "smart_contract_log",
+                tx_id: "tx-1",
+                contract_log: {
+                  contract_id: contractId,
+                  topic: "print",
+                  value: { hex: "0x01", repr: "u1" },
+                },
+              },
+            ],
+            next_cursor: null,
+          }),
+        };
+      }
+      if (url.includes("/extended/v3/transactions/tx-1")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            tx_id: "tx-1",
+            block: { height: 50, hash: "block-50", tx_index: 0 },
+            type: "contract_call",
+            sender: { address: "SP_SENDER", nonce: 1 },
+            fee_rate: 100,
+            status: "success",
+            canonical: true,
+          }),
+        };
+      }
+      if (url.includes("/extended/v2/blocks/block-50")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            canonical: true,
+            height: 50,
+            hash: "block-50",
+            burn_block_time: 1000,
+            burn_block_height: 50,
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({
+      logger: context.logger,
+      db: testDb.db,
+      chainId: customChainId,
+    });
+    const result = await runtime.run([{ contractId, handler }]);
+
+    expect(result.isOk()).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    const progress = await syncStore.getSyncProgress(
+      { contractId, chainId: customChainId },
+      { db: testDb.db },
+    );
+    expect(progress).not.toBeNull();
+    expect(progress?.chainId).toBe(BigInt(customChainId));
+
+    const checkpoint = await syncStore.getCheckpoint({ chainId: customChainId }, { db: testDb.db });
+    expect(checkpoint).not.toBeNull();
+    expect(checkpoint?.chainId).toBe(BigInt(customChainId));
+    expect(checkpoint?.blockHeight).toBe(50n);
+
+    // Verify chainId: 1 has no records
+    const defaultProgress = await syncStore.getSyncProgress(
+      { contractId, chainId: 1 },
+      { db: testDb.db },
+    );
+    expect(defaultProgress).toBeNull();
+  });
 });
