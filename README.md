@@ -133,15 +133,6 @@ Check out [`examples/dex-alex`](./examples/dex-alex) for a complete working exam
 
 ---
 
-## v0.1.0 Feedback & Roadmap
-
-This **v0.1.0** release is an initial preview focused on **historical sync** and validating developer ergonomics, storage efficiency, and handler design.
-
-- **Upcoming in v0.2.0**: Realtime block polling and live event streaming.
-- **We want your feedback!**: Have thoughts on the handler API, data decoding, or performance? Please open an issue or start a discussion on the [GitHub repository](https://github.com/pradel/stacksindex/issues).
-
----
-
 ## License
 
 MIT © [Léo Pradel](https://github.com/pradel)
