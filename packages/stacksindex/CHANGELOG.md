@@ -1,5 +1,11 @@
 # stacksindex
 
+## 0.0.2
+
+### Patch Changes
+
+- [`085bf86`](https://github.com/pradel/stacksindex/commit/085bf863cb286cdb81842eaae20b31fca43b990b) Thanks [@pradel](https://github.com/pradel)! - Automate CI publishing process.
+
 ## 0.0.1
 
 ### Patch Changes
