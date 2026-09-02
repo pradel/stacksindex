@@ -96,4 +96,23 @@ describe("scenario recorder", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(recorder.size()).toBe(1);
   });
+
+  test("tracks calls in benchmark summary", async () => {
+    const fixturePath = createFixturePath();
+    const url = "https://api.hiro.so/extended/v1/contract/SP6P4.satoshibles";
+    fs.writeFileSync(
+      fixturePath,
+      JSON.stringify({ [`GET ${url}`]: { statusCode: 200, body: {} } }),
+    );
+    process.env.RECORD = "false";
+    const recorder = createScenarioRecorder(fixturePath);
+    await recorder.handleRequest(url);
+
+    expect(recorder.getBenchmarkSummary()).toStrictEqual({
+      totalCalls: 1,
+      endpoints: {
+        "GET /extended/v1/contract/:contract_id": 1,
+      },
+    });
+  });
 });

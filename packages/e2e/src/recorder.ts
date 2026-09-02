@@ -3,6 +3,12 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
 
+import {
+  type BenchmarkSummary,
+  type BenchmarkTracker,
+  createBenchmarkTracker,
+} from "./benchmark.ts";
+
 export interface FixtureEntry {
   statusCode: number;
   headers?: Record<string, string>;
@@ -217,9 +223,15 @@ export interface ScenarioRecorder {
   save: () => Promise<void>;
   isRecording: boolean;
   size: () => number;
+  tracker: BenchmarkTracker;
+  getBenchmarkSummary: () => BenchmarkSummary;
 }
 
-export function createScenarioRecorder(fixtureFileName: string): ScenarioRecorder {
+export function createScenarioRecorder(
+  fixtureFileName: string,
+  options?: { tracker?: BenchmarkTracker },
+): ScenarioRecorder {
+  const tracker = options?.tracker ?? createBenchmarkTracker();
   const fixturePath = path.isAbsolute(fixtureFileName)
     ? fixtureFileName
     : path.join(FIXTURES_DIR, fixtureFileName);
@@ -258,9 +270,12 @@ export function createScenarioRecorder(fixtureFileName: string): ScenarioRecorde
   return {
     isRecording: shouldRecord,
     size: () => Object.keys(archive).length,
+    tracker,
+    getBenchmarkSummary: () => tracker.getSummary(),
 
     async handleRequest(rawUrl, init) {
       const method = init?.method ?? "GET";
+      tracker.recordCall(method, rawUrl);
       const key = normalizeKey(method, rawUrl);
 
       // Replay mode when recording is not required and the fixture key exists.

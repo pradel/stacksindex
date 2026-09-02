@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vp test",
     "check": "vp check",
-    "record": "RECORD=true vp test"
+    "record": "RECORD=true vp test",
+    "bench": "BENCHMARK_REPORT=true vp test"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.8",
@@ -18,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "26.4.0",
+    "@vitest/coverage-v8": "catalog:",
     "typescript": "7.0.2",
     "vite-plus": "catalog:"
   }
