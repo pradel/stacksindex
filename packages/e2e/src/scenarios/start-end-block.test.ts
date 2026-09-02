@@ -6,6 +6,7 @@
 import { createHistoricalRuntime, createLogger, type EventHandler } from "stacksindex";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import { assertBenchmarkSnapshot, registerScenarioBenchmark } from "../benchmark.ts";
 import { createScenarioRecorder } from "../recorder.ts";
 import { createTestDatabase, type TestDatabase } from "../test-db.ts";
 import { createTraceCollector } from "../tracer.ts";
@@ -36,6 +37,7 @@ describe("e2E: Bounded startBlock and endBlock scenario", () => {
   });
 
   afterAll(async () => {
+    registerScenarioBenchmark("start-end-block", recorder.getBenchmarkSummary());
     await recorder.save();
     await testDb.close();
     vi.restoreAllMocks();
@@ -97,5 +99,8 @@ describe("e2E: Bounded startBlock and endBlock scenario", () => {
     expect(recordedEvents[2].txId).toBe(
       "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
     );
+
+    // Verify API call count benchmark snapshot
+    assertBenchmarkSnapshot(recorder.getBenchmarkSummary());
   });
 });
