@@ -369,7 +369,10 @@ async function initializeContractStates(
 }
 
 export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
-  const chainId = context.chainId ?? 1;
+  const { chainId = 1 } = context;
+  if (!Number.isSafeInteger(chainId)) {
+    throw new RangeError(`Invalid chainId: ${chainId}. Expected a safe integer.`);
+  }
 
   async function processEventsUpTo(
     toBlockHeight: number,

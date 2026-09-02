@@ -3987,6 +3987,23 @@ describe("historical runtime with handlers", () => {
     });
   });
 
+  test("rejects invalid custom chainIds", () => {
+    const invalidChainIds = [
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+      Number.MIN_SAFE_INTEGER - 1,
+    ];
+
+    invalidChainIds.forEach((chainId) => {
+      expect(() =>
+        createHistoricalRuntime({ logger: context.logger, db: testDb.db, chainId }),
+      ).toThrow(`Invalid chainId: ${chainId}. Expected a safe integer.`);
+    });
+  });
+
   test("supports custom chainId in context", async () => {
     const contractId = "SP123.custom-chain";
     const customChainId = 2147483648;

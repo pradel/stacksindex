@@ -6,7 +6,7 @@ An end-to-end example demonstrating how to index ALEX DEX pool events using `sta
 
 - **Historical Event Sync**: Indexes pool creation, swaps, and liquidity changes.
 - **Typed Read-Only Calls**: Uses Clarity ABIs to fetch pool tokens and decimals at the exact event block height.
-- **Relational Storage**: Stores derived data in SQLite/PGlite tables (`pool`, `swap`, `token`) using Drizzle ORM.
+- **Relational Storage**: Stores derived data in PGlite tables (`pool`, `swap`, `token`) using Drizzle ORM.
 
 ## Running the Example
 
