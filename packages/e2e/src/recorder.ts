@@ -92,25 +92,49 @@ function sanitizeTransactionEvents(body: Record<string, unknown>): Record<string
 }
 
 function sanitizeContractLogs(body: Record<string, unknown>): Record<string, unknown> {
+  // Only `next_cursor` is consumed (forward pagination). The human-readable
+  // `repr` is dropped: handlers decode `hex`, and the events table accepts an
+  // Empty `value_repr`.
+  const results = Array.isArray(body.results)
+    ? body.results.map((item: unknown) => {
+        if (!item || typeof item !== "object") {
+          return item;
+        }
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        const itemObj = item as Record<string, unknown>;
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        const contractLog = itemObj.contract_log as Record<string, unknown> | undefined;
+        if (!contractLog || typeof contractLog !== "object") {
+          return itemObj;
+        }
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        const value = contractLog.value as Record<string, unknown> | undefined;
+        return {
+          ...itemObj,
+          contract_log: {
+            ...contractLog,
+            value: value ? { hex: value.hex, repr: "" } : value,
+          },
+        };
+      })
+    : body.results;
+
   return {
     limit: body.limit,
     offset: body.offset,
     total: body.total,
     next_cursor: body.next_cursor ?? null,
-    prev_cursor: body.prev_cursor ?? null,
-    results: body.results,
+    results,
   };
 }
 
 function sanitizeTransaction(body: Record<string, unknown>): Record<string, unknown> {
+  // Only the fields consumed by encodeTransaction are kept: bitcoin_block,
+  // Sponsor, block.time and block.index_hash are never read.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const block = body.block as Record<string, unknown> | undefined;
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const bitcoinBlock = body.bitcoin_block as Record<string, unknown> | undefined;
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const sender = body.sender as Record<string, unknown> | undefined;
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const sponsor = body.sponsor as Record<string, unknown> | undefined;
 
   return {
     tx_id: body.tx_id,
@@ -124,20 +148,11 @@ function sanitizeTransaction(body: Record<string, unknown>): Record<string, unkn
           nonce: sender.nonce,
         }
       : undefined,
-    sponsor: sponsor ? { address: sponsor.address } : null,
     block: block
       ? {
           hash: block.hash,
           height: block.height,
-          time: block.time,
           tx_index: block.tx_index,
-          index_hash: block.index_hash,
-        }
-      : undefined,
-    bitcoin_block: bitcoinBlock
-      ? {
-          height: bitcoinBlock.height,
-          time: bitcoinBlock.time,
         }
       : undefined,
     canonical: body.canonical ?? true,
@@ -146,22 +161,13 @@ function sanitizeTransaction(body: Record<string, unknown>): Record<string, unkn
 }
 
 function sanitizeBlock(body: Record<string, unknown>): Record<string, unknown> {
+  // Only the fields consumed by encodeBlock are kept (blockTime and
+  // TenureHeight are derived from the burn block, not the Stacks block).
   return {
-    canonical: body.canonical ?? true,
     height: body.height,
     hash: body.hash,
-    block_time: body.block_time,
-    block_time_iso: body.block_time_iso,
-    tenure_height: body.tenure_height,
-    index_block_hash: body.index_block_hash,
-    parent_block_hash: body.parent_block_hash,
-    parent_index_block_hash: body.parent_index_block_hash,
     burn_block_time: body.burn_block_time,
-    burn_block_time_iso: body.burn_block_time_iso,
-    burn_block_hash: body.burn_block_hash,
     burn_block_height: body.burn_block_height,
-    miner_txid: body.miner_txid,
-    tx_count: body.tx_count,
   };
 }
 

@@ -6,7 +6,7 @@
       "block_height": 47486,
       "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
       "canonical": true,
-      "clarity_version": null,
+      "clarity_version": 1,
       "source_code": "",
       "abi": "{}"
     }
@@ -1516,46 +1516,6 @@
       "canonical": true
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a",
-      "event_count": 1,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "96991",
-      "sender": {
-        "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
-        "nonce": 22
-      },
-      "block": {
-        "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
-        "height": 47786,
-        "tx_index": 66
-      },
-      "canonical": true
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
-      "event_count": 1,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "102000",
-      "sender": {
-        "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-        "nonce": 296
-      },
-      "block": {
-        "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "height": 47784,
-        "tx_index": 48
-      },
-      "canonical": true
-    }
-  },
   "GET https://api.hiro.so/extended/v3/transactions/0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494": {
     "statusCode": 200,
     "body": {
@@ -1591,6 +1551,146 @@
       "block": {
         "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
         "height": 47786,
+        "tx_index": 3
+      },
+      "canonical": true
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "102000",
+      "sender": {
+        "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
+        "nonce": 296
+      },
+      "block": {
+        "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+        "height": 47784,
+        "tx_index": 48
+      },
+      "canonical": true
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "96991",
+      "sender": {
+        "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
+        "nonce": 22
+      },
+      "block": {
+        "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+        "height": 47786,
+        "tx_index": 66
+      },
+      "canonical": true
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xf50b716fe552d9aee13f2700dd7cc3ec3aa4e22142c4c0184e993269d6122f2f": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0xf50b716fe552d9aee13f2700dd7cc3ec3aa4e22142c4c0184e993269d6122f2f",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "97156",
+      "sender": {
+        "address": "SPGKD75JXD79Z204ZGJSBNC5BTD4P0Q2F81WEM9A",
+        "nonce": 18
+      },
+      "block": {
+        "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+        "height": 47789,
+        "tx_index": 7
+      },
+      "canonical": true
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xbd7aa1a7910be36de2d2761c123eb8c990d31f2c1e7d8f8f67bdcb4e077e9bca": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0xbd7aa1a7910be36de2d2761c123eb8c990d31f2c1e7d8f8f67bdcb4e077e9bca",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "97156",
+      "sender": {
+        "address": "SPGKD75JXD79Z204ZGJSBNC5BTD4P0Q2F81WEM9A",
+        "nonce": 16
+      },
+      "block": {
+        "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+        "height": 47789,
+        "tx_index": 5
+      },
+      "canonical": true
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0x8b7e4f295feff48c5a9868bbacc6125cb001ed6db66e9ad1b41395157337eb3c": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0x8b7e4f295feff48c5a9868bbacc6125cb001ed6db66e9ad1b41395157337eb3c",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "97156",
+      "sender": {
+        "address": "SPGKD75JXD79Z204ZGJSBNC5BTD4P0Q2F81WEM9A",
+        "nonce": 17
+      },
+      "block": {
+        "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+        "height": 47789,
+        "tx_index": 6
+      },
+      "canonical": true
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "97156",
+      "sender": {
+        "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
+        "nonce": 24
+      },
+      "block": {
+        "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+        "height": 47786,
+        "tx_index": 4
+      },
+      "canonical": true
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/0xb5118ef0d83825321026f45626e60c3f7f9164ea4e64f8147289ad11dccf4b1e": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0xb5118ef0d83825321026f45626e60c3f7f9164ea4e64f8147289ad11dccf4b1e",
+      "event_count": 1,
+      "type": "contract_call",
+      "status": "success",
+      "fee_rate": "102000",
+      "sender": {
+        "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
+        "nonce": 25
+      },
+      "block": {
+        "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+        "height": 47789,
         "tx_index": 3
       },
       "canonical": true
