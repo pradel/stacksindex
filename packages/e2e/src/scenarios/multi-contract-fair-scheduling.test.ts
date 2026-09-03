@@ -3,14 +3,19 @@
 // oxlint-disable typescript/no-unsafe-assignment
 // oxlint-disable typescript/no-explicit-any
 // oxlint-disable vitest/max-expects
-import { sql, type SQL } from "drizzle-orm";
-import { createHistoricalRuntime, createLogger, type EventHandler } from "stacksindex";
+import { createLogger } from "stacksindex";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { assertBenchmarkSnapshot, registerScenarioBenchmark } from "../benchmark.ts";
 import { createScenarioRecorder } from "../recorder.ts";
-import { createTestDatabase, type TestDatabase } from "../test-db.ts";
-import { createTraceCollector } from "../tracer.ts";
+import {
+  createScenarioDatabase,
+  expectCheckpoint,
+  expectProgress,
+  expectStoredBlockHeights,
+  expectTableCount,
+  runScenario,
+} from "../scenario.ts";
 
 const SATOSHIBLES_CONTRACT = "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles";
 const BRIDGE_CONTRACT = "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles";
@@ -28,74 +33,38 @@ vi.mock("undici", () => ({
   ) => recorder.handleRequest(url, init),
 }));
 
-async function selectRows<Row>(database: TestDatabase["db"], query: SQL): Promise<Row[]> {
-  const result = (await database.execute(query)) as unknown as { rows: Row[] } | Row[];
-  if (Array.isArray(result)) {
-    return result;
-  }
-  return result.rows;
-}
-
 describe("e2E: Multi-contract fair scheduling scenario", () => {
-  // oxlint-disable-next-line init-declarations
-  let testDb: TestDatabase;
+  const database = createScenarioDatabase();
   const logger = createLogger({ level: 0 });
 
   beforeAll(async () => {
-    testDb = await createTestDatabase();
+    await database.setup();
   });
 
   beforeEach(async () => {
-    await testDb.cleanup();
+    await database.reset();
   });
 
   afterAll(async () => {
     registerScenarioBenchmark("multi-contract-fair-scheduling", recorder.getBenchmarkSummary());
     await recorder.save();
-    await testDb.close();
+    await database.teardown();
     vi.restoreAllMocks();
   });
 
   test("delivers globally ordered events across contracts sharing overlapping block ranges", async () => {
-    const tracer = createTraceCollector();
-
-    const satoshiblesHandler: EventHandler = (event) => {
-      tracer.record(SATOSHIBLES_CONTRACT, event);
-      return Promise.resolve();
-    };
-
-    const bridgeHandler: EventHandler = (event) => {
-      tracer.record(BRIDGE_CONTRACT, event);
-      return Promise.resolve();
-    };
-
-    const runtime = createHistoricalRuntime({
+    const { tracer, events } = await runScenario({
+      db: database.db,
       logger,
-      db: testDb.db,
+      contracts: [
+        { contractId: SATOSHIBLES_CONTRACT, startBlock: START_BLOCK, endBlock: END_BLOCK },
+        { contractId: BRIDGE_CONTRACT, startBlock: START_BLOCK, endBlock: END_BLOCK },
+      ],
     });
-
-    const result = await runtime.run([
-      {
-        contractId: SATOSHIBLES_CONTRACT,
-        handler: satoshiblesHandler,
-        startBlock: START_BLOCK,
-        endBlock: END_BLOCK,
-      },
-      {
-        contractId: BRIDGE_CONTRACT,
-        handler: bridgeHandler,
-        startBlock: START_BLOCK,
-        endBlock: END_BLOCK,
-      },
-    ]);
-
-    expect(result.isOk()).toBe(true);
-
-    const recordedEvents = tracer.getEvents();
 
     // Satoshibles holds 7 events (47784x3, 47786x4), the bridge holds 18 events
     // (47784x10, 47785x6, 47786x2).
-    expect(recordedEvents).toHaveLength(25);
+    expect(events).toHaveLength(25);
 
     // Verify strict global chronological order across both contracts
     // (blockHeight, txIndex, eventIndex). Contracts interleave inside block
@@ -104,7 +73,7 @@ describe("e2E: Multi-contract fair scheduling scenario", () => {
     tracer.assertChronologicalOrder();
 
     // Verify every event is within the requested range.
-    for (const event of recordedEvents) {
+    for (const event of events) {
       expect(event.blockHeight).toBeGreaterThanOrEqual(START_BLOCK);
       expect(event.blockHeight).toBeLessThanOrEqual(END_BLOCK);
       expect(event.topic).toBe("print");
@@ -166,67 +135,42 @@ describe("e2E: Multi-contract fair scheduling scenario", () => {
     // Verify the interleaved block sequence proves globally ordered delivery:
     // 47784 alternates bridge/satoshibles by tx_index, 47785 is bridge-only,
     // 47786 alternates again.
-    expect(recordedEvents.map((event) => event.blockHeight)).toStrictEqual([
+    expect(events.map((event) => event.blockHeight)).toStrictEqual([
       47784, 47784, 47784, 47784, 47784, 47784, 47784, 47784, 47784, 47784, 47784, 47784, 47784,
       47785, 47785, 47785, 47785, 47785, 47785, 47786, 47786, 47786, 47786, 47786, 47786,
     ]);
 
     // Verify both contracts are marked complete at endBlock.
-    const progress = await selectRows<{
-      contractId: string;
-      cursor: string | null;
-      lastBlockHeight: string | number | bigint;
-      isComplete: boolean;
-    }>(
-      testDb.db,
-      sql`select "contract_id" as "contractId", "cursor", "lastBlockHeight", "is_complete" as "isComplete" from "sync_progress"`,
-    );
-    expect(progress).toHaveLength(2);
-    for (const row of progress) {
-      expect(row.cursor).toBeNull();
-      expect(row.isComplete).toBe(true);
-      expect(Number(row.lastBlockHeight)).toBe(END_BLOCK);
-    }
+    await expectProgress(database.db, SATOSHIBLES_CONTRACT, {
+      cursor: null,
+      lastBlockHeight: END_BLOCK,
+      isComplete: true,
+    });
+    await expectProgress(database.db, BRIDGE_CONTRACT, {
+      cursor: null,
+      lastBlockHeight: END_BLOCK,
+      isComplete: true,
+    });
+    await expectTableCount(database.db, "sync_progress", 2);
 
     // Verify the indexing checkpoint advanced to the shared endBlock.
-    const checkpoints = await selectRows<{ blockHeight: string | number | bigint }>(
-      testDb.db,
-      sql`select "blockHeight" from "checkpoints"`,
-    );
-    expect(checkpoints).toHaveLength(1);
-    expect(Number(checkpoints[0].blockHeight)).toBe(END_BLOCK);
+    await expectCheckpoint(database.db, END_BLOCK);
 
     // Verify blocks are cached once and shared across contracts. The sync
     // Sweeps one logs page past endBlock plus the cursor-discovery backlog, so
     // The store holds 24 blocks while indexing filters delivery to the range.
-    const storedBlocks = await selectRows<{ height: string | number | bigint }>(
-      testDb.db,
-      sql`select "height" from "blocks"`,
+    await expectStoredBlockHeights(
+      database.db,
+      [
+        47669, 47675, 47678, 47681, 47690, 47693, 47695, 47697, 47698, 47706, 47708, 47711, 47713,
+        47729, 47731, 47733, 47767, 47771, 47773, 47779, 47783, 47784, 47785, 47786,
+      ],
     );
-    const storedHeights = storedBlocks
-      .map((row) => Number(row.height))
-      .sort((leftHeight, rightHeight) => leftHeight - rightHeight);
-    expect(storedHeights).toStrictEqual([
-      47669, 47675, 47678, 47681, 47690, 47693, 47695, 47697, 47698, 47706, 47708, 47711, 47713,
-      47729, 47731, 47733, 47767, 47771, 47773, 47779, 47783, 47784, 47785, 47786,
-    ]);
-    expect(storedHeights).toContain(47784);
-    expect(storedHeights).toContain(47785);
-    expect(storedHeights).toContain(47786);
 
     // 76 cached transactions back 25 delivered events: blocks are fetched once
     // And shared, transactions deduplicate across pages.
-    const txCount = await selectRows<{ count: string | number | bigint }>(
-      testDb.db,
-      sql`select count(*) as "count" from "transactions"`,
-    );
-    expect(Number(txCount[0].count)).toBe(76);
-
-    const eventCount = await selectRows<{ count: string | number | bigint }>(
-      testDb.db,
-      sql`select count(*) as "count" from "events"`,
-    );
-    expect(Number(eventCount[0].count)).toBe(83);
+    await expectTableCount(database.db, "transactions", 76);
+    await expectTableCount(database.db, "events", 83);
 
     // Verify API call count benchmark snapshot
     assertBenchmarkSnapshot(recorder.getBenchmarkSummary());
