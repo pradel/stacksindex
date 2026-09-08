@@ -1,0 +1,15 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`e2E: Resume with idempotent re-run scenario > second run on the same database performs no API calls and delivers no events 1`] = `
+{
+  "endpoints": {
+    "GET /extended/v1/contract/:contract_id": 1,
+    "GET /extended/v2/blocks/:height_or_hash": 2,
+    "GET /extended/v2/smart-contracts/:contract_id/logs": 2,
+    "GET /extended/v3/principals/:principal/transactions": 1,
+    "GET /extended/v3/transactions/:tx_id": 12,
+    "GET /extended/v3/transactions/:tx_id/events": 1,
+  },
+  "totalCalls": 19,
+}
+`;

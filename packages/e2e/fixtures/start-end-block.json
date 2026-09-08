@@ -6,7 +6,7 @@
       "block_height": 47486,
       "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
       "canonical": true,
-      "clarity_version": null,
+      "clarity_version": 1,
       "source_code": "",
       "abi": "{}"
     }
