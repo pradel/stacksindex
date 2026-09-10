@@ -41,6 +41,15 @@ describe("benchmark module", () => {
       expect(normalizeRoute("GET", url)).toBe("GET /extended/v3/transactions/:tx_id");
     });
 
+    test("normalizes batch transactions endpoint distinctly from single transaction", () => {
+      expect(
+        normalizeRoute(
+          "GET",
+          "https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xabc&tx_id=0xdef",
+        ),
+      ).toBe("GET /extended/v3/transactions/batch");
+    });
+
     test("normalizes block by height or hash endpoint", () => {
       const url = "https://api.hiro.so/extended/v2/blocks/47784";
       expect(normalizeRoute("GET", url)).toBe("GET /extended/v2/blocks/:height_or_hash");

@@ -61,6 +61,9 @@ export function normalizeRoute(method: string, rawUrl: string): string {
   if (/^\/extended\/v3\/transactions\/[^/]+\/events$/u.test(pathname)) {
     return `${upperMethod} /extended/v3/transactions/:tx_id/events`;
   }
+  if (pathname === "/extended/v3/transactions/batch") {
+    return `${upperMethod} /extended/v3/transactions/batch`;
+  }
   if (/^\/extended\/v3\/transactions\/[^/]+$/u.test(pathname)) {
     return `${upperMethod} /extended/v3/transactions/:tx_id`;
   }
