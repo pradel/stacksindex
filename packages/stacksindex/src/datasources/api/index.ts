@@ -50,6 +50,14 @@ export type GetContractLogsQuery =
 export type GetTransactionQuery =
   paths["/extended/v3/transactions/{tx_id}"]["get"]["parameters"]["query"];
 
+export type GetTransactionsBatchQuery =
+  paths["/extended/v3/transactions/batch"]["get"]["parameters"]["query"];
+
+export type TransactionsBatchResponse =
+  paths["/extended/v3/transactions/batch"]["get"]["responses"]["200"]["content"]["application/json"];
+
+export type TransactionSummary = TransactionsBatchResponse["results"][number];
+
 export type GetPrincipalTransactionsQuery =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["parameters"]["query"];
 
@@ -67,6 +75,21 @@ export type TransactionApiResponse = Extract<
 > & {
   canonical?: boolean;
 };
+
+/**
+ * Minimal transaction shape required for storage.
+ * Satisfied by both the full `GET /extended/v3/transactions/{tx_id}` response
+ * and the `GET /extended/v3/transactions/batch` summaries.
+ */
+export interface StorableTransaction {
+  tx_id: string;
+  sender: { address: string; nonce: number };
+  fee_rate: string;
+  block: { height: number; hash: string; tx_index: number };
+  status: string;
+  type: string;
+  canonical?: boolean;
+}
 
 export type PrincipalTransactionsResponse =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -308,6 +331,17 @@ export const datasourceStacksApi = {
       path: `/extended/v3/transactions/${txId}`,
       method: "GET",
       query: { include: include && include.length > 0 ? include.join(",") : null },
+    });
+  },
+
+  getTransactionsBatch(context: DatasourceStacksApiContext, txIds: string[]) {
+    if (txIds.length === 0) {
+      return Promise.resolve(Result.ok({ results: [] } as TransactionsBatchResponse));
+    }
+    return this._request<TransactionsBatchResponse, GetTransactionsBatchQuery>(context, {
+      path: "/extended/v3/transactions/batch",
+      method: "GET",
+      query: { tx_id: txIds },
     });
   },
 

@@ -152,6 +152,7 @@ Key differences from EVM:
    ┌──────────────────────────────────────────────────────────┐
    │ For each batch:                                          │
    │ - Batch fetch missing txs: GET /extended/v3/transactions/│
+   │   batch (up to 20 tx_ids per request)                    │
    │ - Batch fetch missing blocks: GET /extended/v2/blocks/   │
    │ Store in sync store: events, transactions, blocks        │
    │ Update cursor in sync_progress                           │

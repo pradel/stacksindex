@@ -34,7 +34,7 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "@stacks/blockchain-api-client": "9.0.2",
+    "@stacks/blockchain-api-client": "9.2.0",
     "@stacks/codec": "2.1.0",
     "@stacks/transactions": "7.6.0",
     "better-result": "3.0.1",
