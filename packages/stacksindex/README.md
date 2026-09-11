@@ -108,13 +108,13 @@ const handler = async (event, { client }) => {
 
 ### `createHistoricalRuntime(context)`
 
-| Option        | Type                               | Default                 | Description                                                  |
-| ------------- | ---------------------------------- | ----------------------- | ------------------------------------------------------------ |
-| `db`          | `NodePgDatabase \| PgliteDatabase` | _Required_              | Drizzle database instance for sync storage and checkpoints.  |
-| `logger`      | `Logger`                           | _Required_              | Logger instance from `createLogger({ level })`.              |
-| `chainId`     | `number`                           | `1`                     | Stacks Chain ID (`1` for Mainnet, `2147483648` for Testnet). |
-| `api.baseUrl` | `string`                           | `"https://api.hiro.so"` | Stacks API URL.                                              |
-| `api.apiKey`  | `string`                           | `undefined`             | Optional Hiro API key.                                       |
+| Option        | Type                               | Default           | Description                                                                                                                              |
+| ------------- | ---------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `db`          | `NodePgDatabase \| PgliteDatabase` | _Required_        | Drizzle database instance for sync storage and checkpoints.                                                                              |
+| `logger`      | `Logger`                           | _Required_        | Logger instance from `createLogger({ level })`.                                                                                          |
+| `network`     | `"mainnet" \| "testnet" \| number` | `"mainnet"`       | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                         |
+| `api.baseUrl` | `string`                           | _Network default_ | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the default. |
+| `api.apiKey`  | `string`                           | `undefined`       | Optional Hiro API key.                                                                                                                   |
 
 ### Filter
 

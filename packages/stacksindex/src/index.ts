@@ -5,6 +5,14 @@ export { createDatabase, migrate } from "./database/index.ts";
 export type { DatabaseConfig, DatabaseResult } from "./database/index.ts";
 export { createHistoricalRuntime } from "./runtime/historical.ts";
 export type { Filter, HistoricalRuntimeContext } from "./runtime/historical.ts";
+export {
+  MAINNET_API_BASE_URL,
+  MAINNET_CHAIN_ID,
+  TESTNET_API_BASE_URL,
+  TESTNET_CHAIN_ID,
+  resolveNetwork,
+} from "./lib/network.ts";
+export type { NetworkName, NetworkOption, ResolvedNetwork } from "./lib/network.ts";
 export { datasourceStacksApi, typedCallReadFunction } from "./datasources/api/index.ts";
 export type {
   CallReadResponse,

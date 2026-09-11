@@ -7,11 +7,13 @@ import { StacksApiUnexpectedError, type StacksApiError } from "../datasources/ap
 import {
   datasourceStacksApi,
   type BlockApiResponse,
+  type DatasourceStacksApiContext,
   type StorableTransaction,
 } from "../datasources/api/index.ts";
 import { createIndexing } from "../indexing/index.ts";
 import { chunkArray } from "../lib/array.ts";
 import { FilterValidationError, type HandlerExecutionError } from "../lib/errors.ts";
+import { resolveNetwork, type NetworkOption, type ResolvedNetwork } from "../lib/network.ts";
 import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
@@ -44,10 +46,33 @@ interface ResolvedFilter {
 export interface HistoricalRuntimeContext<TSchema extends Record<string, unknown> = any> {
   logger: Logger;
   db: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>;
-  chainId?: number;
+  /** Which chain to index. Defaults to `"mainnet"`. */
+  network?: NetworkOption;
   api?: {
+    /** Overrides the network's default API endpoint. */
     baseUrl?: string;
     apiKey?: string;
+  };
+}
+
+type ResolvedHistoricalRuntimeContext = Omit<HistoricalRuntimeContext, "network" | "api"> & {
+  chainId: number;
+  api: { baseUrl: string; apiKey?: string };
+  network: ResolvedNetwork;
+};
+
+function resolveContext(context: HistoricalRuntimeContext): ResolvedHistoricalRuntimeContext {
+  const network = resolveNetwork(context.network);
+  const baseUrl = context.api?.baseUrl ?? network.baseUrl;
+  return {
+    logger: context.logger,
+    db: context.db,
+    network,
+    chainId: network.chainId,
+    api: {
+      baseUrl,
+      ...(context.api?.apiKey === undefined ? {} : { apiKey: context.api.apiKey }),
+    },
   };
 }
 
@@ -79,7 +104,7 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
 
 async function validateAndResolveFilters(
   filters: Filter[],
-  context: HistoricalRuntimeContext,
+  context: DatasourceStacksApiContext,
 ): Promise<Result<ResolvedFilter[], StacksApiError | FilterValidationError>> {
   for (const filter of filters) {
     if (filter.startBlock !== undefined) {
@@ -157,7 +182,7 @@ async function validateAndResolveFilters(
 
 async function initContractFromScratch(
   filter: ResolvedFilter,
-  context: HistoricalRuntimeContext,
+  context: ResolvedHistoricalRuntimeContext,
 ): Promise<Result<ContractSyncState, StacksApiError>> {
   const historicalSync = createHistoricalSync(context);
   const cursorResult = await historicalSync.getContractEventsFirstCursor(filter.contractId, {
@@ -175,7 +200,7 @@ async function initContractFromScratch(
     await syncStore.upsertSyncProgress(
       {
         contractId: filter.contractId,
-        chainId: context.chainId ?? 1,
+        chainId: context.chainId,
         cursor: null,
         lastBlockHeight: filter.endBlock ?? 0,
         isComplete: filter.endBlock !== undefined,
@@ -201,7 +226,7 @@ async function initContractFromScratch(
     await syncStore.upsertSyncProgress(
       {
         contractId: filter.contractId,
-        chainId: context.chainId ?? 1,
+        chainId: context.chainId,
         cursor: null,
         lastBlockHeight: filter.endBlock,
         isComplete: true,
@@ -234,7 +259,7 @@ async function initContractFromScratch(
 async function initContractFromSaved(
   filter: ResolvedFilter,
   saved: NonNullable<Awaited<ReturnType<typeof syncStore.getSyncProgress>>>,
-  context: HistoricalRuntimeContext,
+  context: ResolvedHistoricalRuntimeContext,
 ): Promise<Result<ContractSyncState, StacksApiError>> {
   const savedHeight = Number(saved.lastBlockHeight);
   const isAlreadyComplete =
@@ -296,7 +321,7 @@ async function initContractFromSaved(
     await syncStore.upsertSyncProgress(
       {
         contractId: filter.contractId,
-        chainId: context.chainId ?? 1,
+        chainId: context.chainId,
         cursor: null,
         lastBlockHeight: filter.endBlock ?? savedHeight,
         isComplete: filter.endBlock !== undefined,
@@ -322,7 +347,7 @@ async function initContractFromSaved(
     await syncStore.upsertSyncProgress(
       {
         contractId: filter.contractId,
-        chainId: context.chainId ?? 1,
+        chainId: context.chainId,
         cursor: null,
         lastBlockHeight: filter.endBlock,
         isComplete: true,
@@ -350,12 +375,12 @@ async function initContractFromSaved(
 
 async function initializeContractStates(
   filters: ResolvedFilter[],
-  context: HistoricalRuntimeContext,
+  context: ResolvedHistoricalRuntimeContext,
 ): Promise<Result<ContractSyncState[], StacksApiError>> {
   const states: ContractSyncState[] = [];
   for (const filter of filters) {
     const saved = await syncStore.getSyncProgress(
-      { contractId: filter.contractId, chainId: context.chainId ?? 1 },
+      { contractId: filter.contractId, chainId: context.chainId },
       { db: context.db },
     );
 
@@ -373,11 +398,9 @@ async function initializeContractStates(
   return Result.ok(states);
 }
 
-export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
-  const { chainId = 1 } = context;
-  if (!Number.isSafeInteger(chainId)) {
-    throw new RangeError(`Invalid chainId: ${chainId}. Expected a safe integer.`);
-  }
+export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
+  const context = resolveContext(input);
+  const { chainId } = context;
 
   async function processEventsUpTo(
     toBlockHeight: number,

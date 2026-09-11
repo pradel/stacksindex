@@ -6,6 +6,8 @@
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable jest/max-expects
 // oxlint-disable vitest/prefer-called-once, vitest/prefer-called-times
+import { URL } from "node:url";
+
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createDatabase } from "../database/index.ts";
@@ -4191,8 +4193,8 @@ describe("historical runtime with handlers", () => {
     });
   });
 
-  test("rejects invalid custom chainIds", () => {
-    const invalidChainIds = [
+  test("rejects invalid custom networks", () => {
+    const invalidNetworks = [
       1.5,
       Number.NaN,
       Number.POSITIVE_INFINITY,
@@ -4201,14 +4203,14 @@ describe("historical runtime with handlers", () => {
       Number.MIN_SAFE_INTEGER - 1,
     ];
 
-    invalidChainIds.forEach((chainId) => {
+    invalidNetworks.forEach((network) => {
       expect(() =>
-        createHistoricalRuntime({ logger: context.logger, db: testDb.db, chainId }),
-      ).toThrow(`Invalid chainId: ${chainId}. Expected a safe integer.`);
+        createHistoricalRuntime({ logger: context.logger, db: testDb.db, network }),
+      ).toThrow(`Invalid chainId: ${network}. Expected a safe integer.`);
     });
   });
 
-  test("supports custom chainId in context", async () => {
+  test("supports custom network in context", async () => {
     const contractId = "SP123.custom-chain";
     const customChainId = 2147483648;
     const handler = vi.fn();
@@ -4326,7 +4328,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({
       logger: context.logger,
       db: testDb.db,
-      chainId: customChainId,
+      network: customChainId,
     });
     const result = await runtime.run([{ contractId, handler }]);
 
@@ -4351,6 +4353,102 @@ describe("historical runtime with handlers", () => {
       { db: testDb.db },
     );
     expect(defaultProgress).toBeNull();
+  });
+
+  test('network "testnet" uses the testnet chain ID and API', async () => {
+    const contractId = "SP123.testnet";
+    const requestedUrls: string[] = [];
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      requestedUrls.push(rawUrl);
+      const url = decodeURIComponent(rawUrl);
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({ contract_id: contractId, block_height: 50, tx_id: "tx-deploy" }),
+        };
+      }
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 0,
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [],
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({
+      logger: context.logger,
+      db: testDb.db,
+      network: "testnet",
+    });
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+
+    expect(result.isOk()).toBe(true);
+    expect(requestedUrls.length).toBeGreaterThan(0);
+    for (const requestedUrl of requestedUrls) {
+      expect(new URL(requestedUrl).origin).toBe("https://api.testnet.hiro.so");
+    }
+
+    const progress = await syncStore.getSyncProgress(
+      { contractId, chainId: 2_147_483_648 },
+      { db: testDb.db },
+    );
+    expect(progress).not.toBeNull();
+    expect(progress?.chainId).toBe(2_147_483_648n);
+  });
+
+  test("explicit api.baseUrl overrides the network default", async () => {
+    const contractId = "SP123.override";
+    const requestedUrls: string[] = [];
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      requestedUrls.push(rawUrl);
+      const url = decodeURIComponent(rawUrl);
+      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({ contract_id: contractId, block_height: 50, tx_id: "tx-deploy" }),
+        };
+      }
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 0,
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [],
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = createHistoricalRuntime({
+      logger: context.logger,
+      db: testDb.db,
+      network: "testnet",
+      api: { baseUrl: "https://custom.example" },
+    });
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+
+    expect(result.isOk()).toBe(true);
+    expect(requestedUrls.length).toBeGreaterThan(0);
+    for (const requestedUrl of requestedUrls) {
+      expect(new URL(requestedUrl).origin).toBe("https://custom.example");
+    }
+
+    const progress = await syncStore.getSyncProgress(
+      { contractId, chainId: 2_147_483_648 },
+      { db: testDb.db },
+    );
+    expect(progress).not.toBeNull();
   });
 
   test("fetches multiple transactions via batch endpoint in a single request", async () => {
