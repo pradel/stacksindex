@@ -1,5 +1,15 @@
 # stacksindex
 
+## 0.0.3
+
+### Patch Changes
+
+- [#34](https://github.com/pradel/stacksindex/pull/34) [`0b4ed4a`](https://github.com/pradel/stacksindex/commit/0b4ed4aef96fff31d8a509ee6c0b68456110da7a) Thanks [@pradel](https://github.com/pradel)! - Fetch missing transactions with the new `GET /extended/v3/transactions/batch` endpoint (up to 20 per request) instead of one request each. Backfills finish faster with far fewer API calls (119 to 42 in e2e) and less rate-limit pressure. Requires Stacks API 9.2.0+.
+
+- [#37](https://github.com/pradel/stacksindex/pull/37) [`74a605b`](https://github.com/pradel/stacksindex/commit/74a605b8078b1fdd17bb0ba93372a26e2b7ff226) Thanks [@pradel](https://github.com/pradel)! - Replace the `chainId` runtime option with `network`: pass `"mainnet"` (default), `"testnet"`, or a custom chain ID number. The Stacks API endpoint now defaults per network (`https://api.hiro.so`, `https://api.testnet.hiro.so`) and `api.baseUrl` overrides it.
+
+- [#36](https://github.com/pradel/stacksindex/pull/36) [`fc8f778`](https://github.com/pradel/stacksindex/commit/fc8f778a0729525048b36e6bbdb3dc021d259ccc) Thanks [@pradel](https://github.com/pradel)! - Remove the `canonical` column from the `transactions` table and all related handling. The Hiro v3 API only returns canonical chain data and no longer exposes a `canonical` field, so storing it was dead weight. Existing databases migrate automatically via `ALTER TABLE "transactions" DROP COLUMN "canonical"`.
+
 ## 0.0.2
 
 ### Patch Changes
