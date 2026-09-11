@@ -291,11 +291,13 @@ describe("typedCallReadFunction", () => {
 
     const result = await typedCallReadFunction(context, mockCallRead, params);
 
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(StacksApiUnexpectedError.is(result.error)).toBe(true);
-      expect(result.error.message).toContain("not found in ABI or is not a read_only function");
-    }
+    expect(result).toBeBetterErr(
+      new StacksApiUnexpectedError({
+        message: 'Function "transfer" not found in ABI or is not a read_only function',
+        cause: new Error('Function "transfer" not found in ABI'),
+        path: "/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/test-token/transfer",
+      }),
+    );
     expect(mockCallRead).not.toHaveBeenCalled();
   });
 
@@ -321,10 +323,13 @@ describe("typedCallReadFunction", () => {
 
     const result = await typedCallReadFunction(context, mockCallRead, params);
 
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error.message).toContain("expects 1 argument(s)");
-    }
+    expect(result).toBeBetterErr(
+      new StacksApiUnexpectedError({
+        message: 'Function "get-balance" expects 1 argument(s), but received 0',
+        cause: new Error('Argument count mismatch for "get-balance"'),
+        path: "/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/test-token/get-balance",
+      }),
+    );
   });
 
   it("returns error when API call returns okay: false", async () => {
@@ -352,10 +357,13 @@ describe("typedCallReadFunction", () => {
       functionName: "get-name",
     });
 
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error.message).toContain("NoSuchContract");
-    }
+    expect(result).toBeBetterErr(
+      new StacksApiUnexpectedError({
+        message: "Read-only call failed: NoSuchContract",
+        cause: { okay: false, result: "", cause: "NoSuchContract" },
+        path: "/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/test-token/get-name",
+      }),
+    );
   });
 
   it("propagates HTTP/API errors from datasource call", async () => {
@@ -384,9 +392,6 @@ describe("typedCallReadFunction", () => {
       functionName: "get-name",
     });
 
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error).toBe(apiError);
-    }
+    expect(result).toBeBetterErr(apiError);
   });
 });

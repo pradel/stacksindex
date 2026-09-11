@@ -8,6 +8,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import { datasourceStacksApi } from "../datasources/api/index.ts";
+import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
 import { createLogger } from "../logger/index.ts";
 import { createIndexing } from "./index.ts";
@@ -263,6 +264,8 @@ describe("indexing engine", () => {
     const event = createMockEvent();
     const result = await indexing.executeEvent(event);
 
-    expect(result.isErr()).toBe(true);
+    expect(result).toBeBetterErr(
+      new HandlerExecutionError({ contractId: "SP123.token", cause: error }),
+    );
   });
 });
