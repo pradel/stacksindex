@@ -7,9 +7,10 @@ exports[`e2E: Multi-block bounded range scenario > syncs and indexes events acro
     "GET /extended/v2/blocks/:height_or_hash": 2,
     "GET /extended/v2/smart-contracts/:contract_id/logs": 2,
     "GET /extended/v3/principals/:principal/transactions": 1,
-    "GET /extended/v3/transactions/:tx_id": 12,
+    "GET /extended/v3/transactions/:tx_id": 1,
     "GET /extended/v3/transactions/:tx_id/events": 1,
+    "GET /extended/v3/transactions/batch": 2,
   },
-  "totalCalls": 19,
+  "totalCalls": 10,
 }
 `;

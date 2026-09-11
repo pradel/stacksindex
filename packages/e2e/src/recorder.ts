@@ -128,6 +128,49 @@ function sanitizeContractLogs(body: Record<string, unknown>): Record<string, unk
   };
 }
 
+function sanitizeTransactionSummary(tx: Record<string, unknown>): Record<string, unknown> {
+  // Only the fields consumed by encodeTransaction are kept. The batch
+  // Endpoint returns summaries without event_count, events, or canonical.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const block = tx.block as Record<string, unknown> | undefined;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const sender = tx.sender as Record<string, unknown> | undefined;
+
+  return {
+    tx_id: tx.tx_id,
+    type: tx.type,
+    status: tx.status,
+    fee_rate: tx.fee_rate,
+    sender: sender
+      ? {
+          address: sender.address,
+          nonce: sender.nonce,
+        }
+      : undefined,
+    block: block
+      ? {
+          hash: block.hash,
+          height: block.height,
+          tx_index: block.tx_index,
+        }
+      : undefined,
+  };
+}
+
+function sanitizeTransactionsBatch(body: Record<string, unknown>): Record<string, unknown> {
+  const results = Array.isArray(body.results)
+    ? body.results.map((item: unknown) => {
+        if (!item || typeof item !== "object") {
+          return item;
+        }
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        return sanitizeTransactionSummary(item as Record<string, unknown>);
+      })
+    : body.results;
+
+  return { results };
+}
+
 function sanitizeTransaction(body: Record<string, unknown>): Record<string, unknown> {
   // Only the fields consumed by encodeTransaction are kept: bitcoin_block,
   // Sponsor, block.time and block.index_hash are never read.
@@ -195,6 +238,9 @@ export function sanitizePayload(rawUrl: string, body: unknown): unknown {
   if (rawUrl.includes("/extended/v3/principals/") && rawUrl.includes("/transactions")) {
     return sanitizePrincipalTransactions(obj);
   }
+  if (rawUrl.includes("/extended/v3/transactions/batch")) {
+    return sanitizeTransactionsBatch(obj);
+  }
   if (rawUrl.includes("/extended/v3/transactions/") && rawUrl.includes("/events")) {
     return sanitizeTransactionEvents(obj);
   }
@@ -212,6 +258,59 @@ export function sanitizePayload(rawUrl: string, body: unknown): unknown {
   }
 
   return body;
+}
+
+/**
+ * Parses transaction ids from a batch lookup URL. Supports both repeated
+ * (`?tx_id=A&tx_id=B`) and comma-separated (`?tx_id=A,B`) forms. Returns
+ * Null when the URL is not a batch lookup.
+ */
+function tryParseUrl(raw: string): URL | null {
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function parseBatchTxIds(rawUrl: string): string[] | null {
+  const url = tryParseUrl(rawUrl);
+  if (url?.pathname !== "/extended/v3/transactions/batch") {
+    return null;
+  }
+  const ids: string[] = [];
+  for (const value of url.searchParams.getAll("tx_id")) {
+    for (const id of value.split(",")) {
+      if (id !== "") {
+        ids.push(id);
+      }
+    }
+  }
+  return ids;
+}
+
+function findArchivedTransaction(
+  archive: FixtureArchive,
+  txId: string,
+): Record<string, unknown> | null {
+  for (const [rawKey, entry] of Object.entries(archive)) {
+    const spaceIndex = rawKey.indexOf(" ");
+    const method = spaceIndex === -1 ? "" : rawKey.slice(0, spaceIndex);
+    const url = spaceIndex === -1 ? null : tryParseUrl(rawKey.slice(spaceIndex + 1));
+    const isArchivedSingle =
+      entry.statusCode === 200 &&
+      method === "GET" &&
+      url?.pathname === `/extended/v3/transactions/${txId}` &&
+      url.search === "";
+    if (isArchivedSingle) {
+      const { body } = entry;
+      if (body && typeof body === "object") {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        return body as Record<string, unknown>;
+      }
+    }
+  }
+  return null;
 }
 
 export interface ScenarioRecorder {
@@ -283,6 +382,36 @@ export function createScenarioRecorder(
       const method = init?.method ?? "GET";
       tracker.recordCall(method, rawUrl);
       const key = normalizeKey(method, rawUrl);
+
+      // Replay mode: synthesize batch lookups from archived single-transaction
+      // Entries. Fixtures recorded before the batch endpoint existed only
+      // Contain individual transaction responses.
+      if (!shouldRecord && !(key in archive) && method === "GET") {
+        const batchIds = parseBatchTxIds(rawUrl);
+        if (batchIds) {
+          const results: Record<string, unknown>[] = [];
+          let complete = true;
+          for (const txId of batchIds) {
+            const txBody = findArchivedTransaction(archive, txId);
+            if (!txBody) {
+              complete = false;
+              break;
+            }
+            results.push(sanitizeTransactionSummary(txBody));
+          }
+          if (complete) {
+            const body = { results };
+            return {
+              statusCode: 200,
+              headers: { "content-type": "application/json" },
+              body: {
+                json: () => Promise.resolve(body),
+                text: () => Promise.resolve(JSON.stringify(body)),
+              },
+            };
+          }
+        }
+      }
 
       // Replay mode when recording is not required and the fixture key exists.
       if (!shouldRecord && key in archive) {

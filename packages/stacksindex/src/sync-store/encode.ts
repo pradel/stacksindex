@@ -1,7 +1,7 @@
 import type {
   BlockApiResponse,
   SmartContractLogEvent,
-  TransactionApiResponse,
+  StorableTransaction,
 } from "../datasources/api/index.ts";
 import type * as syncSchema from "./schema.js";
 
@@ -23,7 +23,7 @@ export const encodeTransaction = ({
   transaction,
   chainId,
 }: {
-  transaction: TransactionApiResponse;
+  transaction: StorableTransaction;
   chainId: number;
 }): typeof syncSchema.transactionsTable.$inferInsert => ({
   txId: transaction.tx_id,

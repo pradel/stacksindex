@@ -6,7 +6,7 @@ import type { PgliteDatabase } from "drizzle-orm/pglite";
 import type {
   BlockApiResponse,
   SmartContractLogEvent,
-  TransactionApiResponse,
+  StorableTransaction,
 } from "../datasources/api/index.ts";
 import { encodeBlock, encodeEvent, encodeTransaction } from "./encode.js";
 import {
@@ -45,7 +45,7 @@ export const syncStore = {
   },
 
   insertTransactions: async (
-    { transactions, chainId }: { transactions: TransactionApiResponse[]; chainId: number },
+    { transactions, chainId }: { transactions: StorableTransaction[]; chainId: number },
     context: Context,
   ) => {
     if (transactions.length === 0) {

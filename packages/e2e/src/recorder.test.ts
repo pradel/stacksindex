@@ -6,7 +6,7 @@ import process from "node:process";
 import { Response } from "undici";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { createScenarioRecorder } from "./recorder.ts";
+import { createScenarioRecorder, parseBatchTxIds, sanitizePayload } from "./recorder.ts";
 
 const originalRecord = process.env.RECORD;
 let tempDirs: string[] = [];
@@ -95,6 +95,124 @@ describe("scenario recorder", () => {
     expect(response.statusCode).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(recorder.size()).toBe(1);
+  });
+
+  test("parses batch transaction ids from repeated and comma-separated params", () => {
+    expect(
+      parseBatchTxIds("https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xaaa&tx_id=0xbbb"),
+    ).toStrictEqual(["0xaaa", "0xbbb"]);
+    expect(
+      parseBatchTxIds("https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xaaa,0xbbb"),
+    ).toStrictEqual(["0xaaa", "0xbbb"]);
+    expect(parseBatchTxIds("https://api.hiro.so/extended/v3/transactions/0xaaa")).toBeNull();
+    expect(parseBatchTxIds("not a url")).toBeNull();
+  });
+
+  test("sanitizes batch transaction payloads to summary fields", () => {
+    const body = {
+      results: [
+        {
+          tx_id: "0xaaa",
+          type: "contract_call",
+          status: "success",
+          fee_rate: "100",
+          sender: { address: "SP123", nonce: 1 },
+          sponsor: null,
+          fee: "dropped",
+          block: { hash: "0xblock", height: 10, time: 99, tx_index: 2, index_hash: "0xidx" },
+          event_count: 3,
+          events: [],
+        },
+      ],
+    };
+    expect(
+      sanitizePayload("https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xaaa", body),
+    ).toStrictEqual({
+      results: [
+        {
+          tx_id: "0xaaa",
+          type: "contract_call",
+          status: "success",
+          fee_rate: "100",
+          sender: { address: "SP123", nonce: 1 },
+          block: { hash: "0xblock", height: 10, tx_index: 2 },
+        },
+      ],
+    });
+  });
+
+  test("synthesizes batch lookups from archived single transactions in replay mode", async () => {
+    const fixturePath = createFixturePath();
+    const txUrl = (id: string) => `https://api.hiro.so/extended/v3/transactions/${id}`;
+    const txBody = (id: string, height: number) => ({
+      tx_id: id,
+      event_count: 1,
+      type: "contract_call",
+      status: "success",
+      fee_rate: "100",
+      sender: { address: "SP123", nonce: 0 },
+      block: { hash: `block-${height}`, height, time: 1000, tx_index: 0 },
+      canonical: true,
+    });
+    fs.writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        [`GET ${txUrl("0xaaa")}`]: { statusCode: 200, body: txBody("0xaaa", 10) },
+        [`GET ${txUrl("0xbbb")}`]: { statusCode: 200, body: txBody("0xbbb", 20) },
+      }),
+    );
+    process.env.RECORD = "false";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const recorder = createScenarioRecorder(fixturePath);
+    const response = await recorder.handleRequest(
+      "https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xaaa&tx_id=0xbbb",
+    );
+
+    expect(response.statusCode).toBe(200);
+    await expect(response.body.json()).resolves.toStrictEqual({
+      results: [
+        {
+          tx_id: "0xaaa",
+          type: "contract_call",
+          status: "success",
+          fee_rate: "100",
+          sender: { address: "SP123", nonce: 0 },
+          block: { hash: "block-10", height: 10, tx_index: 0 },
+        },
+        {
+          tx_id: "0xbbb",
+          type: "contract_call",
+          status: "success",
+          fee_rate: "100",
+          sender: { address: "SP123", nonce: 0 },
+          block: { hash: "block-20", height: 20, tx_index: 0 },
+        },
+      ],
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("falls through to live fetch when a batch id is missing from fixtures", async () => {
+    const fixturePath = createFixturePath();
+    fs.writeFileSync(fixturePath, JSON.stringify({}));
+    process.env.RECORD = "false";
+    const liveBody = { results: [] };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(liveBody), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const recorder = createScenarioRecorder(fixturePath);
+    const response = await recorder.handleRequest(
+      "https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xunknown",
+    );
+
+    expect(response.statusCode).toBe(200);
+    await expect(response.body.json()).resolves.toStrictEqual(liveBody);
+    // oxlint-disable-next-line vitest/prefer-called-once
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test("tracks calls in benchmark summary", async () => {

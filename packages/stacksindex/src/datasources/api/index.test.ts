@@ -380,6 +380,68 @@ describe("aPI DataSource", () => {
     });
   });
 
+  describe("getTransactionsBatch", () => {
+    test("returns batch data on 200 with repeated tx_id params", async () => {
+      const mockResponse = {
+        results: [
+          {
+            tx_id: "0xtx2",
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP123", nonce: 1 },
+            block: { hash: "0xblock2", height: 2, time: 2000, tx_index: 0 },
+          },
+          {
+            tx_id: "0xtx1",
+            type: "contract_call",
+            status: "success",
+            fee_rate: "1000",
+            sender: { address: "SP123", nonce: 0 },
+            block: { hash: "0xblock1", height: 1, time: 1000, tx_index: 0 },
+          },
+        ],
+      };
+
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe(
+          "https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xtx1&tx_id=0xtx2",
+        );
+        return {
+          statusCode: 200,
+          body: mockBody(mockResponse),
+        };
+      });
+
+      const result = await datasourceStacksApi.getTransactionsBatch(context, ["0xtx1", "0xtx2"]);
+      expect(result).toStrictEqual(Result.ok(mockResponse));
+    });
+
+    test("returns empty results without a request when txIds is empty", async () => {
+      const result = await datasourceStacksApi.getTransactionsBatch(context, []);
+      expect(result).toStrictEqual(Result.ok({ results: [] }));
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    test("returns StacksApiResponseError on 404", async () => {
+      mockRequest.mockReturnValue({
+        statusCode: 404,
+        statusText: "Not Found",
+        body: mockBody({ error: "Not found" }),
+        headers: { "content-type": "application/json" },
+      });
+
+      const result = await datasourceStacksApi.getTransactionsBatch(context, ["0xtx1"]);
+
+      expect(result.isErr()).toBe(true);
+      expect((result as any).error).toBeInstanceOf(StacksApiResponseError);
+      expect((result as any).error).toMatchObject({
+        status: 404,
+        path: "/extended/v3/transactions/batch",
+      });
+    });
+  });
+
   describe("getTransactionEvents", () => {
     test("returns transaction events on 200", async () => {
       const txId = "0xtx123";

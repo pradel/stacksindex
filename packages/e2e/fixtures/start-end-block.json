@@ -176,6 +176,28 @@
       ]
     }
   },
+  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
+    "statusCode": 200,
+    "body": {
+      "results": [
+        {
+          "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "300000",
+          "sender": {
+            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
+            "nonce": 294
+          },
+          "block": {
+            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "height": 47784,
+            "tx_index": 28
+          }
+        }
+      ]
+    }
+  },
   "GET https://api.hiro.so/extended/v2/blocks/0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864": {
     "statusCode": 200,
     "body": {
@@ -1496,113 +1518,311 @@
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11": {
+  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11&tx_id=0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae&tx_id=0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494&tx_id=0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a&tx_id=0x3c1593a34589e64780c8d6a0bff94d91187efabbd93a4e5dc082c9a7bbac27ed&tx_id=0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d&tx_id=0xb5118ef0d83825321026f45626e60c3f7f9164ea4e64f8147289ad11dccf4b1e&tx_id=0xbd7aa1a7910be36de2d2761c123eb8c990d31f2c1e7d8f8f67bdcb4e077e9bca&tx_id=0x8b7e4f295feff48c5a9868bbacc6125cb001ed6db66e9ad1b41395157337eb3c&tx_id=0xf50b716fe552d9aee13f2700dd7cc3ec3aa4e22142c4c0184e993269d6122f2f&tx_id=0x1c58de0de71e7865635d966c0fb10d21b41de6c8cd6636dd5a166d30ef9c0184&tx_id=0x2e1589f13aabb8782e70aa27d914fba122863cfe3f264a5c23c328fa08c8ede1&tx_id=0x099ecbb6a96f634f7645b5c02f4ed13ca7d40c1dac869c696168f7024212b4ef&tx_id=0xad61848410739e33bfc869780a3e9587cf635d26e88ca4f01cc5c7cd71d84439&tx_id=0x4bb2c0aace86499c3b72d3f8e2c72e8b08682941cb0a0a12cee8abdca1c38f91&tx_id=0x694b3c4e7b2e436924eb26182ea9110c6adc2b78544f739e1f29825cd3664879&tx_id=0x7e9ec594559208d81887e5d6829d94d9044201f0c5eb357ea85f9c723cfc0891&tx_id=0x2cc5e29e64a87b127d957cae99990f64c511203f2e5d32ecbcd1aa8ead632911&tx_id=0xfbbf2a2ac38ed12b493efac1781324d169a674a2c73d868377ca5402884d1c9e&tx_id=0x4970101b4f4400bbf28061194b08a4ef891568d8d72085249d26a236fbc9b474": {
     "statusCode": 200,
     "body": {
-      "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
-      "event_count": 1,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "102000",
-      "sender": {
-        "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-        "nonce": 295
-      },
-      "block": {
-        "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "height": 47784,
-        "tx_index": 34
-      },
-      "canonical": true
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a",
-      "event_count": 1,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "96991",
-      "sender": {
-        "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
-        "nonce": 22
-      },
-      "block": {
-        "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
-        "height": 47786,
-        "tx_index": 66
-      },
-      "canonical": true
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
-      "event_count": 1,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "102000",
-      "sender": {
-        "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-        "nonce": 296
-      },
-      "block": {
-        "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "height": 47784,
-        "tx_index": 48
-      },
-      "canonical": true
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494",
-      "event_count": 1,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "112200",
-      "sender": {
-        "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
-        "nonce": 21
-      },
-      "block": {
-        "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
-        "height": 47786,
-        "tx_index": 58
-      },
-      "canonical": true
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0x3c1593a34589e64780c8d6a0bff94d91187efabbd93a4e5dc082c9a7bbac27ed": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0x3c1593a34589e64780c8d6a0bff94d91187efabbd93a4e5dc082c9a7bbac27ed",
-      "event_count": 1,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "97156",
-      "sender": {
-        "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
-        "nonce": 23
-      },
-      "block": {
-        "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
-        "height": 47786,
-        "tx_index": 3
-      },
-      "canonical": true
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794": {
-    "statusCode": 200,
-    "body": {
-      "height": 47786,
-      "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
-      "burn_block_time": 1644171646,
-      "burn_block_height": 722078
+      "results": [
+        {
+          "tx_id": "0x4970101b4f4400bbf28061194b08a4ef891568d8d72085249d26a236fbc9b474",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "412214",
+          "sender": {
+            "address": "SP2MC6PBPNPSEHA6G87DDMN6WX3HGMTANXZBYKCNF",
+            "nonce": 44
+          },
+          "block": {
+            "hash": "0x52b6972203afc7edc99b409f164aa2d7fe8b63057961c3984590dab6c99c77f7",
+            "height": 47791,
+            "tx_index": 39
+          }
+        },
+        {
+          "tx_id": "0xfbbf2a2ac38ed12b493efac1781324d169a674a2c73d868377ca5402884d1c9e",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "142000",
+          "sender": {
+            "address": "SP3KF7VM8J4F1EYG0V2R9CV9PZM7ZXQVW6AWMR56K",
+            "nonce": 0
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 23
+          }
+        },
+        {
+          "tx_id": "0x2cc5e29e64a87b127d957cae99990f64c511203f2e5d32ecbcd1aa8ead632911",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SP1YW2GJ40TKBJZ55NVTGXCJ49N6BVM556F6308D5",
+            "nonce": 3
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 17
+          }
+        },
+        {
+          "tx_id": "0x7e9ec594559208d81887e5d6829d94d9044201f0c5eb357ea85f9c723cfc0891",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SP1YW2GJ40TKBJZ55NVTGXCJ49N6BVM556F6308D5",
+            "nonce": 2
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 16
+          }
+        },
+        {
+          "tx_id": "0x694b3c4e7b2e436924eb26182ea9110c6adc2b78544f739e1f29825cd3664879",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SP1YW2GJ40TKBJZ55NVTGXCJ49N6BVM556F6308D5",
+            "nonce": 1
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 15
+          }
+        },
+        {
+          "tx_id": "0x4bb2c0aace86499c3b72d3f8e2c72e8b08682941cb0a0a12cee8abdca1c38f91",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SP1YW2GJ40TKBJZ55NVTGXCJ49N6BVM556F6308D5",
+            "nonce": 0
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 14
+          }
+        },
+        {
+          "tx_id": "0xad61848410739e33bfc869780a3e9587cf635d26e88ca4f01cc5c7cd71d84439",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
+            "nonce": 27
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 13
+          }
+        },
+        {
+          "tx_id": "0x099ecbb6a96f634f7645b5c02f4ed13ca7d40c1dac869c696168f7024212b4ef",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
+            "nonce": 26
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 12
+          }
+        },
+        {
+          "tx_id": "0x2e1589f13aabb8782e70aa27d914fba122863cfe3f264a5c23c328fa08c8ede1",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "102000",
+          "sender": {
+            "address": "SPGKD75JXD79Z204ZGJSBNC5BTD4P0Q2F81WEM9A",
+            "nonce": 20
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 10
+          }
+        },
+        {
+          "tx_id": "0x1c58de0de71e7865635d966c0fb10d21b41de6c8cd6636dd5a166d30ef9c0184",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SPGKD75JXD79Z204ZGJSBNC5BTD4P0Q2F81WEM9A",
+            "nonce": 19
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 9
+          }
+        },
+        {
+          "tx_id": "0xf50b716fe552d9aee13f2700dd7cc3ec3aa4e22142c4c0184e993269d6122f2f",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SPGKD75JXD79Z204ZGJSBNC5BTD4P0Q2F81WEM9A",
+            "nonce": 18
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 7
+          }
+        },
+        {
+          "tx_id": "0x8b7e4f295feff48c5a9868bbacc6125cb001ed6db66e9ad1b41395157337eb3c",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SPGKD75JXD79Z204ZGJSBNC5BTD4P0Q2F81WEM9A",
+            "nonce": 17
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 6
+          }
+        },
+        {
+          "tx_id": "0xbd7aa1a7910be36de2d2761c123eb8c990d31f2c1e7d8f8f67bdcb4e077e9bca",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SPGKD75JXD79Z204ZGJSBNC5BTD4P0Q2F81WEM9A",
+            "nonce": 16
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 5
+          }
+        },
+        {
+          "tx_id": "0xb5118ef0d83825321026f45626e60c3f7f9164ea4e64f8147289ad11dccf4b1e",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "102000",
+          "sender": {
+            "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
+            "nonce": 25
+          },
+          "block": {
+            "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "height": 47789,
+            "tx_index": 3
+          }
+        },
+        {
+          "tx_id": "0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
+            "nonce": 24
+          },
+          "block": {
+            "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "height": 47786,
+            "tx_index": 4
+          }
+        },
+        {
+          "tx_id": "0x3c1593a34589e64780c8d6a0bff94d91187efabbd93a4e5dc082c9a7bbac27ed",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "97156",
+          "sender": {
+            "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
+            "nonce": 23
+          },
+          "block": {
+            "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "height": 47786,
+            "tx_index": 3
+          }
+        },
+        {
+          "tx_id": "0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "96991",
+          "sender": {
+            "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
+            "nonce": 22
+          },
+          "block": {
+            "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "height": 47786,
+            "tx_index": 66
+          }
+        },
+        {
+          "tx_id": "0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "112200",
+          "sender": {
+            "address": "SPW1MN5C4HG2B3V5GBPHAFDDE88YNCX35ECVX4B",
+            "nonce": 21
+          },
+          "block": {
+            "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "height": 47786,
+            "tx_index": 58
+          }
+        },
+        {
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "102000",
+          "sender": {
+            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
+            "nonce": 296
+          },
+          "block": {
+            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "height": 47784,
+            "tx_index": 48
+          }
+        },
+        {
+          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "102000",
+          "sender": {
+            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
+            "nonce": 295
+          },
+          "block": {
+            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "height": 47784,
+            "tx_index": 34
+          }
+        }
+      ]
     }
   }
 }

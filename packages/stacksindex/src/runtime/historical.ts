@@ -3,12 +3,11 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 import { migrate } from "../database/index.ts";
-import type { StacksApiError } from "../datasources/api/errors.ts";
+import { StacksApiUnexpectedError, type StacksApiError } from "../datasources/api/errors.ts";
 import {
   datasourceStacksApi,
   type BlockApiResponse,
-  type SmartContractLogEvent,
-  type TransactionApiResponse,
+  type StorableTransaction,
 } from "../datasources/api/index.ts";
 import { createIndexing } from "../indexing/index.ts";
 import { chunkArray } from "../lib/array.ts";
@@ -20,6 +19,12 @@ import { createHistoricalSync, parseLogsCursor } from "../sync-historical/index.
 import { syncStore } from "../sync-store/index.ts";
 
 const BATCH_SIZE = 5;
+
+/**
+ * Max transaction ids per `GET /extended/v3/transactions/batch` call.
+ * The API returns summaries for up to 20 mined transactions per request.
+ */
+const TRANSACTIONS_BATCH_LIMIT = 20;
 
 export interface Filter {
   contractId: string;
@@ -457,27 +462,52 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     return Result.ok(undefined);
   }
 
+  async function fetchChunkViaBatch(
+    chunk: string[],
+  ): Promise<Result<StorableTransaction[], StacksApiError>> {
+    const batchResult = await datasourceStacksApi.getTransactionsBatch(context, chunk);
+    if (batchResult.isErr()) {
+      return Result.err(batchResult.error);
+    }
+    // The batch endpoint returns canonical mined transactions in newest-first
+    // Order, not in request order, and omits unknown / non-canonical / mempool
+    // Ids instead of erroring. Index by id to restore request order.
+    const byId = new Map(batchResult.value.results.map((tx) => [tx.tx_id, tx]));
+    const missingIds = chunk.filter((txId) => !byId.has(txId));
+    if (missingIds.length > 0) {
+      return Result.err(
+        new StacksApiUnexpectedError({
+          message: `Batch lookup missed ${missingIds.length} transaction(s): ${missingIds.join(", ")}`,
+          cause: { missingIds },
+          path: "/extended/v3/transactions/batch",
+        }),
+      );
+    }
+    const ordered: StorableTransaction[] = [];
+    for (const txId of chunk) {
+      const transaction = byId.get(txId);
+      if (transaction !== undefined) {
+        ordered.push(transaction);
+      }
+    }
+    return Result.ok(ordered);
+  }
+
   async function fetchMissingTransactions(
     txIds: string[],
     maxBlockHeight?: number,
-  ): Promise<Result<TransactionApiResponse[], StacksApiError>> {
-    const transactions: TransactionApiResponse[] = [];
-    for (const chunk of chunkArray(txIds, BATCH_SIZE)) {
-      const txResults = await Promise.all(
-        chunk.map((txId) => datasourceStacksApi.getTransaction(context, txId)),
-      );
-      let exceededMaxHeight = false;
-      for (const txResult of txResults) {
-        if (txResult.isErr()) {
-          return Result.err(txResult.error);
-        }
-        if (maxBlockHeight !== undefined && txResult.value.block.height > maxBlockHeight) {
-          exceededMaxHeight = true;
-        } else {
-          transactions.push(txResult.value);
-        }
+  ): Promise<Result<StorableTransaction[], StacksApiError>> {
+    const transactions: StorableTransaction[] = [];
+    for (const chunk of chunkArray(txIds, TRANSACTIONS_BATCH_LIMIT)) {
+      const candidatesResult = await fetchChunkViaBatch(chunk);
+      if (candidatesResult.isErr()) {
+        return Result.err(candidatesResult.error);
       }
-      if (exceededMaxHeight) {
+      const inRange = candidatesResult.value.filter(
+        (transaction) => maxBlockHeight === undefined || transaction.block.height <= maxBlockHeight,
+      );
+      transactions.push(...inRange);
+      if (inRange.length !== candidatesResult.value.length) {
         break;
       }
     }
@@ -485,7 +515,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
   }
 
   async function fetchMissingBlocks(
-    transactions: TransactionApiResponse[],
+    transactions: StorableTransaction[],
   ): Promise<Result<BlockApiResponse[], StacksApiError>> {
     const blockHashes = [...new Set(transactions.map((transaction) => transaction.block.hash))];
     const existingBlockHashes = await syncStore.getExistingBlocks(
@@ -689,7 +719,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         // Only smart_contract_log events have a `value` field; skip other event types.
         const smartContractLogs = events.filter(
           // oxlint-disable-next-line typescript/no-unnecessary-condition
-          (event): event is SmartContractLogEvent => event.event_type === "smart_contract_log",
+          (event) => event.event_type === "smart_contract_log",
         );
         const txBlockHeights = new Map<string, number>();
         for (const existingTx of existingTxs) {
