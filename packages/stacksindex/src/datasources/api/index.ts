@@ -100,10 +100,12 @@ export type ContractLogsResponse =
 export type ApiStatusResponse =
   paths["/extended"]["get"]["responses"]["200"]["content"]["application/json"];
 
-type MinedV1Transaction = Extract<
+export type V1TransactionApiResponse = Extract<
   paths["/extended/v1/tx/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
   { block_height: number }
 >;
+
+type MinedV1Transaction = V1TransactionApiResponse;
 
 export type ContractEvent = MinedV1Transaction["events"][number];
 
@@ -328,6 +330,13 @@ export const datasourceStacksApi = {
       path: `/extended/v3/transactions/${txId}`,
       method: "GET",
       query: { include: include && include.length > 0 ? include.join(",") : null },
+    });
+  },
+
+  getV1Transaction(context: DatasourceStacksApiContext, txId: string) {
+    return this._request<V1TransactionApiResponse, undefined>(context, {
+      path: `/extended/v1/tx/${txId}`,
+      method: "GET",
     });
   },
 
