@@ -11,6 +11,8 @@ import { URL } from "node:url";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createDatabase } from "../database/index.ts";
+import { StacksApiResponseError, StacksApiUnexpectedError } from "../datasources/api/errors.ts";
+import { FilterValidationError, HandlerExecutionError } from "../lib/errors.ts";
 import { createLogger } from "../logger/index.ts";
 import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -1003,6 +1005,7 @@ describe("historical runtime", () => {
           statusCode: 400,
           statusText: "Bad Request",
           body: mockBody({ error: "Logs API error" }),
+          headers: { "content-type": "application/json" },
         };
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -1011,7 +1014,14 @@ describe("historical runtime", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result.isErr()).toBe(true);
+    expect(result).toBeBetterErr(
+      new StacksApiResponseError({
+        status: 400,
+        statusText: "Bad Request",
+        path: `/extended/v2/smart-contracts/${contractId}/logs`,
+        errorData: { error: "Logs API error" },
+      }),
+    );
   });
 
   test("completes immediately when contract has no events", async () => {
@@ -1963,7 +1973,12 @@ describe("historical runtime with handlers", () => {
     });
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result.isErr()).toBe(true);
+    expect(result).toBeBetterErr(
+      new HandlerExecutionError({
+        contractId,
+        cause: new Error("Handler failed"),
+      }),
+    );
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
@@ -2967,20 +2982,20 @@ describe("historical runtime with handlers", () => {
     const negativeResult = await runtime.run([
       { contractId, handler: noopHandler, startBlock: -1 },
     ]);
-    expect(negativeResult.isErr()).toBe(true);
-    const negativeError = negativeResult.isErr() ? negativeResult.error : null;
-    expect(negativeError).toMatchObject({
-      name: "FilterValidationError",
-      message: expect.stringContaining("Invalid startBlock"),
-    });
+    expect(negativeResult).toBeBetterErr(
+      new FilterValidationError({
+        message:
+          "Validation failed: Invalid startBlock for 'SP123.token'. Got -1, expected a non-negative integer.",
+      }),
+    );
 
     const floatResult = await runtime.run([{ contractId, handler: noopHandler, startBlock: 1.5 }]);
-    expect(floatResult.isErr()).toBe(true);
-    const floatError = floatResult.isErr() ? floatResult.error : null;
-    expect(floatError).toMatchObject({
-      name: "FilterValidationError",
-      message: expect.stringContaining("Invalid startBlock"),
-    });
+    expect(floatResult).toBeBetterErr(
+      new FilterValidationError({
+        message:
+          "Validation failed: Invalid startBlock for 'SP123.token'. Got 1.5, expected a non-negative integer.",
+      }),
+    );
   });
 
   test("rejects invalid endBlock (negative or non-integer)", async () => {
@@ -2988,20 +3003,20 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
 
     const negativeResult = await runtime.run([{ contractId, handler: noopHandler, endBlock: -5 }]);
-    expect(negativeResult.isErr()).toBe(true);
-    const negativeError = negativeResult.isErr() ? negativeResult.error : null;
-    expect(negativeError).toMatchObject({
-      name: "FilterValidationError",
-      message: expect.stringContaining("Invalid endBlock"),
-    });
+    expect(negativeResult).toBeBetterErr(
+      new FilterValidationError({
+        message:
+          "Validation failed: Invalid endBlock for 'SP123.token'. Got -5, expected a non-negative integer or \"latest\".",
+      }),
+    );
 
     const floatResult = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100.2 }]);
-    expect(floatResult.isErr()).toBe(true);
-    const floatError = floatResult.isErr() ? floatResult.error : null;
-    expect(floatError).toMatchObject({
-      name: "FilterValidationError",
-      message: expect.stringContaining("Invalid endBlock"),
-    });
+    expect(floatResult).toBeBetterErr(
+      new FilterValidationError({
+        message:
+          "Validation failed: Invalid endBlock for 'SP123.token'. Got 100.2, expected a non-negative integer or \"latest\".",
+      }),
+    );
   });
 
   test("rejects when startBlock is greater than endBlock", async () => {
@@ -3011,12 +3026,12 @@ describe("historical runtime with handlers", () => {
     const result = await runtime.run([
       { contractId, handler: noopHandler, startBlock: 200, endBlock: 100 },
     ]);
-    expect(result.isErr()).toBe(true);
-    const resultError = result.isErr() ? result.error : null;
-    expect(resultError).toMatchObject({
-      name: "FilterValidationError",
-      message: expect.stringContaining("Start block (200) is after end block (100)"),
-    });
+    expect(result).toBeBetterErr(
+      new FilterValidationError({
+        message:
+          "Validation failed: Start block (200) is after end block (100) for contract 'SP123.token'.",
+      }),
+    );
   });
 
   test("resolves endBlock: 'latest' using API status and bounds synchronization", async () => {
@@ -4707,7 +4722,13 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result.isErr()).toBe(true);
+    expect(result).toBeBetterErr(
+      new StacksApiUnexpectedError({
+        message: "Batch lookup missed 1 transaction(s): tx-2",
+        cause: { missingIds: ["tx-2"] },
+        path: "/extended/v3/transactions/batch",
+      }),
+    );
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -4817,7 +4838,14 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result.isErr()).toBe(true);
+    expect(result).toBeBetterErr(
+      new StacksApiResponseError({
+        status: 400,
+        statusText: "Bad Request",
+        path: "/extended/v3/transactions/batch",
+        errorData: { error: "boom" },
+      }),
+    );
     expect(handler).not.toHaveBeenCalled();
   });
 });

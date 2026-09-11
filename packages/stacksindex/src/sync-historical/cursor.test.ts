@@ -5,6 +5,7 @@
 // oxlint-disable vitest/no-conditional-in-test
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import { StacksApiResponseError } from "../datasources/api/errors.ts";
 import { createLogger } from "../logger/index.ts";
 import {
   buildLogsCursor,
@@ -45,12 +46,20 @@ describe("getContractEventsFirstCursor", () => {
       statusCode: 404,
       statusText: "Not Found",
       body: mockBody({ error: "Contract not found" }),
+      headers: { "content-type": "application/json" },
     });
 
     const sync = createHistoricalSync(context);
     const result = await sync.getContractEventsFirstCursor(contractId);
 
-    expect(result.isErr()).toBe(true);
+    expect(result).toBeBetterErr(
+      new StacksApiResponseError({
+        status: 404,
+        statusText: "Not Found",
+        path: `/extended/v1/contract/${contractId}`,
+        errorData: { error: "Contract not found" },
+      }),
+    );
   });
 
   test("returns null when contract has no transactions", async () => {
@@ -438,6 +447,7 @@ describe("getContractEventsFirstCursor", () => {
           statusCode: 400,
           statusText: "Bad Request",
           body: mockBody({ error: "API error" }),
+          headers: { "content-type": "application/json" },
         };
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -446,7 +456,14 @@ describe("getContractEventsFirstCursor", () => {
     const sync = createHistoricalSync(context);
     const result = await sync.getContractEventsFirstCursor(contractId);
 
-    expect(result.isErr()).toBe(true);
+    expect(result).toBeBetterErr(
+      new StacksApiResponseError({
+        status: 400,
+        statusText: "Bad Request",
+        path: `/extended/v3/principals/${contractId}/transactions`,
+        errorData: { error: "API error" },
+      }),
+    );
   });
 
   test("returns error when getTransaction fails", async () => {
@@ -477,6 +494,7 @@ describe("getContractEventsFirstCursor", () => {
           statusCode: 400,
           statusText: "Bad Request",
           body: mockBody({ error: "Tx API error" }),
+          headers: { "content-type": "application/json" },
         };
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -484,7 +502,14 @@ describe("getContractEventsFirstCursor", () => {
 
     const sync = createHistoricalSync(context);
     const result = await sync.getContractEventsFirstCursor(contractId);
-    expect(result.isErr()).toBe(true);
+    expect(result).toBeBetterErr(
+      new StacksApiResponseError({
+        status: 400,
+        statusText: "Bad Request",
+        path: "/extended/v3/transactions/tx-1",
+        errorData: { error: "Tx API error" },
+      }),
+    );
   });
 
   test("uses startBlock when startBlock is greater than deployment block height", async () => {
