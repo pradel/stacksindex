@@ -7,7 +7,6 @@ import { StacksApiUnexpectedError, type StacksApiError } from "../datasources/ap
 import {
   datasourceStacksApi,
   type BlockApiResponse,
-  type SmartContractLogEvent,
   type StorableTransaction,
 } from "../datasources/api/index.ts";
 import { createIndexing } from "../indexing/index.ts";
@@ -463,23 +462,6 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     return Result.ok(undefined);
   }
 
-  function appendWithMaxHeight(
-    transactions: StorableTransaction[],
-    candidates: StorableTransaction[],
-    maxBlockHeight?: number,
-  ): boolean {
-    let exceeded = false;
-    for (const transaction of candidates) {
-      const isPastMax = maxBlockHeight !== undefined && transaction.block.height > maxBlockHeight;
-      if (isPastMax) {
-        exceeded = true;
-      } else {
-        transactions.push(transaction);
-      }
-    }
-    return exceeded;
-  }
-
   async function fetchChunkViaBatch(
     chunk: string[],
   ): Promise<Result<StorableTransaction[], StacksApiError>> {
@@ -521,8 +503,11 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
       if (candidatesResult.isErr()) {
         return Result.err(candidatesResult.error);
       }
-      const exceeded = appendWithMaxHeight(transactions, candidatesResult.value, maxBlockHeight);
-      if (exceeded) {
+      const inRange = candidatesResult.value.filter(
+        (transaction) => maxBlockHeight === undefined || transaction.block.height <= maxBlockHeight,
+      );
+      transactions.push(...inRange);
+      if (inRange.length !== candidatesResult.value.length) {
         break;
       }
     }
@@ -734,7 +719,7 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
         // Only smart_contract_log events have a `value` field; skip other event types.
         const smartContractLogs = events.filter(
           // oxlint-disable-next-line typescript/no-unnecessary-condition
-          (event): event is SmartContractLogEvent => event.event_type === "smart_contract_log",
+          (event) => event.event_type === "smart_contract_log",
         );
         const txBlockHeights = new Map<string, number>();
         for (const existingTx of existingTxs) {
