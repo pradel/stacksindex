@@ -1822,5 +1822,14 @@
         }
       ]
     }
+  },
+  "GET https://api.hiro.so/extended/v1/tx/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
+      "block_height": 47784,
+      "tx_index": 28,
+      "microblock_sequence": 0
+    }
   }
 }

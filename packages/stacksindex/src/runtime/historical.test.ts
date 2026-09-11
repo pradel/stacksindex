@@ -29,7 +29,28 @@ const mockRequest = vi.hoisted(() => vi.fn());
 
 // oxlint-disable-next-line jest/no-untyped-mock-factory
 vi.mock("undici", () => ({
-  request: mockRequest,
+  request: (url: string, init?: any) => {
+    try {
+      return mockRequest(url, init);
+    } catch (err: any) {
+      if (typeof url === "string" && url.includes("/extended/v1/tx/")) {
+        const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
+        return {
+          statusCode: 200,
+          body: {
+            json: () =>
+              Promise.resolve({
+                tx_id: txId,
+                block_height: 100,
+                tx_index: 0,
+                microblock_sequence: 0,
+              }),
+          },
+        };
+      }
+      throw err;
+    }
+  },
 }));
 
 const context = {

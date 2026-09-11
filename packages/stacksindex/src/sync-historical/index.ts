@@ -120,9 +120,19 @@ async function checkTransactionForMatchingEvent(
     return Result.ok(null);
   }
 
+  // The v2 /logs endpoint strictly matches (block_height, microblock_sequence, tx_index, event_index).
+  // In Hiro's DB, transactions confirmed in an anchor block have microblock_sequence = 2147483647 (0x7FFFFFFF),
+  // While microblock transactions have 0..N. Because v3 endpoints completely dropped microblock_sequence and
+  // V3 cursors do not expose it, GET /extended/v1/tx/{tx_id} is the only endpoint that provides the true
+  // Microblock_sequence needed to construct a valid cursor.
+  const v1TxResult = await datasourceStacksApi.getV1Transaction(context, fullTx.tx_id);
+  if (v1TxResult.isErr()) {
+    return Result.err(v1TxResult.error);
+  }
+
   return Result.ok({
     blockHeight: fullTx.block.height,
-    microblockSequence: 0,
+    microblockSequence: v1TxResult.value.microblock_sequence,
     txIndex: fullTx.block.tx_index,
     eventIndex: matchingEvent.event_index,
   });
@@ -151,6 +161,12 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
    *      in a multi-contract transaction.
    *    - Blindly using `event_index: 0` can result in a 404 from `/logs` if index 0 is not a `contract_log` for that contract.
    *
+   * 4. **`microblock_sequence` resolution requires `GET /extended/v1/tx/{tx_id}`**:
+   *    - `/logs` strictly validates `microblock_sequence` (`2147483647` for anchor blocks, `0..N` for microblocks).
+   *    - V3 transaction endpoints dropped `microblock_sequence`, and v3 pagination cursors do not contain it.
+   *    - Since `/logs` lacks inequality querying, fetching `GET /extended/v1/tx/{tx_id}` once for the first matching
+   *      event is the only way to obtain the exact `microblock_sequence` needed for the initial cursor.
+   *
    * ### Implementation Strategy
    * 1. Fetch contract metadata via `GET /extended/v1/contract/{contract_id}` (1 request) to obtain its deployment `block_height`.
    * 2. Jump straight to the deployment block by querying `getPrincipalTransactions` with `cursor: "${deploymentBlock}:0:0"`.
@@ -158,7 +174,9 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
    *    - If `event_count === 0`, skip immediately (0 extra requests).
    *    - If `event_count > 0`, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
    *      matching `contract_id`.
-   * 4. When found, construct the exact 4-part cursor (`block.height:0:block.tx_index:event_index`) for `getContractLogs`.
+   * 4. When found, fetch `GET /extended/v1/tx/{tx_id}` to obtain its `microblock_sequence`
+   *      (e.g. `2147483647` for anchor blocks, `0..N` for microblocks) and construct the exact 4-part cursor
+   *      (`block.height:microblock_sequence:block.tx_index:event_index`) for `getContractLogs`.
    * 5. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
    */
   async getContractEventsFirstCursor(

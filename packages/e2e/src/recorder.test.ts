@@ -141,6 +141,27 @@ describe("scenario recorder", () => {
     });
   });
 
+  test("sanitizes v1 transaction payloads to minimal cursor fields", () => {
+    const body = {
+      tx_id: "0xaaa",
+      nonce: 10,
+      fee_rate: "100",
+      sender_address: "SP123",
+      block_height: 100,
+      tx_index: 5,
+      microblock_sequence: 2147483647,
+      canonical: true,
+      events: [{ event_index: 0 }],
+      post_conditions: [],
+    };
+    expect(sanitizePayload("https://api.hiro.so/extended/v1/tx/0xaaa", body)).toStrictEqual({
+      tx_id: "0xaaa",
+      block_height: 100,
+      tx_index: 5,
+      microblock_sequence: 2147483647,
+    });
+  });
+
   test("synthesizes batch lookups from archived single transactions in replay mode", async () => {
     const fixturePath = createFixturePath();
     const txUrl = (id: string) => `https://api.hiro.so/extended/v3/transactions/${id}`;

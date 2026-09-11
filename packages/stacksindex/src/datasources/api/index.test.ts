@@ -380,6 +380,31 @@ describe("aPI DataSource", () => {
     });
   });
 
+  describe("getV1Transaction", () => {
+    test("returns v1 transaction data on 200", async () => {
+      const mockV1Tx = {
+        tx_id: "0xtx123",
+        tx_type: "contract_call",
+        tx_status: "success",
+        block_height: 123_456,
+        tx_index: 6,
+        microblock_sequence: 2147483647,
+        microblock_hash: "0x",
+      };
+
+      mockRequest.mockImplementation((url: string) => {
+        expect(url).toBe("https://api.hiro.so/extended/v1/tx/0xtx123");
+        return {
+          statusCode: 200,
+          body: mockBody(mockV1Tx),
+        };
+      });
+
+      const result = await datasourceStacksApi.getV1Transaction(context, "0xtx123");
+      expect(result).toStrictEqual(Result.ok(mockV1Tx));
+    });
+  });
+
   describe("getTransactionsBatch", () => {
     test("returns batch data on 200 with repeated tx_id params", async () => {
       const mockResponse = {

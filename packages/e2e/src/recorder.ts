@@ -222,6 +222,17 @@ function sanitizeStatus(body: Record<string, unknown>): Record<string, unknown> 
   };
 }
 
+function sanitizeV1Transaction(body: Record<string, unknown>): Record<string, unknown> {
+  // Only the fields consumed by checkTransactionForMatchingEvent to construct
+  // The first log cursor are kept (microblock_sequence, block_height, tx_index).
+  return {
+    tx_id: body.tx_id,
+    block_height: body.block_height,
+    tx_index: body.tx_index,
+    microblock_sequence: body.microblock_sequence,
+  };
+}
+
 export function sanitizePayload(rawUrl: string, body: unknown): unknown {
   if (!body || typeof body !== "object") {
     return body;
@@ -232,6 +243,9 @@ export function sanitizePayload(rawUrl: string, body: unknown): unknown {
 
   if (rawUrl.includes("/extended/v1/contract/")) {
     return sanitizeContract(obj);
+  }
+  if (rawUrl.includes("/extended/v1/tx/")) {
+    return sanitizeV1Transaction(obj);
   }
   if (rawUrl.includes("/extended/v3/principals/") && rawUrl.includes("/transactions")) {
     return sanitizePrincipalTransactions(obj);

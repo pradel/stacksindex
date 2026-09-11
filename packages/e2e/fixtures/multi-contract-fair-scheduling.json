@@ -5760,5 +5760,23 @@
       "burn_block_time": 1644170736,
       "burn_block_height": 722077
     }
+  },
+  "GET https://api.hiro.so/extended/v1/tx/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
+      "block_height": 47784,
+      "tx_index": 28,
+      "microblock_sequence": 0
+    }
+  },
+  "GET https://api.hiro.so/extended/v1/tx/0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
+      "block_height": 47784,
+      "tx_index": 29,
+      "microblock_sequence": 0
+    }
   }
 }
