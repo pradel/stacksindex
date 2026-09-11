@@ -55,7 +55,12 @@ process.on("SIGTERM", () => {
   void shutdown(0);
 });
 
-const runtime = createHistoricalRuntime({ logger, db: indexerDatabase.db, api: { apiKey } });
+const runtime = createHistoricalRuntime({
+  logger,
+  db: indexerDatabase.db,
+  network: "mainnet",
+  api: { apiKey },
+});
 
 const result = await runtime.run([
   {

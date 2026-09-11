@@ -46,6 +46,7 @@ const indexerDatabase = await createDatabase({
 const runtime = createHistoricalRuntime({
   logger,
   db: indexerDatabase.db,
+  network: "mainnet",
   api: {
     apiKey: process.env.HIRO_API_KEY, // Optional: Stacks / Hiro API key for higher rate limits
   },
