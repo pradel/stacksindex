@@ -1980,7 +1980,9 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      expect(url.startsWith(customBaseUrl)).toBe(true);
+      const requestUrl = new URL(url);
+      const expectedBase = new URL(customBaseUrl);
+      expect(requestUrl.origin).toBe(expectedBase.origin);
       expect(init.headers["x-api-key"]).toBe(customApiKey);
 
       if (url.includes(`/extended/v1/contract/${contractId}`)) {
