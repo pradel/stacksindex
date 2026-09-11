@@ -40,7 +40,7 @@
     "better-result": "3.0.1",
     "clarity-abitype": "0.7.1",
     "consola": "3.4.2",
-    "undici": "8.10.0"
+    "undici": "8.10.2"
   },
   "devDependencies": {
     "@arethetypeswrong/core": "0.18.5",

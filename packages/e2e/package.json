@@ -15,7 +15,7 @@
     "better-result": "3.0.1",
     "drizzle-orm": "0.45.2",
     "stacksindex": "workspace:*",
-    "undici": "8.10.0"
+    "undici": "8.10.2"
   },
   "devDependencies": {
     "@types/node": "26.4.0",

@@ -14,8 +14,8 @@
     "release": "vp run build && cp README.md ./packages/stacksindex && changeset publish"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "1.0.0",
-    "@changesets/cli": "3.0.1",
+    "@changesets/changelog-github": "1.0.1",
+    "@changesets/cli": "3.0.2",
     "vite-plus": "catalog:"
   },
   "packageManager": "pnpm@11.24.0"
