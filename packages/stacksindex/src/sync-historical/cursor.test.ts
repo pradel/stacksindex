@@ -62,7 +62,6 @@ describe("getContractEventsFirstCursor", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -96,7 +95,6 @@ describe("getContractEventsFirstCursor", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -169,7 +167,6 @@ describe("getContractEventsFirstCursor", () => {
             contract_id: contractId,
             block_height: 200,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -274,7 +271,6 @@ describe("getContractEventsFirstCursor", () => {
             contract_id: contractId,
             block_height: 200,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -337,7 +333,6 @@ describe("getContractEventsFirstCursor", () => {
             contract_id: contractId,
             block_height: 1,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -435,7 +430,6 @@ describe("getContractEventsFirstCursor", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -464,7 +458,6 @@ describe("getContractEventsFirstCursor", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -503,7 +496,6 @@ describe("getContractEventsFirstCursor", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -575,7 +567,6 @@ describe("getContractEventsFirstCursor", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }

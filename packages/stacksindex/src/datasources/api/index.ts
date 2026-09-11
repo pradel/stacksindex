@@ -72,9 +72,7 @@ export type TransactionEvent = TransactionEventsResponse["results"][number];
 export type TransactionApiResponse = Extract<
   paths["/extended/v3/transactions/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
   { block: unknown }
-> & {
-  canonical?: boolean;
-};
+>;
 
 /**
  * Minimal transaction shape required for storage.
@@ -88,7 +86,6 @@ export interface StorableTransaction {
   block: { height: number; hash: string; tx_index: number };
   status: string;
   type: string;
-  canonical?: boolean;
 }
 
 export type PrincipalTransactionsResponse =

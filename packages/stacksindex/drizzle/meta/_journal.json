@@ -43,6 +43,13 @@
       "when": 1788018164156,
       "tag": "0005_elite_gateway",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789108083353,
+      "tag": "0006_drop-transactions-canonical",
+      "breakpoints": true
     }
   ]
 }
