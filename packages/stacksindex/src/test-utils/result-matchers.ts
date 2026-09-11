@@ -48,11 +48,15 @@ function toComparable(error: unknown): unknown {
   return stripStack(error);
 }
 
-export function toBeErr(this: MatcherState, received: unknown, expected: unknown): MatcherResult {
+export function toBeBetterErr(
+  this: MatcherState,
+  received: unknown,
+  expected: unknown,
+): MatcherResult {
   const { matcherHint, printExpected, printReceived, diff } = this.utils;
 
   const hint = (expectedLabel: string, receivedLabel: string): string =>
-    matcherHint("toBeErr", receivedLabel, expectedLabel, {
+    matcherHint("toBeBetterErr", receivedLabel, expectedLabel, {
       isNot: this.isNot,
     });
 
@@ -116,9 +120,9 @@ export function toBeErr(this: MatcherState, received: unknown, expected: unknown
 declare module "vitest" {
   // oxlint-disable-next-line id-length, typescript/no-explicit-any
   interface Assertion<T = any> {
-    toBeErr: (expected: unknown) => void;
+    toBeBetterErr: (expected: unknown) => void;
   }
   interface AsymmetricMatchersContaining {
-    toBeErr: (expected: unknown) => void;
+    toBeBetterErr: (expected: unknown) => void;
   }
 }
