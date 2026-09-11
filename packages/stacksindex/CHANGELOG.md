@@ -1,5 +1,11 @@
 # stacksindex
 
+## 0.0.4
+
+### Patch Changes
+
+- [#39](https://github.com/pradel/stacksindex/pull/39) [`bc79d17`](https://github.com/pradel/stacksindex/commit/bc79d17a977072c6812f606405dc872a8edcda3c) Thanks [@pradel](https://github.com/pradel)! - Fix "Cursor not found" error during initial historical sync by querying the transaction's true `microblock_sequence` from `GET /extended/v1/tx/{tx_id}` instead of hardcoding `0`.
+
 ## 0.0.3
 
 ### Patch Changes
