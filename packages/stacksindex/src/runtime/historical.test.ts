@@ -6,6 +6,8 @@
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable jest/max-expects
 // oxlint-disable vitest/prefer-called-once, vitest/prefer-called-times
+import { URL } from "node:url";
+
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createDatabase } from "../database/index.ts";
@@ -4390,7 +4392,7 @@ describe("historical runtime with handlers", () => {
     expect(result.isOk()).toBe(true);
     expect(requestedUrls.length).toBeGreaterThan(0);
     for (const requestedUrl of requestedUrls) {
-      expect(requestedUrl.startsWith("https://api.testnet.hiro.so")).toBe(true);
+      expect(new URL(requestedUrl).origin).toBe("https://api.testnet.hiro.so");
     }
 
     const progress = await syncStore.getSyncProgress(
@@ -4439,7 +4441,7 @@ describe("historical runtime with handlers", () => {
     expect(result.isOk()).toBe(true);
     expect(requestedUrls.length).toBeGreaterThan(0);
     for (const requestedUrl of requestedUrls) {
-      expect(requestedUrl.startsWith("https://custom.example")).toBe(true);
+      expect(new URL(requestedUrl).origin).toBe("https://custom.example");
     }
 
     const progress = await syncStore.getSyncProgress(
