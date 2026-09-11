@@ -11,4 +11,7 @@ export default defineConfig({
       profile: "esm-only",
     },
   },
+  test: {
+    setupFiles: ["./src/test-utils/vitest-setup.ts"],
+  },
 });
