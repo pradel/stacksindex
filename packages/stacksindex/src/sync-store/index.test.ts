@@ -156,7 +156,6 @@ describe("syncStore", () => {
         {
           blockHash: "0xaa832f80b70e93f9b35415cf88b00daf6c398997520ad1efc00d83afd1157c81",
           blockHeight: 7444092n,
-          canonical: true,
           chainId: 1n,
           feeRate: 1218n,
           nonce: 43334n,
@@ -183,7 +182,6 @@ describe("syncStore", () => {
         {
           blockHash: "0xaa832f80b70e93f9b35415cf88b00daf6c398997520ad1efc00d83afd1157c81",
           blockHeight: 7444092n,
-          canonical: true,
           chainId: 2147483648n,
           feeRate: 1218n,
           nonce: 43334n,
@@ -318,7 +316,6 @@ describe("syncStore", () => {
         feeRate: 1000n,
         nonce: 0n,
         txStatus: "success",
-        canonical: true,
       });
 
       const result = await syncStore.getExistingTransactions(
@@ -482,7 +479,6 @@ describe("syncStore", () => {
         feeRate: 1000n,
         nonce: 0n,
         txStatus: "success",
-        canonical: true,
       });
       await testDb.db.insert(transactionsTable).values({
         chainId: 1n,
@@ -495,7 +491,6 @@ describe("syncStore", () => {
         feeRate: 1000n,
         nonce: 0n,
         txStatus: "success",
-        canonical: true,
       });
       await testDb.db.insert(transactionsTable).values({
         chainId: 1n,
@@ -508,7 +503,6 @@ describe("syncStore", () => {
         feeRate: 1000n,
         nonce: 0n,
         txStatus: "success",
-        canonical: true,
       });
 
       // Seed events out of order
@@ -580,7 +574,6 @@ describe("syncStore", () => {
         feeRate: 1000n,
         nonce: 0n,
         txStatus: "success",
-        canonical: true,
       });
       await testDb.db.insert(eventsTable).values({
         chainId: 1n,

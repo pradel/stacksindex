@@ -152,7 +152,6 @@ describe("scenario recorder", () => {
       fee_rate: "100",
       sender: { address: "SP123", nonce: 0 },
       block: { hash: `block-${height}`, height, time: 1000, tx_index: 0 },
-      canonical: true,
     });
     fs.writeFileSync(
       fixturePath,

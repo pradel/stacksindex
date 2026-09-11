@@ -38,7 +38,6 @@ function sanitizeContract(body: Record<string, unknown>): Record<string, unknown
     contract_id: body.contract_id,
     block_height: body.block_height,
     tx_id: body.tx_id,
-    canonical: body.canonical ?? true,
     clarity_version: body.clarity_version ?? null,
     source_code: "",
     abi: "{}",
@@ -130,7 +129,7 @@ function sanitizeContractLogs(body: Record<string, unknown>): Record<string, unk
 
 function sanitizeTransactionSummary(tx: Record<string, unknown>): Record<string, unknown> {
   // Only the fields consumed by encodeTransaction are kept. The batch
-  // Endpoint returns summaries without event_count, events, or canonical.
+  // Endpoint returns summaries without event_count or events.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const block = tx.block as Record<string, unknown> | undefined;
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -198,7 +197,6 @@ function sanitizeTransaction(body: Record<string, unknown>): Record<string, unkn
           tx_index: block.tx_index,
         }
       : undefined,
-    canonical: body.canonical ?? true,
     events: body.events,
   };
 }

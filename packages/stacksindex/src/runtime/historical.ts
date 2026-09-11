@@ -469,8 +469,8 @@ export const createHistoricalRuntime = (context: HistoricalRuntimeContext) => {
     if (batchResult.isErr()) {
       return Result.err(batchResult.error);
     }
-    // The batch endpoint returns canonical mined transactions in newest-first
-    // Order, not in request order, and omits unknown / non-canonical / mempool
+    // The batch endpoint returns mined transactions in newest-first
+    // Order, not in request order, and omits unknown / mempool
     // Ids instead of erroring. Index by id to restore request order.
     const byId = new Map(batchResult.value.results.map((tx) => [tx.tx_id, tx]));
     const missingIds = chunk.filter((txId) => !byId.has(txId));

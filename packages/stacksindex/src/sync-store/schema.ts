@@ -31,7 +31,6 @@ export const transactionsTable = pgTable(
     feeRate: bigint("fee_rate", { mode: "bigint" }).notNull(),
     nonce: bigint("nonce", { mode: "bigint" }).notNull(),
     txStatus: text("tx_status").notNull(),
-    canonical: boolean("canonical").notNull().default(true),
   }),
   (table) => [
     primaryKey({

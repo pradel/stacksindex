@@ -520,7 +520,6 @@ describe("aPI DataSource", () => {
       const contractId = "SP123.token";
       const mockContract = {
         tx_id: "0xtx123",
-        canonical: true,
         contract_id: contractId,
         block_height: 123_456,
         clarity_version: 2,

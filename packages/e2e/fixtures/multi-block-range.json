@@ -5,7 +5,6 @@
       "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
       "block_height": 47486,
       "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
-      "canonical": true,
       "clarity_version": 1,
       "source_code": "",
       "abi": "{}"
@@ -122,8 +121,7 @@
         "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
         "height": 47784,
         "tx_index": 28
-      },
-      "canonical": true
+      }
     }
   },
   "GET https://api.hiro.so/extended/v3/transactions/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d/events?limit=50": {

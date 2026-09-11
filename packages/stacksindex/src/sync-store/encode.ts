@@ -36,7 +36,6 @@ export const encodeTransaction = ({
   feeRate: BigInt(transaction.fee_rate),
   nonce: BigInt(transaction.sender.nonce),
   txStatus: transaction.status,
-  canonical: typeof transaction.canonical === "boolean" ? transaction.canonical : true,
 });
 
 export const encodeEvent = ({

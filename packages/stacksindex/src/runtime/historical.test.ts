@@ -141,7 +141,6 @@ describe("historical runtime", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -293,7 +292,6 @@ describe("historical runtime", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-1",
             block_time: 1,
@@ -320,7 +318,6 @@ describe("historical runtime", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 200,
             hash: "block-2",
             block_time: 2,
@@ -454,7 +451,6 @@ describe("historical runtime", () => {
     const makeBlockResponse = (height: number, hash: string) => ({
       statusCode: 200,
       body: mockBody({
-        canonical: true,
         height,
         hash,
         block_time: height,
@@ -500,7 +496,6 @@ describe("historical runtime", () => {
             contract_id: contractA,
             block_height: 100,
             tx_id: "tx-a-deploy",
-            canonical: true,
           }),
         };
       }
@@ -524,7 +519,6 @@ describe("historical runtime", () => {
             contract_id: contractB,
             block_height: 50,
             tx_id: "tx-b-deploy",
-            canonical: true,
           }),
         };
       }
@@ -789,7 +783,6 @@ describe("historical runtime", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-1",
             block_time: 1,
@@ -850,7 +843,6 @@ describe("historical runtime", () => {
       feeRate: 1000n,
       nonce: 0n,
       txStatus: "success",
-      canonical: true,
     });
     await testDb.db.insert(blocksTable).values({
       chainId: 1n,
@@ -932,7 +924,6 @@ describe("historical runtime", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -1032,7 +1023,6 @@ describe("historical runtime", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -1092,7 +1082,6 @@ describe("historical runtime", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -1209,7 +1198,6 @@ describe("historical runtime", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-1",
             block_time: 1000,
@@ -1380,7 +1368,6 @@ describe("historical runtime with handlers", () => {
     const makeBlockResponse = (height: number, hash: string) => ({
       statusCode: 200,
       body: mockBody({
-        canonical: true,
         height,
         hash,
         block_time: height,
@@ -1426,7 +1413,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractA,
             block_height: 100,
             tx_id: "tx-a-deploy",
-            canonical: true,
           }),
         };
       }
@@ -1450,7 +1436,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractB,
             block_height: 50,
             tx_id: "tx-b-deploy",
-            canonical: true,
           }),
         };
       }
@@ -1602,7 +1587,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -1703,7 +1687,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-1",
             block_time: 1000,
@@ -1778,7 +1761,6 @@ describe("historical runtime with handlers", () => {
       feeRate: 1000n,
       nonce: 0n,
       txStatus: "success",
-      canonical: true,
     });
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -1848,7 +1830,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -1949,7 +1930,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-1",
             block_time: 1000,
@@ -2008,7 +1988,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -2085,7 +2064,6 @@ describe("historical runtime with handlers", () => {
               contract_id: contractId,
               block_height: 1234,
               tx_id: "tx-deploy",
-              canonical: true,
             }),
           };
         }
@@ -2184,7 +2162,6 @@ describe("historical runtime with handlers", () => {
           return {
             statusCode: 200,
             body: mockBody({
-              canonical: true,
               height: 1234,
               hash: "block-1",
               block_time: 1000,
@@ -2267,7 +2244,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 100,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -2321,7 +2297,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 50,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -2425,7 +2400,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-100",
             block_time: 1000,
@@ -2482,7 +2456,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 50,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -2644,7 +2617,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-100",
             block_time: 1000,
@@ -2671,7 +2643,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 150,
             hash: "block-150",
             block_time: 1500,
@@ -2724,7 +2695,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 50,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -2802,7 +2772,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 50,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -2948,7 +2917,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-100",
             block_time: 1000,
@@ -3088,7 +3056,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 50,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -3189,7 +3156,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-100",
             block_time: 1000,
@@ -3313,7 +3279,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 50,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -3415,7 +3380,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 150,
             hash: "block-150",
             block_time: 1500,
@@ -3491,7 +3455,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 50,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -3592,7 +3555,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 150,
             hash: "block-150",
             block_time: 1500,
@@ -3660,7 +3622,6 @@ describe("historical runtime with handlers", () => {
       feeRate: 1000n,
       nonce: 0n,
       txStatus: "success",
-      canonical: true,
     });
 
     // Pre-seed sync progress with cursor pointing to block 100
@@ -3780,7 +3741,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 50,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -3910,7 +3870,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-100",
             block_time: 1000,
@@ -4017,7 +3976,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 50,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -4181,7 +4139,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-100",
             block_time: 1000,
@@ -4269,7 +4226,6 @@ describe("historical runtime with handlers", () => {
                   sender: { address: "SP_SENDER", nonce: 1 },
                   fee_rate: 100,
                   status: "success",
-                  canonical: true,
                 }
               : standardTxById[id],
           )
@@ -4283,7 +4239,6 @@ describe("historical runtime with handlers", () => {
             contract_id: contractId,
             block_height: 50,
             tx_id: "tx-deploy",
-            canonical: true,
           }),
         };
       }
@@ -4351,7 +4306,6 @@ describe("historical runtime with handlers", () => {
             sender: { address: "SP_SENDER", nonce: 1 },
             fee_rate: 100,
             status: "success",
-            canonical: true,
           }),
         };
       }
@@ -4359,7 +4313,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 50,
             hash: "block-50",
             burn_block_time: 1000,
@@ -4416,7 +4369,6 @@ describe("historical runtime with handlers", () => {
     });
 
     const makeBlock = (height: number, hash: string) => ({
-      canonical: true,
       height,
       hash,
       block_time: 1,
@@ -4648,7 +4600,7 @@ describe("historical runtime with handlers", () => {
         };
       }
       if (url.includes("/extended/v3/transactions/batch")) {
-        // Tx-2 omitted (unknown, non-canonical, or mempool)
+        // Tx-2 omitted (unknown or mempool)
         return { statusCode: 200, body: mockBody({ results: [tx1] }) };
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -4754,7 +4706,6 @@ describe("historical runtime with handlers", () => {
         return {
           statusCode: 200,
           body: mockBody({
-            canonical: true,
             height: 100,
             hash: "block-1",
             burn_block_time: 1,
