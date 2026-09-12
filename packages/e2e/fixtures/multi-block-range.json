@@ -120,7 +120,12 @@
       "block": {
         "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
         "height": 47784,
-        "tx_index": 28
+        "tx_index": 28,
+        "time": 1644169830
+      },
+      "bitcoin_block": {
+        "height": 722076,
+        "time": 1644169830
       }
     }
   },
@@ -190,7 +195,12 @@
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
-            "tx_index": 28
+            "tx_index": 28,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         }
       ]
@@ -1532,7 +1542,12 @@
           "block": {
             "hash": "0x52b6972203afc7edc99b409f164aa2d7fe8b63057961c3984590dab6c99c77f7",
             "height": 47791,
-            "tx_index": 39
+            "tx_index": 39,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47791,
+            "time": 1644169830
           }
         },
         {
@@ -1547,7 +1562,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 23
+            "tx_index": 23,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1562,7 +1582,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 17
+            "tx_index": 17,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1577,7 +1602,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 16
+            "tx_index": 16,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1592,7 +1622,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 15
+            "tx_index": 15,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1607,7 +1642,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 14
+            "tx_index": 14,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1622,7 +1662,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 13
+            "tx_index": 13,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1637,7 +1682,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 12
+            "tx_index": 12,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1652,7 +1702,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 10
+            "tx_index": 10,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1667,7 +1722,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 9
+            "tx_index": 9,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1682,7 +1742,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 7
+            "tx_index": 7,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1697,7 +1762,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 6
+            "tx_index": 6,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1712,7 +1782,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 5
+            "tx_index": 5,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1727,7 +1802,12 @@
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
-            "tx_index": 3
+            "tx_index": 3,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 47789,
+            "time": 1644169830
           }
         },
         {
@@ -1742,7 +1822,12 @@
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
             "height": 47786,
-            "tx_index": 4
+            "tx_index": 4,
+            "time": 1644171646
+          },
+          "bitcoin_block": {
+            "height": 722078,
+            "time": 1644171646
           }
         },
         {
@@ -1757,7 +1842,12 @@
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
             "height": 47786,
-            "tx_index": 3
+            "tx_index": 3,
+            "time": 1644171646
+          },
+          "bitcoin_block": {
+            "height": 722078,
+            "time": 1644171646
           }
         },
         {
@@ -1772,7 +1862,12 @@
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
             "height": 47786,
-            "tx_index": 66
+            "tx_index": 66,
+            "time": 1644171646
+          },
+          "bitcoin_block": {
+            "height": 722078,
+            "time": 1644171646
           }
         },
         {
@@ -1787,7 +1882,12 @@
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
             "height": 47786,
-            "tx_index": 58
+            "tx_index": 58,
+            "time": 1644171646
+          },
+          "bitcoin_block": {
+            "height": 722078,
+            "time": 1644171646
           }
         },
         {
@@ -1802,7 +1902,12 @@
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
-            "tx_index": 48
+            "tx_index": 48,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -1817,7 +1922,12 @@
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
-            "tx_index": 34
+            "tx_index": 34,
+            "time": 1644169830
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         }
       ]

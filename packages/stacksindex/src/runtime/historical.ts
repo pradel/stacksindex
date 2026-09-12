@@ -6,7 +6,6 @@ import { migrate } from "../database/index.ts";
 import { StacksApiUnexpectedError, type StacksApiError } from "../datasources/api/errors.ts";
 import {
   datasourceStacksApi,
-  type BlockApiResponse,
   type DatasourceStacksApiContext,
   type StorableTransaction,
 } from "../datasources/api/index.ts";
@@ -18,9 +17,8 @@ import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 import { createHistoricalSync, parseLogsCursor } from "../sync-historical/index.ts";
+import type { StorableBlock } from "../sync-store/encode.js";
 import { syncStore } from "../sync-store/index.ts";
-
-const BATCH_SIZE = 5;
 
 /**
  * Max transaction ids per `GET /extended/v3/transactions/batch` call.
@@ -537,33 +535,19 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
     return Result.ok(transactions);
   }
 
-  async function fetchMissingBlocks(
-    transactions: StorableTransaction[],
-  ): Promise<Result<BlockApiResponse[], StacksApiError>> {
-    const blockHashes = [...new Set(transactions.map((transaction) => transaction.block.hash))];
-    const existingBlockHashes = await syncStore.getExistingBlocks(
-      { blockHashes, chainId },
-      { db: context.db },
-    );
-    const missingBlockHashes = blockHashes.filter((hash) => !existingBlockHashes.includes(hash));
-    context.logger.debug({
-      service: "historicalRuntime",
-      msg: `Blocks: ${blockHashes.length} total, ${missingBlockHashes.length} missing`,
-    });
-
-    const blocks: BlockApiResponse[] = [];
-    for (const chunk of chunkArray(missingBlockHashes, BATCH_SIZE)) {
-      const blockResults = await Promise.all(
-        chunk.map((hash) => datasourceStacksApi.getBlock(context, hash)),
-      );
-      for (const blockResult of blockResults) {
-        if (blockResult.isErr()) {
-          return Result.err(blockResult.error);
-        }
-        blocks.push(blockResult.value);
+  function extractBlocksFromTransactions(transactions: StorableTransaction[]): StorableBlock[] {
+    const byHash = new Map<string, StorableBlock>();
+    for (const transaction of transactions) {
+      if (!byHash.has(transaction.block.hash)) {
+        byHash.set(transaction.block.hash, {
+          height: transaction.block.height,
+          hash: transaction.block.hash,
+          burn_block_time: transaction.bitcoin_block?.time ?? transaction.block.time ?? 0,
+          burn_block_height: transaction.bitcoin_block?.height ?? transaction.block.height,
+        });
       }
     }
-    return Result.ok(blocks);
+    return Array.from(byHash.values());
   }
 
   async function advanceContractSyncState(
@@ -732,11 +716,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         }
         const transactions = txResult.value;
 
-        const blockResult = await fetchMissingBlocks(transactions);
-        if (blockResult.isErr()) {
-          return Result.err(blockResult.error);
-        }
-        const blocks = blockResult.value;
+        const blocks = extractBlocksFromTransactions(transactions);
 
         // Store blocks, transactions, and events
         // Only smart_contract_log events have a `value` field; skip other event types.

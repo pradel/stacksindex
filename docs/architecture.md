@@ -153,7 +153,7 @@ Key differences from EVM:
    │ For each batch:                                          │
    │ - Batch fetch missing txs: GET /extended/v3/transactions/│
    │   batch (up to 20 tx_ids per request)                    │
-   │ - Batch fetch missing blocks: GET /extended/v2/blocks/   │
+   │ - Extract missing blocks from transactions in memory     │
    │ Store in sync store: events, transactions, blocks        │
    │ Update cursor in sync_progress                           │
    └────────────────────────┬─────────────────────────────────┘
@@ -215,7 +215,7 @@ Start Block ──────────────────────�
 - Use "next_cursor" from response to paginate forward through history
 - For each page of events:
   - Batch fetch transactions (deduplicated by tx_id)
-  - Batch fetch blocks by hash (deduplicated, reorg-proof)
+  - Extract blocks by hash from transaction payloads in memory
 - Store everything in sync store
 - Save cursor to sync_progress to enable resume after restart
 ```

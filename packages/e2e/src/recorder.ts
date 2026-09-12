@@ -132,12 +132,14 @@ function sanitizeContractLogs(body: Record<string, unknown>): Record<string, unk
 }
 
 function sanitizeTransactionSummary(tx: Record<string, unknown>): Record<string, unknown> {
-  // Only the fields consumed by encodeTransaction are kept. The batch
+  // Only the fields consumed by encodeTransaction and encodeBlock are kept. The batch
   // Endpoint returns summaries without event_count or events.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const block = tx.block as Record<string, unknown> | undefined;
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const sender = tx.sender as Record<string, unknown> | undefined;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const bitcoinBlock = tx.bitcoin_block as Record<string, unknown> | undefined;
 
   return {
     tx_id: tx.tx_id,
@@ -157,6 +159,14 @@ function sanitizeTransactionSummary(tx: Record<string, unknown>): Record<string,
           tx_index: block.tx_index,
         }
       : undefined,
+    ...(bitcoinBlock
+      ? {
+          bitcoin_block: {
+            height: bitcoinBlock.height,
+            time: bitcoinBlock.time,
+          },
+        }
+      : {}),
   };
 }
 
@@ -175,12 +185,12 @@ function sanitizeTransactionsBatch(body: Record<string, unknown>): Record<string
 }
 
 function sanitizeTransaction(body: Record<string, unknown>): Record<string, unknown> {
-  // Only the fields consumed by encodeTransaction are kept: bitcoin_block,
-  // Sponsor, block.time and block.index_hash are never read.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const block = body.block as Record<string, unknown> | undefined;
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const sender = body.sender as Record<string, unknown> | undefined;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const bitcoinBlock = body.bitcoin_block as Record<string, unknown> | undefined;
 
   return {
     tx_id: body.tx_id,
@@ -201,6 +211,14 @@ function sanitizeTransaction(body: Record<string, unknown>): Record<string, unkn
           tx_index: block.tx_index,
         }
       : undefined,
+    ...(bitcoinBlock
+      ? {
+          bitcoin_block: {
+            height: bitcoinBlock.height,
+            time: bitcoinBlock.time,
+          },
+        }
+      : {}),
     events: body.events,
   };
 }
