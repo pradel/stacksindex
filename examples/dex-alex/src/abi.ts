@@ -42,12 +42,7 @@ export const fixedWeightPoolAbi = {
       access: "read_only",
       args: [],
       outputs: {
-        type: {
-          response: {
-            ok: "uint128",
-            error: "uint128",
-          },
-        },
+        type: "uint128",
       },
     },
     {
@@ -61,6 +56,8 @@ export const fixedWeightPoolAbi = {
               tuple: [
                 { name: "token-x", type: "principal" },
                 { name: "token-y", type: "principal" },
+                { name: "weight-x", type: "uint128" },
+                { name: "weight-y", type: "uint128" },
               ],
             },
             error: "uint128",
