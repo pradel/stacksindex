@@ -1,5 +1,15 @@
 # stacksindex
 
+## 0.0.5
+
+### Patch Changes
+
+- [#42](https://github.com/pradel/stacksindex/pull/42) [`14a5b6d`](https://github.com/pradel/stacksindex/commit/14a5b6dc15aae08c2e6962441bc389b69d85e898) Thanks [@pradel](https://github.com/pradel)! - Replace deprecated `/extended/v1/status` endpoint with `/extended`.
+
+- [#45](https://github.com/pradel/stacksindex/pull/45) [`7a6c31a`](https://github.com/pradel/stacksindex/commit/7a6c31ac295b564a511fafe7944046a68c770fac) Thanks [@pradel](https://github.com/pradel)! - Extract block data from transaction batch responses in memory instead of calling the block API. This eliminates all block network requests during historical sync, drastically reducing total HTTP calls by 10% to 54.5% and preventing API rate-limit bottlenecks.
+
+- [#44](https://github.com/pradel/stacksindex/pull/44) [`79956f1`](https://github.com/pradel/stacksindex/commit/79956f1cb969356e76fd3d2d1f37ac5331c1fe0c) Thanks [@pradel](https://github.com/pradel)! - Replace deprecated `/extended/v1/contract/{contract_id}` endpoint with `/extended/v3/smart-contracts/{contract_id}`.
+
 ## 0.0.4
 
 ### Patch Changes
