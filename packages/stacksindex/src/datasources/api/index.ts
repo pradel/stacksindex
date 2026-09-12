@@ -403,7 +403,7 @@ export const datasourceStacksApi = {
 
   getStatus(context: DatasourceStacksApiContext) {
     return this._request<ApiStatusResponse, undefined>(context, {
-      path: "/extended/v1/status",
+      path: "/extended",
       method: "GET",
     });
   },

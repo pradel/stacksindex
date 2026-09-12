@@ -708,4 +708,26 @@ describe("aPI DataSource", () => {
       expect(result).toStrictEqual(Result.ok({ okay: true, result: "0x01" }));
     });
   });
+
+  describe("getStatus", () => {
+    test("calls /extended endpoint and returns status response on 200", async () => {
+      const mockResponse = {
+        server_version: "stacks-node-api:v1.0.0",
+        status: "ready",
+        chain_tip: { block_height: 100 },
+      };
+      mockRequest.mockReturnValue({
+        statusCode: 200,
+        body: mockBody(mockResponse),
+        headers: { "content-type": "application/json" },
+      });
+
+      const result = await datasourceStacksApi.getStatus(context);
+      expect(result).toStrictEqual(Result.ok(mockResponse));
+      expect(mockRequest).toHaveBeenCalledWith(
+        "https://api.hiro.so/extended",
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
+  });
 });

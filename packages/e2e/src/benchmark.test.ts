@@ -69,10 +69,7 @@ describe("benchmark module", () => {
     });
 
     test("normalizes status endpoint", () => {
-      expect(normalizeRoute("GET", "https://api.hiro.so/extended/v1/status")).toBe(
-        "GET /extended/v1/status",
-      );
-      expect(normalizeRoute("GET", "https://api.hiro.so/extended")).toBe("GET /extended/v1/status");
+      expect(normalizeRoute("GET", "https://api.hiro.so/extended")).toBe("GET /extended");
     });
 
     test("normalizes read-only call-read endpoints", () => {
@@ -126,7 +123,7 @@ describe("benchmark module", () => {
 
     test("resets call counts", () => {
       const tracker = createBenchmarkTracker();
-      tracker.recordCall("GET", "/extended/v1/status");
+      tracker.recordCall("GET", "/extended");
       expect(tracker.getSummary().totalCalls).toBe(1);
 
       tracker.reset();
