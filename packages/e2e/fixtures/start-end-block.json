@@ -1,13 +1,13 @@
 {
-  "GET https://api.hiro.so/extended/v1/contract/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles": {
+  "GET https://api.hiro.so/extended/v3/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles": {
     "statusCode": 200,
     "body": {
       "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-      "block_height": 47486,
       "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
       "clarity_version": 1,
-      "source_code": "",
-      "abi": "{}"
+      "block": {
+        "height": 47486
+      }
     }
   },
   "GET https://api.hiro.so/extended/v3/principals/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/transactions?cursor=47784:0:0&limit=50": {

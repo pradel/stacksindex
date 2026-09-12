@@ -168,7 +168,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
    *      event is the only way to obtain the exact `microblock_sequence` needed for the initial cursor.
    *
    * ### Implementation Strategy
-   * 1. Fetch contract metadata via `GET /extended/v1/contract/{contract_id}` (1 request) to obtain its deployment `block_height`.
+   * 1. Fetch contract metadata via `GET /extended/v3/smart-contracts/{contract_id}` (1 request) to obtain its deployment `block.height`.
    * 2. Jump straight to the deployment block by querying `getPrincipalTransactions` with `cursor: "${deploymentBlock}:0:0"`.
    * 3. Iterate transactions from oldest to newest within the page:
    *    - If `event_count === 0`, skip immediately (0 extra requests).
@@ -196,7 +196,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
       return Result.err(contractResult.error);
     }
 
-    const { block_height: deploymentBlockHeight } = contractResult.value;
+    const deploymentBlockHeight = contractResult.value.block.height;
     const initialBlockHeight =
       options?.startBlock === undefined
         ? deploymentBlockHeight
