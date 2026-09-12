@@ -3071,7 +3071,7 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes("/extended/v1/status")) {
+      if (url.endsWith("/extended")) {
         return {
           statusCode: 200,
           body: mockBody({
@@ -3239,7 +3239,7 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes("/extended/v1/status")) {
+      if (url.endsWith("/extended")) {
         return {
           statusCode: 500,
           body: mockBody({ error: "Internal Server Error" }),

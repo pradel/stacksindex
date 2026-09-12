@@ -265,7 +265,7 @@ export function sanitizePayload(rawUrl: string, body: unknown): unknown {
   if (rawUrl.includes("/extended/v2/blocks/")) {
     return sanitizeBlock(obj);
   }
-  if (rawUrl.endsWith("/extended") || rawUrl.includes("/extended/v1/status")) {
+  if (rawUrl.endsWith("/extended")) {
     return sanitizeStatus(obj);
   }
 

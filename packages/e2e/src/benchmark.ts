@@ -43,8 +43,8 @@ export function normalizeRoute(method: string, rawUrl: string): string {
   if (/^\/extended\/v1\/tx\/[^/]+$/u.test(pathname)) {
     return `${upperMethod} /extended/v1/tx/:tx_id`;
   }
-  if (pathname === "/extended/v1/status" || pathname === "/extended") {
-    return `${upperMethod} /extended/v1/status`;
+  if (pathname === "/extended") {
+    return `${upperMethod} /extended`;
   }
   if (/^\/extended\/v2\/blocks\/[^/]+$/u.test(pathname)) {
     return `${upperMethod} /extended/v2/blocks/:height_or_hash`;
