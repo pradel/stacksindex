@@ -2019,6 +2019,14 @@ describe("historical runtime with handlers", () => {
       expect(new URL(url).origin).toBe(customBaseUrl);
       expect(init.headers["x-api-key"]).toBe(customApiKey);
 
+      if (url.endsWith("/extended") || url.includes("/extended/v1/status")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            chain_tip: { block_height: 200 },
+          }),
+        };
+      }
       if (url.includes(`/extended/v1/contract/${contractId}`)) {
         return {
           statusCode: 200,
@@ -2054,7 +2062,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
     expect(result.isOk()).toBe(true);
-    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(mockRequest).toHaveBeenCalledTimes(3);
   });
 
   test("provides IndexingClient to handler with current block height tip and runtime api options", async () => {
