@@ -130,7 +130,7 @@ Key differences from EVM:
 
    Step A: Initial Cursor Discovery (Genesis Bootstrap)
    ┌──────────────────────────────────────────────────────────┐
-   │ 1. GET /extended/v1/contract/{contract_id}               │
+   │ 1. GET /extended/v3/smart-contracts/{contract_id}        │
    │    -> Get deployment block height                        │
    │ 2. GET /extended/v3/principals/{principal}/transactions  │
    │    ?cursor={startBlock}:0:0                              │
@@ -153,7 +153,7 @@ Key differences from EVM:
    │ For each batch:                                          │
    │ - Batch fetch missing txs: GET /extended/v3/transactions/│
    │   batch (up to 20 tx_ids per request)                    │
-   │ - Batch fetch missing blocks: GET /extended/v2/blocks/   │
+   │ - Extract missing blocks from transactions in memory     │
    │ Store in sync store: events, transactions, blocks        │
    │ Update cursor in sync_progress                           │
    └────────────────────────┬─────────────────────────────────┘
@@ -194,7 +194,7 @@ The Stacks `/extended/v2/smart-contracts/{contract_id}/logs` endpoint strictly v
 
 To resolve the initial cursor:
 
-1. Fetch contract metadata via `GET /extended/v1/contract/{contract_id}` to obtain its deployment `block_height`.
+1. Fetch contract metadata via `GET /extended/v3/smart-contracts/{contract_id}` to obtain its deployment `block.height`.
 2. Jump straight to the deployment or requested `startBlock` using `GET /extended/v3/principals/{principal}/transactions?cursor=${startBlock}:0:0`.
 3. Scan transactions in chronological order and query `GET /extended/v3/transactions/{tx_id}/events` to locate the first `smart_contract_log` for that contract.
 4. Construct the exact 4-part cursor (`block_height:0:tx_index:event_index`) to begin forward pagination with `/logs`.
@@ -215,7 +215,7 @@ Start Block ──────────────────────�
 - Use "next_cursor" from response to paginate forward through history
 - For each page of events:
   - Batch fetch transactions (deduplicated by tx_id)
-  - Batch fetch blocks by hash (deduplicated, reorg-proof)
+  - Extract blocks by hash from transaction payloads in memory
 - Store everything in sync store
 - Save cursor to sync_progress to enable resume after restart
 ```

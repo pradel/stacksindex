@@ -17,8 +17,8 @@ describe("benchmark module", () => {
   describe("route normalization", () => {
     test("normalizes contract metadata endpoint", () => {
       const url =
-        "https://api.hiro.so/extended/v1/contract/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles";
-      expect(normalizeRoute("GET", url)).toBe("GET /extended/v1/contract/:contract_id");
+        "https://api.hiro.so/extended/v3/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles";
+      expect(normalizeRoute("GET", url)).toBe("GET /extended/v3/smart-contracts/:contract_id");
     });
 
     test("normalizes principal transactions endpoint with query params", () => {
@@ -69,10 +69,7 @@ describe("benchmark module", () => {
     });
 
     test("normalizes status endpoint", () => {
-      expect(normalizeRoute("GET", "https://api.hiro.so/extended/v1/status")).toBe(
-        "GET /extended/v1/status",
-      );
-      expect(normalizeRoute("GET", "https://api.hiro.so/extended")).toBe("GET /extended/v1/status");
+      expect(normalizeRoute("GET", "https://api.hiro.so/extended")).toBe("GET /extended");
     });
 
     test("normalizes read-only call-read endpoints", () => {
@@ -104,7 +101,10 @@ describe("benchmark module", () => {
         "GET",
         "https://api.hiro.so/extended/v3/principals/SP6P4/transactions?limit=50",
       );
-      tracker.recordCall("GET", "https://api.hiro.so/extended/v1/contract/SP6P4.satoshibles");
+      tracker.recordCall(
+        "GET",
+        "https://api.hiro.so/extended/v3/smart-contracts/SP6P4.satoshibles",
+      );
       tracker.recordCall(
         "GET",
         "https://api.hiro.so/extended/v3/principals/SP6P4/transactions?cursor=1",
@@ -113,20 +113,20 @@ describe("benchmark module", () => {
       const summary = tracker.getSummary();
       expect(summary.totalCalls).toBe(3);
       expect(summary.endpoints).toStrictEqual({
-        "GET /extended/v1/contract/:contract_id": 1,
         "GET /extended/v3/principals/:principal/transactions": 2,
+        "GET /extended/v3/smart-contracts/:contract_id": 1,
       });
 
       // Keys must be in sorted order
       expect(Object.keys(summary.endpoints)).toStrictEqual([
-        "GET /extended/v1/contract/:contract_id",
         "GET /extended/v3/principals/:principal/transactions",
+        "GET /extended/v3/smart-contracts/:contract_id",
       ]);
     });
 
     test("resets call counts", () => {
       const tracker = createBenchmarkTracker();
-      tracker.recordCall("GET", "/extended/v1/status");
+      tracker.recordCall("GET", "/extended");
       expect(tracker.getSummary().totalCalls).toBe(1);
 
       tracker.reset();
@@ -144,8 +144,8 @@ describe("benchmark module", () => {
       registerScenarioBenchmark("scenario-a", {
         totalCalls: 3,
         endpoints: {
-          "GET /extended/v1/contract/:contract_id": 1,
           "GET /extended/v3/principals/:principal/transactions": 2,
+          "GET /extended/v3/smart-contracts/:contract_id": 1,
         },
       });
 

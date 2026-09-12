@@ -3,15 +3,14 @@
 exports[`e2E: Bounded startBlock and endBlock scenario > restricts event synchronization and indexing strictly within startBlock and endBlock 1`] = `
 {
   "endpoints": {
-    "GET /extended/v1/contract/:contract_id": 1,
     "GET /extended/v1/tx/:tx_id": 1,
-    "GET /extended/v2/blocks/:height_or_hash": 1,
     "GET /extended/v2/smart-contracts/:contract_id/logs": 2,
     "GET /extended/v3/principals/:principal/transactions": 1,
+    "GET /extended/v3/smart-contracts/:contract_id": 1,
     "GET /extended/v3/transactions/:tx_id": 1,
     "GET /extended/v3/transactions/:tx_id/events": 1,
     "GET /extended/v3/transactions/batch": 2,
   },
-  "totalCalls": 10,
+  "totalCalls": 9,
 }
 `;

@@ -83,16 +83,30 @@ export interface StorableTransaction {
   tx_id: string;
   sender: { address: string; nonce: number };
   fee_rate: string;
-  block: { height: number; hash: string; tx_index: number };
+  block: { height: number; hash: string; tx_index: number; time?: number };
+  bitcoin_block: { height: number; time: number };
   status: string;
   type: string;
+}
+
+/**
+ * Minimal block shape required for storage in `blocksTable`.
+ * Satisfied by both the full `GET /extended/v2/blocks/{height_or_hash}` response
+ * and in-memory extraction from `StorableTransaction` (via `tx.block` and `tx.bitcoin_block`).
+ * Allows inserting blocks without making separate block API calls.
+ */
+export interface StorableBlock {
+  height: number;
+  hash: string;
+  burn_block_time: number;
+  burn_block_height: number;
 }
 
 export type PrincipalTransactionsResponse =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type ContractApiResponse =
-  paths["/extended/v1/contract/{contract_id}"]["get"]["responses"]["200"]["content"]["application/json"];
+  paths["/extended/v3/smart-contracts/{contract_id}"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type ContractLogsResponse =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -380,7 +394,7 @@ export const datasourceStacksApi = {
   },
 
   getContract(context: DatasourceStacksApiContext, contractId: string) {
-    const path = `/extended/v1/contract/${contractId}`;
+    const path = `/extended/v3/smart-contracts/${contractId}`;
     return this._request<ContractApiResponse, undefined>(context, {
       path,
       method: "GET",
@@ -403,7 +417,7 @@ export const datasourceStacksApi = {
 
   getStatus(context: DatasourceStacksApiContext) {
     return this._request<ApiStatusResponse, undefined>(context, {
-      path: "/extended/v1/status",
+      path: "/extended",
       method: "GET",
     });
   },

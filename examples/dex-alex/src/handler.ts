@@ -187,7 +187,7 @@ export async function syncPoolTokens({
   if (!contractAddress || !contractName) {
     throw new Error(`Invalid poolContract: ${poolContract}`);
   }
-  const countResult = (
+  const poolId = (
     await client.callReadOnly({
       abi: fixedWeightPoolAbi,
       contractAddress,
@@ -196,13 +196,9 @@ export async function syncPoolTokens({
     })
   ).unwrap();
 
-  if (countResult.ok === undefined) {
-    throw new Error(
-      `Failed to fetch pool count from ${poolContract}: contract returned error ${countResult.error}`,
-    );
+  if (poolId === 0n) {
+    throw new Error(`Failed to fetch pool count from ${poolContract}: pool count is 0`);
   }
-
-  const poolId = countResult.ok;
 
   const contractsResult = (
     await client.callReadOnly({

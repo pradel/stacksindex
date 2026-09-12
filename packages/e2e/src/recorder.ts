@@ -34,13 +34,17 @@ export function normalizeKey(method: string, rawUrl: string): string {
 }
 
 function sanitizeContract(body: Record<string, unknown>): Record<string, unknown> {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const block = body.block as Record<string, unknown> | undefined;
   return {
     contract_id: body.contract_id,
-    block_height: body.block_height,
     tx_id: body.tx_id,
     clarity_version: body.clarity_version ?? null,
-    source_code: "",
-    abi: "{}",
+    block: block
+      ? {
+          height: block.height,
+        }
+      : undefined,
   };
 }
 
@@ -128,12 +132,14 @@ function sanitizeContractLogs(body: Record<string, unknown>): Record<string, unk
 }
 
 function sanitizeTransactionSummary(tx: Record<string, unknown>): Record<string, unknown> {
-  // Only the fields consumed by encodeTransaction are kept. The batch
+  // Only the fields consumed by encodeTransaction and encodeBlock are kept. The batch
   // Endpoint returns summaries without event_count or events.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const block = tx.block as Record<string, unknown> | undefined;
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const sender = tx.sender as Record<string, unknown> | undefined;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const bitcoinBlock = tx.bitcoin_block as Record<string, unknown> | undefined;
 
   return {
     tx_id: tx.tx_id,
@@ -153,6 +159,14 @@ function sanitizeTransactionSummary(tx: Record<string, unknown>): Record<string,
           tx_index: block.tx_index,
         }
       : undefined,
+    ...(bitcoinBlock
+      ? {
+          bitcoin_block: {
+            height: bitcoinBlock.height,
+            time: bitcoinBlock.time,
+          },
+        }
+      : {}),
   };
 }
 
@@ -171,12 +185,12 @@ function sanitizeTransactionsBatch(body: Record<string, unknown>): Record<string
 }
 
 function sanitizeTransaction(body: Record<string, unknown>): Record<string, unknown> {
-  // Only the fields consumed by encodeTransaction are kept: bitcoin_block,
-  // Sponsor, block.time and block.index_hash are never read.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const block = body.block as Record<string, unknown> | undefined;
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const sender = body.sender as Record<string, unknown> | undefined;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const bitcoinBlock = body.bitcoin_block as Record<string, unknown> | undefined;
 
   return {
     tx_id: body.tx_id,
@@ -197,6 +211,14 @@ function sanitizeTransaction(body: Record<string, unknown>): Record<string, unkn
           tx_index: block.tx_index,
         }
       : undefined,
+    ...(bitcoinBlock
+      ? {
+          bitcoin_block: {
+            height: bitcoinBlock.height,
+            time: bitcoinBlock.time,
+          },
+        }
+      : {}),
     events: body.events,
   };
 }
@@ -241,7 +263,7 @@ export function sanitizePayload(rawUrl: string, body: unknown): unknown {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const obj = body as Record<string, unknown>;
 
-  if (rawUrl.includes("/extended/v1/contract/")) {
+  if (rawUrl.includes("/extended/v3/smart-contracts/")) {
     return sanitizeContract(obj);
   }
   if (rawUrl.includes("/extended/v1/tx/")) {
@@ -265,7 +287,7 @@ export function sanitizePayload(rawUrl: string, body: unknown): unknown {
   if (rawUrl.includes("/extended/v2/blocks/")) {
     return sanitizeBlock(obj);
   }
-  if (rawUrl.endsWith("/extended") || rawUrl.includes("/extended/v1/status")) {
+  if (rawUrl.endsWith("/extended")) {
     return sanitizeStatus(obj);
   }
 

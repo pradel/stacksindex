@@ -548,14 +548,23 @@ describe("aPI DataSource", () => {
       const mockContract = {
         tx_id: "0xtx123",
         contract_id: contractId,
-        block_height: 123_456,
+        block: {
+          height: 123_456,
+          hash: "0xhash",
+          index_hash: "0xindex",
+          time: 1_600_000_000,
+          tx_index: 0,
+        },
+        bitcoin_block: {
+          height: 100_000,
+          time: 1_600_000_000,
+        },
         clarity_version: 2,
         source_code: "(define-data-var x int 0)",
-        abi: null,
       };
 
       mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe(`https://api.hiro.so/extended/v1/contract/${contractId}`);
+        expect(url).toBe(`https://api.hiro.so/extended/v3/smart-contracts/${contractId}`);
         return {
           statusCode: 200,
           body: mockBody(mockContract),
@@ -706,6 +715,28 @@ describe("aPI DataSource", () => {
         "my-function",
       );
       expect(result).toStrictEqual(Result.ok({ okay: true, result: "0x01" }));
+    });
+  });
+
+  describe("getStatus", () => {
+    test("calls /extended endpoint and returns status response on 200", async () => {
+      const mockResponse = {
+        server_version: "stacks-node-api:v1.0.0",
+        status: "ready",
+        chain_tip: { block_height: 100 },
+      };
+      mockRequest.mockReturnValue({
+        statusCode: 200,
+        body: mockBody(mockResponse),
+        headers: { "content-type": "application/json" },
+      });
+
+      const result = await datasourceStacksApi.getStatus(context);
+      expect(result).toStrictEqual(Result.ok(mockResponse));
+      expect(mockRequest).toHaveBeenCalledWith(
+        "https://api.hiro.so/extended",
+        expect.objectContaining({ method: "GET" }),
+      );
     });
   });
 });

@@ -4,8 +4,8 @@ import type { PgQueryResultHKT, PgTransaction } from "drizzle-orm/pg-core";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 import type {
-  BlockApiResponse,
   SmartContractLogEvent,
+  StorableBlock,
   StorableTransaction,
 } from "../datasources/api/index.ts";
 import { encodeBlock, encodeEvent, encodeTransaction } from "./encode.js";
@@ -29,7 +29,7 @@ interface Context {
 
 export const syncStore = {
   insertBlocks: async (
-    { blocks, chainId }: { blocks: BlockApiResponse[]; chainId: number },
+    { blocks, chainId }: { blocks: StorableBlock[]; chainId: number },
     context: Context,
   ) => {
     if (blocks.length === 0) {
