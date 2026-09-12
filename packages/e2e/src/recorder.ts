@@ -34,13 +34,17 @@ export function normalizeKey(method: string, rawUrl: string): string {
 }
 
 function sanitizeContract(body: Record<string, unknown>): Record<string, unknown> {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const block = body.block as Record<string, unknown> | undefined;
   return {
     contract_id: body.contract_id,
-    block_height: body.block_height,
     tx_id: body.tx_id,
     clarity_version: body.clarity_version ?? null,
-    source_code: "",
-    abi: "{}",
+    block: block
+      ? {
+          height: block.height,
+        }
+      : undefined,
   };
 }
 
@@ -241,7 +245,7 @@ export function sanitizePayload(rawUrl: string, body: unknown): unknown {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const obj = body as Record<string, unknown>;
 
-  if (rawUrl.includes("/extended/v1/contract/")) {
+  if (rawUrl.includes("/extended/v3/smart-contracts/")) {
     return sanitizeContract(obj);
   }
   if (rawUrl.includes("/extended/v1/tx/")) {

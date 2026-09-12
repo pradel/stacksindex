@@ -548,14 +548,23 @@ describe("aPI DataSource", () => {
       const mockContract = {
         tx_id: "0xtx123",
         contract_id: contractId,
-        block_height: 123_456,
+        block: {
+          height: 123_456,
+          hash: "0xhash",
+          index_hash: "0xindex",
+          time: 1_600_000_000,
+          tx_index: 0,
+        },
+        bitcoin_block: {
+          height: 100_000,
+          time: 1_600_000_000,
+        },
         clarity_version: 2,
         source_code: "(define-data-var x int 0)",
-        abi: null,
       };
 
       mockRequest.mockImplementation((url: string) => {
-        expect(url).toBe(`https://api.hiro.so/extended/v1/contract/${contractId}`);
+        expect(url).toBe(`https://api.hiro.so/extended/v3/smart-contracts/${contractId}`);
         return {
           statusCode: 200,
           body: mockBody(mockContract),

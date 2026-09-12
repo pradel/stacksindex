@@ -78,7 +78,7 @@ describe("getContractEventsFirstCursor", () => {
       new StacksApiResponseError({
         status: 404,
         statusText: "Not Found",
-        path: `/extended/v1/contract/${contractId}`,
+        path: `/extended/v3/smart-contracts/${contractId}`,
         errorData: { error: "Contract not found" },
       }),
     );
@@ -86,12 +86,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("returns null when contract has no transactions", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -119,12 +119,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("returns cursor for first contract event in oldest transaction", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -191,12 +191,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("skips transactions with no matching contract events", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 200,
+            block: { height: 200 },
             tx_id: "tx-deploy",
           }),
         };
@@ -295,12 +295,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("returns null when all transactions have event_count 0", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 200,
+            block: { height: 200 },
             tx_id: "tx-deploy",
           }),
         };
@@ -357,12 +357,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("paginates forward across multiple pages from oldest to newest", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 1,
+            block: { height: 1 },
             tx_id: "tx-deploy",
           }),
         };
@@ -454,12 +454,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("returns error when getPrincipalTransactions fails", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -490,12 +490,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("returns error when getTransaction fails", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -536,12 +536,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("returns error when getV1Transaction fails", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -613,12 +613,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("constructs cursor with anchor block microblock_sequence 2147483647", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 132118,
+            block: { height: 132118 },
             tx_id: "tx-deploy",
           }),
         };
@@ -690,12 +690,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("constructs cursor with microblock sequence number", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 147278,
+            block: { height: 147278 },
             tx_id: "tx-deploy",
           }),
         };
@@ -767,12 +767,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("uses startBlock when startBlock is greater than deployment block height", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -838,12 +838,12 @@ describe("getContractEventsFirstCursor", () => {
 
   test("uses deployment block height when startBlock is less than deployment block height", async () => {
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };

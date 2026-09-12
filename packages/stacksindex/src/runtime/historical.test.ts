@@ -159,12 +159,12 @@ describe("historical runtime", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -514,12 +514,12 @@ describe("historical runtime", () => {
       const url = decodeURIComponent(rawUrl);
 
       // Contract A initialization
-      if (url.includes(`/extended/v1/contract/${contractA}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractA}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractA,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-a-deploy",
           }),
         };
@@ -537,12 +537,12 @@ describe("historical runtime", () => {
       }
 
       // Contract B initialization
-      if (url.includes(`/extended/v1/contract/${contractB}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractB}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractB,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-b-deploy",
           }),
         };
@@ -942,12 +942,12 @@ describe("historical runtime", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -1049,12 +1049,12 @@ describe("historical runtime", () => {
     const contractId = "SP123.token";
 
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -1108,12 +1108,12 @@ describe("historical runtime", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -1439,12 +1439,12 @@ describe("historical runtime with handlers", () => {
       const url = decodeURIComponent(rawUrl);
 
       // Contract A initialization
-      if (url.includes(`/extended/v1/contract/${contractA}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractA}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractA,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-a-deploy",
           }),
         };
@@ -1462,12 +1462,12 @@ describe("historical runtime with handlers", () => {
       }
 
       // Contract B initialization
-      if (url.includes(`/extended/v1/contract/${contractB}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractB}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractB,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-b-deploy",
           }),
         };
@@ -1613,12 +1613,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -1856,12 +1856,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -2019,12 +2019,12 @@ describe("historical runtime with handlers", () => {
       expect(new URL(url).origin).toBe(customBaseUrl);
       expect(init.headers["x-api-key"]).toBe(customApiKey);
 
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -2095,12 +2095,12 @@ describe("historical runtime with handlers", () => {
           return { statusCode: 200, body: mockBody({ results }) };
         }
 
-        if (url.includes(`/extended/v1/contract/${contractId}`)) {
+        if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
           return {
             statusCode: 200,
             body: mockBody({
               contract_id: contractId,
-              block_height: 1234,
+              block: { height: 1234 },
               tx_id: "tx-deploy",
             }),
           };
@@ -2275,12 +2275,12 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
 
     mockRequest.mockImplementation((url: string) => {
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 100,
+            block: { height: 100 },
             tx_id: "tx-deploy",
           }),
         };
@@ -2328,12 +2328,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-deploy",
           }),
         };
@@ -2487,12 +2487,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-deploy",
           }),
         };
@@ -2726,12 +2726,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-deploy",
           }),
         };
@@ -2803,12 +2803,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-deploy",
           }),
         };
@@ -3087,12 +3087,12 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-deploy",
           }),
         };
@@ -3310,12 +3310,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-deploy",
           }),
         };
@@ -3486,12 +3486,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-deploy",
           }),
         };
@@ -3772,12 +3772,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-deploy",
           }),
         };
@@ -4007,12 +4007,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-deploy",
           }),
         };
@@ -4270,12 +4270,12 @@ describe("historical runtime with handlers", () => {
           .filter(Boolean);
         return { statusCode: 200, body: mockBody({ results }) };
       }
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({
             contract_id: contractId,
-            block_height: 50,
+            block: { height: 50 },
             tx_id: "tx-deploy",
           }),
         };
@@ -4398,10 +4398,10 @@ describe("historical runtime with handlers", () => {
     mockRequest.mockImplementation((rawUrl: string) => {
       requestedUrls.push(rawUrl);
       const url = decodeURIComponent(rawUrl);
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
-          body: mockBody({ contract_id: contractId, block_height: 50, tx_id: "tx-deploy" }),
+          body: mockBody({ contract_id: contractId, block: { height: 50 }, tx_id: "tx-deploy" }),
         };
       }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
@@ -4446,10 +4446,10 @@ describe("historical runtime with handlers", () => {
     mockRequest.mockImplementation((rawUrl: string) => {
       requestedUrls.push(rawUrl);
       const url = decodeURIComponent(rawUrl);
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
-          body: mockBody({ contract_id: contractId, block_height: 50, tx_id: "tx-deploy" }),
+          body: mockBody({ contract_id: contractId, block: { height: 50 }, tx_id: "tx-deploy" }),
         };
       }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
@@ -4526,10 +4526,10 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
-          body: mockBody({ contract_id: contractId, block_height: 100, tx_id: "tx-deploy" }),
+          body: mockBody({ contract_id: contractId, block: { height: 100 }, tx_id: "tx-deploy" }),
         };
       }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
@@ -4662,10 +4662,10 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
-          body: mockBody({ contract_id: contractId, block_height: 100, tx_id: "tx-deploy" }),
+          body: mockBody({ contract_id: contractId, block: { height: 100 }, tx_id: "tx-deploy" }),
         };
       }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
@@ -4759,10 +4759,10 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
-      if (url.includes(`/extended/v1/contract/${contractId}`)) {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
-          body: mockBody({ contract_id: contractId, block_height: 100, tx_id: "tx-deploy" }),
+          body: mockBody({ contract_id: contractId, block: { height: 100 }, tx_id: "tx-deploy" }),
         };
       }
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {

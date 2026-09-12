@@ -37,8 +37,8 @@ export function normalizeRoute(method: string, rawUrl: string): string {
   const upperMethod = method.toUpperCase();
 
   // Known Hiro / Stacks blockchain API routes:
-  if (/^\/extended\/v1\/contract\/[^/]+$/u.test(pathname)) {
-    return `${upperMethod} /extended/v1/contract/:contract_id`;
+  if (/^\/extended\/v3\/smart-contracts\/[^/]+$/u.test(pathname)) {
+    return `${upperMethod} /extended/v3/smart-contracts/:contract_id`;
   }
   if (/^\/extended\/v1\/tx\/[^/]+$/u.test(pathname)) {
     return `${upperMethod} /extended/v1/tx/:tx_id`;
