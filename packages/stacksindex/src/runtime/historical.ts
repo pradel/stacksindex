@@ -542,8 +542,8 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         byHash.set(transaction.block.hash, {
           height: transaction.block.height,
           hash: transaction.block.hash,
-          burn_block_time: transaction.bitcoin_block?.time ?? transaction.block.time ?? 0,
-          burn_block_height: transaction.bitcoin_block?.height ?? transaction.block.height,
+          burn_block_time: transaction.bitcoin_block.time,
+          burn_block_height: transaction.bitcoin_block.height,
         });
       }
     }

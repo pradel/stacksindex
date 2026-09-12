@@ -84,7 +84,7 @@ export interface StorableTransaction {
   sender: { address: string; nonce: number };
   fee_rate: string;
   block: { height: number; hash: string; tx_index: number; time?: number };
-  bitcoin_block?: { height: number; time: number };
+  bitcoin_block: { height: number; time: number };
   status: string;
   type: string;
 }
