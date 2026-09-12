@@ -4,7 +4,6 @@ exports[`e2E: Resume with idempotent re-run scenario > second run on the same da
 {
   "endpoints": {
     "GET /extended/v1/tx/:tx_id": 1,
-    "GET /extended/v2/blocks/:height_or_hash": 2,
     "GET /extended/v2/smart-contracts/:contract_id/logs": 2,
     "GET /extended/v3/principals/:principal/transactions": 1,
     "GET /extended/v3/smart-contracts/:contract_id": 1,
@@ -12,6 +11,6 @@ exports[`e2E: Resume with idempotent re-run scenario > second run on the same da
     "GET /extended/v3/transactions/:tx_id/events": 1,
     "GET /extended/v3/transactions/batch": 2,
   },
-  "totalCalls": 11,
+  "totalCalls": 9,
 }
 `;

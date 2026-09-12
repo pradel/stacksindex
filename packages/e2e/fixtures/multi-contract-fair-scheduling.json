@@ -121,6 +121,10 @@
         "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
         "height": 47784,
         "tx_index": 28
+      },
+      "bitcoin_block": {
+        "height": 722076,
+        "time": 1644169830
       }
     }
   },
@@ -148,6 +152,15 @@
           }
         }
       ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v1/tx/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
+      "block_height": 47784,
+      "tx_index": 28,
+      "microblock_sequence": 0
     }
   },
   "GET https://api.hiro.so/extended/v3/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles": {
@@ -641,6 +654,10 @@
         "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
         "height": 47784,
         "tx_index": 29
+      },
+      "bitcoin_block": {
+        "height": 722076,
+        "time": 1644169830
       }
     }
   },
@@ -684,6 +701,15 @@
       ]
     }
   },
+  "GET https://api.hiro.so/extended/v1/tx/0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222": {
+    "statusCode": 200,
+    "body": {
+      "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
+      "block_height": 47784,
+      "tx_index": 29,
+      "microblock_sequence": 0
+    }
+  },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47784:0:28:0&limit=100": {
     "statusCode": 200,
     "body": {
@@ -725,18 +751,13 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 28
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         }
       ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864": {
-    "statusCode": 200,
-    "body": {
-      "height": 47784,
-      "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-      "burn_block_time": 1644169830,
-      "burn_block_height": 722076
     }
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles/logs?cursor=47784:0:29:1&limit=100": {
@@ -1534,6 +1555,10 @@
             "hash": "0x6d191475ad08c6b7bfca9b9a5c112a0f371c897319ad87402318bf8088f4353b",
             "height": 47708,
             "tx_index": 26
+          },
+          "bitcoin_block": {
+            "height": 721982,
+            "time": 1644117508
           }
         },
         {
@@ -1549,6 +1574,10 @@
             "hash": "0x957bf4205e579bed1398bd7f9411695b998d5d9eab3ff0f5130c8e12558ff736",
             "height": 47706,
             "tx_index": 6
+          },
+          "bitcoin_block": {
+            "height": 721978,
+            "time": 1644116311
           }
         },
         {
@@ -1564,6 +1593,10 @@
             "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
             "height": 47698,
             "tx_index": 64
+          },
+          "bitcoin_block": {
+            "height": 721970,
+            "time": 1644110589
           }
         },
         {
@@ -1579,6 +1612,10 @@
             "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
             "height": 47698,
             "tx_index": 63
+          },
+          "bitcoin_block": {
+            "height": 721970,
+            "time": 1644110589
           }
         },
         {
@@ -1594,6 +1631,10 @@
             "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
             "height": 47698,
             "tx_index": 62
+          },
+          "bitcoin_block": {
+            "height": 721970,
+            "time": 1644110589
           }
         },
         {
@@ -1609,6 +1650,10 @@
             "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
             "height": 47698,
             "tx_index": 61
+          },
+          "bitcoin_block": {
+            "height": 721970,
+            "time": 1644110589
           }
         },
         {
@@ -1624,6 +1669,10 @@
             "hash": "0xa72643144c181abd3d530c7b304967124f01783ef8bd656b885856ae1ea298aa",
             "height": 47697,
             "tx_index": 32
+          },
+          "bitcoin_block": {
+            "height": 721969,
+            "time": 1644109617
           }
         },
         {
@@ -1639,6 +1688,10 @@
             "hash": "0xebd756c34da693b4d85d303b29f3699f607f57951f1f04bca0cba919c2010ab4",
             "height": 47695,
             "tx_index": 4
+          },
+          "bitcoin_block": {
+            "height": 721967,
+            "time": 1644108535
           }
         },
         {
@@ -1654,6 +1707,10 @@
             "hash": "0x9c6c3ec77222d8a8ad73997f666bd241f8f8c3f283cb6d4fdb437341baeca161",
             "height": 47693,
             "tx_index": 15
+          },
+          "bitcoin_block": {
+            "height": 721965,
+            "time": 1644106841
           }
         },
         {
@@ -1669,6 +1726,10 @@
             "hash": "0x9c6c3ec77222d8a8ad73997f666bd241f8f8c3f283cb6d4fdb437341baeca161",
             "height": 47693,
             "tx_index": 14
+          },
+          "bitcoin_block": {
+            "height": 721965,
+            "time": 1644106841
           }
         },
         {
@@ -1684,6 +1745,10 @@
             "hash": "0x4bf826b0ad630092c7340ca62ea6ee17a734a37f20746225599b7a92811cf6e1",
             "height": 47690,
             "tx_index": 134
+          },
+          "bitcoin_block": {
+            "height": 721960,
+            "time": 1644105404
           }
         },
         {
@@ -1699,6 +1764,10 @@
             "hash": "0xfadb064f71c7b3bc087cfe993efd2a4dd686024b3e78788f6e4d355c8b6c3685",
             "height": 47681,
             "tx_index": 51
+          },
+          "bitcoin_block": {
+            "height": 721950,
+            "time": 1644097642
           }
         },
         {
@@ -1714,6 +1783,10 @@
             "hash": "0xfadb064f71c7b3bc087cfe993efd2a4dd686024b3e78788f6e4d355c8b6c3685",
             "height": 47681,
             "tx_index": 45
+          },
+          "bitcoin_block": {
+            "height": 721950,
+            "time": 1644097642
           }
         },
         {
@@ -1729,6 +1802,10 @@
             "hash": "0x30afd4ef111a6c227e7571fa22ad5e3a8e3bf5e70ac0116b37aecb0b492e1f20",
             "height": 47678,
             "tx_index": 21
+          },
+          "bitcoin_block": {
+            "height": 721945,
+            "time": 1644093836
           }
         },
         {
@@ -1744,6 +1821,10 @@
             "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
             "height": 47675,
             "tx_index": 29
+          },
+          "bitcoin_block": {
+            "height": 721942,
+            "time": 1644092395
           }
         },
         {
@@ -1759,6 +1840,10 @@
             "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
             "height": 47675,
             "tx_index": 28
+          },
+          "bitcoin_block": {
+            "height": 721942,
+            "time": 1644092395
           }
         },
         {
@@ -1774,6 +1859,10 @@
             "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
             "height": 47675,
             "tx_index": 27
+          },
+          "bitcoin_block": {
+            "height": 721942,
+            "time": 1644092395
           }
         },
         {
@@ -1789,6 +1878,10 @@
             "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
             "height": 47675,
             "tx_index": 26
+          },
+          "bitcoin_block": {
+            "height": 721942,
+            "time": 1644092395
           }
         },
         {
@@ -1804,6 +1897,10 @@
             "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
             "height": 47675,
             "tx_index": 25
+          },
+          "bitcoin_block": {
+            "height": 721942,
+            "time": 1644092395
           }
         },
         {
@@ -1819,6 +1916,10 @@
             "hash": "0xb22217119dfe71df36013a201c4adbfb9a5b7f4f194dac82bdba5cc1a4cdbc0f",
             "height": 47669,
             "tx_index": 93
+          },
+          "bitcoin_block": {
+            "height": 721935,
+            "time": 1644087509
           }
         }
       ]
@@ -1841,6 +1942,10 @@
             "hash": "0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc",
             "height": 47779,
             "tx_index": 86
+          },
+          "bitcoin_block": {
+            "height": 722070,
+            "time": 1644165533
           }
         },
         {
@@ -1856,6 +1961,10 @@
             "hash": "0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc",
             "height": 47779,
             "tx_index": 85
+          },
+          "bitcoin_block": {
+            "height": 722070,
+            "time": 1644165533
           }
         },
         {
@@ -1871,6 +1980,10 @@
             "hash": "0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc",
             "height": 47779,
             "tx_index": 84
+          },
+          "bitcoin_block": {
+            "height": 722070,
+            "time": 1644165533
           }
         },
         {
@@ -1886,6 +1999,10 @@
             "hash": "0xa6309e1d63d9d90c00a1eb5e780fa3eb0739bb758e2678524868c11ffcc22acf",
             "height": 47773,
             "tx_index": 2
+          },
+          "bitcoin_block": {
+            "height": 722062,
+            "time": 1644161536
           }
         },
         {
@@ -1901,6 +2018,10 @@
             "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
             "height": 47771,
             "tx_index": 27
+          },
+          "bitcoin_block": {
+            "height": 722060,
+            "time": 1644160582
           }
         },
         {
@@ -1916,6 +2037,10 @@
             "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
             "height": 47771,
             "tx_index": 26
+          },
+          "bitcoin_block": {
+            "height": 722060,
+            "time": 1644160582
           }
         },
         {
@@ -1931,6 +2056,10 @@
             "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
             "height": 47771,
             "tx_index": 25
+          },
+          "bitcoin_block": {
+            "height": 722060,
+            "time": 1644160582
           }
         },
         {
@@ -1946,6 +2075,10 @@
             "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
             "height": 47771,
             "tx_index": 24
+          },
+          "bitcoin_block": {
+            "height": 722060,
+            "time": 1644160582
           }
         },
         {
@@ -1961,6 +2094,10 @@
             "hash": "0xbef5aefa7ccabcd377bbc87e708e3a3b0f0e9d9f5c1710694ecf1c300300408b",
             "height": 47767,
             "tx_index": 34
+          },
+          "bitcoin_block": {
+            "height": 722056,
+            "time": 1644157613
           }
         },
         {
@@ -1976,6 +2113,10 @@
             "hash": "0xd2a97573df33ba1d2074addc008225bf9a18db59e24ef0f1e0734c08e382b2ba",
             "height": 47733,
             "tx_index": 20
+          },
+          "bitcoin_block": {
+            "height": 722012,
+            "time": 1644130873
           }
         },
         {
@@ -1991,6 +2132,10 @@
             "hash": "0xd2a97573df33ba1d2074addc008225bf9a18db59e24ef0f1e0734c08e382b2ba",
             "height": 47733,
             "tx_index": 19
+          },
+          "bitcoin_block": {
+            "height": 722012,
+            "time": 1644130873
           }
         },
         {
@@ -2006,6 +2151,10 @@
             "hash": "0x8113e28f66f217836970fb03189680d120b0ce156a996b7a56f06982dac1dc29",
             "height": 47731,
             "tx_index": 44
+          },
+          "bitcoin_block": {
+            "height": 722009,
+            "time": 1644127736
           }
         },
         {
@@ -2021,6 +2170,10 @@
             "hash": "0xf6acea0b585785d09e9adfe3530a24a0f1f58a54e2ee1f3e6e9f3b9e573e27b2",
             "height": 47729,
             "tx_index": 17
+          },
+          "bitcoin_block": {
+            "height": 722007,
+            "time": 1644126318
           }
         },
         {
@@ -2036,6 +2189,10 @@
             "hash": "0xf6acea0b585785d09e9adfe3530a24a0f1f58a54e2ee1f3e6e9f3b9e573e27b2",
             "height": 47729,
             "tx_index": 16
+          },
+          "bitcoin_block": {
+            "height": 722007,
+            "time": 1644126318
           }
         },
         {
@@ -2051,6 +2208,10 @@
             "hash": "0x07a9d79a0f3d38cc3848e74307bef4d30928e565f2e38450f4da8fe70de8038a",
             "height": 47713,
             "tx_index": 2
+          },
+          "bitcoin_block": {
+            "height": 721988,
+            "time": 1644118757
           }
         },
         {
@@ -2066,6 +2227,10 @@
             "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
             "height": 47711,
             "tx_index": 52
+          },
+          "bitcoin_block": {
+            "height": 721985,
+            "time": 1644118065
           }
         },
         {
@@ -2081,6 +2246,10 @@
             "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
             "height": 47711,
             "tx_index": 51
+          },
+          "bitcoin_block": {
+            "height": 721985,
+            "time": 1644118065
           }
         },
         {
@@ -2096,6 +2265,10 @@
             "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
             "height": 47711,
             "tx_index": 50
+          },
+          "bitcoin_block": {
+            "height": 721985,
+            "time": 1644118065
           }
         },
         {
@@ -2111,6 +2284,10 @@
             "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
             "height": 47711,
             "tx_index": 49
+          },
+          "bitcoin_block": {
+            "height": 721985,
+            "time": 1644118065
           }
         },
         {
@@ -2126,6 +2303,10 @@
             "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
             "height": 47711,
             "tx_index": 48
+          },
+          "bitcoin_block": {
+            "height": 721985,
+            "time": 1644118065
           }
         }
       ]
@@ -2148,6 +2329,10 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 29
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -2163,6 +2348,10 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 19
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         },
         {
@@ -2178,6 +2367,10 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 18
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         },
         {
@@ -2193,6 +2386,10 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 17
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         },
         {
@@ -2208,6 +2405,10 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 16
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         },
         {
@@ -2223,6 +2424,10 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 15
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         },
         {
@@ -2238,6 +2443,10 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 14
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         },
         {
@@ -2253,6 +2462,10 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 12
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         },
         {
@@ -2268,6 +2481,10 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 11
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         },
         {
@@ -2283,6 +2500,10 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 10
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         },
         {
@@ -2298,6 +2519,10 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 9
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         },
         {
@@ -2313,198 +2538,13 @@
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
             "height": 47783,
             "tx_index": 8
+          },
+          "bitcoin_block": {
+            "height": 722075,
+            "time": 1644169369
           }
         }
       ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xb22217119dfe71df36013a201c4adbfb9a5b7f4f194dac82bdba5cc1a4cdbc0f": {
-    "statusCode": 200,
-    "body": {
-      "height": 47669,
-      "hash": "0xb22217119dfe71df36013a201c4adbfb9a5b7f4f194dac82bdba5cc1a4cdbc0f",
-      "burn_block_time": 1644087509,
-      "burn_block_height": 721935
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b": {
-    "statusCode": 200,
-    "body": {
-      "height": 47675,
-      "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
-      "burn_block_time": 1644092395,
-      "burn_block_height": 721942
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x30afd4ef111a6c227e7571fa22ad5e3a8e3bf5e70ac0116b37aecb0b492e1f20": {
-    "statusCode": 200,
-    "body": {
-      "height": 47678,
-      "hash": "0x30afd4ef111a6c227e7571fa22ad5e3a8e3bf5e70ac0116b37aecb0b492e1f20",
-      "burn_block_time": 1644093836,
-      "burn_block_height": 721945
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x4bf826b0ad630092c7340ca62ea6ee17a734a37f20746225599b7a92811cf6e1": {
-    "statusCode": 200,
-    "body": {
-      "height": 47690,
-      "hash": "0x4bf826b0ad630092c7340ca62ea6ee17a734a37f20746225599b7a92811cf6e1",
-      "burn_block_time": 1644105404,
-      "burn_block_height": 721960
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xfadb064f71c7b3bc087cfe993efd2a4dd686024b3e78788f6e4d355c8b6c3685": {
-    "statusCode": 200,
-    "body": {
-      "height": 47681,
-      "hash": "0xfadb064f71c7b3bc087cfe993efd2a4dd686024b3e78788f6e4d355c8b6c3685",
-      "burn_block_time": 1644097642,
-      "burn_block_height": 721950
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xa72643144c181abd3d530c7b304967124f01783ef8bd656b885856ae1ea298aa": {
-    "statusCode": 200,
-    "body": {
-      "height": 47697,
-      "hash": "0xa72643144c181abd3d530c7b304967124f01783ef8bd656b885856ae1ea298aa",
-      "burn_block_time": 1644109617,
-      "burn_block_height": 721969
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa": {
-    "statusCode": 200,
-    "body": {
-      "height": 47698,
-      "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
-      "burn_block_time": 1644110589,
-      "burn_block_height": 721970
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x9c6c3ec77222d8a8ad73997f666bd241f8f8c3f283cb6d4fdb437341baeca161": {
-    "statusCode": 200,
-    "body": {
-      "height": 47693,
-      "hash": "0x9c6c3ec77222d8a8ad73997f666bd241f8f8c3f283cb6d4fdb437341baeca161",
-      "burn_block_time": 1644106841,
-      "burn_block_height": 721965
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x957bf4205e579bed1398bd7f9411695b998d5d9eab3ff0f5130c8e12558ff736": {
-    "statusCode": 200,
-    "body": {
-      "height": 47706,
-      "hash": "0x957bf4205e579bed1398bd7f9411695b998d5d9eab3ff0f5130c8e12558ff736",
-      "burn_block_time": 1644116311,
-      "burn_block_height": 721978
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xebd756c34da693b4d85d303b29f3699f607f57951f1f04bca0cba919c2010ab4": {
-    "statusCode": 200,
-    "body": {
-      "height": 47695,
-      "hash": "0xebd756c34da693b4d85d303b29f3699f607f57951f1f04bca0cba919c2010ab4",
-      "burn_block_time": 1644108535,
-      "burn_block_height": 721967
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xf6acea0b585785d09e9adfe3530a24a0f1f58a54e2ee1f3e6e9f3b9e573e27b2": {
-    "statusCode": 200,
-    "body": {
-      "height": 47729,
-      "hash": "0xf6acea0b585785d09e9adfe3530a24a0f1f58a54e2ee1f3e6e9f3b9e573e27b2",
-      "burn_block_time": 1644126318,
-      "burn_block_height": 722007
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x07a9d79a0f3d38cc3848e74307bef4d30928e565f2e38450f4da8fe70de8038a": {
-    "statusCode": 200,
-    "body": {
-      "height": 47713,
-      "hash": "0x07a9d79a0f3d38cc3848e74307bef4d30928e565f2e38450f4da8fe70de8038a",
-      "burn_block_time": 1644118757,
-      "burn_block_height": 721988
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x8113e28f66f217836970fb03189680d120b0ce156a996b7a56f06982dac1dc29": {
-    "statusCode": 200,
-    "body": {
-      "height": 47731,
-      "hash": "0x8113e28f66f217836970fb03189680d120b0ce156a996b7a56f06982dac1dc29",
-      "burn_block_time": 1644127736,
-      "burn_block_height": 722009
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689": {
-    "statusCode": 200,
-    "body": {
-      "height": 47711,
-      "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
-      "burn_block_time": 1644118065,
-      "burn_block_height": 721985
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x6d191475ad08c6b7bfca9b9a5c112a0f371c897319ad87402318bf8088f4353b": {
-    "statusCode": 200,
-    "body": {
-      "height": 47708,
-      "hash": "0x6d191475ad08c6b7bfca9b9a5c112a0f371c897319ad87402318bf8088f4353b",
-      "burn_block_time": 1644117508,
-      "burn_block_height": 721982
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xd2a97573df33ba1d2074addc008225bf9a18db59e24ef0f1e0734c08e382b2ba": {
-    "statusCode": 200,
-    "body": {
-      "height": 47733,
-      "hash": "0xd2a97573df33ba1d2074addc008225bf9a18db59e24ef0f1e0734c08e382b2ba",
-      "burn_block_time": 1644130873,
-      "burn_block_height": 722012
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xa6309e1d63d9d90c00a1eb5e780fa3eb0739bb758e2678524868c11ffcc22acf": {
-    "statusCode": 200,
-    "body": {
-      "height": 47773,
-      "hash": "0xa6309e1d63d9d90c00a1eb5e780fa3eb0739bb758e2678524868c11ffcc22acf",
-      "burn_block_time": 1644161536,
-      "burn_block_height": 722062
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f": {
-    "statusCode": 200,
-    "body": {
-      "height": 47771,
-      "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
-      "burn_block_time": 1644160582,
-      "burn_block_height": 722060
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xbef5aefa7ccabcd377bbc87e708e3a3b0f0e9d9f5c1710694ecf1c300300408b": {
-    "statusCode": 200,
-    "body": {
-      "height": 47767,
-      "hash": "0xbef5aefa7ccabcd377bbc87e708e3a3b0f0e9d9f5c1710694ecf1c300300408b",
-      "burn_block_time": 1644157613,
-      "burn_block_height": 722056
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc": {
-    "statusCode": 200,
-    "body": {
-      "height": 47779,
-      "hash": "0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc",
-      "burn_block_time": 1644165533,
-      "burn_block_height": 722070
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d": {
-    "statusCode": 200,
-    "body": {
-      "height": 47783,
-      "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-      "burn_block_time": 1644169369,
-      "burn_block_height": 722075
     }
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47884:2147483647:26:0&limit=100": {
@@ -3835,6 +3875,10 @@
             "hash": "0x52b6972203afc7edc99b409f164aa2d7fe8b63057961c3984590dab6c99c77f7",
             "height": 47791,
             "tx_index": 39
+          },
+          "bitcoin_block": {
+            "height": 722085,
+            "time": 1644173583
           }
         },
         {
@@ -3850,6 +3894,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 23
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -3865,6 +3913,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 17
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -3880,6 +3932,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 16
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -3895,6 +3951,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 15
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -3910,6 +3970,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 14
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -3925,6 +3989,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 13
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -3940,6 +4008,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 12
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -3955,6 +4027,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 10
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -3970,6 +4046,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 9
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -3985,6 +4065,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 7
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -4000,6 +4084,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 6
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -4015,6 +4103,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 5
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -4030,6 +4122,10 @@
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
             "height": 47789,
             "tx_index": 3
+          },
+          "bitcoin_block": {
+            "height": 722083,
+            "time": 1644172831
           }
         },
         {
@@ -4045,6 +4141,10 @@
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
             "height": 47786,
             "tx_index": 4
+          },
+          "bitcoin_block": {
+            "height": 722078,
+            "time": 1644171646
           }
         },
         {
@@ -4060,6 +4160,10 @@
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
             "height": 47786,
             "tx_index": 3
+          },
+          "bitcoin_block": {
+            "height": 722078,
+            "time": 1644171646
           }
         },
         {
@@ -4075,6 +4179,10 @@
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
             "height": 47786,
             "tx_index": 66
+          },
+          "bitcoin_block": {
+            "height": 722078,
+            "time": 1644171646
           }
         },
         {
@@ -4090,6 +4198,10 @@
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
             "height": 47786,
             "tx_index": 58
+          },
+          "bitcoin_block": {
+            "height": 722078,
+            "time": 1644171646
           }
         },
         {
@@ -4105,6 +4217,10 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 48
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -4120,18 +4236,13 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 34
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         }
       ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794": {
-    "statusCode": 200,
-    "body": {
-      "height": 47786,
-      "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
-      "burn_block_time": 1644171646,
-      "burn_block_height": 722078
     }
   },
   "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles/logs?cursor=47894:2147483647:60:1&limit=100": {
@@ -5462,6 +5573,10 @@
             "hash": "0x62941557f979bf68bf479e49409072091469f6b706f0b5e1e3d66341426952d9",
             "height": 47794,
             "tx_index": 12
+          },
+          "bitcoin_block": {
+            "height": 722090,
+            "time": 1644175084
           }
         },
         {
@@ -5477,6 +5592,10 @@
             "hash": "0x62941557f979bf68bf479e49409072091469f6b706f0b5e1e3d66341426952d9",
             "height": 47794,
             "tx_index": 11
+          },
+          "bitcoin_block": {
+            "height": 722090,
+            "time": 1644175084
           }
         },
         {
@@ -5492,6 +5611,10 @@
             "hash": "0x62941557f979bf68bf479e49409072091469f6b706f0b5e1e3d66341426952d9",
             "height": 47794,
             "tx_index": 10
+          },
+          "bitcoin_block": {
+            "height": 722090,
+            "time": 1644175084
           }
         },
         {
@@ -5507,6 +5630,10 @@
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
             "height": 47786,
             "tx_index": 36
+          },
+          "bitcoin_block": {
+            "height": 722078,
+            "time": 1644171646
           }
         },
         {
@@ -5522,6 +5649,10 @@
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
             "height": 47786,
             "tx_index": 31
+          },
+          "bitcoin_block": {
+            "height": 722078,
+            "time": 1644171646
           }
         },
         {
@@ -5537,6 +5668,10 @@
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
             "height": 47785,
             "tx_index": 16
+          },
+          "bitcoin_block": {
+            "height": 722077,
+            "time": 1644170736
           }
         },
         {
@@ -5552,6 +5687,10 @@
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
             "height": 47785,
             "tx_index": 15
+          },
+          "bitcoin_block": {
+            "height": 722077,
+            "time": 1644170736
           }
         },
         {
@@ -5567,6 +5706,10 @@
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
             "height": 47785,
             "tx_index": 14
+          },
+          "bitcoin_block": {
+            "height": 722077,
+            "time": 1644170736
           }
         },
         {
@@ -5582,6 +5725,10 @@
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
             "height": 47785,
             "tx_index": 13
+          },
+          "bitcoin_block": {
+            "height": 722077,
+            "time": 1644170736
           }
         },
         {
@@ -5597,6 +5744,10 @@
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
             "height": 47785,
             "tx_index": 12
+          },
+          "bitcoin_block": {
+            "height": 722077,
+            "time": 1644170736
           }
         },
         {
@@ -5612,6 +5763,10 @@
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
             "height": 47785,
             "tx_index": 11
+          },
+          "bitcoin_block": {
+            "height": 722077,
+            "time": 1644170736
           }
         },
         {
@@ -5627,6 +5782,10 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 8
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -5642,6 +5801,10 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 7
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -5657,6 +5820,10 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 6
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -5672,6 +5839,10 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 5
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -5687,6 +5858,10 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 4
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -5702,6 +5877,10 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 33
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -5717,6 +5896,10 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 32
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -5732,6 +5915,10 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 31
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
@@ -5747,36 +5934,13 @@
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
             "tx_index": 30
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
           }
         }
       ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068": {
-    "statusCode": 200,
-    "body": {
-      "height": 47785,
-      "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
-      "burn_block_time": 1644170736,
-      "burn_block_height": 722077
-    }
-  },
-  "GET https://api.hiro.so/extended/v1/tx/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-      "block_height": 47784,
-      "tx_index": 28,
-      "microblock_sequence": 0
-    }
-  },
-  "GET https://api.hiro.so/extended/v1/tx/0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
-      "block_height": 47784,
-      "tx_index": 29,
-      "microblock_sequence": 0
     }
   }
 }

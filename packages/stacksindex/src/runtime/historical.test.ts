@@ -2088,6 +2088,7 @@ describe("historical runtime with handlers", () => {
                     sender: { address: "SP sender", nonce: 0 },
                     sponsor: null,
                     block: { hash: "block-1", height: 1234, time: 1000, tx_index: 0 },
+                    bitcoin_block: { height: 1234, time: 1000 },
                   }
                 : standardTxById[id],
             )
@@ -4260,6 +4261,7 @@ describe("historical runtime with handlers", () => {
               ? {
                   tx_id: "tx-1",
                   block: { height: 50, hash: "block-50", tx_index: 0 },
+                  bitcoin_block: { height: 50, time: 1000 },
                   type: "contract_call",
                   sender: { address: "SP_SENDER", nonce: 1 },
                   fee_rate: 100,
