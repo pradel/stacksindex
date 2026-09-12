@@ -6,6 +6,7 @@ import { migrate } from "../database/index.ts";
 import { StacksApiUnexpectedError, type StacksApiError } from "../datasources/api/errors.ts";
 import {
   datasourceStacksApi,
+  type ContractLogsResponse,
   type DatasourceStacksApiContext,
   type StorableBlock,
   type StorableTransaction,
@@ -19,6 +20,7 @@ import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 import { createHistoricalSync, parseLogsCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
+import { createProgressTracker, type ProgressTracker } from "./progress.ts";
 
 /**
  * Max transaction ids per `GET /extended/v3/transactions/batch` call.
@@ -100,34 +102,49 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
   return minHeight;
 }
 
+function validateFilterBlocks(filter: Filter): Result<void, FilterValidationError> {
+  if (filter.startBlock !== undefined) {
+    if (!Number.isInteger(filter.startBlock) || filter.startBlock < 0) {
+      return Result.err(
+        new FilterValidationError({
+          message: `Validation failed: Invalid startBlock for '${filter.contractId}'. Got ${filter.startBlock}, expected a non-negative integer.`,
+        }),
+      );
+    }
+  }
+
+  if (filter.endBlock !== undefined && filter.endBlock !== "latest") {
+    if (!Number.isInteger(filter.endBlock) || filter.endBlock < 0) {
+      return Result.err(
+        new FilterValidationError({
+          message: `Validation failed: Invalid endBlock for '${filter.contractId}'. Got ${filter.endBlock}, expected a non-negative integer or "latest".`,
+        }),
+      );
+    }
+  }
+
+  return Result.ok(undefined);
+}
+
 async function validateAndResolveFilters(
   filters: Filter[],
   context: DatasourceStacksApiContext,
-): Promise<Result<ResolvedFilter[], StacksApiError | FilterValidationError>> {
+): Promise<
+  Result<
+    { resolvedFilters: ResolvedFilter[]; latestBlockHeight?: number },
+    StacksApiError | FilterValidationError
+  >
+> {
   for (const filter of filters) {
-    if (filter.startBlock !== undefined) {
-      if (!Number.isInteger(filter.startBlock) || filter.startBlock < 0) {
-        return Result.err(
-          new FilterValidationError({
-            message: `Validation failed: Invalid startBlock for '${filter.contractId}'. Got ${filter.startBlock}, expected a non-negative integer.`,
-          }),
-        );
-      }
-    }
-
-    if (filter.endBlock !== undefined && filter.endBlock !== "latest") {
-      if (!Number.isInteger(filter.endBlock) || filter.endBlock < 0) {
-        return Result.err(
-          new FilterValidationError({
-            message: `Validation failed: Invalid endBlock for '${filter.contractId}'. Got ${filter.endBlock}, expected a non-negative integer or "latest".`,
-          }),
-        );
-      }
+    const blockValidation = validateFilterBlocks(filter);
+    if (blockValidation.isErr()) {
+      return Result.err(blockValidation.error);
     }
   }
 
   let latestBlockHeight: number | undefined = undefined;
   const hasLatestTag = filters.some((filter) => filter.endBlock === "latest");
+  const hasUndefinedEndBlock = filters.some((filter) => filter.endBlock === undefined);
 
   if (hasLatestTag) {
     const statusResult = await datasourceStacksApi.getStatus(context);
@@ -149,6 +166,18 @@ async function validateAndResolveFilters(
       msg: `Resolved "latest" endBlock to block height ${latestBlockHeight}`,
       latestBlockHeight,
     });
+  } else if (hasUndefinedEndBlock) {
+    const statusResult = await datasourceStacksApi.getStatus(context);
+    if (statusResult.isOk()) {
+      latestBlockHeight = statusResult.value.chain_tip?.block_height;
+      if (latestBlockHeight !== undefined) {
+        context.logger.info({
+          service: "historicalRuntime",
+          msg: `Resolved chain tip block height to ${latestBlockHeight}`,
+          latestBlockHeight,
+        });
+      }
+    }
   }
 
   const resolvedFilters: ResolvedFilter[] = [];
@@ -175,7 +204,7 @@ async function validateAndResolveFilters(
     });
   }
 
-  return Result.ok(resolvedFilters);
+  return Result.ok({ resolvedFilters, latestBlockHeight });
 }
 
 async function initContractFromScratch(
@@ -396,6 +425,149 @@ async function initializeContractStates(
   return Result.ok(states);
 }
 
+function findLowestCursorState(states: ContractSyncState[]): ContractSyncState | null {
+  let lowestState: ContractSyncState | null = null;
+  let lowestHeight = Number.MAX_SAFE_INTEGER;
+
+  for (const state of states) {
+    if (!state.done && state.cursor !== null) {
+      const height = parseLogsCursor(state.cursor).blockHeight;
+      if (height < lowestHeight) {
+        lowestHeight = height;
+        lowestState = state;
+      }
+    }
+  }
+  return lowestState;
+}
+
+function initProgressTracker(
+  resolvedFilters: ResolvedFilter[],
+  latestBlockHeight: number | undefined,
+  initialCheckpointHeight: number,
+): ProgressTracker {
+  let minStartBlock = Number.MAX_SAFE_INTEGER;
+  for (const filter of resolvedFilters) {
+    if (filter.startBlock === undefined) {
+      minStartBlock = 0;
+    } else {
+      minStartBlock = Math.min(minStartBlock, filter.startBlock);
+    }
+  }
+  if (minStartBlock === Number.MAX_SAFE_INTEGER) {
+    minStartBlock = 0;
+  }
+
+  let maxTargetBlock: number | undefined = undefined;
+  for (const filter of resolvedFilters) {
+    const target = filter.endBlock ?? latestBlockHeight;
+    if (target !== undefined) {
+      maxTargetBlock = Math.max(maxTargetBlock ?? 0, target);
+    }
+  }
+  if (maxTargetBlock !== undefined && maxTargetBlock < minStartBlock) {
+    maxTargetBlock = minStartBlock;
+  }
+
+  const sessionStartBlock = Math.max(minStartBlock, initialCheckpointHeight);
+
+  return createProgressTracker({
+    startBlock: minStartBlock,
+    targetBlock: maxTargetBlock,
+    sessionStartBlock,
+  });
+}
+
+function extractEventsWithBlockHeight(
+  events: ContractLogsResponse["results"],
+  existingTxs: { txId: string; blockHeight: bigint }[],
+  transactions: StorableTransaction[],
+) {
+  const smartContractLogs = events.filter(
+    // oxlint-disable-next-line typescript/no-unnecessary-condition
+    (event) => event.event_type === "smart_contract_log",
+  );
+  const txBlockHeights = new Map<string, number>();
+  for (const existingTx of existingTxs) {
+    txBlockHeights.set(existingTx.txId, Number(existingTx.blockHeight));
+  }
+  for (const transaction of transactions) {
+    txBlockHeights.set(transaction.tx_id, transaction.block.height);
+  }
+  return smartContractLogs
+    .map((event) => {
+      const blockHeight = txBlockHeights.get(event.tx_id) ?? 0;
+      return { event, blockHeight };
+    })
+    .filter((item) => item.blockHeight > 0);
+}
+
+function logSyncProgress(
+  context: ResolvedHistoricalRuntimeContext,
+  progressTracker: ProgressTracker,
+  contractId: string,
+  cursor: string | null,
+  currentHeight: number,
+  eventCount: number,
+) {
+  context.logger.debug({
+    service: "historicalRuntime",
+    msg: `Fetched ${eventCount} logs for ${contractId}`,
+    cursor,
+    block: currentHeight,
+  });
+
+  if (progressTracker.shouldLog("sync", currentHeight)) {
+    const progress = progressTracker.getProgress(currentHeight);
+    const titlePrefix = progress.prefix ? `${progress.prefix} ` : "";
+    context.logger.info({
+      service: "historicalRuntime",
+      msg: `${titlePrefix}Syncing ${contractId}`,
+      block: progress.block,
+      ...(progress.percentage === undefined ? {} : { progress: progress.percentage }),
+      totalEvents: progress.totalEvents,
+      events: eventCount,
+      ...(progress.rate === undefined ? {} : { rate: progress.rate }),
+      ...(progress.eta === undefined ? {} : { eta: progress.eta }),
+    });
+  }
+}
+
+function logHistoricalCompletion(
+  context: ResolvedHistoricalRuntimeContext,
+  progressTracker: ProgressTracker,
+  runDuration: number,
+) {
+  const totalEvents = progressTracker.getTotalEvents();
+  const avgRate = progressTracker.getAverageRate();
+  const summaries = progressTracker.getHandlerSummaries();
+
+  context.logger.info({
+    service: "historicalRuntime",
+    msg: "Historical indexing complete",
+    totalEvents,
+    duration: runDuration,
+    ...(avgRate === undefined ? {} : { avg_rate: avgRate }),
+  });
+
+  if (summaries.length > 0) {
+    context.logger.info({
+      service: "historicalRuntime",
+      msg: "Historical handler summary:",
+    });
+    for (const summary of summaries) {
+      const topicLabel = summary.topic ? `:${summary.topic}` : "";
+      const avgDuration = `${summary.avgDurationMs.toFixed(2)}ms`;
+      context.logger.info({
+        service: "historicalRuntime",
+        msg: `  • ${summary.contractId}${topicLabel}`,
+        events: summary.count,
+        avg_duration: avgDuration,
+      });
+    }
+  }
+}
+
 export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
   const context = resolveContext(input);
   const { chainId } = context;
@@ -404,6 +576,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
     toBlockHeight: number,
     indexing: ReturnType<typeof createIndexing>,
     filterMap: Map<string, ResolvedFilter>,
+    progressTracker: ProgressTracker,
   ): Promise<Result<void, StacksApiError | HandlerExecutionError>> {
     const checkpoint = await syncStore.getCheckpoint({ chainId }, { db: context.db });
     const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
@@ -422,7 +595,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
     }
 
     const toLabel = toBlockHeight === Number.MAX_SAFE_INTEGER ? "latest" : String(toBlockHeight);
-    context.logger.info({
+    context.logger.debug({
       service: "historicalRuntime",
       msg: `Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`,
       count: rows.length,
@@ -455,10 +628,12 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
           tx_index: row.txIndex,
           sender_address: row.senderAddress,
         };
+        const handlerClock = startClock();
         const result = await indexing.executeEvent(event);
         if (result.isErr()) {
           return Result.err(result.error);
         }
+        progressTracker.recordHandlerExecution(row.contractId, handlerClock(), row.topic);
       }
     }
 
@@ -472,13 +647,32 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
       { db: context.db },
     );
 
+    progressTracker.recordEventsIndexed(rows.length);
+    const lastBlock = Number(lastRow.blockHeight);
     const batchDuration = batchClock();
-    context.logger.info({
+
+    context.logger.debug({
       service: "historicalRuntime",
-      msg: `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
-      block: Number(lastRow.blockHeight),
+      msg: `Indexed batch of ${rows.length} events up to block ${lastBlock}`,
+      count: rows.length,
+      block: lastBlock,
       duration: batchDuration,
     });
+
+    if (progressTracker.shouldLog("index", lastBlock)) {
+      const progress = progressTracker.getProgress(lastBlock);
+      const titlePrefix = progress.prefix ? `${progress.prefix} ` : "";
+      context.logger.info({
+        service: "historicalRuntime",
+        msg: `${titlePrefix}Indexed ${progress.totalEvents} events up to block ${lastBlock}`,
+        block: progress.block,
+        ...(progress.percentage === undefined ? {} : { progress: progress.percentage }),
+        totalEvents: progress.totalEvents,
+        ...(progress.rate === undefined ? {} : { rate: progress.rate }),
+        duration: batchDuration,
+        ...(progress.eta === undefined ? {} : { eta: progress.eta }),
+      });
+    }
 
     return Result.ok(undefined);
   }
@@ -622,15 +816,19 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
       if (validationResult.isErr()) {
         return Result.err(validationResult.error);
       }
-      const resolvedFilters = validationResult.value;
+      const { resolvedFilters, latestBlockHeight } = validationResult.value;
 
       await migrate(context.db);
 
       const runClock = startClock();
+      const minStartBlock = Math.min(...resolvedFilters.map((filter) => filter.startBlock ?? 0));
       context.logger.info({
         service: "historicalRuntime",
         msg: "Starting historical indexing",
         contracts: resolvedFilters.map((filter) => filter.contractId),
+        ...(latestBlockHeight === undefined
+          ? {}
+          : { block_range: [minStartBlock, latestBlockHeight] }),
       });
 
       const filterMap = new Map(resolvedFilters.map((filter) => [filter.contractId, filter]));
@@ -651,20 +849,17 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
       }
       const states = statesResult.value;
 
-      while (states.some((state) => !state.done)) {
-        // Fair scheduling: find contract with lowest cursor block height
-        let lowestState: ContractSyncState | null = null;
-        let lowestHeight = Number.MAX_SAFE_INTEGER;
+      const initialCheckpoint = await syncStore.getCheckpoint({ chainId }, { db: context.db });
+      const initialCheckpointHeight = initialCheckpoint ? Number(initialCheckpoint.blockHeight) : 0;
 
-        for (const state of states) {
-          if (!state.done && state.cursor !== null) {
-            const height = parseLogsCursor(state.cursor).blockHeight;
-            if (height < lowestHeight) {
-              lowestHeight = height;
-              lowestState = state;
-            }
-          }
-        }
+      const progressTracker = initProgressTracker(
+        resolvedFilters,
+        latestBlockHeight,
+        initialCheckpointHeight,
+      );
+
+      while (states.some((state) => !state.done)) {
+        const lowestState = findLowestCursorState(states);
 
         // All contracts done
         if (!lowestState || lowestState.cursor === null) {
@@ -683,12 +878,15 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
 
         const { results: events, next_cursor: nextCursor } = logsResult.value;
         const currentHeight = parseLogsCursor(lowestState.cursor).blockHeight;
-        context.logger.info({
-          service: "historicalRuntime",
-          msg: `Syncing ${lowestState.contractId}`,
-          block: currentHeight,
-          events: events.length,
-        });
+
+        logSyncProgress(
+          context,
+          progressTracker,
+          lowestState.contractId,
+          lowestState.cursor,
+          currentHeight,
+          events.length,
+        );
 
         // Batch fetch transactions (deduplicated by tx_id) in chronological order
         const txIds = [
@@ -719,24 +917,11 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         const blocks = extractBlocksFromTransactions(transactions);
 
         // Store blocks, transactions, and events
-        // Only smart_contract_log events have a `value` field; skip other event types.
-        const smartContractLogs = events.filter(
-          // oxlint-disable-next-line typescript/no-unnecessary-condition
-          (event) => event.event_type === "smart_contract_log",
+        const eventsWithBlockHeight = extractEventsWithBlockHeight(
+          events,
+          existingTxs,
+          transactions,
         );
-        const txBlockHeights = new Map<string, number>();
-        for (const existingTx of existingTxs) {
-          txBlockHeights.set(existingTx.txId, Number(existingTx.blockHeight));
-        }
-        for (const transaction of transactions) {
-          txBlockHeights.set(transaction.tx_id, transaction.block.height);
-        }
-        const eventsWithBlockHeight = smartContractLogs
-          .map((event) => {
-            const blockHeight = txBlockHeights.get(event.tx_id) ?? 0;
-            return { event, blockHeight };
-          })
-          .filter((item) => item.blockHeight > 0);
 
         await context.db.transaction(async (tx) => {
           await Promise.all([
@@ -751,7 +936,12 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         // Incremental indexing: process all events up to the safe block height
         const safeHeight = getSafeBlockHeight(states);
         if (safeHeight !== undefined) {
-          const indexResult = await processEventsUpTo(safeHeight, indexing, filterMap);
+          const indexResult = await processEventsUpTo(
+            safeHeight,
+            indexing,
+            filterMap,
+            progressTracker,
+          );
           if (indexResult.isErr()) {
             return Result.err(indexResult.error);
           }
@@ -763,17 +953,13 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         Number.MAX_SAFE_INTEGER,
         indexing,
         filterMap,
+        progressTracker,
       );
       if (finalIndexResult.isErr()) {
         return Result.err(finalIndexResult.error);
       }
 
-      const runDuration = runClock();
-      context.logger.info({
-        service: "historicalRuntime",
-        msg: "Historical indexing complete",
-        duration: runDuration,
-      });
+      logHistoricalCompletion(context, progressTracker, runClock());
 
       return Result.ok(undefined);
     },
