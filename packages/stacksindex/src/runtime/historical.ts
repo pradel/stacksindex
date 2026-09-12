@@ -7,6 +7,7 @@ import { StacksApiUnexpectedError, type StacksApiError } from "../datasources/ap
 import {
   datasourceStacksApi,
   type DatasourceStacksApiContext,
+  type StorableBlock,
   type StorableTransaction,
 } from "../datasources/api/index.ts";
 import { createIndexing } from "../indexing/index.ts";
@@ -17,7 +18,6 @@ import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 import { createHistoricalSync, parseLogsCursor } from "../sync-historical/index.ts";
-import type { StorableBlock } from "../sync-store/encode.js";
 import { syncStore } from "../sync-store/index.ts";
 
 /**

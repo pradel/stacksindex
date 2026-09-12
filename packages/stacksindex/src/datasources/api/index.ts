@@ -89,6 +89,19 @@ export interface StorableTransaction {
   type: string;
 }
 
+/**
+ * Minimal block shape required for storage in `blocksTable`.
+ * Satisfied by both the full `GET /extended/v2/blocks/{height_or_hash}` response
+ * and in-memory extraction from `StorableTransaction` (via `tx.block` and `tx.bitcoin_block`).
+ * Allows inserting blocks without making separate block API calls.
+ */
+export interface StorableBlock {
+  height: number;
+  hash: string;
+  burn_block_time: number;
+  burn_block_height: number;
+}
+
 export type PrincipalTransactionsResponse =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
 

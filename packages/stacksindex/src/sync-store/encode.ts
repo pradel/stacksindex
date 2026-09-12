@@ -1,12 +1,11 @@
-import type { SmartContractLogEvent, StorableTransaction } from "../datasources/api/index.ts";
+import type {
+  SmartContractLogEvent,
+  StorableBlock,
+  StorableTransaction,
+} from "../datasources/api/index.ts";
 import type * as syncSchema from "./schema.js";
 
-export interface StorableBlock {
-  height: number;
-  hash: string;
-  burn_block_time: number;
-  burn_block_height: number;
-}
+export type { StorableBlock };
 
 export const encodeBlock = ({
   block,
