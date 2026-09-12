@@ -3,8 +3,12 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgQueryResultHKT, PgTransaction } from "drizzle-orm/pg-core";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
-import type { SmartContractLogEvent, StorableTransaction } from "../datasources/api/index.ts";
-import { encodeBlock, encodeEvent, encodeTransaction, type StorableBlock } from "./encode.js";
+import type {
+  SmartContractLogEvent,
+  StorableBlock,
+  StorableTransaction,
+} from "../datasources/api/index.ts";
+import { encodeBlock, encodeEvent, encodeTransaction } from "./encode.js";
 import {
   blocksTable,
   checkpointsTable,

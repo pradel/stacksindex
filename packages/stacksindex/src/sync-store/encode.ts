@@ -5,8 +5,6 @@ import type {
 } from "../datasources/api/index.ts";
 import type * as syncSchema from "./schema.js";
 
-export type { StorableBlock };
-
 export const encodeBlock = ({
   block,
   chainId,
