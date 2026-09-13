@@ -1,12 +1,12 @@
 // oxlint-disable vitest/no-conditional-expect, vitest/no-conditional-in-test, vitest/prefer-called-times, vitest/prefer-describe-function-title
 
-import { Result } from "better-result";
 import type { ClarityAbi } from "clarity-abitype";
+import { Effect } from "effect";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { createLogger } from "../../logger/index.ts";
 import { StacksApiResponseError, StacksApiUnexpectedError } from "./errors.ts";
-import type { CallReadResponse, DatasourceStacksApiContext } from "./index.ts";
+import type { DatasourceStacksApiContext } from "./index.ts";
 import { typedCallReadFunction } from "./read-only.ts";
 
 const sampleTokenAbi = {
@@ -108,33 +108,23 @@ describe("typedCallReadFunction", () => {
   const context: DatasourceStacksApiContext = { logger };
 
   it("calls 0-argument read-only function and decodes response correctly", async () => {
-    const mockCallRead = vi
-      .fn<
-        (
-          context: DatasourceStacksApiContext,
-          contractId: string,
-          functionName: string,
-          options?: { args?: string[]; sender?: string; tip?: number },
-        ) => Promise<Result<CallReadResponse, StacksApiUnexpectedError>>
-      >()
-      .mockResolvedValue(
-        Result.ok({
-          okay: true,
-          result: "0x070d0000000954657374546f6b656e",
-        }),
-      );
+    const mockCallRead = vi.fn().mockReturnValue(
+      Effect.succeed({
+        okay: true,
+        result: "0x070d0000000954657374546f6b656e",
+      }),
+    );
 
-    const result = await typedCallReadFunction(context, mockCallRead, {
-      abi: sampleTokenAbi,
-      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-      contractName: "test-token",
-      functionName: "get-name",
-    });
+    const result = await Effect.runPromise(
+      typedCallReadFunction(context, mockCallRead, {
+        abi: sampleTokenAbi,
+        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+        contractName: "test-token",
+        functionName: "get-name",
+      }),
+    );
 
-    expect(result.isOk()).toBe(true);
-    if (result.isOk()) {
-      expect(result.value).toStrictEqual({ ok: "TestToken" });
-    }
+    expect(result).toStrictEqual({ ok: "TestToken" });
 
     expect(mockCallRead).toHaveBeenCalledWith(
       context,
@@ -149,35 +139,25 @@ describe("typedCallReadFunction", () => {
   });
 
   it("supports custom senderAddress and tip properties", async () => {
-    const mockCallRead = vi
-      .fn<
-        (
-          context: DatasourceStacksApiContext,
-          contractId: string,
-          functionName: string,
-          options?: { args?: string[]; sender?: string; tip?: number },
-        ) => Promise<Result<CallReadResponse, StacksApiUnexpectedError>>
-      >()
-      .mockResolvedValue(
-        Result.ok({
-          okay: true,
-          result: "0x070100000000000000000000000000000008",
-        }),
-      );
+    const mockCallRead = vi.fn().mockReturnValue(
+      Effect.succeed({
+        okay: true,
+        result: "0x070100000000000000000000000000000008",
+      }),
+    );
 
-    const result = await typedCallReadFunction(context, mockCallRead, {
-      abi: sampleTokenAbi,
-      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-      contractName: "test-token",
-      functionName: "get-decimals",
-      senderAddress: "SP12345SENDER",
-      tip: 100500,
-    });
+    const result = await Effect.runPromise(
+      typedCallReadFunction(context, mockCallRead, {
+        abi: sampleTokenAbi,
+        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+        contractName: "test-token",
+        functionName: "get-decimals",
+        senderAddress: "SP12345SENDER",
+        tip: 100500,
+      }),
+    );
 
-    expect(result.isOk()).toBe(true);
-    if (result.isOk()) {
-      expect(result.value).toStrictEqual({ ok: 8n });
-    }
+    expect(result).toStrictEqual({ ok: 8n });
 
     expect(mockCallRead).toHaveBeenCalledWith(
       context,
@@ -192,34 +172,24 @@ describe("typedCallReadFunction", () => {
   });
 
   it("encodes primitive arguments (principal) and decodes response", async () => {
-    const mockCallRead = vi
-      .fn<
-        (
-          context: DatasourceStacksApiContext,
-          contractId: string,
-          functionName: string,
-          options?: { args?: string[]; sender?: string; tip?: number },
-        ) => Promise<Result<CallReadResponse, StacksApiUnexpectedError>>
-      >()
-      .mockResolvedValue(
-        Result.ok({
-          okay: true,
-          result: "0x0701000000000000000000000000004c4b40",
-        }),
-      );
+    const mockCallRead = vi.fn().mockReturnValue(
+      Effect.succeed({
+        okay: true,
+        result: "0x0701000000000000000000000000004c4b40",
+      }),
+    );
 
-    const result = await typedCallReadFunction(context, mockCallRead, {
-      abi: sampleTokenAbi,
-      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-      contractName: "test-token",
-      functionName: "get-balance",
-      functionArgs: ["SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
-    });
+    const result = await Effect.runPromise(
+      typedCallReadFunction(context, mockCallRead, {
+        abi: sampleTokenAbi,
+        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+        contractName: "test-token",
+        functionName: "get-balance",
+        functionArgs: ["SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
+      }),
+    );
 
-    expect(result.isOk()).toBe(true);
-    if (result.isOk()) {
-      expect(result.value).toStrictEqual({ ok: 5000000n });
-    }
+    expect(result).toStrictEqual({ ok: 5000000n });
 
     expect(mockCallRead).toHaveBeenCalledOnce();
     const passedOptions = mockCallRead.mock.calls[0]?.[3];
@@ -229,56 +199,38 @@ describe("typedCallReadFunction", () => {
   });
 
   it("encodes complex tuple arguments and decodes nested tuple response", async () => {
-    const mockCallRead = vi
-      .fn<
-        (
-          context: DatasourceStacksApiContext,
-          contractId: string,
-          functionName: string,
-          options?: { args?: string[]; sender?: string; tip?: number },
-        ) => Promise<Result<CallReadResponse, StacksApiUnexpectedError>>
-      >()
-      .mockResolvedValue(
-        Result.ok({
-          okay: true,
-          result:
-            "0x070c0000000303666565010000000000000000000000000000001e07746f6b656e2d78051a5c64c514ffab1adbbddc6ecffbaebfbbfaeedc5307746f6b656e2d79051a5c64c514ffab1adbbddc6ecffbaebfbbfaeedc53",
-        }),
-      );
+    const mockCallRead = vi.fn().mockReturnValue(
+      Effect.succeed({
+        okay: true,
+        result:
+          "0x070c0000000303666565010000000000000000000000000000001e07746f6b656e2d78051a5c64c514ffab1adbbddc6ecffbaebfbbfaeedc5307746f6b656e2d79051a5c64c514ffab1adbbddc6ecffbaebfbbfaeedc53",
+      }),
+    );
 
-    const result = await typedCallReadFunction(context, mockCallRead, {
-      abi: sampleTokenAbi,
-      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-      contractName: "test-token",
-      functionName: "get-pool-details",
-      functionArgs: [
-        1n,
-        {
-          tag: "alex",
-          active: true,
-        },
-      ],
-    });
+    const result = await Effect.runPromise(
+      typedCallReadFunction(context, mockCallRead, {
+        abi: sampleTokenAbi,
+        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+        contractName: "test-token",
+        functionName: "get-pool-details",
+        functionArgs: [
+          1n,
+          {
+            tag: "alex",
+            active: true,
+          },
+        ],
+      }),
+    );
 
-    expect(result.isOk()).toBe(true);
-    if (result.isOk()) {
-      expect(result.value).toHaveProperty("ok");
-    }
+    expect(result).toHaveProperty("ok");
 
     const passedOptions = mockCallRead.mock.calls[0]?.[3];
     expect(passedOptions?.args).toHaveLength(2);
   });
 
   it("returns error if function is public instead of read_only", async () => {
-    const mockCallRead =
-      vi.fn<
-        (
-          context: DatasourceStacksApiContext,
-          contractId: string,
-          functionName: string,
-          options?: { args?: string[]; sender?: string; tip?: number },
-        ) => Promise<Result<CallReadResponse, StacksApiUnexpectedError>>
-      >();
+    const mockCallRead = vi.fn();
 
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const params = {
@@ -289,9 +241,9 @@ describe("typedCallReadFunction", () => {
       functionArgs: [100n, "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
     } as unknown as Parameters<typeof typedCallReadFunction>[2];
 
-    const result = await typedCallReadFunction(context, mockCallRead, params);
+    const exit = await Effect.runPromiseExit(typedCallReadFunction(context, mockCallRead, params));
 
-    expect(result).toBeBetterErr(
+    expect(exit).toBeTaggedError(
       new StacksApiUnexpectedError({
         message: 'Function "transfer" not found in ABI or is not a read_only function',
         cause: new Error('Function "transfer" not found in ABI'),
@@ -302,15 +254,7 @@ describe("typedCallReadFunction", () => {
   });
 
   it("returns error if argument count mismatches ABI", async () => {
-    const mockCallRead =
-      vi.fn<
-        (
-          context: DatasourceStacksApiContext,
-          contractId: string,
-          functionName: string,
-          options?: { args?: string[]; sender?: string; tip?: number },
-        ) => Promise<Result<CallReadResponse, StacksApiUnexpectedError>>
-      >();
+    const mockCallRead = vi.fn();
 
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const params = {
@@ -321,9 +265,9 @@ describe("typedCallReadFunction", () => {
       functionArgs: [],
     } as unknown as Parameters<typeof typedCallReadFunction>[2];
 
-    const result = await typedCallReadFunction(context, mockCallRead, params);
+    const exit = await Effect.runPromiseExit(typedCallReadFunction(context, mockCallRead, params));
 
-    expect(result).toBeBetterErr(
+    expect(exit).toBeTaggedError(
       new StacksApiUnexpectedError({
         message: 'Function "get-balance" expects 1 argument(s), but received 0',
         cause: new Error('Argument count mismatch for "get-balance"'),
@@ -333,31 +277,24 @@ describe("typedCallReadFunction", () => {
   });
 
   it("returns error when API call returns okay: false", async () => {
-    const mockCallRead = vi
-      .fn<
-        (
-          context: DatasourceStacksApiContext,
-          contractId: string,
-          functionName: string,
-          options?: { args?: string[]; sender?: string; tip?: number },
-        ) => Promise<Result<CallReadResponse, StacksApiUnexpectedError>>
-      >()
-      .mockResolvedValue(
-        Result.ok({
-          okay: false,
-          result: "",
-          cause: "NoSuchContract",
-        }),
-      );
+    const mockCallRead = vi.fn().mockReturnValue(
+      Effect.succeed({
+        okay: false,
+        result: "",
+        cause: "NoSuchContract",
+      }),
+    );
 
-    const result = await typedCallReadFunction(context, mockCallRead, {
-      abi: sampleTokenAbi,
-      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-      contractName: "test-token",
-      functionName: "get-name",
-    });
+    const exit = await Effect.runPromiseExit(
+      typedCallReadFunction(context, mockCallRead, {
+        abi: sampleTokenAbi,
+        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+        contractName: "test-token",
+        functionName: "get-name",
+      }),
+    );
 
-    expect(result).toBeBetterErr(
+    expect(exit).toBeTaggedError(
       new StacksApiUnexpectedError({
         message: "Read-only call failed: NoSuchContract",
         cause: { okay: false, result: "", cause: "NoSuchContract" },
@@ -374,24 +311,17 @@ describe("typedCallReadFunction", () => {
       errorData: null,
     });
 
-    const mockCallRead = vi
-      .fn<
-        (
-          context: DatasourceStacksApiContext,
-          contractId: string,
-          functionName: string,
-          options?: { args?: string[]; sender?: string; tip?: number },
-        ) => Promise<Result<CallReadResponse, StacksApiResponseError>>
-      >()
-      .mockResolvedValue(Result.err(apiError));
+    const mockCallRead = vi.fn().mockReturnValue(Effect.fail(apiError));
 
-    const result = await typedCallReadFunction(context, mockCallRead, {
-      abi: sampleTokenAbi,
-      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-      contractName: "test-token",
-      functionName: "get-name",
-    });
+    const exit = await Effect.runPromiseExit(
+      typedCallReadFunction(context, mockCallRead, {
+        abi: sampleTokenAbi,
+        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+        contractName: "test-token",
+        functionName: "get-name",
+      }),
+    );
 
-    expect(result).toBeBetterErr(apiError);
+    expect(exit).toBeTaggedError(apiError);
   });
 });

@@ -12,8 +12,7 @@
   "dependencies": {
     "@electric-sql/pglite": "0.5.8",
     "@stacks/codec": "2.1.0",
-    "better-result": "3.0.1",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "1.0.0-rc.5-5935859",
     "stacksindex": "workspace:*",
     "undici": "8.10.2"
   },

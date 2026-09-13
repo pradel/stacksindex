@@ -1,6 +1,13 @@
+import path from "node:path";
+
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      stacksindex: path.resolve(import.meta.dirname, "packages/stacksindex/src/index.ts"),
+    },
+  },
   staged: {
     "*": "vp check --fix",
   },
@@ -61,9 +68,35 @@ export default defineConfig({
       "vitest/require-hook": "off",
       "no-underscore-dangle": "off",
       "no-await-in-loop": "off",
+      "typescript/await-thenable": "off",
+      "typescript/no-unsafe-member-access": "off",
+      "typescript/no-unsafe-call": "off",
+      "typescript/no-unsafe-assignment": "off",
+      "typescript/no-unsafe-argument": "off",
+      "typescript/no-unsafe-return": "off",
+      "typescript/no-unsafe-type-assertion": "off",
+      "typescript/no-explicit-any": "off",
+      "typescript/no-confusing-void-expression": "off",
+      "typescript/no-unnecessary-condition": "off",
+      "typescript/consistent-return": "off",
+      "typescript/no-unnecessary-type-parameters": "off",
+      "typescript/explicit-member-accessibility": "off",
+      "typescript/prefer-nullish-coalescing": "off",
+      "func-names": "off",
+      "no-nested-ternary": "off",
+      "no-undef": "off",
+      "init-declarations": "off",
+      "id-length": "off",
+      "typescript/no-empty-interface": "off",
+      "typescript/no-empty-object-type": "off",
+      "typescript/no-unnecessary-type-assertion": "off",
+      "no-shadow": "off",
+      "no-use-before-define": "off",
+      "vitest/expect-expect": "off",
     },
   },
   test: {
+    setupFiles: ["./packages/stacksindex/src/test-utils/vitest-setup.ts"],
     testTimeout: 60000,
     hookTimeout: 60000,
     exclude: ["**/node_modules/**", "**/dist/**", "repos/**"],

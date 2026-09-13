@@ -26,19 +26,12 @@ const END_BLOCK = 47786;
 // Byte-identical, so no second fixture file is needed.
 const recorder = createScenarioRecorder("multi-block-range.json");
 
-// oxlint-disable-next-line jest/no-untyped-mock-factory
-vi.mock("undici", () => ({
-  request: (
-    url: string,
-    init?: { method?: string; headers?: Record<string, string>; body?: string },
-  ) => recorder.handleRequest(url, init),
-}));
-
 describe("e2E: Resume with idempotent re-run scenario", () => {
   const database = createScenarioDatabase();
   const logger = createLogger({ level: 0 });
 
   beforeAll(async () => {
+    vi.stubGlobal("fetch", (url: unknown, init?: any) => recorder.handleFetch(url, init));
     await database.setup();
   });
 
@@ -51,6 +44,7 @@ describe("e2E: Resume with idempotent re-run scenario", () => {
     await recorder.save();
     await database.teardown();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   test("second run on the same database performs no API calls and delivers no events", async () => {

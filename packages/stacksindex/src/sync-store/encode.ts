@@ -3,7 +3,7 @@ import type {
   StorableBlock,
   StorableTransaction,
 } from "../datasources/api/index.ts";
-import type * as syncSchema from "./schema.js";
+import type * as syncSchema from "./schema.ts";
 
 export const encodeBlock = ({
   block,
