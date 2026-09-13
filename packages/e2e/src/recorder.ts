@@ -359,6 +359,8 @@ export interface ScenarioRecorder {
       text: () => Promise<string>;
     };
   }>;
+  // oxlint-disable-next-line typescript/no-explicit-any
+  handleFetch: (rawUrl: unknown, init?: any) => Promise<Response>;
   save: () => Promise<void>;
   isRecording: boolean;
   size: () => number;
@@ -525,6 +527,38 @@ export function createScenarioRecorder(
             ),
         },
       };
+    },
+
+    // oxlint-disable-next-line typescript/no-explicit-any
+    async handleFetch(rawUrl: unknown, init?: any): Promise<Response> {
+      // oxlint-disable-next-line typescript/no-unsafe-member-access
+      const url = typeof rawUrl === "string" ? rawUrl : String((rawUrl as any)?.href ?? rawUrl);
+      let headersObj: Record<string, string> = {};
+      if (init?.headers) {
+        // oxlint-disable-next-line typescript/no-unsafe-member-access
+        if (typeof init.headers.entries === "function") {
+          // oxlint-disable-next-line typescript/no-unsafe-argument, typescript/no-unsafe-call, typescript/no-unsafe-member-access
+          headersObj = Object.fromEntries(init.headers.entries());
+          // oxlint-disable-next-line typescript/no-unsafe-member-access
+        } else if (typeof init.headers === "object") {
+          // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-member-access
+          headersObj = { ...init.headers };
+        }
+      }
+      // oxlint-disable-next-line typescript/no-unsafe-member-access
+      const res = await this.handleRequest(url, {
+        method: init?.method,
+        headers: headersObj,
+        body: init?.body,
+      });
+      const status = res.statusCode;
+      const statusText = status === 200 ? "OK" : status === 404 ? "Not Found" : String(status);
+      const data = await res.body.json();
+      return new Response(typeof data === "string" ? data : JSON.stringify(data), {
+        status,
+        statusText,
+        headers: { "content-type": "application/json", ...res.headers },
+      });
     },
 
     save() {

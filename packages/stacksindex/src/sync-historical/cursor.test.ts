@@ -4,6 +4,7 @@
 // oxlint-disable typescript/no-explicit-any
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable vitest/no-conditional-in-test
+import { Effect } from "effect";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { StacksApiResponseError } from "../datasources/api/errors.ts";
@@ -16,33 +17,47 @@ import {
   parseTransactionCursor,
 } from "./index.ts";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockRequest = vi.fn();
 
-// oxlint-disable-next-line jest/no-untyped-mock-factory
-vi.mock("undici", () => ({
-  request: (url: string, init?: any) => {
-    try {
-      return mockRequest(url, init);
-    } catch (err: any) {
-      if (typeof url === "string" && url.includes("/extended/v1/tx/")) {
-        const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
-        return {
-          statusCode: 200,
-          body: {
-            json: () =>
-              Promise.resolve({
-                tx_id: txId,
-                block_height: 100,
-                tx_index: 0,
-                microblock_sequence: 0,
-              }),
-          },
-        };
-      }
-      throw err;
+const toUrlString = (url: unknown) =>
+  typeof url === "string" ? url : ((url as URL).href ?? String(url));
+
+const mockFetch = vi.fn(async (rawUrl: unknown) => {
+  const url = toUrlString(rawUrl);
+  let res: any;
+  try {
+    res = await mockRequest(url);
+  } catch (err: any) {
+    if (url.includes("/extended/v1/tx/")) {
+      const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
+      return new Response(
+        JSON.stringify({
+          tx_id: txId,
+          block_height: 100,
+          tx_index: 0,
+          microblock_sequence: 0,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
     }
-  },
-}));
+    throw err;
+  }
+  if (!res) {
+    throw new Error(`mockRequest returned undefined for ${url}`);
+  }
+  if (res instanceof Response) {
+    return res;
+  }
+  const status = res.statusCode ?? 200;
+  const statusText =
+    res.statusText ?? (status === 200 ? "OK" : status === 404 ? "Not Found" : String(status));
+  const data = res.body?.json ? await res.body.json() : (res.body ?? res);
+  return new Response(JSON.stringify(data), {
+    status,
+    statusText,
+    headers: { "content-type": "application/json", ...res.headers },
+  });
+});
 
 const context = {
   logger: createLogger({ level: 0 }),
@@ -57,10 +72,12 @@ const mockBody = (data: unknown) => ({
 describe("getContractEventsFirstCursor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal("fetch", mockFetch);
   });
 
   afterAll(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   test("returns error when getContract fails", async () => {
@@ -72,9 +89,9 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
+    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result).toBeBetterErr(
+    expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 404,
         statusText: "Not Found",
@@ -111,10 +128,9 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
+    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBeNull();
+    expect(result).toBeNull();
   });
 
   test("returns cursor for first contract event in oldest transaction", async () => {
@@ -183,10 +199,9 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
+    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("100:0:5:2");
+    expect(result).toBe("100:0:5:2");
   });
 
   test("skips transactions with no matching contract events", async () => {
@@ -287,10 +302,9 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
+    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("200:0:1:1");
+    expect(result).toBe("200:0:1:1");
   });
 
   test("returns null when all transactions have event_count 0", async () => {
@@ -349,10 +363,9 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
+    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBeNull();
+    expect(result).toBeNull();
   });
 
   test("paginates forward across multiple pages from oldest to newest", async () => {
@@ -446,10 +459,9 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
+    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("2:0:0:0");
+    expect(result).toBe("2:0:0:0");
   });
 
   test("returns error when getPrincipalTransactions fails", async () => {
@@ -476,9 +488,9 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
+    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result).toBeBetterErr(
+    expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
         statusText: "Bad Request",
@@ -523,8 +535,8 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
-    expect(result).toBeBetterErr(
+    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
+    expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
         statusText: "Bad Request",
@@ -600,8 +612,8 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
-    expect(result).toBeBetterErr(
+    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
+    expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
         statusText: "Bad Request",
@@ -682,10 +694,9 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
+    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result.isOk()).toBe(true);
-    expect(result.unwrap()).toBe("132191:2147483647:6:0");
+    expect(result).toBe("132191:2147483647:6:0");
   });
 
   test("constructs cursor with microblock sequence number", async () => {
@@ -759,10 +770,9 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId);
+    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result.isOk()).toBe(true);
-    expect(result.unwrap()).toBe("147279:14:161:3");
+    expect(result).toBe("147279:14:161:3");
   });
 
   test("uses startBlock when startBlock is greater than deployment block height", async () => {
@@ -830,10 +840,11 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId, { startBlock: 150 });
+    const result = await Effect.runPromise(
+      sync.getContractEventsFirstCursor(contractId, { startBlock: 150 }),
+    );
 
-    expect(result.isOk()).toBe(true);
-    expect(result.unwrap()).toBe("150:0:0:0");
+    expect(result).toBe("150:0:0:0");
   });
 
   test("uses deployment block height when startBlock is less than deployment block height", async () => {
@@ -901,10 +912,11 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await sync.getContractEventsFirstCursor(contractId, { startBlock: 50 });
+    const result = await Effect.runPromise(
+      sync.getContractEventsFirstCursor(contractId, { startBlock: 50 }),
+    );
 
-    expect(result.isOk()).toBe(true);
-    expect(result.unwrap()).toBe("100:0:0:0");
+    expect(result).toBe("100:0:0:0");
   });
 });
 

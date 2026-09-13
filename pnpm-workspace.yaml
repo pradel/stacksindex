@@ -27,3 +27,9 @@ minimumReleaseAge: 1440 # 1 day
 strictDepBuilds: true
 minimumReleaseAgeExclude:
   - clarity-abitype@0.7.1
+  - effect
+  - "@effect/sql-pg"
+  - "@effect/sql-pglite"
+  - "@effect/vitest"
+  - drizzle-orm
+  - drizzle-kit
