@@ -1,5 +1,5 @@
 import { expect } from "vite-plus/test";
 
-import { toBeBetterErr } from "./result-matchers.ts";
+import { toBeBetterErr, toBeTaggedError } from "./result-matchers.ts";
 
-expect.extend({ toBeBetterErr });
+expect.extend({ toBeBetterErr, toBeTaggedError });

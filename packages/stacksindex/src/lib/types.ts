@@ -1,10 +1,9 @@
 // oxlint-disable typescript/method-signature-style
 
-import type { Result } from "better-result";
 import type { ClarityAbi } from "clarity-abitype";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { PgliteDatabase } from "drizzle-orm/pglite";
+import type { Effect, Schema } from "effect";
 
+import type { IndexerDb } from "../database/index.ts";
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import type {
   CallReadResponse,
@@ -36,19 +35,24 @@ export interface IndexingClient {
     const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
   >(
     options: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
-  ): Promise<Result<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError>>;
+  ): Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError> &
+    PromiseLike<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>>;
 
   callReadOnly(
     options: UntypedCallReadOnlyFunctionParameters,
-  ): Promise<Result<CallReadResponse, StacksApiError>>;
+  ): Effect.Effect<CallReadResponse, StacksApiError> & PromiseLike<CallReadResponse>;
 }
 
 // oxlint-disable-next-line typescript/no-explicit-any
-export interface HandlerContext<TSchema extends Record<string, unknown> = any> {
-  db: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>;
+export interface HandlerContext<_TSchema extends Record<string, unknown> = any> {
+  db: IndexerDb;
   client: IndexingClient;
+  decode: <A>(schema: Schema.Schema<A>, repr: string) => Effect.Effect<A, unknown>;
 }
 
-export type EventHandler = (event: HandlerEvent, context: HandlerContext) => Promise<void>;
+export type EventHandler = (
+  event: HandlerEvent,
+  context: HandlerContext,
+) => Effect.Effect<void, any> | Promise<void>;
 
 export type Handlers = Record<string, EventHandler | undefined>;

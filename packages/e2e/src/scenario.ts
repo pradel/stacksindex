@@ -72,8 +72,7 @@ export async function runScenario(options: {
     },
   }));
 
-  const result = await runtime.run(filters);
-  expect(result.isOk()).toBe(true);
+  await runtime.run(filters);
 
   return { tracer, events: tracer.getEvents() };
 }

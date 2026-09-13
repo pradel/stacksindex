@@ -1,30 +1,35 @@
-import { Result, TaggedError } from "better-result";
+import { Exit, Schema } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
 import { StacksApiResponseError } from "../datasources/api/errors.ts";
 
-class TestErrorA extends TaggedError("TestErrorA")<{
-  message: string;
-  code: number;
-}> {}
+class TestErrorA extends Schema.TaggedError<TestErrorA>()("TestErrorA", {
+  message: Schema.String,
+  code: Schema.Number,
+}) {}
 
-class TestErrorB extends TaggedError("TestErrorB")<{
-  message: string;
-}> {}
+class TestErrorB extends Schema.TaggedError<TestErrorB>()("TestErrorB", {
+  message: Schema.String,
+}) {}
 
-class TestCauseError extends TaggedError("TestCauseError")<{
-  message: string;
-  cause: unknown;
-}> {}
+class TestCauseError extends Schema.TaggedError<TestCauseError>()("TestCauseError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+}) {}
 
-describe("toBeBetterErr", () => {
-  test("passes when Result error deep-equals the expected error", () => {
-    const result = Result.err(new TestErrorA({ message: "boom", code: 42 }));
-    expect(result).toBeBetterErr(new TestErrorA({ message: "boom", code: 42 }));
+describe("toBeTaggedError", () => {
+  test("passes when Exit error deep-equals the expected error", () => {
+    const result = Exit.fail(new TestErrorA({ message: "boom", code: 42 }));
+    expect(result).toBeTaggedError(new TestErrorA({ message: "boom", code: 42 }));
+  });
+
+  test("passes when received is the error directly", () => {
+    const err = new TestErrorA({ message: "boom", code: 42 });
+    expect(err).toBeTaggedError(new TestErrorA({ message: "boom", code: 42 }));
   });
 
   test("passes for real domain errors with identical props", () => {
-    const result = Result.err(
+    const result = Exit.fail(
       new StacksApiResponseError({
         status: 404,
         statusText: "Not Found",
@@ -32,7 +37,7 @@ describe("toBeBetterErr", () => {
         errorData: { error: "Not found" },
       }),
     );
-    expect(result).toBeBetterErr(
+    expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 404,
         statusText: "Not Found",
@@ -43,68 +48,57 @@ describe("toBeBetterErr", () => {
   });
 
   test("ignores stack traces and compares cause by value", () => {
-    const result = Result.err(new TestCauseError({ message: "wrapped", cause: new Error("root") }));
-    expect(result).toBeBetterErr(
+    const result = Exit.fail(new TestCauseError({ message: "wrapped", cause: new Error("root") }));
+    expect(result).toBeTaggedError(
       new TestCauseError({ message: "wrapped", cause: new Error("root") }),
     );
   });
 
   test("supports .not when errors differ", () => {
-    const result = Result.err(new TestErrorA({ message: "boom", code: 42 }));
-    expect(result).not.toBeBetterErr(new TestErrorA({ message: "boom", code: 7 }));
+    const result = Exit.fail(new TestErrorA({ message: "boom", code: 42 }));
+    expect(result).not.toBeTaggedError(new TestErrorA({ message: "boom", code: 7 }));
   });
 
-  test("fails when Result is Ok", () => {
-    const result = Result.ok(42);
+  test("fails when Exit is Success", () => {
+    const result = Exit.succeed(42);
     expect(() => {
-      expect(result).toBeBetterErr(new TestErrorA({ message: "boom", code: 42 }));
-    }).toThrow(/Expected Result to be Err/u);
+      expect(result).toBeTaggedError(new TestErrorA({ message: "boom", code: 42 }));
+    }).toThrow(/Expected Exit to be Failure/u);
   });
 
-  test("fails when received is not a Result", () => {
+  test("fails when received has no _tag", () => {
     expect(() => {
-      expect({ error: "nope" }).toBeBetterErr(new TestErrorA({ message: "boom", code: 42 }));
-    }).toThrow(/Expected received value to be a better-result Result/u);
+      expect("plain string").toBeTaggedError(new TestErrorA({ message: "boom", code: 42 }));
+    }).toThrow(/Expected error to have a _tag property/u);
   });
 
-  test("fails when Result error is not a TaggedError", () => {
+  test("fails when expected argument has no _tag", () => {
+    const result = Exit.fail(new TestErrorA({ message: "boom", code: 42 }));
     expect(() => {
-      expect(Result.err("boom")).toBeBetterErr(new TestErrorA({ message: "x", code: 1 }));
-    }).toThrow(/Expected Result error to be a better-result TaggedError/u);
-    expect(() => {
-      expect(Result.err(new Error("plain"))).toBeBetterErr(
-        new TestErrorA({ message: "x", code: 1 }),
-      );
-    }).toThrow(/Expected Result error to be a better-result TaggedError/u);
-  });
-
-  test("fails when expected argument is not a TaggedError", () => {
-    const result = Result.err(new TestErrorA({ message: "boom", code: 42 }));
-    expect(() => {
-      expect(result).toBeBetterErr({ _tag: "TestErrorA" });
-    }).toThrow(/Expected matcher argument to be a better-result TaggedError/u);
+      expect(result).toBeTaggedError({ message: "boom" });
+    }).toThrow(/Expected matcher argument to have a _tag property/u);
   });
 
   test("fails on _tag mismatch", () => {
-    const result = Result.err(new TestErrorA({ message: "boom", code: 42 }));
+    const result = Exit.fail(new TestErrorA({ message: "boom", code: 42 }));
     expect(() => {
-      expect(result).toBeBetterErr(new TestErrorB({ message: "boom" }));
+      expect(result).toBeTaggedError(new TestErrorB({ message: "boom" }));
     }).toThrow(/Expected error _tag to match/u);
   });
 
   test("fails on prop mismatch", () => {
-    const result = Result.err(new TestErrorA({ message: "boom", code: 42 }));
+    const result = Exit.fail(new TestErrorA({ message: "boom", code: 42 }));
     expect(() => {
-      expect(result).toBeBetterErr(new TestErrorA({ message: "boom", code: 7 }));
-    }).toThrow(/Expected Result error to match/u);
+      expect(result).toBeTaggedError(new TestErrorA({ message: "boom", code: 7 }));
+    }).toThrow(/Expected error to match/u);
   });
 
   test("fails on cause mismatch", () => {
-    const result = Result.err(new TestCauseError({ message: "wrapped", cause: new Error("root") }));
+    const result = Exit.fail(new TestCauseError({ message: "wrapped", cause: new Error("root") }));
     expect(() => {
-      expect(result).toBeBetterErr(
+      expect(result).toBeTaggedError(
         new TestCauseError({ message: "wrapped", cause: new Error("different") }),
       );
-    }).toThrow(/Expected Result error to match/u);
+    }).toThrow(/Expected error to match/u);
   });
 });
