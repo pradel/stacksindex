@@ -1,4 +1,5 @@
 import { ClarityTypeID, type ClarityValue, decodeClarityValue } from "@stacks/codec";
+import { Schema } from "effect";
 
 /**
  * Converts a ClarityValue AST into a plain JavaScript / JSON-compatible value.
@@ -90,5 +91,13 @@ export function encodeUint(value: bigint): string {
   const hex = value.toString(16).padStart(32, "0");
   return `0x01${hex}`;
 }
+
+/**
+ * Decodes a Clarity hex string into a typed object validated by an Effect Schema.
+ */
+export const decodeClarityWithSchema =
+  <A>(schema: Schema.Schema<A>) =>
+  (hex: string) =>
+    Schema.decodeUnknownEffect(schema)(decodeHex(hex));
 
 export { ClarityTypeID, type ClarityValue, decodeClarityValue };

@@ -1,12 +1,11 @@
 // oxlint-disable typescript/no-unsafe-assignment
 // oxlint-disable vitest/prefer-called-once, vitest/prefer-called-times, vitest/no-conditional-expect, vitest/no-conditional-in-test
 
-import { Result } from "better-result";
 import type { ClarityAbi } from "clarity-abitype";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { Effect } from "effect";
 import { describe, expect, test, vi } from "vite-plus/test";
 
-import type { StacksApiError } from "../datasources/api/errors.ts";
+import type { IndexerDb } from "../database/index.ts";
 import { datasourceStacksApi } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
@@ -14,7 +13,9 @@ import { createLogger } from "../logger/index.ts";
 import { createIndexing } from "./index.ts";
 
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-const mockDb = {} as unknown as NodePgDatabase;
+const mockDb = {
+  transaction: (cb: any) => cb(mockDb),
+} as unknown as IndexerDb;
 
 const testAbi = {
   functions: [
@@ -68,9 +69,8 @@ describe("indexing engine", () => {
     });
 
     const event = createMockEvent();
-    const result = await indexing.executeEvent(event);
+    await Effect.runPromise(indexing.executeEvent(event));
 
-    expect(result.isOk()).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith(
       event,
@@ -86,35 +86,41 @@ describe("indexing engine", () => {
   test("client.callReadOnly injects event block_height as tip and forwards api config", async () => {
     const callReadSpy = vi
       .spyOn(datasourceStacksApi, "callReadFunction")
-      .mockResolvedValue(Result.ok({ okay: true, result: "0x01" }));
+      .mockReturnValue(Effect.succeed({ okay: true, result: "0x01" }));
 
     const logger = createLogger({ level: 0 });
     const api = { baseUrl: "https://custom.api", apiKey: "secret-key" };
 
     const handler = vi.fn().mockImplementation(async (_event, ctx: HandlerContext) => {
       // Call without explicit tip - should inject event.block_height
-      await ctx.client.callReadOnly({
-        contractAddress: "SP123",
-        contractName: "contract",
-        functionName: "get-something",
-        args: ["0x01"],
-        senderAddress: "ST123",
-      });
+      await Effect.runPromise(
+        ctx.client.callReadOnly({
+          contractAddress: "SP123",
+          contractName: "contract",
+          functionName: "get-something",
+          args: ["0x01"],
+          senderAddress: "ST123",
+        }),
+      );
 
       // Call with explicit options.tip - should use explicit tip
-      await ctx.client.callReadOnly({
-        contractAddress: "SP123",
-        contractName: "contract",
-        functionName: "get-something",
-        tip: 99999,
-      });
+      await Effect.runPromise(
+        ctx.client.callReadOnly({
+          contractAddress: "SP123",
+          contractName: "contract",
+          functionName: "get-something",
+          tip: 99999,
+        }),
+      );
 
       // Call without options tip - should default tip to event.block_height
-      await ctx.client.callReadOnly({
-        contractAddress: "SP123",
-        contractName: "contract",
-        functionName: "get-something",
-      });
+      await Effect.runPromise(
+        ctx.client.callReadOnly({
+          contractAddress: "SP123",
+          contractName: "contract",
+          functionName: "get-something",
+        }),
+      );
     });
 
     const handlers: Handlers = {
@@ -129,9 +135,8 @@ describe("indexing engine", () => {
     });
 
     const event = createMockEvent({ block_height: 54321 });
-    const result = await indexing.executeEvent(event);
+    await Effect.runPromise(indexing.executeEvent(event));
 
-    expect(result.isOk()).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
 
     expect(callReadSpy).toHaveBeenNthCalledWith(
@@ -174,8 +179,8 @@ describe("indexing engine", () => {
   });
 
   test("client.callReadOnly supports typed ABI options and injects event block_height as tip", async () => {
-    const callReadSpy = vi.spyOn(datasourceStacksApi, "callReadFunction").mockResolvedValue(
-      Result.ok({
+    const callReadSpy = vi.spyOn(datasourceStacksApi, "callReadFunction").mockReturnValue(
+      Effect.succeed({
         okay: true,
         // ResponseOk(UInt(42))
         result: "0x07010000000000000000000000000000002a",
@@ -184,16 +189,17 @@ describe("indexing engine", () => {
 
     const logger = createLogger({ level: 0 });
 
-    // oxlint-disable-next-line init-declarations
-    let handlerResult: Result<unknown, StacksApiError> | undefined;
+    let handlerResult: unknown;
 
     const handler = vi.fn().mockImplementation(async (_event, ctx: HandlerContext) => {
-      handlerResult = await ctx.client.callReadOnly({
-        abi: testAbi,
-        contractAddress: "SP123",
-        contractName: "contract",
-        functionName: "get-decimals",
-      });
+      handlerResult = await Effect.runPromise(
+        ctx.client.callReadOnly({
+          abi: testAbi,
+          contractAddress: "SP123",
+          contractName: "contract",
+          functionName: "get-decimals",
+        }),
+      );
     });
 
     const handlers: Handlers = {
@@ -207,17 +213,10 @@ describe("indexing engine", () => {
     });
 
     const event = createMockEvent({ block_height: 77777 });
-    const result = await indexing.executeEvent(event);
+    await Effect.runPromise(indexing.executeEvent(event));
 
-    expect(result.isOk()).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handlerResult).toBeDefined();
-    // oxlint-disable-next-line typescript/no-non-null-assertion
-    const evaluatedResult = handlerResult!;
-    expect(evaluatedResult.isOk()).toBe(true);
-    if (evaluatedResult.isOk()) {
-      expect(evaluatedResult.value).toStrictEqual({ ok: 42n });
-    }
+    expect(handlerResult).toStrictEqual({ ok: 42n });
 
     expect(callReadSpy).toHaveBeenCalledWith(
       expect.objectContaining({ logger }),
@@ -243,9 +242,7 @@ describe("indexing engine", () => {
     });
 
     const event = createMockEvent();
-    const result = await indexing.executeEvent(event);
-
-    expect(result.isOk()).toBe(true);
+    await Effect.runPromise(indexing.executeEvent(event));
   });
 
   test("returns err when handler throws", async () => {
@@ -262,9 +259,9 @@ describe("indexing engine", () => {
     });
 
     const event = createMockEvent();
-    const result = await indexing.executeEvent(event);
+    const result = await Effect.runPromiseExit(indexing.executeEvent(event));
 
-    expect(result).toBeBetterErr(
+    expect(result).toBeTaggedError(
       new HandlerExecutionError({ contractId: "SP123.token", cause: error }),
     );
   });

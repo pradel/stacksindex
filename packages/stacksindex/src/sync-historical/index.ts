@@ -1,7 +1,11 @@
-import { Result } from "better-result";
+import { Effect } from "effect";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
-import { datasourceStacksApi } from "../datasources/api/index.ts";
+import {
+  datasourceStacksApi,
+  type PrincipalTransactionsResponse,
+  type TransactionEventsResponse,
+} from "../datasources/api/index.ts";
 import { startClock } from "../lib/timer.ts";
 import type { Logger } from "../logger/index.ts";
 
@@ -64,77 +68,62 @@ export const parseTransactionCursor = (cursor: string): TransactionCursor => {
   };
 };
 
-async function findFirstMatchingContractEvent(
+function findFirstMatchingContractEvent(
   context: HistoricalSyncContext,
   txId: string,
   contractId: string,
-): Promise<Result<{ event_index: number } | null, StacksApiError>> {
-  let eventCursor: string | null = "initial";
-  while (eventCursor) {
-    const eventsResult = await datasourceStacksApi.getTransactionEvents(context, txId, {
-      limit: 50,
-      cursor: eventCursor === "initial" ? undefined : eventCursor,
-    });
-    if (eventsResult.isErr()) {
-      return Result.err(eventsResult.error);
-    }
-    const { results, cursor } = eventsResult.value;
-    for (const event of results) {
-      if (event.type === "contract_log" && "contract_log" in event) {
-        if (event.contract_log.contract_id === contractId) {
-          return Result.ok({ event_index: event.event_index });
+): Effect.Effect<{ event_index: number } | null, StacksApiError> {
+  return Effect.gen(function* () {
+    let eventCursor: string | null = "initial";
+    while (eventCursor) {
+      const eventsResponse: TransactionEventsResponse =
+        yield* datasourceStacksApi.getTransactionEvents(context, txId, {
+          limit: 50,
+          cursor: eventCursor === "initial" ? undefined : eventCursor,
+        });
+      const { results, cursor } = eventsResponse;
+      for (const event of results) {
+        if (event.type === "contract_log" && "contract_log" in event) {
+          if (event.contract_log.contract_id === contractId) {
+            return { event_index: event.event_index };
+          }
         }
       }
+      eventCursor = cursor.next;
     }
-    eventCursor = cursor.next;
-  }
-  return Result.ok(null);
+    return null;
+  });
 }
 
-async function checkTransactionForMatchingEvent(
+function checkTransactionForMatchingEvent(
   context: HistoricalSyncContext,
   txId: string,
   contractId: string,
-): Promise<Result<LogsCursor | null, StacksApiError>> {
-  const txResult = await datasourceStacksApi.getTransaction(context, txId);
-  if (txResult.isErr()) {
-    return Result.err(txResult.error);
-  }
+): Effect.Effect<LogsCursor | null, StacksApiError> {
+  return Effect.gen(function* () {
+    const fullTx = yield* datasourceStacksApi.getTransaction(context, txId);
+    if (fullTx.event_count === 0) {
+      return null;
+    }
 
-  const fullTx = txResult.value;
-  if (fullTx.event_count === 0) {
-    return Result.ok(null);
-  }
+    const matchingEvent = yield* findFirstMatchingContractEvent(context, fullTx.tx_id, contractId);
+    if (!matchingEvent) {
+      return null;
+    }
 
-  const matchingEventResult = await findFirstMatchingContractEvent(
-    context,
-    fullTx.tx_id,
-    contractId,
-  );
-  if (matchingEventResult.isErr()) {
-    return Result.err(matchingEventResult.error);
-  }
+    // The v2 /logs endpoint strictly matches (block_height, microblock_sequence, tx_index, event_index).
+    // In Hiro's DB, transactions confirmed in an anchor block have microblock_sequence = 2147483647 (0x7FFFFFFF),
+    // While microblock transactions have 0..N. Because v3 endpoints completely dropped microblock_sequence and
+    // V3 cursors do not expose it, GET /extended/v1/tx/{tx_id} is the only endpoint that provides the true
+    // Microblock_sequence needed to construct a valid cursor.
+    const v1Tx = yield* datasourceStacksApi.getV1Transaction(context, fullTx.tx_id);
 
-  const matchingEvent = matchingEventResult.value;
-  if (!matchingEvent) {
-    return Result.ok(null);
-  }
-
-  // The v2 /logs endpoint strictly matches (block_height, microblock_sequence, tx_index, event_index).
-  // In Hiro's DB, transactions confirmed in an anchor block have microblock_sequence = 2147483647 (0x7FFFFFFF),
-  // While microblock transactions have 0..N. Because v3 endpoints completely dropped microblock_sequence and
-  // V3 cursors do not expose it, GET /extended/v1/tx/{tx_id} is the only endpoint that provides the true
-  // Microblock_sequence needed to construct a valid cursor.
-  const v1TxResult = await datasourceStacksApi.getV1Transaction(context, fullTx.tx_id);
-  if (v1TxResult.isErr()) {
-    return Result.err(v1TxResult.error);
-  }
-
-  return Result.ok({
-    blockHeight: fullTx.block.height,
-    microblockSequence: v1TxResult.value.microblock_sequence,
-    txIndex: fullTx.block.tx_index,
-    eventIndex: matchingEvent.event_index,
+    return {
+      blockHeight: fullTx.block.height,
+      microblockSequence: v1Tx.microblock_sequence,
+      txIndex: fullTx.block.tx_index,
+      eventIndex: matchingEvent.event_index,
+    };
   });
 }
 
@@ -174,107 +163,100 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
    *    - If `event_count === 0`, skip immediately (0 extra requests).
    *    - If `event_count > 0`, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
    *      matching `contract_id`.
-   * 4. When found, fetch `GET /extended/v1/tx/{tx_id}` to obtain its `microblock_sequence`
+   *    - When found, fetch `GET /extended/v1/tx/{tx_id}` to obtain its `microblock_sequence`
    *      (e.g. `2147483647` for anchor blocks, `0..N` for microblocks) and construct the exact 4-part cursor
    *      (`block.height:microblock_sequence:block.tx_index:event_index`) for `getContractLogs`.
    * 5. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
    */
-  async getContractEventsFirstCursor(
+  getContractEventsFirstCursor(
     contractId: string,
     options?: { startBlock?: number },
-  ): Promise<Result<string | null, StacksApiError>> {
-    const stopClock = startClock();
-    const ADDRESS_TX_LIMIT = 50;
+  ): Effect.Effect<string | null, StacksApiError> {
+    return Effect.gen(function* getContractEventsFirstCursor() {
+      const stopClock = startClock();
+      const ADDRESS_TX_LIMIT = 50;
 
-    context.logger.info({
-      service: "getContractEventsFirstCursor",
-      msg: `Looking for deployment of ${contractId}`,
-    });
-
-    const contractResult = await datasourceStacksApi.getContract(context, contractId);
-    if (contractResult.isErr()) {
-      return Result.err(contractResult.error);
-    }
-
-    const deploymentBlockHeight = contractResult.value.block.height;
-    const initialBlockHeight =
-      options?.startBlock === undefined
-        ? deploymentBlockHeight
-        : Math.max(deploymentBlockHeight, options.startBlock);
-
-    context.logger.info({
-      service: "getContractEventsFirstCursor",
-      msg: `Looking for first event of ${contractId} starting at block ${initialBlockHeight}`,
-      deploymentBlockHeight,
-      initialBlockHeight,
-    });
-
-    let currentCursor: string | null = buildTransactionCursor({
-      blockHeight: initialBlockHeight,
-      microblockSequence: 0,
-      txIndex: 0,
-    });
-
-    while (currentCursor) {
-      context.logger.debug({
+      context.logger.info({
         service: "getContractEventsFirstCursor",
-        msg: `Scanning page for ${contractId}`,
-        cursor: currentCursor,
+        msg: `Looking for deployment of ${contractId}`,
       });
 
-      const pageResult = await datasourceStacksApi.getPrincipalTransactions(context, contractId, {
-        limit: ADDRESS_TX_LIMIT,
-        cursor: currentCursor,
+      const contract = yield* datasourceStacksApi.getContract(context, contractId);
+      const deploymentBlockHeight = contract.block.height;
+      const initialBlockHeight =
+        options?.startBlock === undefined
+          ? deploymentBlockHeight
+          : Math.max(deploymentBlockHeight, options.startBlock);
+
+      context.logger.info({
+        service: "getContractEventsFirstCursor",
+        msg: `Looking for first event of ${contractId} starting at block ${initialBlockHeight}`,
+        deploymentBlockHeight,
+        initialBlockHeight,
       });
-      if (pageResult.isErr()) {
-        return Result.err(pageResult.error);
-      }
 
-      const { results, cursor } = pageResult.value;
-      if (results.length === 0) {
-        break;
-      }
+      let currentCursor: string | null = buildTransactionCursor({
+        blockHeight: initialBlockHeight,
+        microblockSequence: 0,
+        txIndex: 0,
+      });
 
-      // Iterate from oldest to newest within the page
-      for (const item of results.slice().reverse()) {
-        const itemBlockHeight = item.transaction.block.height;
-        const isBeforeStart =
-          options?.startBlock !== undefined && itemBlockHeight < options.startBlock;
+      while (currentCursor) {
+        context.logger.debug({
+          service: "getContractEventsFirstCursor",
+          msg: `Scanning page for ${contractId}`,
+          cursor: currentCursor,
+        });
 
-        if (!isBeforeStart) {
-          const cursorResult = await checkTransactionForMatchingEvent(
-            context,
-            item.transaction.tx_id,
-            contractId,
-          );
-          if (cursorResult.isErr()) {
-            return Result.err(cursorResult.error);
-          }
+        const page: PrincipalTransactionsResponse =
+          yield* datasourceStacksApi.getPrincipalTransactions(context, contractId, {
+            limit: ADDRESS_TX_LIMIT,
+            cursor: currentCursor,
+          });
 
-          if (cursorResult.value) {
-            const firstCursor = buildLogsCursor(cursorResult.value);
-            const duration = stopClock();
-            context.logger.info({
-              service: "getContractEventsFirstCursor",
-              msg: `Found first cursor for ${contractId} at block ${cursorResult.value.blockHeight}`,
-              block: cursorResult.value.blockHeight,
-              duration,
-            });
-            return Result.ok(firstCursor);
+        const { results, cursor } = page;
+        if (results.length === 0) {
+          break;
+        }
+
+        // Iterate from oldest to newest within the page
+        for (const item of results.slice().reverse()) {
+          const itemBlockHeight = item.transaction.block.height;
+          const isBeforeStart =
+            options?.startBlock !== undefined && itemBlockHeight < options.startBlock;
+
+          if (!isBeforeStart) {
+            const cursorResult = yield* checkTransactionForMatchingEvent(
+              context,
+              item.transaction.tx_id,
+              contractId,
+            );
+
+            if (cursorResult) {
+              const firstCursor = buildLogsCursor(cursorResult);
+              const duration = stopClock();
+              context.logger.info({
+                service: "getContractEventsFirstCursor",
+                msg: `Found first cursor for ${contractId} at block ${cursorResult.blockHeight}`,
+                block: cursorResult.blockHeight,
+                duration,
+              });
+              return firstCursor;
+            }
           }
         }
+
+        // Move forward in time to newer transactions
+        currentCursor = cursor.previous;
       }
 
-      // Move forward in time to newer transactions
-      currentCursor = cursor.previous;
-    }
-
-    const duration = stopClock();
-    context.logger.info({
-      service: "getContractEventsFirstCursor",
-      msg: `No events found for ${contractId}`,
-      duration,
+      const duration = stopClock();
+      context.logger.info({
+        service: "getContractEventsFirstCursor",
+        msg: `No events found for ${contractId}`,
+        duration,
+      });
+      return null;
     });
-    return Result.ok(null);
   },
 });

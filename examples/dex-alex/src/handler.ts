@@ -1,100 +1,70 @@
 import { eq } from "drizzle-orm";
-import type { PgliteDatabase } from "drizzle-orm/pglite";
-import { decodeHex, type EventHandler, type IndexingClient, type Logger } from "stacksindex";
-import { z } from "zod";
+import { Effect, Option, Schema } from "effect";
+import {
+  decodeHex,
+  type EventHandler,
+  type IndexerDb,
+  type IndexingClient,
+  type Logger,
+} from "stacksindex";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
 import { poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
 
-// oxlint-disable-next-line typescript/no-explicit-any
-export type AppDatabase = PgliteDatabase<any>;
+export type AppDatabase = IndexerDb;
 
 export const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
 export const CHAIN_ID = 1n;
 
-// Zod schemas for contract log events (validating decoded JSON object)
-export const poolCreatedLogSchema = z
-  .object({
-    object: z.literal("pool"),
-    action: z.literal("created"),
-    data: z.object({
-      "pool-token": z.string(),
-      "balance-x": z.bigint().optional().default(0n),
-      "balance-y": z.bigint().optional().default(0n),
-      "total-supply": z.bigint().optional().default(0n),
-      "fee-rate-x": z.bigint().optional().default(0n),
-      "fee-rate-y": z.bigint().optional().default(0n),
-      "fee-to-address": z.string().optional().default(""),
-      "oracle-enabled": z.boolean().optional().default(false),
-    }),
-  })
-  .transform((val) => ({
-    action: "created" as const,
-    poolToken: val.data["pool-token"],
-    balanceX: val.data["balance-x"],
-    balanceY: val.data["balance-y"],
-    totalSupply: val.data["total-supply"],
-    feeRateX: val.data["fee-rate-x"],
-    feeRateY: val.data["fee-rate-y"],
-    feeToAddress: val.data["fee-to-address"],
-    oracleEnabled: val.data["oracle-enabled"],
-  }));
+export const PoolCreatedLog = Schema.Struct({
+  object: Schema.Literal("pool"),
+  action: Schema.Literal("created"),
+  data: Schema.Struct({
+    "pool-token": Schema.String,
+    "balance-x": Schema.optional(Schema.BigInt),
+    "balance-y": Schema.optional(Schema.BigInt),
+    "total-supply": Schema.optional(Schema.BigInt),
+    "fee-rate-x": Schema.optional(Schema.BigInt),
+    "fee-rate-y": Schema.optional(Schema.BigInt),
+    "fee-to-address": Schema.optional(Schema.String),
+    "oracle-enabled": Schema.optional(Schema.Boolean),
+  }),
+});
 
-export const poolSwapLogSchema = z
-  .object({
-    object: z.literal("pool"),
-    action: z.union([z.literal("swap-x-for-y"), z.literal("swap-y-for-x")]),
-    data: z.object({
-      "pool-token": z.string(),
-      "balance-x": z.bigint(),
-      "balance-y": z.bigint(),
-      "total-supply": z.bigint(),
-    }),
-  })
-  .transform((val) => ({
-    action: val.action,
-    poolToken: val.data["pool-token"],
-    balanceX: val.data["balance-x"],
-    balanceY: val.data["balance-y"],
-    totalSupply: val.data["total-supply"],
-  }));
+export const PoolSwapLog = Schema.Struct({
+  object: Schema.Literal("pool"),
+  action: Schema.Union([Schema.Literal("swap-x-for-y"), Schema.Literal("swap-y-for-x")]),
+  data: Schema.Struct({
+    "pool-token": Schema.String,
+    "balance-x": Schema.BigInt,
+    "balance-y": Schema.BigInt,
+    "total-supply": Schema.BigInt,
+  }),
+});
 
-const otherPoolActionSchema = z.union([
-  z.literal("add-to-position"),
-  z.literal("reduce-position"),
-  z.literal("set-fee-to-address"),
-  z.literal("set-fee-rate-x"),
-  z.literal("set-fee-rate-y"),
-  z.literal("set-oracle-enabled"),
-  z.literal("set-oracle-average"),
+const OtherPoolAction = Schema.Union([
+  Schema.Literal("add-to-position"),
+  Schema.Literal("reduce-position"),
+  Schema.Literal("set-fee-to-address"),
+  Schema.Literal("set-fee-rate-x"),
+  Schema.Literal("set-fee-rate-y"),
+  Schema.Literal("set-oracle-enabled"),
+  Schema.Literal("set-oracle-average"),
 ]);
 
-export const poolBalanceChangeLogSchema = z
-  .object({
-    object: z.literal("pool"),
-    action: otherPoolActionSchema,
-    data: z.object({
-      "pool-token": z.string(),
-      "balance-x": z.bigint(),
-      "balance-y": z.bigint(),
-      "total-supply": z.bigint(),
-    }),
-  })
-  .transform((val) => ({
-    action: val.action,
-    poolToken: val.data["pool-token"],
-    balanceX: val.data["balance-x"],
-    balanceY: val.data["balance-y"],
-    totalSupply: val.data["total-supply"],
-  }));
+export const PoolBalanceChangeLog = Schema.Struct({
+  object: Schema.Literal("pool"),
+  action: OtherPoolAction,
+  data: Schema.Struct({
+    "pool-token": Schema.String,
+    "balance-x": Schema.BigInt,
+    "balance-y": Schema.BigInt,
+    "total-supply": Schema.BigInt,
+  }),
+});
 
-export const poolLogSchema = z.union([
-  poolCreatedLogSchema,
-  poolSwapLogSchema,
-  poolBalanceChangeLogSchema,
-]);
-
-export type PoolLog = z.infer<typeof poolLogSchema>;
+export const PoolLog = Schema.Union([PoolCreatedLog, PoolSwapLog, PoolBalanceChangeLog]);
+export type PoolLogData = typeof PoolLog.Type;
 
 export interface InsertTokenIfNotExistsParams {
   client: IndexingClient;
@@ -111,11 +81,9 @@ export async function insertTokenIfNotExists({
   chainId,
   tokenAddress,
 }: InsertTokenIfNotExistsParams): Promise<Token> {
-  const existingCheck = await db
-    .select()
-    .from(tokenTable)
-    .where(eq(tokenTable.address, tokenAddress))
-    .limit(1);
+  const existingCheck = await Effect.runPromise(
+    db.select().from(tokenTable).where(eq(tokenTable.address, tokenAddress)).limit(1),
+  );
 
   if (existingCheck.length > 0) {
     return existingCheck[0];
@@ -126,23 +94,23 @@ export async function insertTokenIfNotExists({
     throw new Error(`Invalid tokenAddress: ${tokenAddress}`);
   }
 
-  const decimalsRes = (
-    await client.callReadOnly({
+  const decimalsRes = await Effect.runPromise(
+    client.callReadOnly({
       abi: sip010Abi,
       contractAddress,
       contractName,
       functionName: "get-decimals",
-    })
-  ).unwrap();
+    }),
+  );
 
-  const symbolRes = (
-    await client.callReadOnly({
+  const symbolRes = await Effect.runPromise(
+    client.callReadOnly({
       abi: sip010Abi,
       contractAddress,
       contractName,
       functionName: "get-symbol",
-    })
-  ).unwrap();
+    }),
+  );
 
   if (decimalsRes.ok === undefined) {
     throw new Error(
@@ -159,7 +127,7 @@ export async function insertTokenIfNotExists({
     decimals,
   };
 
-  await db.insert(tokenTable).values(token).onConflictDoNothing();
+  await Effect.runPromise(db.insert(tokenTable).values(token).onConflictDoNothing());
 
   logger.info({ msg: "Discovered token", token: tokenAddress, symbol, decimals });
 
@@ -187,28 +155,28 @@ export async function syncPoolTokens({
   if (!contractAddress || !contractName) {
     throw new Error(`Invalid poolContract: ${poolContract}`);
   }
-  const poolId = (
-    await client.callReadOnly({
+  const poolId = await Effect.runPromise(
+    client.callReadOnly({
       abi: fixedWeightPoolAbi,
       contractAddress,
       contractName,
       functionName: "get-pool-count",
-    })
-  ).unwrap();
+    }),
+  );
 
   if (poolId === 0n) {
     throw new Error(`Failed to fetch pool count from ${poolContract}: pool count is 0`);
   }
 
-  const contractsResult = (
-    await client.callReadOnly({
+  const contractsResult = await Effect.runPromise(
+    client.callReadOnly({
       abi: fixedWeightPoolAbi,
       contractAddress,
       contractName,
       functionName: "get-pool-contracts",
       functionArgs: [poolId],
-    })
-  ).unwrap();
+    }),
+  );
 
   if (contractsResult.ok === undefined) {
     throw new Error(
@@ -235,7 +203,9 @@ export async function syncPoolTokens({
     tokenAddress: tokenY,
   });
 
-  await db.update(poolTable).set({ tokenX, tokenY }).where(eq(poolTable.address, poolToken));
+  await Effect.runPromise(
+    db.update(poolTable).set({ tokenX, tokenY }).where(eq(poolTable.address, poolToken)),
+  );
 }
 
 interface UpsertPoolBalancesParams {
@@ -257,28 +227,30 @@ async function upsertPoolBalances({
   totalSupply,
   blockTime,
 }: UpsertPoolBalancesParams): Promise<void> {
-  await db
-    .insert(poolTable)
-    .values({
-      address: poolToken,
-      chainId,
-      balanceX,
-      balanceY,
-      totalSupply,
-      feeRateX: 0n,
-      feeRateY: 0n,
-      feeToAddress: "",
-      oracleEnabled: false,
-      createdAt: BigInt(blockTime),
-    })
-    .onConflictDoUpdate({
-      target: [poolTable.address, poolTable.chainId],
-      set: {
+  await Effect.runPromise(
+    db
+      .insert(poolTable)
+      .values({
+        address: poolToken,
+        chainId,
         balanceX,
         balanceY,
         totalSupply,
-      },
-    });
+        feeRateX: 0n,
+        feeRateY: 0n,
+        feeToAddress: "",
+        oracleEnabled: false,
+        createdAt: BigInt(blockTime),
+      })
+      .onConflictDoUpdate({
+        target: [poolTable.address, poolTable.chainId],
+        set: {
+          balanceX,
+          balanceY,
+          totalSupply,
+        },
+      }),
+  );
 }
 
 export interface CreatePoolHandlerOptions {
@@ -296,47 +268,61 @@ export function createPoolHandler({
 }: CreatePoolHandlerOptions): EventHandler {
   return async (event, { client }) => {
     const decoded = decodeHex(event.contract_log.value.hex);
-    const parsed = poolLogSchema.safeParse(decoded);
-    if (!parsed.success) {
+    const parsed = Schema.decodeUnknownOption(PoolLog)(decoded);
+    if (Option.isNone(parsed)) {
       return;
     }
 
-    const log = parsed.data;
+    const log = parsed.value;
 
     if (log.action === "created") {
-      await db
-        .insert(poolTable)
-        .values({
-          address: log.poolToken,
-          chainId,
-          balanceX: 0n,
-          balanceY: 0n,
-          totalSupply: 0n,
-          feeRateX: log.feeRateX,
-          feeRateY: log.feeRateY,
-          feeToAddress: log.feeToAddress,
-          oracleEnabled: log.oracleEnabled,
-          createdAt: BigInt(event.block_time),
-        })
-        .onConflictDoUpdate({
-          target: [poolTable.address, poolTable.chainId],
-          set: {
-            feeRateX: log.feeRateX,
-            feeRateY: log.feeRateY,
-            feeToAddress: log.feeToAddress,
-            oracleEnabled: log.oracleEnabled,
-          },
-        });
+      const { data } = log;
+      const feeRateX = data["fee-rate-x"] ?? 0n;
+      const feeRateY = data["fee-rate-y"] ?? 0n;
+      const feeToAddress = data["fee-to-address"] ?? "";
+      const oracleEnabled = data["oracle-enabled"] ?? false;
 
-      await syncPoolTokens({ client, db, logger, chainId, poolContract, poolToken: log.poolToken });
+      await Effect.runPromise(
+        db
+          .insert(poolTable)
+          .values({
+            address: data["pool-token"],
+            chainId,
+            balanceX: 0n,
+            balanceY: 0n,
+            totalSupply: 0n,
+            feeRateX,
+            feeRateY,
+            feeToAddress,
+            oracleEnabled,
+            createdAt: BigInt(event.block_time),
+          })
+          .onConflictDoUpdate({
+            target: [poolTable.address, poolTable.chainId],
+            set: {
+              feeRateX,
+              feeRateY,
+              feeToAddress,
+              oracleEnabled,
+            },
+          }),
+      );
 
-      logger.debug({ msg: "Pool created", pool: log.poolToken });
+      await syncPoolTokens({
+        client,
+        db,
+        logger,
+        chainId,
+        poolContract,
+        poolToken: data["pool-token"],
+      });
+
+      logger.debug({ msg: "Pool created", pool: data["pool-token"] });
     } else if (log.action === "swap-x-for-y" || log.action === "swap-y-for-x") {
-      const [pool] = await db
-        .select()
-        .from(poolTable)
-        .where(eq(poolTable.address, log.poolToken))
-        .limit(1);
+      const { data } = log;
+      const [pool] = await Effect.runPromise(
+        db.select().from(poolTable).where(eq(poolTable.address, data["pool-token"])).limit(1),
+      );
 
       let amountIn = 0n;
       let amountOut = 0n;
@@ -344,32 +330,34 @@ export function createPoolHandler({
       // oxlint-disable-next-line typescript/no-unnecessary-condition
       if (pool) {
         if (log.action === "swap-x-for-y") {
-          amountIn = log.balanceX - pool.balanceX;
-          amountOut = pool.balanceY - log.balanceY;
+          amountIn = data["balance-x"] - pool.balanceX;
+          amountOut = pool.balanceY - data["balance-y"];
         } else {
-          amountIn = log.balanceY - pool.balanceY;
-          amountOut = pool.balanceX - log.balanceX;
+          amountIn = data["balance-y"] - pool.balanceY;
+          amountOut = pool.balanceX - data["balance-x"];
         }
       }
 
-      await db
-        .insert(swapTable)
-        .values({
-          txId: event.tx_id,
-          chainId,
-          eventIndex: event.event_index,
-          poolAddress: log.poolToken,
-          action: log.action,
-          amountIn,
-          amountOut,
-          blockHeight: BigInt(event.block_height),
-          blockTime: BigInt(event.block_time),
-        })
-        .onConflictDoNothing();
+      await Effect.runPromise(
+        db
+          .insert(swapTable)
+          .values({
+            txId: event.tx_id,
+            chainId,
+            eventIndex: event.event_index,
+            poolAddress: data["pool-token"],
+            action: log.action,
+            amountIn,
+            amountOut,
+            blockHeight: BigInt(event.block_height),
+            blockTime: BigInt(event.block_time),
+          })
+          .onConflictDoNothing(),
+      );
 
       logger.debug({
         msg: "Swap created",
-        pool: log.poolToken,
+        pool: data["pool-token"],
         action: log.action,
         amountIn,
         amountOut,
@@ -378,11 +366,11 @@ export function createPoolHandler({
 
       await upsertPoolBalances({
         db,
-        poolToken: log.poolToken,
+        poolToken: data["pool-token"],
         chainId,
-        balanceX: log.balanceX,
-        balanceY: log.balanceY,
-        totalSupply: log.totalSupply,
+        balanceX: data["balance-x"],
+        balanceY: data["balance-y"],
+        totalSupply: data["total-supply"],
         blockTime: event.block_time,
       });
 
@@ -394,18 +382,19 @@ export function createPoolHandler({
           logger,
           chainId,
           poolContract,
-          poolToken: log.poolToken,
+          poolToken: data["pool-token"],
         });
       }
     } else {
       // Liquidity added / removed or other pool balance changes
+      const { data } = log;
       await upsertPoolBalances({
         db,
-        poolToken: log.poolToken,
+        poolToken: data["pool-token"],
         chainId,
-        balanceX: log.balanceX,
-        balanceY: log.balanceY,
-        totalSupply: log.totalSupply,
+        balanceX: data["balance-x"],
+        balanceY: data["balance-y"],
+        totalSupply: data["total-supply"],
         blockTime: event.block_time,
       });
     }
