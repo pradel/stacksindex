@@ -1,5 +1,5 @@
 import { TaggedError } from "better-result";
-import type { MatcherResult, MatcherState } from "vitest";
+import type { MatcherResult, MatcherState } from "vite-plus/test";
 
 interface ResultLike {
   isErr: () => boolean;
