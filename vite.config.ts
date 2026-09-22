@@ -43,6 +43,7 @@ export default defineConfig({
       "func-style": "off",
       "vitest/require-test-timeout": "off",
       "vitest/require-mock-type-parameters": "off",
+      "vitest/max-expects": "off",
       "vitest/prefer-to-be-truthy": "off",
       "vitest/prefer-to-be-falsy": "off",
       "vitest/no-hooks": "off",

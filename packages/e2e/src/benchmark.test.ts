@@ -1,4 +1,3 @@
-// oxlint-disable vitest/max-expects
 import fs from "node:fs";
 
 import { describe, expect, test } from "vite-plus/test";

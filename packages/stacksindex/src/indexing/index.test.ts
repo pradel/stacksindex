@@ -1,5 +1,5 @@
 // oxlint-disable typescript/no-unsafe-assignment
-// oxlint-disable vitest/prefer-called-once, vitest/prefer-called-times, vitest/no-conditional-expect, vitest/no-conditional-in-test
+// oxlint-disable vitest/prefer-called-once, vitest/no-conditional-expect, vitest/no-conditional-in-test
 
 import { Result } from "better-result";
 import type { ClarityAbi } from "clarity-abitype";

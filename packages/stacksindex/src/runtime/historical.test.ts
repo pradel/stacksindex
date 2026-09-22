@@ -1,11 +1,9 @@
 // oxlint-disable typescript/no-unsafe-member-access
 // oxlint-disable typescript/no-unsafe-type-assertion
-// oxlint-disable typescript/no-unsafe-assignment
 // oxlint-disable typescript/no-unsafe-return
 // oxlint-disable typescript/no-explicit-any
 // oxlint-disable jest/no-conditional-in-test
-// oxlint-disable jest/max-expects
-// oxlint-disable vitest/prefer-called-once, vitest/prefer-called-times
+// oxlint-disable vitest/prefer-called-once
 import { URL } from "node:url";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
@@ -27,7 +25,6 @@ import { createHistoricalRuntime } from "./historical.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
 
-// oxlint-disable-next-line jest/no-untyped-mock-factory
 vi.mock("undici", () => ({
   request: (url: string, init?: any) => {
     try {

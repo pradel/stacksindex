@@ -190,7 +190,6 @@ export async function typedCallReadFunction<
 
   try {
     const decoded = decodeHex(response.result);
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     return Result.ok(decoded as TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>);
   } catch (err) {
     return Result.err(

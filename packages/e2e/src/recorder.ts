@@ -471,7 +471,6 @@ export function createScenarioRecorder(
 
       let liveRes: Response | null = null;
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        // oxlint-disable-next-line no-await-in-loop
         liveRes = await globalThis.fetch(rawUrl, {
           method,
           headers: requestHeaders,
@@ -484,7 +483,6 @@ export function createScenarioRecorder(
           }
           const retryAfterSec = Number(liveRes.headers.get("retry-after") ?? 1);
           const waitMs = Math.max(retryAfterSec * 1000, 1000);
-          // oxlint-disable-next-line no-await-in-loop
           await new Promise((resolve) => {
             globalThis.setTimeout(resolve, waitMs);
           });

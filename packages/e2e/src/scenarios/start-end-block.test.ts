@@ -1,8 +1,3 @@
-// oxlint-disable typescript/no-unsafe-member-access
-// oxlint-disable typescript/no-unsafe-type-assertion
-// oxlint-disable typescript/no-unsafe-assignment
-// oxlint-disable typescript/no-explicit-any
-// oxlint-disable vitest/max-expects
 import { createLogger } from "stacksindex";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
@@ -14,7 +9,6 @@ const SATOSHIBLES_CONTRACT = "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibl
 
 const recorder = createScenarioRecorder("start-end-block.json");
 
-// oxlint-disable-next-line jest/no-untyped-mock-factory
 vi.mock("undici", () => ({
   request: (
     url: string,

@@ -18,7 +18,6 @@ import {
 
 const mockRequest = vi.hoisted(() => vi.fn());
 
-// oxlint-disable-next-line jest/no-untyped-mock-factory
 vi.mock("undici", () => ({
   request: (url: string, init?: any) => {
     try {

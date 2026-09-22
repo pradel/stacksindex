@@ -1,6 +1,4 @@
-// oxlint-disable typescript/no-unsafe-member-access
 // oxlint-disable typescript/no-unsafe-type-assertion
-// oxlint-disable typescript/no-unsafe-assignment
 import { sql, type SQL } from "drizzle-orm";
 import { createHistoricalRuntime, type Filter, type Logger } from "stacksindex";
 import { expect } from "vite-plus/test";

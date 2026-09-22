@@ -11,7 +11,6 @@ export interface TestDatabase {
   close: () => Promise<void>;
 }
 
-// oxlint-disable-next-line func-style typescript/require-await
 export async function createTestDatabase(): Promise<TestDatabase> {
   const client = new PGlite();
   const db = drizzle({ client });

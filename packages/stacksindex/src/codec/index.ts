@@ -65,7 +65,6 @@ export function cvToJSON(cv: ClarityValue): unknown {
     }
 
     default: {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       const exhaustiveCheck: never = cv;
       throw new Error(`Unsupported ClarityTypeID: ${JSON.stringify(exhaustiveCheck)}`);
     }

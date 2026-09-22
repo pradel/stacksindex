@@ -1,6 +1,3 @@
-// oxlint-disable typescript/no-unsafe-member-access
-// oxlint-disable typescript/no-unsafe-type-assertion
-// oxlint-disable typescript/no-explicit-any
 import { Result } from "better-result";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
@@ -15,7 +12,6 @@ import { datasourceStacksApi } from "./index.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
 
-// oxlint-disable-next-line jest/no-untyped-mock-factory
 vi.mock("undici", () => ({
   request: mockRequest,
 }));
