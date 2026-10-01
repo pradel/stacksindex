@@ -280,14 +280,15 @@ describe("typedCallReadFunction", () => {
         ) => Promise<Result<CallReadResponse, StacksApiUnexpectedError>>
       >();
 
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const params = {
+    const invalidParams = {
       abi: sampleTokenAbi,
       contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
       contractName: "test-token",
       functionName: "transfer",
       functionArgs: [100n, "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
-    } as unknown as Parameters<typeof typedCallReadFunction>[2];
+    };
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const params = invalidParams as unknown as Parameters<typeof typedCallReadFunction>[2];
 
     const result = await typedCallReadFunction(context, mockCallRead, params);
 
@@ -312,14 +313,15 @@ describe("typedCallReadFunction", () => {
         ) => Promise<Result<CallReadResponse, StacksApiUnexpectedError>>
       >();
 
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const params = {
+    const invalidParams = {
       abi: sampleTokenAbi,
       contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
       contractName: "test-token",
       functionName: "get-balance",
       functionArgs: [],
-    } as unknown as Parameters<typeof typedCallReadFunction>[2];
+    };
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const params = invalidParams as unknown as Parameters<typeof typedCallReadFunction>[2];
 
     const result = await typedCallReadFunction(context, mockCallRead, params);
 

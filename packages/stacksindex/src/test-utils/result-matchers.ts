@@ -118,9 +118,9 @@ export function toBeBetterErr(
 }
 
 declare module "vitest" {
-  // oxlint-disable-next-line id-length, typescript/no-explicit-any
-  interface Assertion<T = any> {
-    toBeBetterErr: (expected: unknown) => void;
+  // oxlint-disable-next-line id-length
+  interface Assertion<R extends void | Promise<void> = void, T = unknown> {
+    toBeBetterErr: (expected: unknown) => R;
   }
   interface AsymmetricMatchersContaining {
     toBeBetterErr: (expected: unknown) => void;
