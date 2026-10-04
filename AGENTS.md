@@ -30,6 +30,7 @@ release. Add a tool name to select part of the graph. For example, run
 
 This project vendors external repositories under `./repos/*`
 
+- If `repos/effect` or `repos/ponder` is missing or empty, run `pnpm repos:sync` to clone/update the vendored repositories
 - Use vendored repositories as read-only reference material when working with related libraries
 - Prefer examples and patterns from the vendored source code over generated guesses or web search results
 - Do not edit files under `./repos/` unless explicitly asked

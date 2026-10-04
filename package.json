@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "ready": "vp fmt && vp lint && vp run -r test && vp run -r build",
+    "repos:sync": "./scripts/sync-repos.sh",
     "test": "vp run -r test",
     "build": "vp run -r build",
     "prepare": "vp config",
