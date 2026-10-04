@@ -20,35 +20,29 @@ import {
   eventsTable,
   transactionsTable,
 } from "../sync-store/schema.ts";
+import { createFetchMock } from "../test-utils/fetch-mock.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createHistoricalRuntime } from "./historical.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
 
-vi.mock("undici", () => ({
-  request: (url: string, init?: any) => {
-    try {
-      return mockRequest(url, init);
-    } catch (err: any) {
-      if (typeof url === "string" && url.includes("/extended/v1/tx/")) {
-        const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
-        return {
-          statusCode: 200,
-          body: {
-            json: () =>
-              Promise.resolve({
-                tx_id: txId,
-                block_height: 100,
-                tx_index: 0,
-                microblock_sequence: 0,
-              }),
-          },
-        };
-      }
-      throw err;
+const mockFetch = createFetchMock(mockRequest, {
+  fallback: (url) => {
+    if (!url.includes("/extended/v1/tx/")) {
+      return undefined;
     }
+    const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
+    return new globalThis.Response(
+      JSON.stringify({
+        tx_id: txId,
+        block_height: 100,
+        tx_index: 0,
+        microblock_sequence: 0,
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
   },
-}));
+});
 
 const context = {
   logger: createLogger({ level: 0 }),
@@ -112,10 +106,12 @@ describe("historical runtime", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockRequest.mockReset();
+    vi.stubGlobal("fetch", mockFetch);
     await testDb.cleanup();
   });
 
   afterAll(async () => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     await testDb.close();
   });
@@ -1317,10 +1313,12 @@ describe("historical runtime with handlers", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockRequest.mockReset();
+    vi.stubGlobal("fetch", mockFetch);
     await testDb.cleanup();
   });
 
   afterAll(async () => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     await testDb.close();
   });
@@ -3227,30 +3225,35 @@ describe("historical runtime with handlers", () => {
     expect(handledHeights).toStrictEqual([100]);
   });
 
-  test("returns error when endBlock: 'latest' fails to fetch API status", async () => {
-    const contractId = "SP123.token";
-    mockRequest.mockImplementation((rawUrl: string) => {
-      const url = decodeURIComponent(rawUrl);
-      if (url.includes("/extended/v3/transactions/batch")) {
-        const results = parseBatchIds(url)
-          .map((id) => standardTxById[id])
-          .filter(Boolean);
-        return { statusCode: 200, body: mockBody({ results }) };
-      }
-      if (url.endsWith("/extended")) {
-        return {
-          statusCode: 500,
-          body: mockBody({ error: "Internal Server Error" }),
-        };
-      }
-      throw new Error(`Unexpected URL: ${url}`);
-    });
+  // 5xx responses are retried with exponential backoff (~7s total).
+  test(
+    "returns error when endBlock: 'latest' fails to fetch API status",
+    { timeout: 15_000 },
+    async () => {
+      const contractId = "SP123.token";
+      mockRequest.mockImplementation((rawUrl: string) => {
+        const url = decodeURIComponent(rawUrl);
+        if (url.includes("/extended/v3/transactions/batch")) {
+          const results = parseBatchIds(url)
+            .map((id) => standardTxById[id])
+            .filter(Boolean);
+          return { statusCode: 200, body: mockBody({ results }) };
+        }
+        if (url.endsWith("/extended")) {
+          return {
+            statusCode: 500,
+            body: mockBody({ error: "Internal Server Error" }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: "latest" }]);
+      const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+      const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: "latest" }]);
 
-    expect(result.isErr()).toBe(true);
-  });
+      expect(result.isErr()).toBe(true);
+    },
+  );
 
   test("skips sync and network requests when contract is already marked complete for endBlock", async () => {
     const contractId = "SP123.token";

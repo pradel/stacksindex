@@ -9,18 +9,16 @@ const SATOSHIBLES_CONTRACT = "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibl
 
 const recorder = createScenarioRecorder("start-end-block.json");
 
-vi.mock("undici", () => ({
-  request: (
-    url: string,
-    init?: { method?: string; headers?: Record<string, string>; body?: string },
-  ) => recorder.handleRequest(url, init),
-}));
-
 describe("e2E: Bounded startBlock and endBlock scenario", () => {
   const database = createScenarioDatabase();
   const logger = createLogger({ level: 0 });
 
   beforeAll(async () => {
+    vi.stubGlobal(
+      "fetch",
+      (url: unknown, init?: { method?: string; headers?: Record<string, string>; body?: string }) =>
+        recorder.handleFetch(url, init),
+    );
     await database.setup();
   });
 
@@ -32,6 +30,7 @@ describe("e2E: Bounded startBlock and endBlock scenario", () => {
     registerScenarioBenchmark("start-end-block", recorder.getBenchmarkSummary());
     await recorder.save();
     await database.teardown();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
