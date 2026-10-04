@@ -33,9 +33,11 @@ export const buildLogsCursor = ({
 
 export const parseLogsCursor = (cursor: string): LogsCursor => {
   const parts = cursor.split(":");
+
   if (parts.length !== 4) {
     throw new Error(`Invalid logs cursor format: ${cursor}`);
   }
+
   return {
     blockHeight: Number(parts[0]),
     microblockSequence: Number(parts[1]),
@@ -58,9 +60,11 @@ export const buildTransactionCursor = ({
 
 export const parseTransactionCursor = (cursor: string): TransactionCursor => {
   const parts = cursor.split(":");
+
   if (parts.length !== 3) {
     throw new Error(`Invalid transaction cursor format: ${cursor}`);
   }
+
   return {
     blockHeight: Number(parts[0]),
     microblockSequence: Number(parts[1]),
@@ -75,13 +79,16 @@ function findFirstMatchingContractEvent(
 ): Effect.Effect<{ event_index: number } | null, StacksApiError> {
   return Effect.gen(function* () {
     let eventCursor: string | null = "initial";
+
     while (eventCursor) {
       const eventsResponse: TransactionEventsResponse =
         yield* datasourceStacksApi.getTransactionEvents(context, txId, {
           limit: 50,
           cursor: eventCursor === "initial" ? undefined : eventCursor,
         });
+
       const { results, cursor } = eventsResponse;
+
       for (const event of results) {
         if (event.type === "contract_log" && "contract_log" in event) {
           if (event.contract_log.contract_id === contractId) {
@@ -89,8 +96,10 @@ function findFirstMatchingContractEvent(
           }
         }
       }
+
       eventCursor = cursor.next;
     }
+
     return null;
   });
 }
@@ -102,11 +111,13 @@ function checkTransactionForMatchingEvent(
 ): Effect.Effect<LogsCursor | null, StacksApiError> {
   return Effect.gen(function* () {
     const fullTx = yield* datasourceStacksApi.getTransaction(context, txId);
+
     if (fullTx.event_count === 0) {
       return null;
     }
 
     const matchingEvent = yield* findFirstMatchingContractEvent(context, fullTx.tx_id, contractId);
+
     if (!matchingEvent) {
       return null;
     }
@@ -183,6 +194,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
 
       const contract = yield* datasourceStacksApi.getContract(context, contractId);
       const deploymentBlockHeight = contract.block.height;
+
       const initialBlockHeight =
         options?.startBlock === undefined
           ? deploymentBlockHeight
@@ -215,6 +227,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
           });
 
         const { results, cursor } = page;
+
         if (results.length === 0) {
           break;
         }
@@ -222,6 +235,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
         // Iterate from oldest to newest within the page
         for (const item of results.slice().reverse()) {
           const itemBlockHeight = item.transaction.block.height;
+
           const isBeforeStart =
             options?.startBlock !== undefined && itemBlockHeight < options.startBlock;
 
@@ -241,6 +255,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
                 block: cursorResult.blockHeight,
                 duration,
               });
+
               return firstCursor;
             }
           }
@@ -256,6 +271,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
         msg: `No events found for ${contractId}`,
         duration,
       });
+
       return null;
     });
   },

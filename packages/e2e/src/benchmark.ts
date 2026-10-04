@@ -24,11 +24,13 @@ export interface BenchmarkTracker {
  */
 export function normalizeRoute(method: string, rawUrl: string): string {
   let pathname = rawUrl;
+
   try {
     const { pathname: parsedPathname } = new URL(rawUrl, "http://localhost");
     pathname = parsedPathname;
   } catch {
     const queryIndex = rawUrl.indexOf("?");
+
     if (queryIndex !== -1) {
       pathname = rawUrl.slice(0, queryIndex);
     }
@@ -40,36 +42,47 @@ export function normalizeRoute(method: string, rawUrl: string): string {
   if (/^\/extended\/v3\/smart-contracts\/[^/]+$/u.test(pathname)) {
     return `${upperMethod} /extended/v3/smart-contracts/:contract_id`;
   }
+
   if (/^\/extended\/v1\/tx\/[^/]+$/u.test(pathname)) {
     return `${upperMethod} /extended/v1/tx/:tx_id`;
   }
+
   if (pathname === "/extended") {
     return `${upperMethod} /extended`;
   }
+
   if (/^\/extended\/v2\/blocks\/[^/]+$/u.test(pathname)) {
     return `${upperMethod} /extended/v2/blocks/:height_or_hash`;
   }
+
   if (/^\/extended\/v2\/smart-contracts\/[^/]+\/logs$/u.test(pathname)) {
     return `${upperMethod} /extended/v2/smart-contracts/:contract_id/logs`;
   }
+
   if (/^\/extended\/v3\/blocks\/[^/]+\/transactions$/u.test(pathname)) {
     return `${upperMethod} /extended/v3/blocks/:height_or_hash/transactions`;
   }
+
   if (/^\/extended\/v3\/principals\/[^/]+\/transactions$/u.test(pathname)) {
     return `${upperMethod} /extended/v3/principals/:principal/transactions`;
   }
+
   if (/^\/extended\/v3\/transactions\/[^/]+\/events$/u.test(pathname)) {
     return `${upperMethod} /extended/v3/transactions/:tx_id/events`;
   }
+
   if (pathname === "/extended/v3/transactions/batch") {
     return `${upperMethod} /extended/v3/transactions/batch`;
   }
+
   if (/^\/extended\/v3\/transactions\/[^/]+$/u.test(pathname)) {
     return `${upperMethod} /extended/v3/transactions/:tx_id`;
   }
+
   if (/^\/v2\/contracts\/call-read\/[^/]+\/[^/]+\/[^/]+$/u.test(pathname)) {
     return `${upperMethod} /v2/contracts/call-read/:contract_address/:contract_name/:function_name`;
   }
+
   if (/^\/v2\/contracts\/call-read\/[^/]+\/[^/]+$/u.test(pathname)) {
     return `${upperMethod} /v2/contracts/call-read/:contract_id/:function_name`;
   }
@@ -100,9 +113,11 @@ export function createBenchmarkTracker(): BenchmarkTracker {
     getSummary(): BenchmarkSummary {
       const endpoints: Record<string, number> = {};
       const sortedKeys = Object.keys(counts).sort();
+
       for (const key of sortedKeys) {
         endpoints[key] = counts[key];
       }
+
       return {
         totalCalls,
         endpoints,
@@ -120,6 +135,7 @@ const inMemoryBenchmarks = new Map<string, BenchmarkSummary>();
 
 export function getBenchmarkRunDirectory(): string {
   process.env.BENCHMARK_RUN_ID ??= `${process.ppid || process.pid}-${Date.now()}`;
+
   return path.join(os.tmpdir(), "stacksindex-benchmarks", process.env.BENCHMARK_RUN_ID);
 }
 
@@ -129,6 +145,7 @@ export function getBenchmarkRunDirectory(): string {
  */
 export function registerScenarioBenchmark(scenarioName: string, summary: BenchmarkSummary): void {
   inMemoryBenchmarks.set(scenarioName, summary);
+
   try {
     const runDir = getBenchmarkRunDirectory();
     fs.mkdirSync(runDir, { recursive: true });
@@ -146,19 +163,26 @@ export function registerScenarioBenchmark(scenarioName: string, summary: Benchma
  */
 export function loadAllScenarioBenchmarks(): Map<string, BenchmarkSummary> {
   const result = new Map<string, BenchmarkSummary>(inMemoryBenchmarks);
+
   try {
     const runDir = getBenchmarkRunDirectory();
+
     if (!fs.existsSync(runDir)) {
       return result;
     }
+
     const jsonFiles = fs.readdirSync(runDir).filter((file) => file.endsWith(".json"));
+
     for (const entry of jsonFiles) {
       const filePath = path.join(runDir, entry);
+
+      // SAFETY: Worker files are written by registerScenarioBenchmark with this shape.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
         scenarioName?: string;
         summary?: BenchmarkSummary;
       };
+
       if (data.scenarioName && data.summary) {
         result.set(data.scenarioName, data.summary);
       }
@@ -166,6 +190,7 @@ export function loadAllScenarioBenchmarks(): Map<string, BenchmarkSummary> {
   } catch {
     // Ignore read errors
   }
+
   return result;
 }
 
@@ -174,8 +199,10 @@ export function loadAllScenarioBenchmarks(): Map<string, BenchmarkSummary> {
  */
 export function clearAllScenarioBenchmarks(): void {
   inMemoryBenchmarks.clear();
+
   try {
     const runDir = getBenchmarkRunDirectory();
+
     if (fs.existsSync(runDir)) {
       fs.rmSync(runDir, { recursive: true, force: true });
     }
@@ -214,6 +241,7 @@ export function formatBenchmarkTable(benchmarks: Map<string, BenchmarkSummary>):
 
   for (const scenario of sortedScenarios) {
     const summary = benchmarks.get(scenario);
+
     if (summary) {
       grandTotal += summary.totalCalls;
       const endpoints = Object.entries(summary.endpoints);
@@ -226,6 +254,7 @@ export function formatBenchmarkTable(benchmarks: Map<string, BenchmarkSummary>):
         });
       } else {
         let isFirst = true;
+
         for (const [endpoint, count] of endpoints) {
           rows.push({
             scenario: isFirst ? scenario : "",
@@ -257,9 +286,11 @@ export function formatBenchmarkTable(benchmarks: Map<string, BenchmarkSummary>):
     if (row.scenario.length > maxScenarioLen) {
       maxScenarioLen = row.scenario.length;
     }
+
     if (row.endpoint.length > maxEndpointLen) {
       maxEndpointLen = row.endpoint.length;
     }
+
     if (row.calls.length > maxCallsLen) {
       maxCallsLen = row.calls.length;
     }
@@ -267,6 +298,7 @@ export function formatBenchmarkTable(benchmarks: Map<string, BenchmarkSummary>):
 
   if (benchmarks.size > 1) {
     const grandTotalStr = String(grandTotal);
+
     if (grandTotalStr.length > maxCallsLen) {
       maxCallsLen = grandTotalStr.length;
     }
@@ -296,6 +328,7 @@ export function formatBenchmarkTable(benchmarks: Map<string, BenchmarkSummary>):
 
     if (index + 1 < rows.length) {
       const nextRow = rows[index + 1];
+
       if (nextRow.scenario !== "" && row.isTotal) {
         lines.push(scenarioSeparator);
       }
@@ -319,23 +352,10 @@ export function formatBenchmarkTable(benchmarks: Map<string, BenchmarkSummary>):
 export function printBenchmarkTable(benchmarks?: Map<string, BenchmarkSummary>): void {
   const data = benchmarks ?? loadAllScenarioBenchmarks();
   const table = formatBenchmarkTable(data);
+
   if (table) {
     console.log(`\n${table}\n`);
   }
-}
-
-interface VitestSnapshotState {
-  match: (options: {
-    testName: string;
-    received: unknown;
-    isInline: boolean;
-    message?: string;
-  }) => { pass: boolean; message?: () => string };
-}
-
-interface VitestExpectState {
-  currentTestName?: string;
-  snapshotState?: VitestSnapshotState;
 }
 
 /**
@@ -344,20 +364,17 @@ interface VitestExpectState {
  * to guarantee robust snapshot resolution across monorepos and task runners.
  */
 export function assertBenchmarkSnapshot(summary: BenchmarkSummary, hint?: string): void {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const state = expect.getState() as unknown as VitestExpectState;
-  if (state.snapshotState) {
-    const result = state.snapshotState.match({
-      testName: state.currentTestName ?? "",
-      received: summary,
-      isInline: false,
-      message: hint,
-    });
-    if (!result.pass) {
-      const message = typeof result.message === "function" ? result.message() : "Snapshot mismatch";
-      throw new Error(message);
-    }
-  } else {
-    expect(summary).toMatchSnapshot(hint);
+  const { currentTestName, snapshotState } = expect.getState();
+  const testName = currentTestName ?? hint ?? "";
+
+  const result = snapshotState.match({
+    testId: testName,
+    testName,
+    received: summary,
+    isInline: false,
+  });
+
+  if (!result.pass) {
+    throw new Error(`Snapshot mismatch for ${result.key}`);
   }
 }

@@ -37,6 +37,7 @@ describe("toBeTaggedError", () => {
         errorData: { error: "Not found" },
       }),
     );
+
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 404,

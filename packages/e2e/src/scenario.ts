@@ -1,4 +1,3 @@
-// oxlint-disable typescript/no-unsafe-type-assertion
 import { sql, type SQL } from "drizzle-orm";
 import { createHistoricalRuntime, type Filter, type Logger } from "stacksindex";
 import { expect } from "vite-plus/test";
@@ -6,12 +5,20 @@ import { expect } from "vite-plus/test";
 import { createTestDatabase, type TestDatabase } from "./test-db.ts";
 import { createTraceCollector, type RecordedTraceEvent, type TraceCollector } from "./tracer.ts";
 
+function isRowsResult<Row>(value: unknown): value is { rows: Row[] } {
+  return (
+    typeof value === "object" && value !== null && "rows" in value && Array.isArray(value.rows)
+  );
+}
+
 export async function selectRows<Row>(database: TestDatabase["db"], query: SQL): Promise<Row[]> {
-  const result = (await database.execute(query)) as unknown as { rows: Row[] } | Row[];
+  const result = await database.execute(query);
+
   if (Array.isArray(result)) {
     return result;
   }
-  return result.rows;
+
+  return isRowsResult<Row>(result) ? result.rows : [];
 }
 
 export interface ScenarioDatabase {
@@ -29,6 +36,7 @@ export function createScenarioDatabase(): ScenarioDatabase {
       if (!testDb) {
         throw new Error("Scenario database is not set up. Call setup() in beforeAll.");
       }
+
       return testDb.db;
     },
 
@@ -68,6 +76,7 @@ export async function runScenario(options: {
     endBlock: contract.endBlock,
     handler: (event) => {
       tracer.record(contract.contractId, event);
+
       return Promise.resolve();
     },
   }));
@@ -96,6 +105,7 @@ export async function expectProgress(
     database,
     sql`select "cursor", "lastBlockHeight", "is_complete" as "isComplete" from "sync_progress" where "contract_id" = ${contractId}`,
   );
+
   expect(rows).toHaveLength(1);
   expect(rows[0].cursor).toBe(expected.cursor);
   expect(Number(rows[0].lastBlockHeight)).toBe(expected.lastBlockHeight);
@@ -110,6 +120,7 @@ export async function expectCheckpoint(
     database,
     sql`select "blockHeight" from "checkpoints"`,
   );
+
   expect(rows).toHaveLength(1);
   expect(Number(rows[0].blockHeight)).toBe(height);
 }
@@ -133,6 +144,7 @@ export async function expectTableCount(
     database,
     TABLE_COUNT_QUERIES[table],
   );
+
   expect(Number(rows[0].count)).toBe(count);
 }
 
@@ -144,6 +156,7 @@ export async function expectStoredBlockHeights(
     database,
     sql`select "height" from "blocks"`,
   );
+
   expect(
     rows
       .map((row) => Number(row.height))

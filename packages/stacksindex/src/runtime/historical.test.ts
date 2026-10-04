@@ -6,7 +6,7 @@
 // oxlint-disable vitest/prefer-called-once
 import { URL } from "node:url";
 
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Match, Predicate, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createDatabase } from "../database/index.ts";
@@ -24,28 +24,37 @@ import {
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createHistoricalRuntime } from "./historical.ts";
 
+interface Dictionary<TValue> {
+  [key: string]: TValue;
+}
+
+type FetchInput = string | URL;
+
 const mockRequest = vi.hoisted(() => vi.fn());
 
-const toUrlString = (url: unknown) =>
-  typeof url === "string" ? url : ((url as URL).href ?? String(url));
+const toUrlString = (url: FetchInput): string => (Predicate.isString(url) ? url : url.href);
 
-const mockFetch = vi.fn(async (rawUrl: unknown, init?: any) => {
+const mockFetch = vi.fn(async (rawUrl: FetchInput, init?: any) => {
   const url = toUrlString(rawUrl);
-  let headersObj: Record<string, string> = {};
+  let headersObj: Dictionary<string> = {};
+
   if (init?.headers) {
-    if (typeof init.headers.entries === "function") {
+    if (Predicate.isFunction(init.headers.entries)) {
       headersObj = Object.fromEntries(init.headers.entries());
-    } else if (typeof init.headers === "object") {
+    } else if (Predicate.isObject(init.headers)) {
       headersObj = { ...init.headers };
     }
   }
+
   const requestInit = { ...init, headers: headersObj };
   let res: any;
+
   try {
     res = await mockRequest(url, requestInit);
   } catch (err: any) {
     if (url.includes("/extended/v1/tx/")) {
       const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
+
       return new Response(
         JSON.stringify({
           tx_id: txId,
@@ -56,18 +65,30 @@ const mockFetch = vi.fn(async (rawUrl: unknown, init?: any) => {
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }
+
     throw err;
   }
+
   if (!res) {
     throw new Error(`mockRequest returned undefined for ${url}`);
   }
+
   if (res instanceof Response) {
     return res;
   }
+
   const status = res.statusCode ?? 200;
+
   const statusText =
-    res.statusText ?? (status === 200 ? "OK" : status === 404 ? "Not Found" : String(status));
+    res.statusText ??
+    Match.value(status).pipe(
+      Match.when(200, () => "OK"),
+      Match.when(404, () => "Not Found"),
+      Match.orElse(() => String(status)),
+    );
+
   const data = res.body?.json ? await res.body.json() : (res.body ?? res);
+
   return new Response(JSON.stringify(data), {
     status,
     statusText,
@@ -81,17 +102,20 @@ const context = {
 
 const noopHandler = () => Promise.resolve();
 
-const mockBody = (data: unknown) => ({
+const mockBody = <T>(data: T) => ({
   json: () => Promise.resolve(data),
 });
 
 const parseBatchIds = (url: string): string[] => {
   const query = url.split("?")[1] ?? "";
   const ids: string[] = [];
+
   for (const part of query.split("&")) {
     const [key, ...rest] = part.split("=");
+
     if (key === "tx_id") {
       const value = rest.join("=");
+
       for (const id of value.split(",")) {
         if (id !== "") {
           ids.push(id);
@@ -99,6 +123,7 @@ const parseBatchIds = (url: string): string[] => {
       }
     }
   }
+
   return ids;
 };
 
@@ -114,7 +139,7 @@ const standardTx = (txId: string, height: number, hash: string, txIndex = 0) => 
   bitcoin_block: { height, time: 1000 },
 });
 
-const standardTxById: Record<string, any> = {
+const standardTxById: Dictionary<Schema.Json> = {
   "tx-1": standardTx("tx-1", 100, "block-1"),
   "tx-2": standardTx("tx-2", 200, "block-2"),
   "tx-100": standardTx("tx-100", 100, "block-100"),
@@ -150,7 +175,7 @@ describe("historical runtime", () => {
   test("fetches and stores blocks and transactions for a single contract", async () => {
     const contractId = "SP123.token";
 
-    const txById: Record<string, any> = {
+    const txById: Dictionary<Schema.Json> = {
       "tx-1": {
         tx_id: "tx-1",
         event_count: 1,
@@ -177,12 +202,15 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => txById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -193,6 +221,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -204,6 +233,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -225,6 +255,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -260,6 +291,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -286,6 +318,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=200:0:0:0`)
       ) {
@@ -312,6 +345,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-2")) {
         return {
           statusCode: 200,
@@ -337,6 +371,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-1")) {
         return {
           statusCode: 200,
@@ -363,6 +398,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-2")) {
         return {
           statusCode: 200,
@@ -389,6 +425,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -409,9 +446,11 @@ describe("historical runtime", () => {
 
     // Verify sync progress
     const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+
     if (progress === null) {
       throw new Error("Expected progress to be defined");
     }
+
     expect(progress.cursor).toBeNull();
     expect(progress.isComplete).toBe(false);
     expect(Number(progress.lastBlockHeight)).toBe(200);
@@ -458,7 +497,7 @@ describe("historical runtime", () => {
       ],
     });
 
-    const txMap: Record<string, any> = {
+    const txMap: Dictionary<ReturnType<typeof makeTxData>> = {
       "tx-a-init": makeTxData({
         txId: "tx-a-init",
         blockHeight: 100,
@@ -548,6 +587,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractA}/transactions`)) {
         return {
           statusCode: 200,
@@ -571,6 +611,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractB}/transactions`)) {
         return {
           statusCode: 200,
@@ -587,32 +628,37 @@ describe("historical runtime", () => {
         const results = parseBatchIds(url)
           .map((id) => txMap[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
 
       for (const [txId, txData] of Object.entries(txMap)) {
         if (url.includes(`/extended/v3/transactions/${txId}/events`)) {
-          const events = (txData.events ?? []) as {
-            event_index: number;
-            event_type?: string;
-            contract_log?: unknown;
-          }[];
+          const { events } = txData;
+
           return {
             statusCode: 200,
             body: mockBody({
               total: events.length,
               limit: 50,
               cursor: { next: null, previous: null, current: "0" },
-              results: events.map((event) => ({
-                event_index: event.event_index,
-                type: event.event_type === "smart_contract_log" ? "contract_log" : event.event_type,
-                ...(event.event_type === "smart_contract_log"
-                  ? { contract_log: event.contract_log }
-                  : {}),
-              })),
+              results: events.map((event) => {
+                const mappedEvent = {
+                  event_index: event.event_index,
+                  type:
+                    event.event_type === "smart_contract_log" ? "contract_log" : event.event_type,
+                };
+
+                if (event.event_type !== "smart_contract_log") {
+                  return mappedEvent;
+                }
+
+                return { ...mappedEvent, contract_log: event.contract_log };
+              }),
             }),
           };
         }
+
         if (url.includes(`/extended/v3/transactions/${txId}`)) {
           return { statusCode: 200, body: mockBody(txData) };
         }
@@ -638,6 +684,7 @@ describe("historical runtime", () => {
           "200:0:0:0",
         );
       }
+
       if (url.includes("/extended/v2/blocks/block-a-1")) {
         return makeBlockResponse(100, "block-a-1");
       }
@@ -662,6 +709,7 @@ describe("historical runtime", () => {
           "150:0:0:0",
         );
       }
+
       if (url.includes("/extended/v2/blocks/block-b-1")) {
         return makeBlockResponse(50, "block-b-1");
       }
@@ -686,6 +734,7 @@ describe("historical runtime", () => {
           null,
         );
       }
+
       if (url.includes("/extended/v2/blocks/block-a-2")) {
         return makeBlockResponse(200, "block-a-2");
       }
@@ -710,6 +759,7 @@ describe("historical runtime", () => {
           null,
         );
       }
+
       if (url.includes("/extended/v2/blocks/block-b-2")) {
         return makeBlockResponse(150, "block-b-2");
       }
@@ -718,6 +768,7 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+
     const result = await runtime.run([
       { contractId: contractA, handler: noopHandler },
       { contractId: contractB, handler: noopHandler },
@@ -727,24 +778,25 @@ describe("historical runtime", () => {
 
     // Verify fair scheduling by checking the order of getContractLogs calls
     const logsCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/logs?limit=100&cursor="),
+      String(call[0]).includes("/logs?limit=100&cursor="),
     );
+
     expect(logsCalls).toHaveLength(4);
 
     // B starts at 50, A at 100 -> B should go first
-    expect(decodeURIComponent(logsCalls[0][0] as string)).toContain("cursor=50:0:0:0");
+    expect(decodeURIComponent(String(logsCalls[0][0]))).toContain("cursor=50:0:0:0");
     expect(logsCalls[0][0]).toContain(contractB);
 
     // After B advances to 150, A is at 100 -> A should go next
-    expect(decodeURIComponent(logsCalls[1][0] as string)).toContain("cursor=100:0:0:0");
+    expect(decodeURIComponent(String(logsCalls[1][0]))).toContain("cursor=100:0:0:0");
     expect(logsCalls[1][0]).toContain(contractA);
 
     // A advances to 200, B is at 150 -> B should go next
-    expect(decodeURIComponent(logsCalls[2][0] as string)).toContain("cursor=150:0:0:0");
+    expect(decodeURIComponent(String(logsCalls[2][0]))).toContain("cursor=150:0:0:0");
     expect(logsCalls[2][0]).toContain(contractB);
 
     // Finally A at 200
-    expect(decodeURIComponent(logsCalls[3][0] as string)).toContain("cursor=200:0:0:0");
+    expect(decodeURIComponent(String(logsCalls[3][0]))).toContain("cursor=200:0:0:0");
     expect(logsCalls[3][0]).toContain(contractA);
   });
 
@@ -757,7 +809,7 @@ describe("historical runtime", () => {
       { db: testDb.db },
     );
 
-    const txByIdResume: Record<string, any> = {
+    const txByIdResume: Dictionary<Schema.Json> = {
       "tx-1": {
         tx_id: "tx-1",
         type: "contract_call",
@@ -772,12 +824,15 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => txByIdResume[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -804,6 +859,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -828,6 +884,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-1")) {
         return {
           statusCode: 200,
@@ -854,6 +911,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -864,8 +922,9 @@ describe("historical runtime", () => {
 
     // Should not have called getPrincipalTransactions (first cursor discovery)
     const addressTxCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/principals/"),
+      String(call[0]).includes("/principals/"),
     );
+
     expect(addressTxCalls).toHaveLength(0);
 
     // Blocks and transactions should be stored
@@ -903,12 +962,15 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -935,6 +997,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       // If we reach here, an unexpected API call was made
       throw new Error(`Unexpected URL: ${url}`);
     });
@@ -946,11 +1009,13 @@ describe("historical runtime", () => {
 
     // Verify no getTransaction or getBlock calls were made
     const txCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/extended/v3/transactions/"),
+      String(call[0]).includes("/extended/v3/transactions/"),
     );
+
     const blockCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/extended/v2/blocks/"),
+      String(call[0]).includes("/extended/v2/blocks/"),
     );
+
     expect(txCalls).toHaveLength(0);
     expect(blockCalls).toHaveLength(0);
   });
@@ -960,12 +1025,15 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -976,6 +1044,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -987,6 +1056,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -1008,6 +1078,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -1043,6 +1114,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -1053,6 +1125,7 @@ describe("historical runtime", () => {
           headers: { "content-type": "application/json" },
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -1083,6 +1156,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -1094,6 +1168,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -1110,7 +1185,7 @@ describe("historical runtime", () => {
   test("skips non-smart_contract_log events without crashing", async () => {
     const contractId = "SP123.token";
 
-    const txByIdNonLog: Record<string, any> = {
+    const txByIdNonLog: Dictionary<Schema.Json> = {
       "tx-1": {
         tx_id: "tx-1",
         event_count: 2,
@@ -1126,12 +1201,15 @@ describe("historical runtime", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => txByIdNonLog[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -1142,6 +1220,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -1153,6 +1232,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -1178,6 +1258,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -1217,6 +1298,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:1`)
       ) {
@@ -1251,6 +1333,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-1")) {
         return {
           statusCode: 200,
@@ -1277,6 +1360,7 @@ describe("historical runtime", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -1395,7 +1479,7 @@ describe("historical runtime with handlers", () => {
       ],
     });
 
-    const txMap: Record<string, any> = {
+    const txMap: Dictionary<ReturnType<typeof makeTxData>> = {
       "tx-a-init": makeTxData({
         txId: "tx-a-init",
         blockHeight: 100,
@@ -1473,6 +1557,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractA}/transactions`)) {
         return {
           statusCode: 200,
@@ -1496,6 +1581,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractB}/transactions`)) {
         return {
           statusCode: 200,
@@ -1512,32 +1598,37 @@ describe("historical runtime with handlers", () => {
         const results = parseBatchIds(url)
           .map((id) => txMap[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
 
       for (const [txId, txData] of Object.entries(txMap)) {
         if (url.includes(`/extended/v3/transactions/${txId}/events`)) {
-          const events = (txData.events ?? []) as {
-            event_index: number;
-            event_type?: string;
-            contract_log?: unknown;
-          }[];
+          const { events } = txData;
+
           return {
             statusCode: 200,
             body: mockBody({
               total: events.length,
               limit: 50,
               cursor: { next: null, previous: null, current: "0" },
-              results: events.map((event) => ({
-                event_index: event.event_index,
-                type: event.event_type === "smart_contract_log" ? "contract_log" : event.event_type,
-                ...(event.event_type === "smart_contract_log"
-                  ? { contract_log: event.contract_log }
-                  : {}),
-              })),
+              results: events.map((event) => {
+                const mappedEvent = {
+                  event_index: event.event_index,
+                  type:
+                    event.event_type === "smart_contract_log" ? "contract_log" : event.event_type,
+                };
+
+                if (event.event_type !== "smart_contract_log") {
+                  return mappedEvent;
+                }
+
+                return { ...mappedEvent, contract_log: event.contract_log };
+              }),
             }),
           };
         }
+
         if (url.includes(`/extended/v3/transactions/${txId}`)) {
           return { statusCode: 200, body: mockBody(txData) };
         }
@@ -1563,6 +1654,7 @@ describe("historical runtime with handlers", () => {
           null,
         );
       }
+
       if (url.includes("/extended/v2/blocks/block-a-1")) {
         return makeBlockResponse(100, "block-a-1");
       }
@@ -1587,6 +1679,7 @@ describe("historical runtime with handlers", () => {
           null,
         );
       }
+
       if (url.includes("/extended/v2/blocks/block-b-1")) {
         return makeBlockResponse(50, "block-b-1");
       }
@@ -1594,6 +1687,7 @@ describe("historical runtime with handlers", () => {
       if (url.includes("/extended/v2/blocks/block-a-init")) {
         return makeBlockResponse(100, "block-a-init");
       }
+
       if (url.includes("/extended/v2/blocks/block-b-init")) {
         return makeBlockResponse(50, "block-b-init");
       }
@@ -1605,6 +1699,7 @@ describe("historical runtime with handlers", () => {
       logger: context.logger,
       db: testDb.db,
     });
+
     const result = await runtime.run([
       { contractId: contractA, handler: handlerA },
       { contractId: contractB, handler: handlerB },
@@ -1631,12 +1726,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -1647,6 +1745,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -1658,6 +1757,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -1679,6 +1779,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -1714,6 +1815,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -1740,6 +1842,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-1")) {
         return {
           statusCode: 200,
@@ -1766,6 +1869,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -1773,6 +1877,7 @@ describe("historical runtime with handlers", () => {
       logger: context.logger,
       db: testDb.db,
     });
+
     const result = await runtime.run([{ contractId, handler }]);
 
     expect(result).toBeUndefined();
@@ -1822,12 +1927,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -1854,6 +1962,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -1861,6 +1970,7 @@ describe("historical runtime with handlers", () => {
       logger: context.logger,
       db: testDb.db,
     });
+
     const result = await runtime.run([{ contractId, handler }]);
 
     expect(result).toBeUndefined();
@@ -1874,12 +1984,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -1890,6 +2003,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -1901,6 +2015,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -1922,6 +2037,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -1957,6 +2073,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -1983,6 +2100,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-1")) {
         return {
           statusCode: 200,
@@ -2009,6 +2127,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -2016,6 +2135,7 @@ describe("historical runtime with handlers", () => {
       logger: context.logger,
       db: testDb.db,
     });
+
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
     expect(result).toBeTaggedError(
@@ -2034,12 +2154,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string, init: { headers: Record<string, string> }) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       expect(new URL(url).origin).toBe(customBaseUrl);
       expect(init.headers["x-api-key"]).toBe(customApiKey);
 
@@ -2053,6 +2176,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -2064,6 +2188,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -2099,6 +2224,7 @@ describe("historical runtime with handlers", () => {
         init?: { headers?: Record<string, string>; method?: string; body?: string },
       ) => {
         const url = decodeURIComponent(rawUrl);
+
         if (url.includes("/extended/v3/transactions/batch")) {
           const results = parseBatchIds(url)
             .map((id) =>
@@ -2117,6 +2243,7 @@ describe("historical runtime with handlers", () => {
                 : standardTxById[id],
             )
             .filter(Boolean);
+
           return { statusCode: 200, body: mockBody({ results }) };
         }
 
@@ -2130,6 +2257,7 @@ describe("historical runtime with handlers", () => {
             }),
           };
         }
+
         if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
           return {
             statusCode: 200,
@@ -2141,6 +2269,7 @@ describe("historical runtime with handlers", () => {
             }),
           };
         }
+
         if (url.includes("/extended/v3/transactions/tx-1/events")) {
           return {
             statusCode: 200,
@@ -2162,6 +2291,7 @@ describe("historical runtime with handlers", () => {
             }),
           };
         }
+
         if (url.includes("/extended/v3/transactions/tx-1")) {
           return {
             statusCode: 200,
@@ -2193,6 +2323,7 @@ describe("historical runtime with handlers", () => {
             }),
           };
         }
+
         if (
           url.includes(
             `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=1234:0:0:0`,
@@ -2221,6 +2352,7 @@ describe("historical runtime with handlers", () => {
             }),
           };
         }
+
         if (url.includes("/extended/v2/blocks/block-1")) {
           return {
             statusCode: 200,
@@ -2247,9 +2379,11 @@ describe("historical runtime with handlers", () => {
             }),
           };
         }
+
         if (url.includes("/v2/contracts/call-read/SP123/token/get-total-supply")) {
           callReadOnlyUrl = url;
           callReadOnlyApiKey = init?.headers?.["x-api-key"];
+
           return {
             statusCode: 200,
             body: mockBody({ okay: true, result: "0x01000000000000000000000000000003e8" }),
@@ -2275,11 +2409,13 @@ describe("historical runtime with handlers", () => {
         handler: async (_event, { client }) => {
           handlerCalled = true;
           const [contractAddress, contractName] = contractId.split(".");
+
           const readResult = await client.callReadOnly({
             contractAddress,
             contractName,
             functionName: "get-total-supply",
           });
+
           if (readResult.okay) {
             callReadOnlySuccess = true;
           }
@@ -2310,6 +2446,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -2321,6 +2458,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -2340,19 +2478,24 @@ describe("historical runtime with handlers", () => {
   test("filters events and starts synchronization at startBlock", async () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
+
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
+
       return Promise.resolve();
     });
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -2363,6 +2506,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v3/principals/${contractId}/transactions`) &&
         url.split("?")[1]?.split("&").includes("cursor=100:0:0")
@@ -2377,6 +2521,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100/events")) {
         return {
           statusCode: 200,
@@ -2398,6 +2543,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100")) {
         return {
           statusCode: 200,
@@ -2433,6 +2579,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -2459,6 +2606,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-100")) {
         return {
           statusCode: 200,
@@ -2485,6 +2633,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -2499,19 +2648,24 @@ describe("historical runtime with handlers", () => {
   test("filters events and bounds synchronization with startBlock and endBlock", async () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
+
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
+
       return Promise.resolve();
     });
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -2522,6 +2676,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -2533,6 +2688,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100/events")) {
         return {
           statusCode: 200,
@@ -2554,6 +2710,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100")) {
         return {
           statusCode: 200,
@@ -2589,6 +2746,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -2615,6 +2773,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=150:0:0:0`)
       ) {
@@ -2641,6 +2800,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-150")) {
         return {
           statusCode: 200,
@@ -2676,6 +2836,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-100")) {
         return {
           statusCode: 200,
@@ -2702,6 +2863,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-150")) {
         return {
           statusCode: 200,
@@ -2728,6 +2890,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -2745,12 +2908,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -2761,6 +2927,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -2772,6 +2939,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-200/events")) {
         return {
           statusCode: 200,
@@ -2793,6 +2961,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-200")) {
         return {
           statusCode: 200,
@@ -2806,6 +2975,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -2822,12 +2992,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -2838,6 +3011,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -2849,6 +3023,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100/events")) {
         return {
           statusCode: 200,
@@ -2870,6 +3045,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -2906,6 +3082,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100")) {
         return {
           statusCode: 200,
@@ -2941,6 +3118,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-200")) {
         return {
           statusCode: 200,
@@ -2976,6 +3154,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-100")) {
         return {
           statusCode: 200,
@@ -3002,9 +3181,11 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-200")) {
         throw new Error("block-200 should not have been requested");
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -3016,8 +3197,9 @@ describe("historical runtime with handlers", () => {
 
     // Block-200 should not have been fetched
     const block200Calls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/extended/v2/blocks/block-200"),
+      String(call[0]).includes("/extended/v2/blocks/block-200"),
     );
+
     expect(block200Calls).toHaveLength(0);
   });
 
@@ -3028,6 +3210,7 @@ describe("historical runtime with handlers", () => {
     const negativeResult = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, startBlock: -1 }]),
     );
+
     expect(negativeResult).toBeTaggedError(
       new FilterValidationError({
         message:
@@ -3038,6 +3221,7 @@ describe("historical runtime with handlers", () => {
     const floatResult = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, startBlock: 1.5 }]),
     );
+
     expect(floatResult).toBeTaggedError(
       new FilterValidationError({
         message:
@@ -3053,6 +3237,7 @@ describe("historical runtime with handlers", () => {
     const negativeResult = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, endBlock: -5 }]),
     );
+
     expect(negativeResult).toBeTaggedError(
       new FilterValidationError({
         message:
@@ -3063,6 +3248,7 @@ describe("historical runtime with handlers", () => {
     const floatResult = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, endBlock: 100.2 }]),
     );
+
     expect(floatResult).toBeTaggedError(
       new FilterValidationError({
         message:
@@ -3078,6 +3264,7 @@ describe("historical runtime with handlers", () => {
     const result = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, startBlock: 200, endBlock: 100 }]),
     );
+
     expect(result).toBeTaggedError(
       new FilterValidationError({
         message:
@@ -3089,19 +3276,24 @@ describe("historical runtime with handlers", () => {
   test("resolves endBlock: 'latest' using API status and bounds synchronization", async () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
+
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
+
       return Promise.resolve();
     });
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.endsWith("/extended")) {
         return {
           statusCode: 200,
@@ -3118,6 +3310,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -3128,6 +3321,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -3139,6 +3333,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100/events")) {
         return {
           statusCode: 200,
@@ -3160,6 +3355,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -3186,6 +3382,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100")) {
         return {
           statusCode: 200,
@@ -3221,6 +3418,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-100")) {
         return {
           statusCode: 200,
@@ -3247,10 +3445,12 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+
     const result = await runtime.run([
       { contractId, handler, startBlock: 100, endBlock: "latest" },
     ]);
@@ -3264,22 +3464,27 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.endsWith("/extended")) {
         return {
           statusCode: 500,
           body: mockBody({ error: "Internal Server Error" }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+
     const result = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, endBlock: "latest" }]),
     );
@@ -3318,8 +3523,10 @@ describe("historical runtime with handlers", () => {
   test("resumes sync when contract was marked complete for lower endBlock and new run has higher endBlock", async () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
+
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
+
       return Promise.resolve();
     });
 
@@ -3337,12 +3544,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -3353,6 +3563,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         // Starts discovering from block 101
         return {
@@ -3365,6 +3576,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-150/events")) {
         return {
           statusCode: 200,
@@ -3386,6 +3598,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=150:0:0:0`)
       ) {
@@ -3412,6 +3625,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-150")) {
         return {
           statusCode: 200,
@@ -3447,6 +3661,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-150")) {
         return {
           statusCode: 200,
@@ -3473,6 +3688,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -3494,8 +3710,10 @@ describe("historical runtime with handlers", () => {
   test("resumes sync across consecutive runs with no endBlock instead of skipping", async () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
+
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
+
       return Promise.resolve();
     });
 
@@ -3513,12 +3731,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -3529,6 +3750,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -3540,6 +3762,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-150/events")) {
         return {
           statusCode: 200,
@@ -3561,6 +3784,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=150:0:0:0`)
       ) {
@@ -3587,6 +3811,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-150")) {
         return {
           statusCode: 200,
@@ -3622,6 +3847,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-150")) {
         return {
           statusCode: 200,
@@ -3648,6 +3874,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -3669,8 +3896,10 @@ describe("historical runtime with handlers", () => {
   test("resolves block height for events whose transactions already exist in sync store", async () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
+
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
+
       return Promise.resolve();
     });
 
@@ -3709,12 +3938,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
       ) {
@@ -3741,6 +3973,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       // Note: /extended/v3/transactions/tx-1 should NOT be called because tx-1 is already in DB
       throw new Error(`Unexpected URL: ${url}`);
     });
@@ -3761,8 +3994,10 @@ describe("historical runtime with handlers", () => {
   test("fetches subsequent page when initial page next_cursor jumps past endBlock to capture remaining events in bounded block", async () => {
     const contractId = "SP123.token";
     const handledEvents: { txId: string; blockHeight: number }[] = [];
+
     const handler = vi.fn().mockImplementation((event: { tx_id: string; block_height: number }) => {
       handledEvents.push({ txId: event.tx_id, blockHeight: event.block_height });
+
       return Promise.resolve();
     });
 
@@ -3799,12 +4034,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -3815,6 +4053,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -3830,6 +4069,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100-1/events")) {
         return {
           statusCode: 200,
@@ -3851,6 +4091,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       // Initial page: returns only the first event at tx_index 10, next_cursor jumps forward to 150
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:10:0`)
@@ -3878,6 +4119,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       // Page 2: returns events from block 150 down to block 100 (including tx-100-3 and tx-100-2)
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=150:0:50:0`)
@@ -3925,18 +4167,23 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100-1")) {
         return { statusCode: 200, body: mockBody(makeTx("tx-100-1", 100, 10)) };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100-2")) {
         return { statusCode: 200, body: mockBody(makeTx("tx-100-2", 100, 20)) };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100-3")) {
         return { statusCode: 200, body: mockBody(makeTx("tx-100-3", 100, 30)) };
       }
+
       if (url.includes("/extended/v3/transactions/tx-150-1")) {
         return { statusCode: 200, body: mockBody(makeTx("tx-150-1", 150, 50)) };
       }
+
       if (url.includes("/extended/v2/blocks/block-100")) {
         return {
           statusCode: 200,
@@ -3963,6 +4210,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -3980,8 +4228,9 @@ describe("historical runtime with handlers", () => {
 
     // Should NOT fetch page with cursor 200:0:0:0 because currentHeight (150) >= endBlock (100) on page 2
     const page3Calls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("cursor=200"),
+      String(call[0]).includes("cursor=200"),
     );
+
     expect(page3Calls).toHaveLength(0);
 
     // Sync progress should be marked complete for endBlock 100
@@ -3996,8 +4245,10 @@ describe("historical runtime with handlers", () => {
   test("fetches multiple pages within endBlock with a third cursor at the same block height", async () => {
     const contractId = "SP123.token";
     const handledEvents: { txId: string; blockHeight: number }[] = [];
+
     const handler = vi.fn().mockImplementation((event: { tx_id: string; block_height: number }) => {
       handledEvents.push({ txId: event.tx_id, blockHeight: event.block_height });
+
       return Promise.resolve();
     });
 
@@ -4034,12 +4285,15 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) => standardTxById[id])
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -4050,6 +4304,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -4065,6 +4320,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100-1/events")) {
         return {
           statusCode: 200,
@@ -4086,6 +4342,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       // Page 1: block 100, tx 10 -> next_cursor: 100:0:20:0 (second page in block 100)
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:10:0`)
@@ -4113,6 +4370,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       // Page 2: block 100, tx 20 -> next_cursor: 100:0:30:0 (third cursor in same block 100)
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:20:0`)
@@ -4140,6 +4398,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       // Page 3: block 100, tx 30 -> next_cursor: 150:0:50:0 (jumps to block 150)
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:30:0`)
@@ -4167,6 +4426,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       // Page 4: block 150 -> next_cursor: 200:0:0:0
       if (
         url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=150:0:50:0`)
@@ -4194,18 +4454,23 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100-1")) {
         return { statusCode: 200, body: mockBody(makeTx("tx-100-1", 100, 10)) };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100-2")) {
         return { statusCode: 200, body: mockBody(makeTx("tx-100-2", 100, 20)) };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100-3")) {
         return { statusCode: 200, body: mockBody(makeTx("tx-100-3", 100, 30)) };
       }
+
       if (url.includes("/extended/v3/transactions/tx-150-1")) {
         return { statusCode: 200, body: mockBody(makeTx("tx-150-1", 150, 50)) };
       }
+
       if (url.includes("/extended/v2/blocks/block-100")) {
         return {
           statusCode: 200,
@@ -4232,6 +4497,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -4249,8 +4515,9 @@ describe("historical runtime with handlers", () => {
 
     // Should NOT fetch page with cursor 200:0:0:0
     const page5Calls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("cursor=200"),
+      String(call[0]).includes("cursor=200"),
     );
+
     expect(page5Calls).toHaveLength(0);
 
     // Sync progress should be marked complete for endBlock 100
@@ -4286,6 +4553,7 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
           .map((id) =>
@@ -4302,8 +4570,10 @@ describe("historical runtime with handlers", () => {
               : standardTxById[id],
           )
           .filter(Boolean);
+
         return { statusCode: 200, body: mockBody({ results }) };
       }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -4314,6 +4584,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -4325,6 +4596,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -4346,6 +4618,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/smart-contracts") && url.includes("/logs")) {
         return {
           statusCode: 200,
@@ -4368,6 +4641,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -4381,6 +4655,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-50")) {
         return {
           statusCode: 200,
@@ -4392,6 +4667,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -4400,6 +4676,7 @@ describe("historical runtime with handlers", () => {
       db: testDb.db,
       network: customChainId,
     });
+
     const result = await runtime.run([{ contractId, handler }]);
 
     expect(result).toBeUndefined();
@@ -4409,6 +4686,7 @@ describe("historical runtime with handlers", () => {
       { contractId, chainId: customChainId },
       { db: testDb.db },
     );
+
     expect(progress).not.toBeNull();
     expect(progress?.chainId).toBe(BigInt(customChainId));
 
@@ -4422,6 +4700,7 @@ describe("historical runtime with handlers", () => {
       { contractId, chainId: 1 },
       { db: testDb.db },
     );
+
     expect(defaultProgress).toBeNull();
   });
 
@@ -4432,12 +4711,14 @@ describe("historical runtime with handlers", () => {
     mockRequest.mockImplementation((rawUrl: string) => {
       requestedUrls.push(rawUrl);
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({ contract_id: contractId, block: { height: 50 }, tx_id: "tx-deploy" }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -4449,6 +4730,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -4457,10 +4739,12 @@ describe("historical runtime with handlers", () => {
       db: testDb.db,
       network: "testnet",
     });
+
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
     expect(requestedUrls.length).toBeGreaterThan(0);
+
     for (const requestedUrl of requestedUrls) {
       expect(new URL(requestedUrl).origin).toBe("https://api.testnet.hiro.so");
     }
@@ -4469,6 +4753,7 @@ describe("historical runtime with handlers", () => {
       { contractId, chainId: 2_147_483_648 },
       { db: testDb.db },
     );
+
     expect(progress).not.toBeNull();
     expect(progress?.chainId).toBe(2_147_483_648n);
   });
@@ -4480,12 +4765,14 @@ describe("historical runtime with handlers", () => {
     mockRequest.mockImplementation((rawUrl: string) => {
       requestedUrls.push(rawUrl);
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({ contract_id: contractId, block: { height: 50 }, tx_id: "tx-deploy" }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -4497,6 +4784,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -4506,10 +4794,12 @@ describe("historical runtime with handlers", () => {
       network: "testnet",
       api: { baseUrl: "https://custom.example" },
     });
+
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
     expect(requestedUrls.length).toBeGreaterThan(0);
+
     for (const requestedUrl of requestedUrls) {
       expect(new URL(requestedUrl).origin).toBe("https://custom.example");
     }
@@ -4518,6 +4808,7 @@ describe("historical runtime with handlers", () => {
       { contractId, chainId: 2_147_483_648 },
       { db: testDb.db },
     );
+
     expect(progress).not.toBeNull();
   });
 
@@ -4560,12 +4851,14 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({ contract_id: contractId, block: { height: 100 }, tx_id: "tx-deploy" }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -4577,6 +4870,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -4598,9 +4892,11 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1") && !url.includes("/batch")) {
         return { statusCode: 200, body: mockBody(makeTx("tx-1", 100, "block-1")) };
       }
+
       if (url.includes(`/extended/v2/smart-contracts/${contractId}/logs`)) {
         return {
           statusCode: 200,
@@ -4635,6 +4931,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/batch")) {
         // Batch returns newest-first regardless of request order
         return {
@@ -4644,12 +4941,15 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-1")) {
         return { statusCode: 200, body: mockBody(makeBlock(100, "block-1")) };
       }
+
       if (url.includes("/extended/v2/blocks/block-2")) {
         return { statusCode: 200, body: mockBody(makeBlock(200, "block-2")) };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -4660,20 +4960,20 @@ describe("historical runtime with handlers", () => {
     expect(handler).toHaveBeenCalledTimes(2);
 
     const batchCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/extended/v3/transactions/batch"),
+      String(call[0]).includes("/extended/v3/transactions/batch"),
     );
+
     expect(batchCalls).toHaveLength(1);
 
     const singleTxCalls = mockRequest.mock.calls.filter(
       (call: any) =>
-        (call[0] as string).includes("/extended/v3/transactions/tx-") &&
-        !(call[0] as string).includes("/events") &&
-        !(call[0] as string).includes("/batch"),
+        String(call[0]).includes("/extended/v3/transactions/tx-") &&
+        !String(call[0]).includes("/events") &&
+        !String(call[0]).includes("/batch"),
     );
+
     // Tx-1 single fetch happens once during cursor discovery; tx-2 must come from batch only
-    expect(singleTxCalls.filter((call: any) => (call[0] as string).includes("tx-2"))).toHaveLength(
-      0,
-    );
+    expect(singleTxCalls.filter((call: any) => String(call[0]).includes("tx-2"))).toHaveLength(0);
 
     const storedTxs = await testDb.db.select().from(transactionsTable);
     expect(storedTxs).toHaveLength(2);
@@ -4696,12 +4996,14 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({ contract_id: contractId, block: { height: 100 }, tx_id: "tx-deploy" }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -4713,6 +5015,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -4734,9 +5037,11 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1") && !url.includes("/batch")) {
         return { statusCode: 200, body: mockBody(tx1) };
       }
+
       if (url.includes(`/extended/v2/smart-contracts/${contractId}/logs`)) {
         return {
           statusCode: 200,
@@ -4767,10 +5072,12 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/batch")) {
         // Tx-2 omitted (unknown or mempool)
         return { statusCode: 200, body: mockBody({ results: [tx1] }) };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -4793,12 +5100,14 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
           body: mockBody({ contract_id: contractId, block: { height: 100 }, tx_id: "tx-deploy" }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -4810,6 +5119,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -4831,6 +5141,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1") && !url.includes("/batch")) {
         return {
           statusCode: 200,
@@ -4848,6 +5159,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v2/smart-contracts/${contractId}/logs`)) {
         return {
           statusCode: 200,
@@ -4868,6 +5180,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/batch")) {
         return {
           statusCode: 400,
@@ -4876,6 +5189,7 @@ describe("historical runtime with handlers", () => {
           headers: { "content-type": "application/json" },
         };
       }
+
       if (url.includes("/extended/v2/blocks/block-1")) {
         return {
           statusCode: 200,
@@ -4887,6 +5201,7 @@ describe("historical runtime with handlers", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 

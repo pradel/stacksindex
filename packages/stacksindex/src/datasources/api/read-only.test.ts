@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { createLogger } from "../../logger/index.ts";
 import { StacksApiResponseError, StacksApiUnexpectedError } from "./errors.ts";
 import type { DatasourceStacksApiContext } from "./index.ts";
-import { typedCallReadFunction } from "./read-only.ts";
+import { typedCallReadFunction, type TypedCallReadOnlyFunctionParameters } from "./read-only.ts";
 
 const sampleTokenAbi = {
   functions: [
@@ -232,17 +232,17 @@ describe("typedCallReadFunction", () => {
   it("returns error if function is public instead of read_only", async () => {
     const mockCallRead = vi.fn();
 
-    const invalidParams = {
+    const invalidParams: TypedCallReadOnlyFunctionParameters = {
       abi: sampleTokenAbi,
       contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
       contractName: "test-token",
       functionName: "transfer",
       functionArgs: [100n, "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
     };
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const params = invalidParams as unknown as Parameters<typeof typedCallReadFunction>[2];
 
-    const exit = await Effect.runPromiseExit(typedCallReadFunction(context, mockCallRead, params));
+    const exit = await Effect.runPromiseExit(
+      typedCallReadFunction(context, mockCallRead, invalidParams),
+    );
 
     expect(exit).toBeTaggedError(
       new StacksApiUnexpectedError({
@@ -257,17 +257,17 @@ describe("typedCallReadFunction", () => {
   it("returns error if argument count mismatches ABI", async () => {
     const mockCallRead = vi.fn();
 
-    const invalidParams = {
+    const invalidParams: TypedCallReadOnlyFunctionParameters = {
       abi: sampleTokenAbi,
       contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
       contractName: "test-token",
       functionName: "get-balance",
       functionArgs: [],
     };
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const params = invalidParams as unknown as Parameters<typeof typedCallReadFunction>[2];
 
-    const exit = await Effect.runPromiseExit(typedCallReadFunction(context, mockCallRead, params));
+    const exit = await Effect.runPromiseExit(
+      typedCallReadFunction(context, mockCallRead, invalidParams),
+    );
 
     expect(exit).toBeTaggedError(
       new StacksApiUnexpectedError({

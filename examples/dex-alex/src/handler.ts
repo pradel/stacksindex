@@ -14,6 +14,7 @@ import { poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
 export type AppDatabase = IndexerDb;
 
 export const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
+
 export const CHAIN_ID = 1n;
 
 export const PoolCreatedLog = Schema.Struct({
@@ -64,6 +65,7 @@ export const PoolBalanceChangeLog = Schema.Struct({
 });
 
 export const PoolLog = Schema.Union([PoolCreatedLog, PoolSwapLog, PoolBalanceChangeLog]);
+
 export type PoolLogData = typeof PoolLog.Type;
 
 export interface InsertTokenIfNotExistsParams {
@@ -90,6 +92,7 @@ export async function insertTokenIfNotExists({
   }
 
   const [contractAddress, contractName] = tokenAddress.split(".");
+
   if (!contractAddress || !contractName) {
     throw new Error(`Invalid tokenAddress: ${tokenAddress}`);
   }
@@ -117,6 +120,7 @@ export async function insertTokenIfNotExists({
       `Failed to fetch decimals for token ${tokenAddress}: contract returned error ${decimalsRes.error}`,
     );
   }
+
   const decimals = Number(decimalsRes.ok);
   const symbol = symbolRes.ok ?? "???";
 
@@ -152,9 +156,11 @@ export async function syncPoolTokens({
   poolToken,
 }: SyncPoolTokensParams): Promise<void> {
   const [contractAddress, contractName] = poolContract.split(".");
+
   if (!contractAddress || !contractName) {
     throw new Error(`Invalid poolContract: ${poolContract}`);
   }
+
   const poolId = await Effect.runPromise(
     client.callReadOnly({
       abi: fixedWeightPoolAbi,
@@ -269,6 +275,7 @@ export function createPoolHandler({
   return async (event, { client }) => {
     const decoded = decodeHex(event.contract_log.value.hex);
     const parsed = Schema.decodeUnknownOption(PoolLog)(decoded);
+
     if (Option.isNone(parsed)) {
       return;
     }
@@ -320,6 +327,7 @@ export function createPoolHandler({
       logger.debug({ msg: "Pool created", pool: data["pool-token"] });
     } else if (log.action === "swap-x-for-y" || log.action === "swap-y-for-x") {
       const { data } = log;
+
       const [pool] = await Effect.runPromise(
         db.select().from(poolTable).where(eq(poolTable.address, data["pool-token"])).limit(1),
       );

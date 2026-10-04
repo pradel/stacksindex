@@ -1,6 +1,6 @@
 import type { paths } from "@stacks/blockchain-api-client";
 import type { ClarityAbi } from "clarity-abitype";
-import { Context, Duration, Effect, Layer, Schedule } from "effect";
+import { Context, Duration, Effect, Layer, Match, Predicate, Schedule } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import type { Logger } from "../../logger/index.ts";
@@ -29,6 +29,7 @@ export type {
   TypedCallReadOnlyFunctionReturnType,
   UntypedCallReadOnlyFunctionParameters,
 };
+
 export { typedCallReadFunction };
 
 export type BlockApiResponse =
@@ -123,12 +124,16 @@ type MinedV1Transaction = V1TransactionApiResponse;
 export type ContractEvent = MinedV1Transaction["events"][number];
 
 export type SmartContractLogEvent = Extract<ContractEvent, { event_type: "smart_contract_log" }>;
+
 export type StxLockEvent = Extract<ContractEvent, { event_type: "stx_lock" }>;
+
 export type StxAssetEvent = Extract<ContractEvent, { event_type: "stx_asset" }>;
+
 export type FungibleTokenAssetEvent = Extract<
   ContractEvent,
   { event_type: "fungible_token_asset" }
 >;
+
 export type NonFungibleTokenAssetEvent = Extract<
   ContractEvent,
   { event_type: "non_fungible_token_asset" }
@@ -155,6 +160,10 @@ interface RequestOptions<QueryT = unknown> {
   body?: unknown;
 }
 
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
 export const datasourceStacksApi = {
   _request<ResponseT, QueryT extends Record<string, unknown> | undefined>(
     context: DatasourceStacksApiContext,
@@ -163,18 +172,21 @@ export const datasourceStacksApi = {
     const { path, method } = options;
     const baseUrl = context.api?.baseUrl ?? "https://api.hiro.so";
     let url = `${baseUrl}${path}`;
+
     if (options.query) {
       const parts: string[] = [];
+
       for (const [key, value] of Object.entries(options.query)) {
         const vals = Array.isArray(value) ? value : [value];
+
         for (const entry of vals) {
           if (entry !== null && entry !== undefined) {
-            // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access
-            const str: string = typeof entry === "string" ? entry : entry.toString();
+            const str = isString(entry) ? entry : String(entry);
             parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(str)}`);
           }
         }
       }
+
       if (parts.length > 0) {
         url += `?${parts.join("&")}`;
       }
@@ -182,14 +194,17 @@ export const datasourceStacksApi = {
 
     const singleAttempt = Effect.gen(function* singleAttempt() {
       let req = method === "GET" ? HttpClientRequest.get(url) : HttpClientRequest.post(url);
+
       if (context.api?.apiKey) {
         req = HttpClientRequest.setHeader(req, "x-api-key", context.api.apiKey);
       }
+
       if (options.body !== undefined) {
         req = HttpClientRequest.bodyJsonUnsafe(req, options.body);
       }
 
       const client = yield* HttpClient.HttpClient;
+
       const res = yield* client.execute(req).pipe(
         Effect.mapError(
           (err) =>
@@ -203,6 +218,7 @@ export const datasourceStacksApi = {
 
       if (res.status === 429) {
         const retryAfter = Number(res.headers["retry-after"] ?? 1);
+
         return yield* new StacksApiRateLimitError({ path, retryAfter });
       }
 
@@ -214,16 +230,20 @@ export const datasourceStacksApi = {
             onFailure: () => undefined,
           }),
         );
+
+        // SAFETY: Effect's fetch-backed HttpClientResponse keeps the original fetch Response on its private `source` field; only statusText is read.
+        // oxlint-disable-next-line typescript/no-explicit-any, typescript/no-unsafe-member-access
+        const upstreamStatusText = (res as any).source?.statusText;
+
         const statusText =
-          // oxlint-disable-next-line typescript/no-explicit-any, typescript/no-unsafe-member-access
-          (res as any).source?.statusText ||
-          (res.status === 404
-            ? "Not Found"
-            : res.status === 400
-              ? "Bad Request"
-              : res.status === 500
-                ? "Internal Server Error"
-                : String(res.status));
+          upstreamStatusText ||
+          Match.value(res.status).pipe(
+            Match.when(404, () => "Not Found"),
+            Match.when(400, () => "Bad Request"),
+            Match.when(500, () => "Internal Server Error"),
+            Match.orElse(() => String(res.status)),
+          );
+
         return yield* new StacksApiResponseError({
           status: res.status,
           path,
@@ -242,7 +262,7 @@ export const datasourceStacksApi = {
         ),
       );
 
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      // SAFETY: The endpoint's JSON shape is fixed by the same API contract that selected ResponseT.
       return data as ResponseT;
     });
 
@@ -255,7 +275,9 @@ export const datasourceStacksApi = {
           if (attempt >= 3) {
             return Effect.fail(err);
           }
+
           const delay = Duration.seconds(err.retryAfter);
+
           return Effect.logDebug(
             `Rate limited on ${path}, retrying in ${err.retryAfter}s (attempt ${attempt + 1})`,
           ).pipe(
@@ -266,7 +288,7 @@ export const datasourceStacksApi = {
         Effect.retry({
           schedule: Schedule.exponential(Duration.millis(500)).pipe(Schedule.upTo({ times: 3 })),
           while: (err) =>
-            err._tag === "StacksApiResponseError" &&
+            Predicate.isTagged(err, "StacksApiResponseError") &&
             (err.status === 500 || err.status === 502 || err.status === 503),
         }),
       );
@@ -304,6 +326,7 @@ export const datasourceStacksApi = {
     options: GetTransactionQuery = {},
   ): Effect.Effect<TransactionApiResponse, StacksApiError> {
     const { include } = options;
+
     return this._request<TransactionApiResponse, { include?: string | null }>(context, {
       path: `/extended/v3/transactions/${txId}`,
       method: "GET",
@@ -328,6 +351,7 @@ export const datasourceStacksApi = {
     if (txIds.length === 0) {
       return Effect.succeed({ results: [] });
     }
+
     return this._request<TransactionsBatchResponse, GetTransactionsBatchQuery>(context, {
       path: "/extended/v3/transactions/batch",
       method: "GET",
@@ -342,6 +366,7 @@ export const datasourceStacksApi = {
   ): Effect.Effect<TransactionEventsResponse, StacksApiError> {
     const { limit = 50, cursor, ...rest } = options;
     const path = `/extended/v3/transactions/${txId}/events`;
+
     return this._request<TransactionEventsResponse, GetTransactionEventsQuery>(context, {
       path,
       method: "GET",
@@ -356,6 +381,7 @@ export const datasourceStacksApi = {
   ): Effect.Effect<PrincipalTransactionsResponse, StacksApiError> {
     const { limit = 50, cursor, ...rest } = options;
     const path = `/extended/v3/principals/${principal}/transactions`;
+
     return this._request<PrincipalTransactionsResponse, GetPrincipalTransactionsQuery>(context, {
       path,
       method: "GET",
@@ -368,6 +394,7 @@ export const datasourceStacksApi = {
     contractId: string,
   ): Effect.Effect<ContractApiResponse, StacksApiError> {
     const path = `/extended/v3/smart-contracts/${contractId}`;
+
     return this._request<ContractApiResponse, undefined>(context, {
       path,
       method: "GET",
@@ -381,6 +408,7 @@ export const datasourceStacksApi = {
   ): Effect.Effect<ContractLogsResponse, StacksApiError> {
     const { limit = 100, cursor, ...rest } = options;
     const path = `/extended/v2/smart-contracts/${contractId}/logs`;
+
     return this._request<ContractLogsResponse, GetContractLogsQuery>(context, {
       path,
       method: "GET",
@@ -403,10 +431,12 @@ export const datasourceStacksApi = {
   ): Effect.Effect<CallReadResponse, StacksApiError> {
     const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip } = options;
     const [contractAddress, contractName] = contractId.split(".");
+
     const path =
       contractAddress && contractName
         ? `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`
         : `/v2/contracts/call-read/${contractId}/${functionName}`;
+
     return this._request<CallReadResponse, { tip?: number | null }>(context, {
       path,
       method: "POST",
@@ -426,11 +456,12 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
   ): Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError> {
-    return (typedCallReadFunction as any)(
+    return typedCallReadFunction<TAbi, TFunctionName, TArgs>(
       context,
-      (ctx: any, cId: any, fn: any, opts: any) => this.callReadFunction(ctx, cId, fn, opts),
+      (ctx, contractId, functionName, options) =>
+        this.callReadFunction(ctx, contractId, functionName, options),
       parameters,
-    ) as Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError>;
+    );
   },
 };
 
@@ -475,9 +506,11 @@ export class StacksClient extends Context.Service<
     StacksClient,
     Effect.gen(function* layer() {
       const config = yield* StacksClientConfig;
+
       const ctx: DatasourceStacksApiContext = {
         api: { baseUrl: config.baseUrl, apiKey: config.apiKey },
       };
+
       return StacksClient.of({
         getStatus: datasourceStacksApi.getStatus(ctx),
         getContract: (cId) => datasourceStacksApi.getContract(ctx, cId),

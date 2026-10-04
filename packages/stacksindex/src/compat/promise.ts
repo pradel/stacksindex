@@ -12,6 +12,7 @@ export interface HistoricalRuntime {
 
 export function createHistoricalRuntime(input: HistoricalRuntimeContext): HistoricalRuntime {
   const runtime = createEffectHistoricalRuntime(input);
+
   return {
     run: (filters: Filter[]): Promise<void> => Effect.runPromise(runtime.run(filters)),
   };

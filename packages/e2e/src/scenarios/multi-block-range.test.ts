@@ -15,6 +15,7 @@ import {
 const SATOSHIBLES_CONTRACT = "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles";
 
 const START_BLOCK = 47784;
+
 const END_BLOCK = 47786;
 
 const recorder = createScenarioRecorder("multi-block-range.json");
@@ -26,8 +27,10 @@ describe("e2E: Multi-block bounded range scenario", () => {
   beforeAll(async () => {
     vi.stubGlobal(
       "fetch",
-      (url: unknown, init?: { method?: string; headers?: Record<string, string>; body?: string }) =>
-        recorder.handleFetch(url, init),
+      (
+        url: string | URL | Request,
+        init?: { method?: string; headers?: Record<string, string>; body?: string },
+      ) => recorder.handleFetch(url, init),
     );
     await database.setup();
   });
@@ -62,6 +65,7 @@ describe("e2E: Multi-block bounded range scenario", () => {
     // Verify every event is within the requested range and spans more than one block.
     const heights = new Set(events.map((event) => event.blockHeight));
     expect(heights.size).toBeGreaterThan(1);
+
     for (const event of events) {
       expect(event.blockHeight).toBeGreaterThanOrEqual(START_BLOCK);
       expect(event.blockHeight).toBeLessThanOrEqual(END_BLOCK);

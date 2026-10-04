@@ -111,8 +111,9 @@ export const syncStore = {
     { contractId, chainId }: { contractId: string; chainId: number },
     context: Context,
   ): Effect.Effect<typeof syncProgressTable.$inferSelect | null, SyncStoreError> &
-    PromiseLike<typeof syncProgressTable.$inferSelect | null> =>
-    context.db
+    PromiseLike<typeof syncProgressTable.$inferSelect | null> => {
+    // SAFETY: context.db is a drizzle Effect database, so its select builder resolves to rows of syncProgressTable.
+    const query = context.db
       .select()
       .from(syncProgressTable)
       .where(
@@ -128,7 +129,10 @@ export const syncStore = {
           (cause: unknown) => new SyncStoreError({ operation: "getSyncProgress", cause }),
         ),
       ) as Effect.Effect<typeof syncProgressTable.$inferSelect | null, SyncStoreError> &
-      PromiseLike<typeof syncProgressTable.$inferSelect | null>,
+      PromiseLike<typeof syncProgressTable.$inferSelect | null>;
+
+    return query;
+  },
 
   upsertSyncProgress: (
     {
@@ -244,10 +248,12 @@ export const syncStore = {
       eq(eventsTable.chainId, BigInt(chainId)),
       gte(eventsTable.blockHeight, BigInt(fromBlockHeight)),
     ];
+
     if (toBlockHeight !== undefined) {
       conditions.push(lte(eventsTable.blockHeight, BigInt(toBlockHeight)));
     }
 
+    // SAFETY: context.db is a drizzle Effect database, so this join builder resolves to the events projection declared above.
     return context.db
       .select({
         eventIndex: eventsTable.eventIndex,
@@ -281,7 +287,7 @@ export const syncStore = {
       .orderBy(eventsTable.blockHeight, transactionsTable.txIndex, eventsTable.eventIndex)
       .pipe(
         Effect.mapError((cause: unknown) => new SyncStoreError({ operation: "getEvents", cause })),
-      ) as unknown as Effect.Effect<
+      ) as Effect.Effect<
       {
         eventIndex: number;
         eventType: string;
@@ -318,8 +324,9 @@ export const syncStore = {
     { chainId }: { chainId: number },
     context: Context,
   ): Effect.Effect<typeof checkpointsTable.$inferSelect | null, SyncStoreError> &
-    PromiseLike<typeof checkpointsTable.$inferSelect | null> =>
-    context.db
+    PromiseLike<typeof checkpointsTable.$inferSelect | null> => {
+    // SAFETY: context.db is a drizzle Effect database, so its select builder resolves to rows of checkpointsTable.
+    const query = context.db
       .select()
       .from(checkpointsTable)
       .where(eq(checkpointsTable.chainId, BigInt(chainId)))
@@ -330,7 +337,10 @@ export const syncStore = {
           (cause: unknown) => new SyncStoreError({ operation: "getCheckpoint", cause }),
         ),
       ) as Effect.Effect<typeof checkpointsTable.$inferSelect | null, SyncStoreError> &
-      PromiseLike<typeof checkpointsTable.$inferSelect | null>,
+      PromiseLike<typeof checkpointsTable.$inferSelect | null>;
+
+    return query;
+  },
 
   upsertCheckpoint: (
     {

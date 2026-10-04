@@ -14,7 +14,7 @@ import {
   type EffectPgDatabase as PgEffectPgDatabase,
   makeWithDefaults as makePgWithDefaults,
 } from "drizzle-orm/effect-postgres";
-import { Context, Effect, Exit, Layer, Redacted, Scope } from "effect";
+import { Context, Effect, Exit, Layer, Predicate, Redacted, Scope } from "effect";
 
 export type IndexerDb<TRelations extends AnyRelations = AnyRelations> =
   | PgliteEffectPgDatabase<TRelations>
@@ -53,13 +53,17 @@ export interface DatabaseResult {
 export function getMigrationsFolder(): string {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
   const candidate1 = path.resolve(currentDir, "../../drizzle");
+
   if (fs.existsSync(candidate1)) {
     return candidate1;
   }
+
   const candidate2 = path.resolve(currentDir, "../drizzle");
+
   if (fs.existsSync(candidate2)) {
     return candidate2;
   }
+
   return candidate1;
 }
 
@@ -68,12 +72,16 @@ export function migrate(
   options?: { migrationsFolder?: string },
 ): Effect.Effect<void, unknown> & PromiseLike<void> {
   const migrationsFolder = options?.migrationsFolder ?? getMigrationsFolder();
+
+  // SAFETY: Both IndexerDb variants expose the same migrator session surface, and its concrete error union safely widens to `unknown`.
   const effect = (
     migratePglite(indexerDb as PgliteEffectPgDatabase, { migrationsFolder }) as Effect.Effect<
       void,
       unknown
     >
   ).pipe(Effect.asVoid);
+
+  // SAFETY: toThenable wraps effects with a `then` accessor, so the result satisfies PromiseLike.
   return toThenable(effect) as Effect.Effect<void, unknown> & PromiseLike<void>;
 }
 
@@ -86,48 +94,71 @@ export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>
   static readonly layer = (config: DatabaseConfig): Layer.Layer<IndexerDatabase, unknown> => {
     if (config.kind === "pglite") {
       const clientLayer = PgliteClient.layer(config.directory ? { dataDir: config.directory } : {});
+
       const dbLayer = Layer.effect(
         IndexerDatabase,
         Effect.gen(function* dbLayer() {
           const db = yield* makePgliteWithDefaults();
+
+          // SAFETY: makePgliteWithDefaults resolves a pglite Effect database, a member of IndexerDb.
           return db as IndexerDb;
         }),
       );
+
       return Layer.provide(dbLayer, clientLayer);
     }
 
     const clientLayer = PgClient.layer({
       url: Redacted.make(config.connectionString),
     });
+
     const dbLayer = Layer.effect(
       IndexerDatabase,
       Effect.gen(function* dbLayer() {
         const db = yield* makePgWithDefaults();
+
+        // SAFETY: makePgWithDefaults resolves a postgres Effect database, a member of IndexerDb.
         return db as IndexerDb;
       }),
     );
+
     return Layer.provide(dbLayer, clientLayer);
   };
 }
 
+function isProxyable<T>(target: T): target is T & object {
+  return Boolean(target) && (typeof target === "object" || typeof target === "function");
+}
+
+type PromiseThenParameters = Parameters<Promise<unknown>["then"]>;
+
 export function toThenable<T>(target: T): T {
-  if (!target || (typeof target !== "object" && typeof target !== "function")) {
+  if (!isProxyable(target)) {
     return target;
   }
+
   return new Proxy(target, {
     get(t, prop, receiver) {
       if (prop === "then" && Effect.isEffect(t)) {
-        // oxlint-disable-next-line typescript/no-explicit-any
-        return (resolve: any, reject: any) => Effect.runPromise(t as any).then(resolve, reject);
+        // SAFETY: Effects reachable through toThenable are self-contained, so they carry no remaining requirements at run time.
+        const runnable = t as Effect.Effect<unknown, unknown>;
+
+        return (resolve: PromiseThenParameters[0], reject: PromiseThenParameters[1]) =>
+          Effect.runPromise(runnable).then(resolve, reject);
       }
-      const orig = Reflect.get(t, prop, receiver);
-      if (typeof orig === "function") {
+
+      // SAFETY: The Proxy get trap receives the property key being read from the target `t`.
+      const orig = t[prop as keyof typeof t];
+
+      if (Predicate.isFunction(orig)) {
         // oxlint-disable-next-line typescript/no-explicit-any
         return function get(this: any, ...args: any[]) {
           const res = orig.apply(this === receiver ? t : this, args);
+
           return toThenable(res);
         };
       }
+
       return orig;
     },
   });
@@ -146,8 +177,10 @@ export function makeDatabase(config: DatabaseConfig): Effect.Effect<
       const clientContext = yield* Layer.build(
         PgliteClient.layer(config.directory ? { dataDir: config.directory } : {}),
       );
+
       const rawDb = yield* makePgliteWithDefaults().pipe(Effect.provide(clientContext));
       const db = toThenable(rawDb);
+
       return {
         db,
         migrate: (options?: { migrationsFolder?: string }) => migrate(db, options),
@@ -159,8 +192,10 @@ export function makeDatabase(config: DatabaseConfig): Effect.Effect<
         url: Redacted.make(config.connectionString),
       }),
     );
+
     const rawDb = yield* makePgWithDefaults().pipe(Effect.provide(clientContext));
     const db = toThenable(rawDb);
+
     return {
       db,
       migrate: (options?: { migrationsFolder?: string }) => migrate(db, options),
@@ -170,6 +205,7 @@ export function makeDatabase(config: DatabaseConfig): Effect.Effect<
 
 export async function createDatabase(config: DatabaseConfig): Promise<DatabaseResult> {
   const scope = await Effect.runPromise(Scope.make());
+
   const { db, migrate: runMigrate } = await Effect.runPromise(
     makeDatabase(config).pipe(Scope.provide(scope)),
   );

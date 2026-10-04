@@ -1,4 +1,4 @@
-import { decodeHex, type HandlerEvent } from "stacksindex";
+import { decodeHex, type ClarityJsonValue, type HandlerEvent } from "stacksindex";
 
 export interface RecordedTraceEvent {
   contractId: string;
@@ -11,7 +11,7 @@ export interface RecordedTraceEvent {
   senderAddress: string;
   valueHex: string;
   valueRepr: string;
-  decoded: unknown;
+  decoded: ClarityJsonValue;
   recordedAt: number;
 }
 
@@ -27,7 +27,7 @@ export interface TraceCollector {
     txIndex: number;
     eventIndex: number;
     topic: string;
-    decoded: unknown;
+    decoded: ClarityJsonValue;
   }[];
   clear: () => void;
 }
@@ -37,7 +37,8 @@ export function createTraceCollector(): TraceCollector {
 
   return {
     record(contractId: string, event: HandlerEvent) {
-      let decoded: unknown = null;
+      let decoded: ClarityJsonValue = null;
+
       try {
         if (event.contract_log.value.hex) {
           decoded = decodeHex(event.contract_log.value.hex);
@@ -107,6 +108,7 @@ export function createTraceCollector(): TraceCollector {
         "topic",
         "value_repr",
       ];
+
       const rows = events.map((eventItem) =>
         [
           eventItem.contractId,
@@ -118,6 +120,7 @@ export function createTraceCollector(): TraceCollector {
           `"${eventItem.valueRepr.replaceAll('"', '""')}"`,
         ].join(","),
       );
+
       return [headers.join(","), ...rows].join("\n");
     },
 

@@ -84,6 +84,10 @@ export type TypedCallReadOnlyFunctionReturnType<
   TFunctionName extends ContractFunctionName<TAbi, "read_only">,
 > = ContractFunctionReturnType<TAbi, "read_only", TFunctionName>;
 
+function isClarityAbi(abi: ClarityAbi | readonly unknown[]): abi is ClarityAbi {
+  return !Array.isArray(abi);
+}
+
 /**
  * Type-safe wrapper around Stacks API call-read endpoint returning an Effect.
  */
@@ -102,28 +106,12 @@ export const typedCallReadFunction = <
   parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
 ): Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError> =>
   Effect.gen(function* typedCallReadFunction() {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const params = parameters as unknown as {
-      abi: ClarityAbi;
-      contractAddress: string;
-      contractName: string;
-      functionName: string;
-      functionArgs?: readonly unknown[];
-      senderAddress?: string;
-      tip?: number;
-    };
+    const { abi, contractAddress, contractName, functionName, senderAddress, tip } = parameters;
+    // SAFETY: ContractFunctionArgs constrains TArgs to Clarity argument tuples, which are readonly arrays.
+    const functionArgs = (parameters.functionArgs ?? []) as readonly unknown[];
+    const abiFunctions = isClarityAbi(abi) ? abi.functions : [];
 
-    const {
-      abi,
-      contractAddress,
-      contractName,
-      functionName,
-      functionArgs = [],
-      senderAddress,
-      tip,
-    } = params;
-
-    const abiFunc = abi.functions.find(
+    const abiFunc = abiFunctions.find(
       (fn: ClarityAbiFunction) => fn.name === functionName && fn.access === "read_only",
     );
 
@@ -144,6 +132,7 @@ export const typedCallReadFunction = <
     }
 
     let hexArgs: string[];
+
     try {
       const clarityArgs = primitivesToCVs(functionArgs, abiFunc.args);
       hexArgs = clarityArgs.map((cv) => cvToHex(cv));
@@ -170,6 +159,7 @@ export const typedCallReadFunction = <
 
     if (!response.okay || !response.result) {
       const cause = response.cause ?? "response not okay";
+
       return yield* new StacksApiUnexpectedError({
         message: `Read-only call failed: ${cause}`,
         cause: response,
@@ -179,6 +169,8 @@ export const typedCallReadFunction = <
 
     try {
       const decoded = decodeHex(response.result);
+
+      // SAFETY: decodeHex parses the on-chain Clarity value, whose shape is fixed by the read-only function's ABI return type.
       return decoded as TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>;
     } catch (err) {
       return yield* new StacksApiParseError({

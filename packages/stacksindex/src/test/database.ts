@@ -1,7 +1,12 @@
 import { sql } from "drizzle-orm";
-import { Effect, Exit, Scope } from "effect";
+import { Context, Effect, Exit, Layer, Scope } from "effect";
 
-import { makeDatabase, type IndexerDb } from "../database/index.ts";
+import {
+  IndexerDatabase,
+  migrate as migrateDatabase,
+  toThenable,
+  type IndexerDb,
+} from "../database/index.ts";
 
 export interface TestDatabase {
   db: IndexerDb;
@@ -11,11 +16,14 @@ export interface TestDatabase {
 
 export async function createTestDatabase(): Promise<TestDatabase> {
   const scope = await Effect.runPromise(Scope.make());
-  const { db, migrate } = await Effect.runPromise(
-    makeDatabase({ kind: "pglite" }).pipe(Scope.provide(scope)),
+
+  const context = await Effect.runPromise(
+    Layer.build(IndexerDatabase.layer({ kind: "pglite" })).pipe(Scope.provide(scope)),
   );
 
-  await Effect.runPromise(migrate());
+  const db = toThenable(Context.get(context, IndexerDatabase));
+
+  await Effect.runPromise(migrateDatabase(db));
 
   return {
     db,

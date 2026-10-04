@@ -10,5 +10,6 @@ export function teardown(): void {
   if (process.env.BENCHMARK_REPORT === "true") {
     printBenchmarkTable();
   }
+
   clearAllScenarioBenchmarks();
 }

@@ -2,6 +2,18 @@ import { ClarityTypeID, type ClarityValue, decodeClarityValue } from "@stacks/co
 import { Schema } from "effect";
 
 /**
+ * JSON-compatible value produced by decoding a Clarity value. `bigint` is kept
+ * for UInt / Int so callers keep exact integer precision.
+ */
+export type ClarityJsonValue =
+  | bigint
+  | boolean
+  | string
+  | null
+  | ClarityJsonValue[]
+  | { [key: string]: ClarityJsonValue };
+
+/**
  * Converts a ClarityValue AST into a plain JavaScript / JSON-compatible value.
  *
  * - UInt / Int -> bigint
@@ -10,14 +22,14 @@ import { Schema } from "effect";
  * - PrincipalStandard -> address string (e.g. "SP3K8...")
  * - PrincipalContract -> formatted principal string (e.g. "SP3K8...contract-name")
  * - Buffer -> hex string ("0x...")
- * - Tuple -> Record<string, unknown>
- * - List -> unknown[]
+ * - Tuple -> { [key: string]: ClarityJsonValue }
+ * - List -> ClarityJsonValue[]
  * - OptionalSome -> unwrapped value
  * - OptionalNone -> null
  * - ResponseOk -> { ok: value }
  * - ResponseError -> { error: value }
  */
-export function cvToJSON(cv: ClarityValue): unknown {
+export function cvToJSON(cv: ClarityValue): ClarityJsonValue {
   switch (cv.type_id) {
     case ClarityTypeID.UInt:
     case ClarityTypeID.Int:
@@ -58,10 +70,12 @@ export function cvToJSON(cv: ClarityValue): unknown {
       return cv.list.map((item) => cvToJSON(item));
 
     case ClarityTypeID.Tuple: {
-      const result: Record<string, unknown> = {};
+      const result: { [key: string]: ClarityJsonValue } = {};
+
       for (const [key, value] of Object.entries(cv.data)) {
         result[key] = cvToJSON(value);
       }
+
       return result;
     }
 
@@ -78,8 +92,9 @@ export function cvToJSON(cv: ClarityValue): unknown {
  * @param hex - Hex encoded Clarity value (with or without '0x' prefix)
  * @returns Decoded JavaScript value
  */
-export function decodeHex(hex: string): unknown {
+export function decodeHex(hex: string): ClarityJsonValue {
   const decoded = decodeClarityValue(hex);
+
   return cvToJSON(decoded);
 }
 
@@ -88,6 +103,7 @@ export function decodeHex(hex: string): unknown {
  */
 export function encodeUint(value: bigint): string {
   const hex = value.toString(16).padStart(32, "0");
+
   return `0x01${hex}`;
 }
 

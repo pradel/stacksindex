@@ -8,6 +8,15 @@ import { startClock } from "../lib/timer.ts";
 import type { HandlerContext, HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
 
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    "then" in value &&
+    typeof value.then === "function"
+  );
+}
+
 export interface IndexingContext {
   logger: Logger;
   db: IndexerDb;
@@ -33,13 +42,17 @@ export const createIndexing = (context: IndexingContext) => ({
         txIndex: event.tx_index,
         duration,
       });
+
       return Effect.void;
     }
 
     const handlerClock = startClock();
+
+    // SAFETY: Drizzle's Effect transaction forwards the generator's success and error channels, which is the contract this assertion needs.
     return (
       context.db.transaction((tx) =>
         Effect.gen(function* executeEvent() {
+          // SAFETY: The runtime dispatch below mirrors both overloads: an `abi` field selects the typed read path.
           const client: IndexingClient = {
             // oxlint-disable-next-line typescript/no-explicit-any
             callReadOnly: ((options: any) => {
@@ -58,6 +71,7 @@ export const createIndexing = (context: IndexingContext) => ({
               }
 
               const contractId = `${options.contractAddress}.${options.contractName}`;
+
               return toThenable(
                 datasourceStacksApi.callReadFunction(apiContext, contractId, options.functionName, {
                   args: options.args,
@@ -68,24 +82,30 @@ export const createIndexing = (context: IndexingContext) => ({
             }) as IndexingClient["callReadOnly"],
           };
 
+          // SAFETY: Schemas decoded here are pure, so the decode effect has no remaining requirements and its error channel widens to `unknown`.
           const handlerContext: HandlerContext = {
             db: tx,
             client,
             decode: (schema, hex) =>
-              decodeClarityWithSchema(schema)(hex) as Effect.Effect<any, unknown>,
+              decodeClarityWithSchema(schema)(hex) as Effect.Effect<
+                (typeof schema)["Type"],
+                unknown
+              >,
           };
 
           let result: unknown;
+
           try {
             result = handler(event, handlerContext);
           } catch (err) {
             return yield* Effect.fail(err);
           }
+
           if (Effect.isEffect(result)) {
             yield* result;
-          } else if (result && typeof (result as any).then === "function") {
+          } else if (isThenable(result)) {
             yield* Effect.tryPromise({
-              try: () => result as Promise<unknown>,
+              try: () => Promise.resolve(result),
               catch: (err) => err,
             });
           }
@@ -108,7 +128,9 @@ export const createIndexing = (context: IndexingContext) => ({
       ),
       Effect.catchCause((cause) => {
         const err = Cause.squash(cause);
+        const error = err instanceof Error ? err : new Error(String(err));
         const duration = handlerClock();
+
         context.logger.error({
           msg: "Error executing event handler",
           contractId: event.contract_log.contract_id,
@@ -117,8 +139,9 @@ export const createIndexing = (context: IndexingContext) => ({
           txId: event.tx_id,
           txIndex: event.tx_index,
           duration,
-          error: err,
+          error,
         });
+
         return Effect.fail(
           new HandlerExecutionError({
             contractId: event.contract_log.contract_id,

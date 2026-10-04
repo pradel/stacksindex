@@ -12,10 +12,10 @@ import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
 import { createLogger } from "../logger/index.ts";
 import { createIndexing } from "./index.ts";
 
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+// SAFETY: The test double implements only `transaction`, the sole IndexerDb member createIndexing reads.
 const mockDb = {
-  transaction: (cb: any) => cb(mockDb),
-} as unknown as IndexerDb;
+  transaction: <T>(cb: (db: IndexerDb) => T): T => cb(mockDb),
+} as IndexerDb;
 
 const testAbi = {
   functions: [
@@ -58,6 +58,7 @@ const createMockEvent = (overrides: Partial<HandlerEvent> = {}): HandlerEvent =>
 describe("indexing engine", () => {
   test("calls matching handler with event and context containing db and client", async () => {
     const handler = vi.fn().mockResolvedValue(undefined);
+
     const handlers: Handlers = {
       "SP123.token": handler,
     };
@@ -248,6 +249,7 @@ describe("indexing engine", () => {
   test("returns err when handler throws", async () => {
     const error = new Error("Handler failed");
     const handler = vi.fn().mockRejectedValue(error);
+
     const handlers: Handlers = {
       "SP123.token": handler,
     };

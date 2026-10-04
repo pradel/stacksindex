@@ -5,6 +5,7 @@ export const formatEta = (ms: number) => {
   if (ms < 1000) {
     return `${Math.round(ms)}ms`;
   }
+
   const seconds = Math.floor(ms / 1000);
 
   const h = Math.floor(seconds / 3600);
@@ -21,6 +22,7 @@ export const formatEta = (ms: number) => {
 export function startClock() {
   // oxlint-disable-next-line no-undef
   const start = performance.now();
+
   // oxlint-disable-next-line no-undef
   return () => performance.now() - start;
 }

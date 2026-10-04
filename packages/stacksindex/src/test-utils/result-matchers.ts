@@ -1,56 +1,119 @@
 import { Exit, Option } from "effect";
 import type { MatcherResult, MatcherState } from "vite-plus/test";
 
-function isTagged(value: unknown): value is { _tag: string } {
-  return typeof value === "object" && value !== null && "_tag" in value;
+type ComparableValue =
+  | string
+  | number
+  | boolean
+  | bigint
+  | null
+  | undefined
+  | ComparableValue[]
+  | ComparableObject;
+
+interface ComparableObject {
+  [key: string]: ComparableValue;
 }
 
-function stripStack(value: unknown): unknown {
+type ComparableInput = Error | ComparableValue;
+
+function isComparableInput(value: unknown): value is ComparableInput {
+  if (value === null || value === undefined) {
+    return true;
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return true;
+  }
+
+  if (value instanceof Error) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((item) => isComparableInput(item));
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value).every((entry) => isComparableInput(entry));
+  }
+
+  return false;
+}
+
+function isComparableRecord(value: ComparableInput): value is ComparableObject {
+  return typeof value === "object" && value !== null;
+}
+
+function isTagged(value: ComparableInput): value is { readonly _tag: string } {
+  return (
+    typeof value === "object" && value !== null && "_tag" in value && typeof value._tag === "string"
+  );
+}
+
+function stripCause(cause: unknown): ComparableValue {
+  return isComparableInput(cause) ? stripStack(cause) : "unrepresentable cause";
+}
+
+function stripStack(value: ComparableInput): ComparableValue {
   if (value instanceof Error) {
     return {
       name: value.name,
       message: value.message,
-      cause: stripStack(value.cause),
+      cause: stripCause(value.cause),
     };
   }
+
   if (Array.isArray(value)) {
     return value.map((item) => stripStack(item));
   }
-  if (typeof value === "object" && value !== null) {
-    const result: Record<string, unknown> = {};
+
+  if (isComparableRecord(value)) {
+    const result: ComparableObject = {};
+
     for (const [key, entryValue] of Object.entries(value)) {
       if (key !== "stack") {
         result[key] = stripStack(entryValue);
       }
     }
+
     return result;
   }
+
   return value;
 }
 
-function toComparable(error: unknown): unknown {
-  if (typeof error === "object" && error !== null) {
-    const result: Record<string, unknown> = {};
-    for (const key of Object.getOwnPropertyNames(error)) {
-      if (key !== "stack") {
-        // oxlint-disable-next-line typescript/no-explicit-any
-        result[key] = stripStack((error as any)[key]);
-      }
-    }
-    for (const [key, val] of Object.entries(error)) {
-      if (key !== "stack") {
-        result[key] = stripStack(val);
-      }
-    }
-    return result;
+function toComparable(value: ComparableInput): ComparableObject {
+  if (!isComparableRecord(value)) {
+    return { value: stripStack(value) };
   }
-  return stripStack(error);
+
+  const result: ComparableObject = {};
+
+  for (const key of Object.getOwnPropertyNames(value)) {
+    if (key !== "stack") {
+      result[key] = stripStack(value[key]);
+    }
+  }
+
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (key !== "stack") {
+      result[key] = stripStack(entryValue);
+    }
+  }
+
+  return result;
 }
 
 export function toBeTaggedError(
   this: MatcherState,
-  received: unknown,
-  expected: unknown,
+  received: Exit.Exit<unknown, unknown> | ComparableInput,
+  expected: ComparableInput,
 ): MatcherResult {
   const { matcherHint, printExpected, printReceived, diff } = this.utils;
 
@@ -67,7 +130,8 @@ export function toBeTaggedError(
     };
   }
 
-  let actual = received;
+  let actual: ComparableInput;
+
   if (Exit.isExit(received)) {
     if (Exit.isSuccess(received)) {
       return {
@@ -76,8 +140,18 @@ export function toBeTaggedError(
           `${hint("expectedError", "received")}\n\nExpected Exit to be Failure, but it was Success.\n${printReceived(received.value)}`,
       };
     }
+
     const opt = Exit.findErrorOption(received);
+
     if (Option.isSome(opt)) {
+      if (!isComparableInput(opt.value)) {
+        return {
+          pass: false,
+          message: (): string =>
+            `${hint("expectedError", "received")}\n\nExpected error to have a _tag property.\n${printReceived(opt.value)}`,
+        };
+      }
+
       actual = opt.value;
     } else {
       return {
@@ -86,6 +160,8 @@ export function toBeTaggedError(
           `${hint("expectedError", "received")}\n\nExpected Exit to contain an error, but it did not.\n${printReceived(received.cause)}`,
       };
     }
+  } else {
+    actual = received;
   }
 
   if (!isTagged(actual)) {
@@ -98,6 +174,7 @@ export function toBeTaggedError(
 
   if (actual._tag !== expected._tag) {
     const tagDiff = diff(expected._tag, actual._tag) ?? "";
+
     return {
       pass: false,
       message: (): string =>
@@ -108,13 +185,14 @@ export function toBeTaggedError(
   const actualComparable = toComparable(actual);
   const expectedComparable = toComparable(expected);
   let pass = true;
-  for (const key of Object.keys(expectedComparable as object)) {
-    // oxlint-disable-next-line typescript/no-explicit-any, typescript/no-unsafe-member-access
-    if (!this.equals((actualComparable as any)[key], (expectedComparable as any)[key])) {
+
+  for (const key of Object.keys(expectedComparable)) {
+    if (!this.equals(actualComparable[key], expectedComparable[key])) {
       pass = false;
       break;
     }
   }
+
   const errorDiff = diff(expectedComparable, actualComparable) ?? "";
 
   return {
@@ -131,11 +209,12 @@ export const toBeBetterErr = toBeTaggedError;
 declare module "vitest" {
   // oxlint-disable-next-line id-length
   interface Assertion<R extends void | Promise<void> = void, T = unknown> {
-    toBeTaggedError: (expected: unknown) => void;
-    toBeBetterErr: (expected: unknown) => R;
+    toBeTaggedError: (expected: ComparableInput) => void;
+    toBeBetterErr: (expected: ComparableInput) => R;
   }
+
   interface AsymmetricMatchersContaining {
-    toBeTaggedError: (expected: unknown) => void;
-    toBeBetterErr: (expected: unknown) => void;
+    toBeTaggedError: (expected: ComparableInput) => void;
+    toBeBetterErr: (expected: ComparableInput) => void;
   }
 }
