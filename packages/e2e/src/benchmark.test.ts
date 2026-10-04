@@ -17,12 +17,14 @@ describe("benchmark module", () => {
     test("normalizes contract metadata endpoint", () => {
       const url =
         "https://api.hiro.so/extended/v3/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles";
+
       expect(normalizeRoute("GET", url)).toBe("GET /extended/v3/smart-contracts/:contract_id");
     });
 
     test("normalizes principal transactions endpoint with query params", () => {
       const url =
         "https://api.hiro.so/extended/v3/principals/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/transactions?cursor=47784:0:0&limit=50";
+
       expect(normalizeRoute("GET", url)).toBe(
         "GET /extended/v3/principals/:principal/transactions",
       );
@@ -31,12 +33,14 @@ describe("benchmark module", () => {
     test("normalizes transaction events endpoint", () => {
       const url =
         "https://api.hiro.so/extended/v3/transactions/0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae/events?limit=50";
+
       expect(normalizeRoute("GET", url)).toBe("GET /extended/v3/transactions/:tx_id/events");
     });
 
     test("normalizes transaction by tx_id endpoint", () => {
       const url =
         "https://api.hiro.so/extended/v3/transactions/0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae";
+
       expect(normalizeRoute("GET", url)).toBe("GET /extended/v3/transactions/:tx_id");
     });
 
@@ -64,6 +68,7 @@ describe("benchmark module", () => {
     test("normalizes smart-contract logs endpoint", () => {
       const url =
         "https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?limit=100";
+
       expect(normalizeRoute("GET", url)).toBe("GET /extended/v2/smart-contracts/:contract_id/logs");
     });
 
@@ -74,12 +79,14 @@ describe("benchmark module", () => {
     test("normalizes read-only call-read endpoints", () => {
       const url1 =
         "https://api.hiro.so/v2/contracts/call-read/SP000000000000000000002Q6VF78/pox-3/get-burn-height";
+
       expect(normalizeRoute("POST", url1)).toBe(
         "POST /v2/contracts/call-read/:contract_address/:contract_name/:function_name",
       );
 
       const url2 =
         "https://api.hiro.so/v2/contracts/call-read/SP000000000000000000002Q6VF78.pox-3/get-burn-height";
+
       expect(normalizeRoute("POST", url2)).toBe(
         "POST /v2/contracts/call-read/:contract_id/:function_name",
       );

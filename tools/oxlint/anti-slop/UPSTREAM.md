@@ -27,11 +27,18 @@ Installed from that bundle on 2026-10-04 into:
 - `vite.config.ts` enables all generic rules at `error`, `oxc/no-accumulating-spread`, and the
   Effect rules, and ignores `tools/oxlint/anti-slop/**` plus project-local agent directories in
   both lint and format configuration.
+- `anti-slop/no-runtime-typeof` is configured as
+  `["error", { allowInTypeGuards: true }]`. The repository has no runtime schema library, so
+  `typeof` checks inside boundary type predicates are the supported parsing pattern (upstream
+  README, "Schema-free projects can permit `typeof` checks directly inside type predicate and
+  assertion functions"). Ad hoc `typeof` checks outside predicates remain rejected.
 
 ## Verification
 
-- `vp check` loads both plugins; formatting passes.
+- `vp check` loads both plugins; formatting, lint, and typecheck pass.
 - Smoke test: a scratch file comparing `value._tag === "SomeError"` was reported by
   `anti-slop-effect/no-manual-tag-comparison` and `anti-slop-effect/no-manual-tagged-construction`.
-- Installing the rules surfaced pre-existing findings in owned source (945 anti-slop errors, 728
-  of them `require-readable-spacing`). Install scope only: findings were reported, not fixed.
+- The 945 initial findings (728 `require-readable-spacing`, 217 semantic) were fixed in the
+  installation PR: the spacing rule via lint autofix, the rest by introducing boundary JSON
+  types and type predicates, explicit SAFETY justifications, and named domain types. The full
+  test suite passes.

@@ -15,6 +15,7 @@ import {
 const SATOSHIBLES_CONTRACT = "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles";
 
 const START_BLOCK = 47784;
+
 const END_BLOCK = 47786;
 
 // Reuses the multi-block-range fixture: the requests for the first run are
@@ -28,8 +29,10 @@ describe("e2E: Resume with idempotent re-run scenario", () => {
   beforeAll(async () => {
     vi.stubGlobal(
       "fetch",
-      (url: unknown, init?: { method?: string; headers?: Record<string, string>; body?: string }) =>
-        recorder.handleFetch(url, init),
+      (
+        url: string | URL | Request,
+        init?: { method?: string; headers?: Record<string, string>; body?: string },
+      ) => recorder.handleFetch(url, init),
     );
     await database.setup();
   });

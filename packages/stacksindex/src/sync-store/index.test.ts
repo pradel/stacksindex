@@ -201,6 +201,7 @@ describe("syncStore", () => {
         { contractId: "SP123.token", chainId: 1 },
         { db: testDb.db },
       );
+
       expect(result).toBeNull();
     });
 
@@ -216,6 +217,7 @@ describe("syncStore", () => {
         { contractId: "SP123.token", chainId: 1 },
         { db: testDb.db },
       );
+
       expect(result).toStrictEqual({
         chainId: 1n,
         contractId: "SP123.token",
@@ -301,6 +303,7 @@ describe("syncStore", () => {
         { txIds: ["tx-1", "tx-2"], chainId: 1 },
         { db: testDb.db },
       );
+
       expect(result).toStrictEqual([]);
     });
 
@@ -322,6 +325,7 @@ describe("syncStore", () => {
         { txIds: ["tx-1", "tx-2"], chainId: 1 },
         { db: testDb.db },
       );
+
       expect(result).toStrictEqual([{ txId: "tx-1", blockHeight: 100n }]);
     });
   });
@@ -332,6 +336,7 @@ describe("syncStore", () => {
         { blockHashes: ["block-1", "block-2"], chainId: 1 },
         { db: testDb.db },
       );
+
       expect(result).toStrictEqual([]);
     });
 
@@ -348,6 +353,7 @@ describe("syncStore", () => {
         { blockHashes: ["block-1", "block-2"], chainId: 1 },
         { db: testDb.db },
       );
+
       expect(result).toStrictEqual(["block-1"]);
     });
   });

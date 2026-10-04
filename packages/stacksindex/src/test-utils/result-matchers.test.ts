@@ -12,6 +12,10 @@ class TestErrorB extends TaggedError("TestErrorB")<{
   message: string;
 }> {}
 
+class NotATaggedError extends Error {
+  public readonly _tag = "TestErrorA";
+}
+
 class TestCauseError extends TaggedError("TestCauseError")<{
   message: string;
   cause: unknown;
@@ -32,6 +36,7 @@ describe("toBeBetterErr", () => {
         errorData: { error: "Not found" },
       }),
     );
+
     expect(result).toBeBetterErr(
       new StacksApiResponseError({
         status: 404,
@@ -81,7 +86,7 @@ describe("toBeBetterErr", () => {
   test("fails when expected argument is not a TaggedError", () => {
     const result = Result.err(new TestErrorA({ message: "boom", code: 42 }));
     expect(() => {
-      expect(result).toBeBetterErr({ _tag: "TestErrorA" });
+      expect(result).toBeBetterErr(new NotATaggedError());
     }).toThrow(/Expected matcher argument to be a better-result TaggedError/u);
   });
 

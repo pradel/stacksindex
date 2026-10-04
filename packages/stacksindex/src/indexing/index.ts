@@ -40,10 +40,12 @@ export const createIndexing = (context: IndexingContext) => ({
         txIndex: event.tx_index,
         duration,
       });
+
       return Result.ok(undefined);
     }
 
     const handlerClock = startClock();
+
     try {
       const client: IndexingClient = {
         callReadOnly<
@@ -69,6 +71,7 @@ export const createIndexing = (context: IndexingContext) => ({
           }
 
           const contractId = `${options.contractAddress}.${options.contractName}`;
+
           return datasourceStacksApi.callReadFunction(
             apiContext,
             contractId,
@@ -92,9 +95,12 @@ export const createIndexing = (context: IndexingContext) => ({
         txIndex: event.tx_index,
         duration,
       });
+
       return Result.ok(undefined);
     } catch (err) {
       const duration = handlerClock();
+      const error = err instanceof Error ? err : new Error(String(err));
+
       context.logger.error({
         msg: "Error executing event handler",
         contractId: event.contract_log.contract_id,
@@ -103,8 +109,9 @@ export const createIndexing = (context: IndexingContext) => ({
         txId: event.tx_id,
         txIndex: event.tx_index,
         duration,
-        error: err,
+        error,
       });
+
       return Result.err(
         new HandlerExecutionError({
           contractId: event.contract_log.contract_id,

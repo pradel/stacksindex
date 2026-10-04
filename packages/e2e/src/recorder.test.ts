@@ -8,26 +8,35 @@ import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { createScenarioRecorder, parseBatchTxIds, sanitizePayload } from "./recorder.ts";
 
 const originalRecord = process.env.RECORD;
+
 let tempDirs: string[] = [];
 
 function createFixturePath(): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stacksindex-recorder-"));
   tempDirs.push(tempDir);
+
   return path.join(tempDir, "fixtures.json");
+}
+
+function toRequestError(caught: Error): Error {
+  return new Error(String(caught));
 }
 
 describe("scenario recorder", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+
     if (originalRecord === undefined) {
       delete process.env.RECORD;
     } else {
       process.env.RECORD = originalRecord;
     }
+
     for (const tempDir of tempDirs) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+
     tempDirs = [];
   });
 
@@ -53,16 +62,18 @@ describe("scenario recorder", () => {
   test("rejects after the final rate-limited response without archiving it", async () => {
     const fixturePath = createFixturePath();
     process.env.RECORD = "true";
+
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new globalThis.Response("rate limited", { status: 429 }));
+
     vi.stubGlobal("fetch", fetchMock);
     vi.useFakeTimers();
     const recorder = createScenarioRecorder(fixturePath);
-    const request = recorder.handleRequest("https://api.example.com/rate-limited").then(
-      () => new Error("Expected rate limit request to fail"),
-      (caught: unknown) => new Error(String(caught)),
-    );
+
+    const request = recorder
+      .handleRequest("https://api.example.com/rate-limited")
+      .then(() => new Error("Expected rate limit request to fail"), toRequestError);
 
     await vi.runAllTimersAsync();
 
@@ -77,14 +88,17 @@ describe("scenario recorder", () => {
   test("records a successful response after a rate-limited retry", async () => {
     const fixturePath = createFixturePath();
     process.env.RECORD = "true";
+
     const responses = [
       new globalThis.Response("rate limited", { status: 429 }),
       new globalThis.Response(JSON.stringify({ recorded: true }), { status: 200 }),
     ];
+
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(responses[0])
       .mockResolvedValueOnce(responses[1]);
+
     vi.stubGlobal("fetch", fetchMock);
     vi.useFakeTimers();
     const recorder = createScenarioRecorder(fixturePath);
@@ -126,6 +140,7 @@ describe("scenario recorder", () => {
         },
       ],
     };
+
     expect(
       sanitizePayload("https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xaaa", body),
     ).toStrictEqual({
@@ -155,6 +170,7 @@ describe("scenario recorder", () => {
       events: [{ event_index: 0 }],
       post_conditions: [],
     };
+
     expect(sanitizePayload("https://api.hiro.so/extended/v1/tx/0xaaa", body)).toStrictEqual({
       tx_id: "0xaaa",
       block_height: 100,
@@ -166,6 +182,7 @@ describe("scenario recorder", () => {
   test("synthesizes batch lookups from archived single transactions in replay mode", async () => {
     const fixturePath = createFixturePath();
     const txUrl = (id: string) => `https://api.hiro.so/extended/v3/transactions/${id}`;
+
     const txBody = (id: string, height: number) => ({
       tx_id: id,
       event_count: 1,
@@ -175,6 +192,7 @@ describe("scenario recorder", () => {
       sender: { address: "SP123", nonce: 0 },
       block: { hash: `block-${height}`, height, time: 1000, tx_index: 0 },
     });
+
     fs.writeFileSync(
       fixturePath,
       JSON.stringify({
@@ -187,6 +205,7 @@ describe("scenario recorder", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const recorder = createScenarioRecorder(fixturePath);
+
     const response = await recorder.handleRequest(
       "https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xaaa&tx_id=0xbbb",
     );
@@ -220,12 +239,15 @@ describe("scenario recorder", () => {
     fs.writeFileSync(fixturePath, JSON.stringify({}));
     process.env.RECORD = "false";
     const liveBody = { results: [] };
+
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new globalThis.Response(JSON.stringify(liveBody), { status: 200 }));
+
     vi.stubGlobal("fetch", fetchMock);
 
     const recorder = createScenarioRecorder(fixturePath);
+
     const response = await recorder.handleRequest(
       "https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xunknown",
     );

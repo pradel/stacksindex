@@ -104,8 +104,9 @@ export async function typedCallReadFunction<
   ) => Promise<Result<CallReadResponse, StacksApiError>>,
   parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
 ): Promise<Result<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError>> {
+  // SAFETY: `parameters` carries these fields; the assertion only erases its generic argument types.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const params = parameters as unknown as {
+  const params = parameters as {
     abi: ClarityAbi;
     contractAddress: string;
     contractName: string;
@@ -151,6 +152,7 @@ export async function typedCallReadFunction<
 
   // oxlint-disable-next-line init-declarations
   let hexArgs: string[];
+
   try {
     const clarityArgs = primitivesToCVs(functionArgs, abiFunc.args);
     hexArgs = clarityArgs.map((cv) => cvToHex(cv));
@@ -177,8 +179,10 @@ export async function typedCallReadFunction<
   }
 
   const response = callResult.value;
+
   if (!response.okay || !response.result) {
     const cause = response.cause ?? "response not okay";
+
     return Result.err(
       new StacksApiUnexpectedError({
         message: `Read-only call failed: ${cause}`,
@@ -190,6 +194,8 @@ export async function typedCallReadFunction<
 
   try {
     const decoded = decodeHex(response.result);
+
+    // SAFETY: The call-read result is the ABI function's declared return value, decoded by `decodeHex`.
     return Result.ok(decoded as TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>);
   } catch (err) {
     return Result.err(

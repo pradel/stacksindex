@@ -27,13 +27,17 @@ export interface DatabaseResult {
 export function getMigrationsFolder(): string {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
   const candidate1 = path.resolve(currentDir, "../../drizzle");
+
   if (fs.existsSync(candidate1)) {
     return candidate1;
   }
+
   const candidate2 = path.resolve(currentDir, "../drizzle");
+
   if (fs.existsSync(candidate2)) {
     return candidate2;
   }
+
   return candidate1;
 }
 
@@ -44,6 +48,7 @@ export async function createDatabase(config: DatabaseConfig): Promise<DatabaseRe
     const client = config.directory ? new PGlite(config.directory) : new PGlite();
     await client.waitReady;
     const db = drizzlePglite({ client });
+
     return {
       db,
       migrate: async () => {
@@ -56,6 +61,7 @@ export async function createDatabase(config: DatabaseConfig): Promise<DatabaseRe
   }
 
   const db = drizzleNodePg({ connection: config.connectionString });
+
   return {
     db,
     migrate: async () => {
@@ -69,6 +75,7 @@ export async function createDatabase(config: DatabaseConfig): Promise<DatabaseRe
 
 export async function migrate(indexerDb: PgliteDatabase | NodePgDatabase): Promise<void> {
   const migrationsFolder = getMigrationsFolder();
+
   if (indexerDb instanceof NodePgDatabase) {
     await migrateNodePg(indexerDb, { migrationsFolder });
   } else {

@@ -12,6 +12,7 @@ describe("codec", () => {
         repr: "u100000000000000000000",
         hex: "0x...",
       };
+
       expect(cvToJSON(uintCv)).toBe(100000000000000000000n);
 
       const intCv: ClarityValue = {
@@ -20,6 +21,7 @@ describe("codec", () => {
         repr: "-42",
         hex: "0x...",
       };
+
       expect(cvToJSON(intCv)).toBe(-42n);
     });
 

@@ -185,6 +185,7 @@ export const syncStore = {
       eq(eventsTable.chainId, BigInt(chainId)),
       gte(eventsTable.blockHeight, BigInt(fromBlockHeight)),
     ];
+
     if (toBlockHeight !== undefined) {
       conditions.push(lte(eventsTable.blockHeight, BigInt(toBlockHeight)));
     }

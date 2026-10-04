@@ -48,9 +48,11 @@ describe("network", () => {
   });
 
   test("rejects unknown network names", () => {
+    const invalid = `devnet`;
+    // SAFETY: "devnet" is intentionally outside NetworkOption to test runtime rejection.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const invalid = "devnet" as unknown as NetworkOption;
-    expect(() => resolveNetwork(invalid)).toThrow(
+    const invalidOption = invalid as NetworkOption;
+    expect(() => resolveNetwork(invalidOption)).toThrow(
       'Invalid network: "devnet". Expected "mainnet", "testnet", or a chain ID number.',
     );
   });

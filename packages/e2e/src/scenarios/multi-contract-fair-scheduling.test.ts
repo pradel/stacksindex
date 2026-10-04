@@ -13,9 +13,11 @@ import {
 } from "../scenario.ts";
 
 const SATOSHIBLES_CONTRACT = "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles";
+
 const BRIDGE_CONTRACT = "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles";
 
 const START_BLOCK = 47784;
+
 const END_BLOCK = 47786;
 
 const recorder = createScenarioRecorder("multi-contract-fair-scheduling.json");
@@ -27,8 +29,10 @@ describe("e2E: Multi-contract fair scheduling scenario", () => {
   beforeAll(async () => {
     vi.stubGlobal(
       "fetch",
-      (url: unknown, init?: { method?: string; headers?: Record<string, string>; body?: string }) =>
-        recorder.handleFetch(url, init),
+      (
+        url: string | URL | Request,
+        init?: { method?: string; headers?: Record<string, string>; body?: string },
+      ) => recorder.handleFetch(url, init),
     );
     await database.setup();
   });
@@ -77,9 +81,11 @@ describe("e2E: Multi-contract fair scheduling scenario", () => {
     const bridgeEvents = tracer.getEventsForContract(BRIDGE_CONTRACT);
     expect(satoshiblesEvents).toHaveLength(7);
     expect(bridgeEvents).toHaveLength(18);
+
     for (const event of satoshiblesEvents) {
       expect(event.contractId).toBe(SATOSHIBLES_CONTRACT);
     }
+
     for (const event of bridgeEvents) {
       expect(event.contractId).toBe(BRIDGE_CONTRACT);
     }

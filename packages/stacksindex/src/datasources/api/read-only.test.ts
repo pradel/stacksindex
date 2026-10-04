@@ -132,6 +132,7 @@ describe("typedCallReadFunction", () => {
     });
 
     expect(result.isOk()).toBe(true);
+
     if (result.isOk()) {
       expect(result.value).toStrictEqual({ ok: "TestToken" });
     }
@@ -175,6 +176,7 @@ describe("typedCallReadFunction", () => {
     });
 
     expect(result.isOk()).toBe(true);
+
     if (result.isOk()) {
       expect(result.value).toStrictEqual({ ok: 8n });
     }
@@ -217,6 +219,7 @@ describe("typedCallReadFunction", () => {
     });
 
     expect(result.isOk()).toBe(true);
+
     if (result.isOk()) {
       expect(result.value).toStrictEqual({ ok: 5000000n });
     }
@@ -261,6 +264,7 @@ describe("typedCallReadFunction", () => {
     });
 
     expect(result.isOk()).toBe(true);
+
     if (result.isOk()) {
       expect(result.value).toHaveProperty("ok");
     }
@@ -287,8 +291,10 @@ describe("typedCallReadFunction", () => {
       functionName: "transfer",
       functionArgs: [100n, "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
     };
+
+    // SAFETY: Invalid params intentionally bypass compile-time checks so runtime ABI validation is exercised.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const params = invalidParams as unknown as Parameters<typeof typedCallReadFunction>[2];
+    const params = invalidParams as Parameters<typeof typedCallReadFunction>[2];
 
     const result = await typedCallReadFunction(context, mockCallRead, params);
 
@@ -320,8 +326,10 @@ describe("typedCallReadFunction", () => {
       functionName: "get-balance",
       functionArgs: [],
     };
+
+    // SAFETY: Invalid params intentionally bypass compile-time checks so runtime ABI validation is exercised.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const params = invalidParams as unknown as Parameters<typeof typedCallReadFunction>[2];
+    const params = invalidParams as Parameters<typeof typedCallReadFunction>[2];
 
     const result = await typedCallReadFunction(context, mockCallRead, params);
 
