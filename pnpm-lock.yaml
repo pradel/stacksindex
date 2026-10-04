@@ -240,9 +240,6 @@ importers:
       stacksindex:
         specifier: workspace:*
         version: link:../stacksindex
-      undici:
-        specifier: 8.10.2
-        version: 8.10.2
     devDependencies:
       '@types/node':
         specifier: 26.4.0
@@ -292,9 +289,6 @@ importers:
       effect:
         specifier: 4.0.0
         version: 4.0.0
-      undici:
-        specifier: 8.10.2
-        version: 8.10.2
     devDependencies:
       '@arethetypeswrong/core':
         specifier: 0.18.5
@@ -2109,10 +2103,6 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  undici@8.10.2:
-    resolution: {integrity: sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==}
-    engines: {node: '>=22.19.0'}
-
   validate-npm-package-name@5.0.1:
     resolution: {integrity: sha512-OljLrQ9SQdOUqTaQxqL5dEfZWrXExyyWsozYlAWFawPVNuD83igl7uJD2RTkNMbniIYgt8l81eCJGIdQF7avLQ==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
@@ -3518,8 +3508,6 @@ snapshots:
   undici-types@7.24.6: {}
 
   undici-types@8.3.0: {}
-
-  undici@8.10.2: {}
 
   validate-npm-package-name@5.0.1: {}
 
