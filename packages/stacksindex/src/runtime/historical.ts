@@ -62,16 +62,20 @@ type ResolvedHistoricalRuntimeContext = Omit<HistoricalRuntimeContext, "network"
 function resolveContext(context: HistoricalRuntimeContext): ResolvedHistoricalRuntimeContext {
   const network = resolveNetwork(context.network);
   const baseUrl = context.api?.baseUrl ?? network.baseUrl;
-  return {
+
+  const resolved: ResolvedHistoricalRuntimeContext = {
     logger: context.logger,
     db: context.db,
     network,
     chainId: network.chainId,
-    api: {
-      baseUrl,
-      ...(context.api?.apiKey === undefined ? {} : { apiKey: context.api.apiKey }),
-    },
+    api: { baseUrl },
   };
+
+  if (context.api?.apiKey !== undefined) {
+    resolved.api.apiKey = context.api.apiKey;
+  }
+
+  return resolved;
 }
 
 interface ContractSyncState {
@@ -85,11 +89,13 @@ interface ContractSyncState {
 
 function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
   const activeStates = states.filter((state) => !state.done);
+
   if (activeStates.length === 0) {
     return undefined;
   }
 
   let minHeight: number | undefined = undefined;
+
   for (const state of activeStates) {
     if (state.syncedBlockHeight !== undefined) {
       if (minHeight === undefined || state.syncedBlockHeight < minHeight) {
@@ -97,6 +103,7 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
       }
     }
   }
+
   return minHeight;
 }
 
@@ -131,10 +138,13 @@ async function validateAndResolveFilters(
 
   if (hasLatestTag) {
     const statusResult = await datasourceStacksApi.getStatus(context);
+
     if (statusResult.isErr()) {
       return Result.err(statusResult.error);
     }
+
     const chainTipHeight = statusResult.value.chain_tip?.block_height;
+
     if (chainTipHeight === undefined) {
       return Result.err(
         new FilterValidationError({
@@ -143,6 +153,7 @@ async function validateAndResolveFilters(
         }),
       );
     }
+
     latestBlockHeight = chainTipHeight;
     context.logger.info({
       service: "historicalRuntime",
@@ -152,6 +163,7 @@ async function validateAndResolveFilters(
   }
 
   const resolvedFilters: ResolvedFilter[] = [];
+
   for (const filter of filters) {
     const resolvedEndBlock = filter.endBlock === "latest" ? latestBlockHeight : filter.endBlock;
 
@@ -183,13 +195,17 @@ async function initContractFromScratch(
   context: ResolvedHistoricalRuntimeContext,
 ): Promise<Result<ContractSyncState, StacksApiError>> {
   const historicalSync = createHistoricalSync(context);
+
   const cursorResult = await historicalSync.getContractEventsFirstCursor(filter.contractId, {
     startBlock: filter.startBlock,
   });
+
   if (cursorResult.isErr()) {
     return Result.err(cursorResult.error);
   }
+
   const cursor = cursorResult.value;
+
   if (!cursor) {
     context.logger.info({
       service: "historicalRuntime",
@@ -205,6 +221,7 @@ async function initContractFromScratch(
       },
       { db: context.db },
     );
+
     return Result.ok({
       contractId: filter.contractId,
       cursor: null,
@@ -216,6 +233,7 @@ async function initContractFromScratch(
   }
 
   const cursorHeight = parseLogsCursor(cursor).blockHeight;
+
   if (filter.endBlock !== undefined && cursorHeight > filter.endBlock) {
     context.logger.info({
       service: "historicalRuntime",
@@ -231,6 +249,7 @@ async function initContractFromScratch(
       },
       { db: context.db },
     );
+
     return Result.ok({
       contractId: filter.contractId,
       cursor: null,
@@ -245,6 +264,7 @@ async function initContractFromScratch(
     service: "historicalRuntime",
     msg: `Starting sync for ${filter.contractId} from block ${cursorHeight}`,
   });
+
   return Result.ok({
     contractId: filter.contractId,
     cursor,
@@ -260,6 +280,7 @@ async function initContractFromSaved(
   context: ResolvedHistoricalRuntimeContext,
 ): Promise<Result<ContractSyncState, StacksApiError>> {
   const savedHeight = Number(saved.lastBlockHeight);
+
   const isAlreadyComplete =
     saved.isComplete && filter.endBlock !== undefined && savedHeight >= filter.endBlock;
 
@@ -268,6 +289,7 @@ async function initContractFromSaved(
       service: "historicalRuntime",
       msg: `Sync already completed for ${filter.contractId} (synced up to block ${savedHeight}), skipping`,
     });
+
     return Result.ok({
       contractId: filter.contractId,
       cursor: null,
@@ -283,6 +305,7 @@ async function initContractFromSaved(
       service: "historicalRuntime",
       msg: `Resumed progress for ${filter.contractId} at block ${savedHeight} exceeds endBlock ${filter.endBlock}, marking done`,
     });
+
     return Result.ok({
       contractId: filter.contractId,
       cursor: saved.cursor,
@@ -298,6 +321,7 @@ async function initContractFromSaved(
       service: "historicalRuntime",
       msg: `Resuming sync for ${filter.contractId} from block ${savedHeight}`,
     });
+
     return Result.ok({
       contractId: filter.contractId,
       cursor: saved.cursor,
@@ -308,13 +332,17 @@ async function initContractFromSaved(
   }
 
   const historicalSync = createHistoricalSync(context);
+
   const cursorResult = await historicalSync.getContractEventsFirstCursor(filter.contractId, {
     startBlock: Math.max(filter.startBlock ?? 0, savedHeight + 1),
   });
+
   if (cursorResult.isErr()) {
     return Result.err(cursorResult.error);
   }
+
   const cursor = cursorResult.value;
+
   if (!cursor) {
     await syncStore.upsertSyncProgress(
       {
@@ -326,6 +354,7 @@ async function initContractFromSaved(
       },
       { db: context.db },
     );
+
     return Result.ok({
       contractId: filter.contractId,
       cursor: null,
@@ -337,6 +366,7 @@ async function initContractFromSaved(
   }
 
   const cursorHeight = parseLogsCursor(cursor).blockHeight;
+
   if (filter.endBlock !== undefined && cursorHeight > filter.endBlock) {
     context.logger.info({
       service: "historicalRuntime",
@@ -352,6 +382,7 @@ async function initContractFromSaved(
       },
       { db: context.db },
     );
+
     return Result.ok({
       contractId: filter.contractId,
       cursor: null,
@@ -376,6 +407,7 @@ async function initializeContractStates(
   context: ResolvedHistoricalRuntimeContext,
 ): Promise<Result<ContractSyncState[], StacksApiError>> {
   const states: ContractSyncState[] = [];
+
   for (const filter of filters) {
     const saved = await syncStore.getSyncProgress(
       { contractId: filter.contractId, chainId: context.chainId },
@@ -386,13 +418,16 @@ async function initializeContractStates(
       saved === null
         ? initContractFromScratch(filter, context)
         : initContractFromSaved(filter, saved, context);
+
     const stateResult = await statePromise;
 
     if (stateResult.isErr()) {
       return Result.err(stateResult.error);
     }
+
     states.push(stateResult.value);
   }
+
   return Result.ok(states);
 }
 
@@ -439,6 +474,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
       if (!isBeforeStart && !isAfterEnd) {
         const event: HandlerEvent = {
           event_index: row.eventIndex,
+          // SAFETY: `eventsTable` rows are only written from `SmartContractLogEvent`s, so the stored type is always `smart_contract_log`.
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion
           event_type: row.eventType as "smart_contract_log",
           tx_id: row.txId,
@@ -455,7 +491,9 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
           tx_index: row.txIndex,
           sender_address: row.senderAddress,
         };
+
         const result = await indexing.executeEvent(event);
+
         if (result.isErr()) {
           return Result.err(result.error);
         }
@@ -487,14 +525,17 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
     chunk: string[],
   ): Promise<Result<StorableTransaction[], StacksApiError>> {
     const batchResult = await datasourceStacksApi.getTransactionsBatch(context, chunk);
+
     if (batchResult.isErr()) {
       return Result.err(batchResult.error);
     }
+
     // The batch endpoint returns mined transactions in newest-first
     // Order, not in request order, and omits unknown / mempool
     // Ids instead of erroring. Index by id to restore request order.
     const byId = new Map(batchResult.value.results.map((tx) => [tx.tx_id, tx]));
     const missingIds = chunk.filter((txId) => !byId.has(txId));
+
     if (missingIds.length > 0) {
       return Result.err(
         new StacksApiUnexpectedError({
@@ -504,13 +545,17 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         }),
       );
     }
+
     const ordered: StorableTransaction[] = [];
+
     for (const txId of chunk) {
       const transaction = byId.get(txId);
+
       if (transaction !== undefined) {
         ordered.push(transaction);
       }
     }
+
     return Result.ok(ordered);
   }
 
@@ -519,24 +564,31 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
     maxBlockHeight?: number,
   ): Promise<Result<StorableTransaction[], StacksApiError>> {
     const transactions: StorableTransaction[] = [];
+
     for (const chunk of chunkArray(txIds, TRANSACTIONS_BATCH_LIMIT)) {
       const candidatesResult = await fetchChunkViaBatch(chunk);
+
       if (candidatesResult.isErr()) {
         return Result.err(candidatesResult.error);
       }
+
       const inRange = candidatesResult.value.filter(
         (transaction) => maxBlockHeight === undefined || transaction.block.height <= maxBlockHeight,
       );
+
       transactions.push(...inRange);
+
       if (inRange.length !== candidatesResult.value.length) {
         break;
       }
     }
+
     return Result.ok(transactions);
   }
 
   function extractBlocksFromTransactions(transactions: StorableTransaction[]): StorableBlock[] {
     const byHash = new Map<string, StorableBlock>();
+
     for (const transaction of transactions) {
       if (!byHash.has(transaction.block.hash)) {
         byHash.set(transaction.block.hash, {
@@ -547,6 +599,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         });
       }
     }
+
     return Array.from(byHash.values());
   }
 
@@ -619,9 +672,11 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
       }
 
       const validationResult = await validateAndResolveFilters(filters, context);
+
       if (validationResult.isErr()) {
         return Result.err(validationResult.error);
       }
+
       const resolvedFilters = validationResult.value;
 
       await migrate(context.db);
@@ -635,9 +690,11 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
 
       const filterMap = new Map(resolvedFilters.map((filter) => [filter.contractId, filter]));
       const handlers: Record<string, EventHandler | undefined> = {};
+
       for (const filter of resolvedFilters) {
         handlers[filter.contractId] = filter.handler;
       }
+
       const indexing = createIndexing({
         logger: context.logger,
         db: context.db,
@@ -646,9 +703,11 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
       });
 
       const statesResult = await initializeContractStates(resolvedFilters, context);
+
       if (statesResult.isErr()) {
         return Result.err(statesResult.error);
       }
+
       const states = statesResult.value;
 
       while (states.some((state) => !state.done)) {
@@ -659,6 +718,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         for (const state of states) {
           if (!state.done && state.cursor !== null) {
             const height = parseLogsCursor(state.cursor).blockHeight;
+
             if (height < lowestHeight) {
               lowestHeight = height;
               lowestState = state;
@@ -677,6 +737,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
           lowestState.contractId,
           { cursor: lowestState.cursor },
         );
+
         if (logsResult.isErr()) {
           return Result.err(logsResult.error);
         }
@@ -699,10 +760,12 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
               .map((event) => event.tx_id),
           ),
         ];
+
         const existingTxs = await syncStore.getExistingTransactions(
           { txIds, chainId },
           { db: context.db },
         );
+
         const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
         const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
         context.logger.debug({
@@ -711,9 +774,11 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         });
 
         const txResult = await fetchMissingTransactions(missingTxIds, lowestState.endBlock);
+
         if (txResult.isErr()) {
           return Result.err(txResult.error);
         }
+
         const transactions = txResult.value;
 
         const blocks = extractBlocksFromTransactions(transactions);
@@ -724,16 +789,21 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
           // oxlint-disable-next-line typescript/no-unnecessary-condition
           (event) => event.event_type === "smart_contract_log",
         );
+
         const txBlockHeights = new Map<string, number>();
+
         for (const existingTx of existingTxs) {
           txBlockHeights.set(existingTx.txId, Number(existingTx.blockHeight));
         }
+
         for (const transaction of transactions) {
           txBlockHeights.set(transaction.tx_id, transaction.block.height);
         }
+
         const eventsWithBlockHeight = smartContractLogs
           .map((event) => {
             const blockHeight = txBlockHeights.get(event.tx_id) ?? 0;
+
             return { event, blockHeight };
           })
           .filter((item) => item.blockHeight > 0);
@@ -750,8 +820,10 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
 
         // Incremental indexing: process all events up to the safe block height
         const safeHeight = getSafeBlockHeight(states);
+
         if (safeHeight !== undefined) {
           const indexResult = await processEventsUpTo(safeHeight, indexing, filterMap);
+
           if (indexResult.isErr()) {
             return Result.err(indexResult.error);
           }
@@ -764,6 +836,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         indexing,
         filterMap,
       );
+
       if (finalIndexResult.isErr()) {
         return Result.err(finalIndexResult.error);
       }

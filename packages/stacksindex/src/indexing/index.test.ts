@@ -13,8 +13,9 @@ import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
 import { createLogger } from "../logger/index.ts";
 import { createIndexing } from "./index.ts";
 
+// SAFETY: Indexing tests pass the db handle through as an opaque token and never invoke NodePgDatabase methods.
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-const mockDb = {} as unknown as NodePgDatabase;
+const mockDb = {} as NodePgDatabase;
 
 const testAbi = {
   functions: [
@@ -57,6 +58,7 @@ const createMockEvent = (overrides: Partial<HandlerEvent> = {}): HandlerEvent =>
 describe("indexing engine", () => {
   test("calls matching handler with event and context containing db and client", async () => {
     const handler = vi.fn().mockResolvedValue(undefined);
+
     const handlers: Handlers = {
       "SP123.token": handler,
     };
@@ -215,6 +217,7 @@ describe("indexing engine", () => {
     // oxlint-disable-next-line typescript/no-non-null-assertion
     const evaluatedResult = handlerResult!;
     expect(evaluatedResult.isOk()).toBe(true);
+
     if (evaluatedResult.isOk()) {
       expect(evaluatedResult.value).toStrictEqual({ ok: 42n });
     }
@@ -251,6 +254,7 @@ describe("indexing engine", () => {
   test("returns err when handler throws", async () => {
     const error = new Error("Handler failed");
     const handler = vi.fn().mockRejectedValue(error);
+
     const handlers: Handlers = {
       "SP123.token": handler,
     };

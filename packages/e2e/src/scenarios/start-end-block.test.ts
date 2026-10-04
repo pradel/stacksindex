@@ -16,8 +16,10 @@ describe("e2E: Bounded startBlock and endBlock scenario", () => {
   beforeAll(async () => {
     vi.stubGlobal(
       "fetch",
-      (url: unknown, init?: { method?: string; headers?: Record<string, string>; body?: string }) =>
-        recorder.handleFetch(url, init),
+      (
+        url: string | URL | Request,
+        init?: { method?: string; headers?: Record<string, string>; body?: string },
+      ) => recorder.handleFetch(url, init),
     );
     await database.setup();
   });

@@ -29,6 +29,7 @@ export type {
   TypedCallReadOnlyFunctionReturnType,
   UntypedCallReadOnlyFunctionParameters,
 };
+
 export { typedCallReadFunction };
 
 export type BlockApiResponse =
@@ -123,12 +124,16 @@ type MinedV1Transaction = V1TransactionApiResponse;
 export type ContractEvent = MinedV1Transaction["events"][number];
 
 export type SmartContractLogEvent = Extract<ContractEvent, { event_type: "smart_contract_log" }>;
+
 export type StxLockEvent = Extract<ContractEvent, { event_type: "stx_lock" }>;
+
 export type StxAssetEvent = Extract<ContractEvent, { event_type: "stx_asset" }>;
+
 export type FungibleTokenAssetEvent = Extract<
   ContractEvent,
   { event_type: "fungible_token_asset" }
 >;
+
 export type NonFungibleTokenAssetEvent = Extract<
   ContractEvent,
   { event_type: "non_fungible_token_asset" }
@@ -148,7 +153,11 @@ export interface CallReadResponse {
   cause?: string;
 }
 
-interface RequestOptions<QueryT = unknown> {
+type QueryScalar = string | number | boolean;
+
+type QueryValue = QueryScalar | QueryScalar[] | null | undefined;
+
+interface RequestOptions<QueryT extends Record<string, QueryValue> | undefined = undefined> {
   path: string;
   method: "GET" | "POST";
   query?: QueryT;
@@ -159,44 +168,75 @@ function defaultStatusText(status: number): string {
   if (status === 200) {
     return "OK";
   }
+
   if (status === 400) {
     return "Bad Request";
   }
+
   if (status === 404) {
     return "Not Found";
   }
+
   if (status === 429) {
     return "Too Many Requests";
   }
+
   if (status === 500) {
     return "Internal Server Error";
   }
+
   return String(status);
 }
 
-function parseErrorData(rawBody: string | null, contentType: string): unknown {
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null) {
+    return true;
+  }
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((item) => isJsonValue(item));
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value).every((item) => isJsonValue(item));
+  }
+
+  return false;
+}
+
+function parseErrorData(rawBody: string | null, contentType: string): JsonValue {
   if (rawBody === null) {
     return null;
   }
+
   if (contentType.includes("application/json")) {
     try {
-      return JSON.parse(rawBody);
+      const parsed: unknown = JSON.parse(rawBody);
+
+      return isJsonValue(parsed) ? parsed : rawBody;
     } catch {
       return rawBody;
     }
   }
+
   return rawBody;
 }
 
 export const datasourceStacksApi = {
-  async _request<ResponseT, QueryT extends Record<string, unknown> | undefined>(
+  async _request<ResponseT, QueryT extends Record<string, QueryValue> | undefined>(
     context: DatasourceStacksApiContext,
     options: RequestOptions<QueryT>,
   ): Promise<Result<ResponseT, StacksApiError>> {
     return this._requestWithRetry<ResponseT, QueryT>(context, options, 0);
   },
 
-  async _requestWithRetry<ResponseT, QueryT extends Record<string, unknown> | undefined>(
+  async _requestWithRetry<ResponseT, QueryT extends Record<string, QueryValue> | undefined>(
     context: DatasourceStacksApiContext,
     options: RequestOptions<QueryT>,
     attempt: number,
@@ -206,18 +246,22 @@ export const datasourceStacksApi = {
 
     const baseUrl = context.api?.baseUrl ?? "https://api.hiro.so";
     let url = `${baseUrl}${path}`;
+
     if (options.query) {
       const parts: string[] = [];
-      for (const [key, value] of Object.entries(options.query)) {
+      const { query } = options;
+
+      for (const key of Object.keys(query)) {
+        const value = query[key];
         const vals = Array.isArray(value) ? value : [value];
+
         for (const entry of vals) {
           if (entry !== null && entry !== undefined) {
-            // oxlint-disable-next-line typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access
-            const str: string = typeof entry === "string" ? entry : entry.toString();
-            parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(str)}`);
+            parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(entry))}`);
           }
         }
       }
+
       if (parts.length > 0) {
         url += `?${parts.join("&")}`;
       }
@@ -234,18 +278,22 @@ export const datasourceStacksApi = {
 
           const requestInit: RequestInit = { method };
           const requestHeaders: Record<string, string> = {};
+
           if (context.api?.apiKey) {
             requestHeaders["x-api-key"] = context.api.apiKey;
           }
+
           if (options.body !== undefined) {
             requestHeaders["content-type"] = "application/json";
             requestInit.body = JSON.stringify(options.body);
           }
+
           requestInit.headers = requestHeaders;
 
           const response = await globalThis.fetch(url, requestInit);
 
           let duration = stopClock();
+
           if (duration > 15000) {
             context.logger.warn({
               service: "datasourceStacksApi",
@@ -290,6 +338,7 @@ export const datasourceStacksApi = {
               duration,
             });
 
+            // SAFETY: `ResponseT` is the response body schema declared for the exact `path` requested by each caller.
             // oxlint-disable-next-line typescript/no-unsafe-type-assertion
             return data as ResponseT;
           } catch (error) {
@@ -334,6 +383,7 @@ export const datasourceStacksApi = {
         path,
       });
       await sleep(delayMs);
+
       return this._requestWithRetry(context, options, attempt + 1);
     }
 
@@ -370,6 +420,7 @@ export const datasourceStacksApi = {
     options: GetTransactionQuery = {},
   ) {
     const { include } = options;
+
     return this._request<TransactionApiResponse, { include?: string | null }>(context, {
       path: `/extended/v3/transactions/${txId}`,
       method: "GET",
@@ -386,8 +437,11 @@ export const datasourceStacksApi = {
 
   getTransactionsBatch(context: DatasourceStacksApiContext, txIds: string[]) {
     if (txIds.length === 0) {
-      return Promise.resolve(Result.ok({ results: [] } as TransactionsBatchResponse));
+      const emptyBatch: TransactionsBatchResponse = { results: [] };
+
+      return Promise.resolve(Result.ok(emptyBatch));
     }
+
     return this._request<TransactionsBatchResponse, GetTransactionsBatchQuery>(context, {
       path: "/extended/v3/transactions/batch",
       method: "GET",
@@ -402,6 +456,7 @@ export const datasourceStacksApi = {
   ) {
     const { limit = 50, cursor, ...rest } = options;
     const path = `/extended/v3/transactions/${txId}/events`;
+
     return this._request<TransactionEventsResponse, GetTransactionEventsQuery>(context, {
       path,
       method: "GET",
@@ -416,6 +471,7 @@ export const datasourceStacksApi = {
   ) {
     const { limit = 50, cursor, ...rest } = options;
     const path = `/extended/v3/principals/${principal}/transactions`;
+
     return this._request<PrincipalTransactionsResponse, GetPrincipalTransactionsQuery>(context, {
       path,
       method: "GET",
@@ -425,6 +481,7 @@ export const datasourceStacksApi = {
 
   getContract(context: DatasourceStacksApiContext, contractId: string) {
     const path = `/extended/v3/smart-contracts/${contractId}`;
+
     return this._request<ContractApiResponse, undefined>(context, {
       path,
       method: "GET",
@@ -438,6 +495,7 @@ export const datasourceStacksApi = {
   ) {
     const { limit = 100, cursor, ...rest } = options;
     const path = `/extended/v2/smart-contracts/${contractId}/logs`;
+
     return this._request<ContractLogsResponse, GetContractLogsQuery>(context, {
       path,
       method: "GET",
@@ -460,10 +518,12 @@ export const datasourceStacksApi = {
   ) {
     const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip } = options;
     const [contractAddress, contractName] = contractId.split(".");
+
     const path =
       contractAddress && contractName
         ? `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`
         : `/v2/contracts/call-read/${contractId}/${functionName}`;
+
     return this._request<CallReadResponse, { tip?: number | null }>(context, {
       path,
       method: "POST",

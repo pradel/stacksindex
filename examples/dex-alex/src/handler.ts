@@ -10,6 +10,7 @@ import { poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
 export type AppDatabase = PgliteDatabase<any>;
 
 export const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
+
 export const CHAIN_ID = 1n;
 
 // Zod schemas for contract log events (validating decoded JSON object)
@@ -122,6 +123,7 @@ export async function insertTokenIfNotExists({
   }
 
   const [contractAddress, contractName] = tokenAddress.split(".");
+
   if (!contractAddress || !contractName) {
     throw new Error(`Invalid tokenAddress: ${tokenAddress}`);
   }
@@ -149,6 +151,7 @@ export async function insertTokenIfNotExists({
       `Failed to fetch decimals for token ${tokenAddress}: contract returned error ${decimalsRes.error}`,
     );
   }
+
   const decimals = Number(decimalsRes.ok);
   const symbol = symbolRes.ok ?? "???";
 
@@ -184,9 +187,11 @@ export async function syncPoolTokens({
   poolToken,
 }: SyncPoolTokensParams): Promise<void> {
   const [contractAddress, contractName] = poolContract.split(".");
+
   if (!contractAddress || !contractName) {
     throw new Error(`Invalid poolContract: ${poolContract}`);
   }
+
   const poolId = (
     await client.callReadOnly({
       abi: fixedWeightPoolAbi,
@@ -297,6 +302,7 @@ export function createPoolHandler({
   return async (event, { client }) => {
     const decoded = decodeHex(event.contract_log.value.hex);
     const parsed = poolLogSchema.safeParse(decoded);
+
     if (!parsed.success) {
       return;
     }

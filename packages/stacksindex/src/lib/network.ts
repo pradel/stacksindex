@@ -1,7 +1,9 @@
 export const MAINNET_CHAIN_ID = 1;
+
 export const TESTNET_CHAIN_ID = 2_147_483_648;
 
 export const MAINNET_API_BASE_URL = "https://api.hiro.so";
+
 export const TESTNET_API_BASE_URL = "https://api.testnet.hiro.so";
 
 export type NetworkName = "mainnet" | "testnet";
@@ -28,6 +30,14 @@ function assertValidChainId(chainId: number): void {
   }
 }
 
+/**
+ * Runtime boundary check for JavaScript callers that bypass the `NetworkOption`
+ * type. Kept as a type predicate so TypeScript narrows to a chain ID.
+ */
+function isChainId(value: NetworkOption): value is number {
+  return typeof value === "number";
+}
+
 export function resolveNetwork(network?: NetworkOption): ResolvedNetwork {
   if (network === undefined || network === "mainnet") {
     return { chainId: MAINNET_CHAIN_ID, baseUrl: MAINNET_API_BASE_URL };
@@ -37,8 +47,9 @@ export function resolveNetwork(network?: NetworkOption): ResolvedNetwork {
     return { chainId: TESTNET_CHAIN_ID, baseUrl: TESTNET_API_BASE_URL };
   }
 
-  if (typeof network === "number") {
+  if (isChainId(network)) {
     assertValidChainId(network);
+
     return { chainId: network, baseUrl: MAINNET_API_BASE_URL };
   }
 

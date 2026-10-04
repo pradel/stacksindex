@@ -4,11 +4,12 @@
 // oxlint-disable typescript/no-explicit-any
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable vitest/no-conditional-in-test
+import { Result } from "better-result";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { StacksApiResponseError } from "../datasources/api/errors.ts";
 import { createLogger } from "../logger/index.ts";
-import { createFetchMock } from "../test-utils/fetch-mock.ts";
+import { createFetchMock, type JsonValue } from "../test-utils/fetch-mock.ts";
 import {
   buildLogsCursor,
   buildTransactionCursor,
@@ -24,7 +25,9 @@ const mockFetch = createFetchMock(mockRequest, {
     if (!url.includes("/extended/v1/tx/")) {
       return undefined;
     }
+
     const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
+
     return new globalThis.Response(
       JSON.stringify({
         tx_id: txId,
@@ -43,8 +46,8 @@ const context = {
 
 const contractId = "SP123.token";
 
-const mockBody = (data: unknown) => ({
-  json: () => Promise.resolve(data),
+const mockBody = (data: JsonValue) => ({
+  json: () => data,
 });
 
 describe("getContractEventsFirstCursor", () => {
@@ -91,6 +94,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -102,6 +106,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -109,7 +114,7 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBeNull();
+    expect(Result.unwrap(result)).toBeNull();
   });
 
   test("returns cursor for first contract event in oldest transaction", async () => {
@@ -124,6 +129,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -139,6 +145,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -161,6 +168,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -174,6 +182,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -181,7 +190,7 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("100:0:5:2");
+    expect(Result.unwrap(result)).toBe("100:0:5:2");
   });
 
   test("skips transactions with no matching contract events", async () => {
@@ -196,6 +205,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -210,6 +220,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -231,6 +242,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -244,6 +256,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-2/events")) {
         return {
           statusCode: 200,
@@ -265,6 +278,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-2")) {
         return {
           statusCode: 200,
@@ -278,6 +292,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -285,7 +300,7 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("200:0:1:1");
+    expect(Result.unwrap(result)).toBe("200:0:1:1");
   });
 
   test("returns null when all transactions have event_count 0", async () => {
@@ -300,6 +315,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -314,6 +330,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -327,6 +344,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-2")) {
         return {
           statusCode: 200,
@@ -340,6 +358,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -347,7 +366,7 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBeNull();
+    expect(Result.unwrap(result)).toBeNull();
   });
 
   test("paginates forward across multiple pages from oldest to newest", async () => {
@@ -362,6 +381,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (
         url.includes(`/extended/v3/principals/${contractId}/transactions?limit=50&cursor=1%3A0%3A0`)
       ) {
@@ -375,6 +395,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (
         url.includes(
           `/extended/v3/principals/${contractId}/transactions?limit=50&cursor=page_2_cursor`,
@@ -390,6 +411,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-none")) {
         return {
           statusCode: 200,
@@ -403,6 +425,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -424,6 +447,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -437,6 +461,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -444,7 +469,7 @@ describe("getContractEventsFirstCursor", () => {
     const result = await sync.getContractEventsFirstCursor(contractId);
 
     expect(result.isOk()).toBe(true);
-    expect((result as any).value).toBe("2:0:0:0");
+    expect(Result.unwrap(result)).toBe("2:0:0:0");
   });
 
   test("returns error when getPrincipalTransactions fails", async () => {
@@ -459,6 +484,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 400,
@@ -467,6 +493,7 @@ describe("getContractEventsFirstCursor", () => {
           headers: { "content-type": "application/json" },
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -495,6 +522,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -506,6 +534,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 400,
@@ -514,6 +543,7 @@ describe("getContractEventsFirstCursor", () => {
           headers: { "content-type": "application/json" },
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -541,6 +571,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -552,6 +583,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1/events")) {
         return {
           statusCode: 200,
@@ -573,6 +605,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-1")) {
         return {
           statusCode: 200,
@@ -583,6 +616,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v1/tx/tx-1")) {
         return {
           statusCode: 400,
@@ -591,6 +625,7 @@ describe("getContractEventsFirstCursor", () => {
           headers: { "content-type": "application/json" },
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -618,6 +653,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -631,6 +667,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-anchor/events")) {
         return {
           statusCode: 200,
@@ -652,6 +689,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-anchor")) {
         return {
           statusCode: 200,
@@ -662,6 +700,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v1/tx/tx-anchor")) {
         return {
           statusCode: 200,
@@ -673,6 +712,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -695,6 +735,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
         return {
           statusCode: 200,
@@ -708,6 +749,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-mb/events")) {
         return {
           statusCode: 200,
@@ -729,6 +771,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-mb")) {
         return {
           statusCode: 200,
@@ -739,6 +782,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v1/tx/tx-mb")) {
         return {
           statusCode: 200,
@@ -750,6 +794,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -772,6 +817,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (
         url.includes(
           `/extended/v3/principals/${contractId}/transactions?limit=50&cursor=150%3A0%3A0`,
@@ -787,6 +833,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-150/events")) {
         return {
           statusCode: 200,
@@ -808,6 +855,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-150")) {
         return {
           statusCode: 200,
@@ -821,6 +869,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -843,6 +892,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (
         url.includes(
           `/extended/v3/principals/${contractId}/transactions?limit=50&cursor=100%3A0%3A0`,
@@ -858,6 +908,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100/events")) {
         return {
           statusCode: 200,
@@ -879,6 +930,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       if (url.includes("/extended/v3/transactions/tx-100")) {
         return {
           statusCode: 200,
@@ -892,6 +944,7 @@ describe("getContractEventsFirstCursor", () => {
           }),
         };
       }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -911,6 +964,7 @@ describe("cursor utilities", () => {
       txIndex: 4,
       eventIndex: 2,
     });
+
     expect(cursor).toBe("123:0:4:2");
 
     const parsed = parseLogsCursor("123:0:4:2");
@@ -928,6 +982,7 @@ describe("cursor utilities", () => {
       microblockSequence: 0,
       txIndex: 4,
     });
+
     expect(cursor).toBe("123:0:4");
 
     const parsed = parseTransactionCursor("123:0:4");

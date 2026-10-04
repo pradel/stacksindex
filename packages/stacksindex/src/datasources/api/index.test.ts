@@ -2,7 +2,7 @@ import { Result } from "better-result";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createLogger } from "../../logger/index.ts";
-import { createFetchMock } from "../../test-utils/fetch-mock.ts";
+import { createFetchMock, type JsonValue } from "../../test-utils/fetch-mock.ts";
 import {
   StacksApiParseError,
   StacksApiRateLimitError,
@@ -15,8 +15,8 @@ const mockRequest = vi.hoisted(() => vi.fn());
 
 const mockFetch = createFetchMock(mockRequest);
 
-const mockBody = (data: unknown) => ({
-  json: () => Promise.resolve(data),
+const mockBody = (data: JsonValue) => ({
+  json: () => data,
 });
 
 const context = {
@@ -251,6 +251,7 @@ describe("aPI DataSource", () => {
     test("returns block data on 200 by hash", async () => {
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe("https://api.hiro.so/extended/v2/blocks/0xabc123");
+
         return {
           statusCode: 200,
           body: mockBody({ hash: "0xabc123", height: 123_456 }),
@@ -264,6 +265,7 @@ describe("aPI DataSource", () => {
     test("returns block data on 200 by height", async () => {
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe("https://api.hiro.so/extended/v2/blocks/123456");
+
         return {
           statusCode: 200,
           body: mockBody({ hash: "0xabc123", height: 123_456 }),
@@ -298,6 +300,7 @@ describe("aPI DataSource", () => {
         expect(url).toBe(
           "https://api.hiro.so/extended/v3/blocks/0xabc123/transactions?limit=20&cursor=100%3A0%3A0",
         );
+
         return {
           statusCode: 200,
           body: mockBody(mockResponse),
@@ -308,6 +311,7 @@ describe("aPI DataSource", () => {
         limit: 20,
         cursor: "100:0:0",
       });
+
       expect(result).toStrictEqual(Result.ok(mockResponse));
     });
 
@@ -325,6 +329,7 @@ describe("aPI DataSource", () => {
 
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe("https://api.hiro.so/extended/v3/blocks/123456/transactions");
+
         return {
           statusCode: 200,
           body: mockBody(mockResponse),
@@ -349,6 +354,7 @@ describe("aPI DataSource", () => {
 
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe("https://api.hiro.so/extended/v3/transactions/0xtx123");
+
         return {
           statusCode: 200,
           body: mockBody(mockTx),
@@ -364,6 +370,7 @@ describe("aPI DataSource", () => {
         expect(url).toBe(
           "https://api.hiro.so/extended/v3/transactions/0xtx123?include=result%2Cpost_conditions",
         );
+
         return {
           statusCode: 200,
           body: mockBody({ tx_id: "0xtx123" }),
@@ -373,6 +380,7 @@ describe("aPI DataSource", () => {
       const result = await datasourceStacksApi.getTransaction(context, "0xtx123", {
         include: ["result", "post_conditions"],
       });
+
       expect(result).toStrictEqual(Result.ok({ tx_id: "0xtx123" }));
     });
   });
@@ -391,6 +399,7 @@ describe("aPI DataSource", () => {
 
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe("https://api.hiro.so/extended/v1/tx/0xtx123");
+
         return {
           statusCode: 200,
           body: mockBody(mockV1Tx),
@@ -429,6 +438,7 @@ describe("aPI DataSource", () => {
         expect(url).toBe(
           "https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xtx1&tx_id=0xtx2",
         );
+
         return {
           statusCode: 200,
           body: mockBody(mockResponse),
@@ -469,6 +479,7 @@ describe("aPI DataSource", () => {
   describe("getTransactionEvents", () => {
     test("returns transaction events on 200", async () => {
       const txId = "0xtx123";
+
       const mockResponse = {
         limit: 50,
         total: 1,
@@ -488,6 +499,7 @@ describe("aPI DataSource", () => {
 
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe(`https://api.hiro.so/extended/v3/transactions/${txId}/events?limit=50`);
+
         return {
           statusCode: 200,
           body: mockBody(mockResponse),
@@ -502,6 +514,7 @@ describe("aPI DataSource", () => {
   describe("getPrincipalTransactions", () => {
     test("returns principal transactions on 200 with cursor", async () => {
       const principal = "SP123.token";
+
       const mockResponse = {
         limit: 50,
         total: 200,
@@ -525,6 +538,7 @@ describe("aPI DataSource", () => {
         expect(url).toBe(
           `https://api.hiro.so/extended/v3/principals/${principal}/transactions?limit=50&cursor=curr_1`,
         );
+
         return {
           statusCode: 200,
           body: mockBody(mockResponse),
@@ -535,6 +549,7 @@ describe("aPI DataSource", () => {
         limit: 50,
         cursor: "curr_1",
       });
+
       expect(result).toStrictEqual(Result.ok(mockResponse));
     });
   });
@@ -542,6 +557,7 @@ describe("aPI DataSource", () => {
   describe("getContract", () => {
     test("returns contract info on 200", async () => {
       const contractId = "SP123.token";
+
       const mockContract = {
         tx_id: "0xtx123",
         contract_id: contractId,
@@ -562,6 +578,7 @@ describe("aPI DataSource", () => {
 
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe(`https://api.hiro.so/extended/v3/smart-contracts/${contractId}`);
+
         return {
           statusCode: 200,
           body: mockBody(mockContract),
@@ -576,6 +593,7 @@ describe("aPI DataSource", () => {
   describe("getContractLogs", () => {
     test("returns contract logs on 200", async () => {
       const contractId = "SP123.token";
+
       const mockLogs = {
         results: [
           {
@@ -596,6 +614,7 @@ describe("aPI DataSource", () => {
         expect(url).toBe(
           `https://api.hiro.so/extended/v2/smart-contracts/${contractId}/logs?limit=100`,
         );
+
         return {
           statusCode: 200,
           body: mockBody(mockLogs),
@@ -634,6 +653,7 @@ describe("aPI DataSource", () => {
 
       mockRequest.mockImplementation((url: string) => {
         expect(url).toBe("https://custom-stacks-node.example.com/extended/v3/transactions/0xtx123");
+
         return {
           statusCode: 200,
           body: mockBody({ tx_id: "0xtx123", block: { height: 123_456 } }),
@@ -655,6 +675,7 @@ describe("aPI DataSource", () => {
       mockRequest.mockImplementation((url: string, init: { headers: Record<string, string> }) => {
         expect(url).toBe("https://api.hiro.so/extended/v3/transactions/0xtx123");
         expect(init.headers["x-api-key"]).toBe("my-test-api-key");
+
         return {
           statusCode: 200,
           body: mockBody({ tx_id: "0xtx123", block: { height: 123_456 } }),
@@ -668,6 +689,7 @@ describe("aPI DataSource", () => {
     test("does not send x-api-key header when apiKey is not provided", async () => {
       mockRequest.mockImplementation((_url: string, init: { headers: Record<string, string> }) => {
         expect(init.headers["x-api-key"]).toBeUndefined();
+
         return {
           statusCode: 200,
           body: mockBody({ tx_id: "0xtx123", block: { height: 123_456 } }),
@@ -699,6 +721,7 @@ describe("aPI DataSource", () => {
             sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
             arguments: [],
           });
+
           return {
             statusCode: 200,
             body: mockBody({ okay: true, result: "0x01" }),
@@ -711,6 +734,7 @@ describe("aPI DataSource", () => {
         "SP123.contract",
         "my-function",
       );
+
       expect(result).toStrictEqual(Result.ok({ okay: true, result: "0x01" }));
     });
   });
@@ -722,6 +746,7 @@ describe("aPI DataSource", () => {
         status: "ready",
         chain_tip: { block_height: 100 },
       };
+
       mockRequest.mockReturnValue({
         statusCode: 200,
         body: mockBody(mockResponse),

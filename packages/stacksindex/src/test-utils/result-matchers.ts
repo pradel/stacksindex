@@ -1,13 +1,20 @@
 import { TaggedError } from "better-result";
 import type { MatcherResult, MatcherState } from "vite-plus/test";
 
+import type { JsonValue } from "./fetch-mock.ts";
+
 interface ResultLike {
   isErr: () => boolean;
   isOk: () => boolean;
   error?: unknown;
 }
 
-function isResultLike(value: unknown): value is ResultLike {
+interface TaggedErrorLike extends Error {
+  readonly _tag: string;
+  toJSON: () => object;
+}
+
+function isResultLike(value: ResultLike | null | undefined): value is ResultLike {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -18,40 +25,40 @@ function isResultLike(value: unknown): value is ResultLike {
   );
 }
 
-function stripStack(value: unknown): unknown {
+function isJsonRecord(value: JsonValue): value is { [key: string]: JsonValue } {
+  return typeof value === "object" && value !== null;
+}
+
+function stripStack(value: JsonValue): JsonValue {
   if (Array.isArray(value)) {
     return value.map((item) => stripStack(item));
   }
-  if (typeof value === "object" && value !== null) {
-    const result: Record<string, unknown> = {};
+
+  if (isJsonRecord(value)) {
+    const result: { [key: string]: JsonValue } = {};
+
     for (const [key, entryValue] of Object.entries(value)) {
       if (key !== "stack") {
         result[key] = stripStack(entryValue);
       }
     }
+
     return result;
   }
+
   return value;
 }
 
-function toComparable(error: unknown): unknown {
-  if (TaggedError.is(error)) {
-    return stripStack(error.toJSON());
-  }
-  if (error instanceof Error) {
-    return stripStack({
-      name: error.name,
-      message: error.message,
-      cause: error.cause,
-    });
-  }
-  return stripStack(error);
+function toComparable(error: TaggedErrorLike): JsonValue {
+  // SAFETY: TaggedError.toJSON() serializes JSON-compatible own properties.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return stripStack(error.toJSON() as JsonValue);
 }
 
 export function toBeBetterErr(
   this: MatcherState,
-  received: unknown,
-  expected: unknown,
+  received: ResultLike,
+  expected: { readonly _tag: string },
 ): MatcherResult {
   const { matcherHint, printExpected, printReceived, diff } = this.utils;
 
@@ -96,6 +103,7 @@ export function toBeBetterErr(
 
   if (actual._tag !== expected._tag) {
     const tagDiff = diff(expected._tag, actual._tag) ?? "";
+
     return {
       pass: false,
       message: (): string =>
@@ -120,9 +128,10 @@ export function toBeBetterErr(
 declare module "vitest" {
   // oxlint-disable-next-line id-length
   interface Assertion<R extends void | Promise<void> = void, T = unknown> {
-    toBeBetterErr: (expected: unknown) => R;
+    toBeBetterErr: (expected: { readonly _tag: string }) => R;
   }
+
   interface AsymmetricMatchersContaining {
-    toBeBetterErr: (expected: unknown) => void;
+    toBeBetterErr: (expected: { readonly _tag: string }) => void;
   }
 }

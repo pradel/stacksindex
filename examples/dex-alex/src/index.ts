@@ -13,7 +13,9 @@ const apiKey = process.env.HIRO_API_KEY;
 fs.mkdirSync("./data", { recursive: true });
 
 const appClient = new PGlite("./data/app.db");
+
 await appClient.waitReady;
+
 const appDb = drizzle({ client: appClient });
 
 await migrate(appDb, { migrationsFolder: "./drizzle" });
@@ -28,21 +30,26 @@ const logger = createLogger({
 });
 
 let isShuttingDown = false;
+
 async function shutdown(code: number) {
   if (isShuttingDown) {
     return;
   }
+
   isShuttingDown = true;
+
   try {
     await appClient.close();
   } catch {
     // Ignore error on close
   }
+
   try {
     await indexerDatabase.close();
   } catch {
     // Ignore error on close
   }
+
   process.exit(code);
 }
 
@@ -50,6 +57,7 @@ process.on("SIGINT", () => {
   // oxlint-disable-next-line eslint/no-void
   void shutdown(0);
 });
+
 process.on("SIGTERM", () => {
   // oxlint-disable-next-line eslint/no-void
   void shutdown(0);
