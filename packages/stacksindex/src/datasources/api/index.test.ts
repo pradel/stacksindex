@@ -2,6 +2,7 @@ import { Result } from "better-result";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createLogger } from "../../logger/index.ts";
+import { createFetchMock } from "../../test-utils/fetch-mock.ts";
 import {
   StacksApiParseError,
   StacksApiRateLimitError,
@@ -12,9 +13,7 @@ import { datasourceStacksApi } from "./index.ts";
 
 const mockRequest = vi.hoisted(() => vi.fn());
 
-vi.mock("undici", () => ({
-  request: mockRequest,
-}));
+const mockFetch = createFetchMock(mockRequest);
 
 const mockBody = (data: unknown) => ({
   json: () => Promise.resolve(data),
@@ -27,9 +26,11 @@ const context = {
 describe("aPI DataSource", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal("fetch", mockFetch);
   });
 
   afterAll(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 

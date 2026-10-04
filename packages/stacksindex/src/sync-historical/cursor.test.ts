@@ -8,6 +8,7 @@ import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test
 
 import { StacksApiResponseError } from "../datasources/api/errors.ts";
 import { createLogger } from "../logger/index.ts";
+import { createFetchMock } from "../test-utils/fetch-mock.ts";
 import {
   buildLogsCursor,
   buildTransactionCursor,
@@ -18,30 +19,23 @@ import {
 
 const mockRequest = vi.hoisted(() => vi.fn());
 
-vi.mock("undici", () => ({
-  request: (url: string, init?: any) => {
-    try {
-      return mockRequest(url, init);
-    } catch (err: any) {
-      if (typeof url === "string" && url.includes("/extended/v1/tx/")) {
-        const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
-        return {
-          statusCode: 200,
-          body: {
-            json: () =>
-              Promise.resolve({
-                tx_id: txId,
-                block_height: 100,
-                tx_index: 0,
-                microblock_sequence: 0,
-              }),
-          },
-        };
-      }
-      throw err;
+const mockFetch = createFetchMock(mockRequest, {
+  fallback: (url) => {
+    if (!url.includes("/extended/v1/tx/")) {
+      return undefined;
     }
+    const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
+    return new globalThis.Response(
+      JSON.stringify({
+        tx_id: txId,
+        block_height: 100,
+        tx_index: 0,
+        microblock_sequence: 0,
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
   },
-}));
+});
 
 const context = {
   logger: createLogger({ level: 0 }),
@@ -56,9 +50,11 @@ const mockBody = (data: unknown) => ({
 describe("getContractEventsFirstCursor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal("fetch", mockFetch);
   });
 
   afterAll(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 

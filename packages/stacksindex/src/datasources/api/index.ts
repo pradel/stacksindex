@@ -1,7 +1,6 @@
 import type { paths } from "@stacks/blockchain-api-client";
 import { Result } from "better-result";
 import type { ClarityAbi } from "clarity-abitype";
-import { request } from "undici";
 
 import { sleep, startClock } from "../../lib/timer.ts";
 import type { Logger } from "../../logger/index.ts";
@@ -156,6 +155,39 @@ interface RequestOptions<QueryT = unknown> {
   body?: unknown;
 }
 
+function defaultStatusText(status: number): string {
+  if (status === 200) {
+    return "OK";
+  }
+  if (status === 400) {
+    return "Bad Request";
+  }
+  if (status === 404) {
+    return "Not Found";
+  }
+  if (status === 429) {
+    return "Too Many Requests";
+  }
+  if (status === 500) {
+    return "Internal Server Error";
+  }
+  return String(status);
+}
+
+function parseErrorData(rawBody: string | null, contentType: string): unknown {
+  if (rawBody === null) {
+    return null;
+  }
+  if (contentType.includes("application/json")) {
+    try {
+      return JSON.parse(rawBody);
+    } catch {
+      return rawBody;
+    }
+  }
+  return rawBody;
+}
+
 export const datasourceStacksApi = {
   async _request<ResponseT, QueryT extends Record<string, unknown> | undefined>(
     context: DatasourceStacksApiContext,
@@ -200,7 +232,7 @@ export const datasourceStacksApi = {
             msg: `${method} ${path} request`,
           });
 
-          const requestInit: Record<string, unknown> = { method };
+          const requestInit: RequestInit = { method };
           const requestHeaders: Record<string, string> = {};
           if (context.api?.apiKey) {
             requestHeaders["x-api-key"] = context.api.apiKey;
@@ -211,7 +243,7 @@ export const datasourceStacksApi = {
           }
           requestInit.headers = requestHeaders;
 
-          const { statusCode, statusText, body, headers } = await request(url, requestInit);
+          const response = await globalThis.fetch(url, requestInit);
 
           let duration = stopClock();
           if (duration > 15000) {
@@ -223,15 +255,13 @@ export const datasourceStacksApi = {
             });
           }
 
+          const statusCode = response.status;
+          const statusText = response.statusText || defaultStatusText(statusCode);
+
           if (statusCode !== 200) {
-            // oxlint-disable-next-line init-declarations
-            let errorData: unknown;
-            const contentType = headers["content-type"] ?? "";
-            if (contentType.includes("application/json")) {
-              errorData = await body.json().catch(() => body.text().catch(() => null));
-            } else {
-              errorData = await body.text().catch(() => null);
-            }
+            const contentType = response.headers.get("content-type") ?? "";
+            const rawErrorBody = await response.text().catch(() => null);
+            const errorData = parseErrorData(rawErrorBody, contentType);
 
             duration = stopClock();
             context.logger.trace({
@@ -242,7 +272,7 @@ export const datasourceStacksApi = {
             });
 
             if (statusCode === 429) {
-              const retryAfter = Number(headers["retry-after"] ?? 1);
+              const retryAfter = Number(response.headers.get("retry-after") ?? 1);
               throw new StacksApiRateLimitError({ path, retryAfter });
             }
 
@@ -250,7 +280,7 @@ export const datasourceStacksApi = {
           }
 
           try {
-            const data = await body.json();
+            const data = await response.json();
 
             duration = stopClock();
             context.logger.trace({

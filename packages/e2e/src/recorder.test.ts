@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { Response } from "undici";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createScenarioRecorder, parseBatchTxIds, sanitizePayload } from "./recorder.ts";
@@ -54,7 +53,9 @@ describe("scenario recorder", () => {
   test("rejects after the final rate-limited response without archiving it", async () => {
     const fixturePath = createFixturePath();
     process.env.RECORD = "true";
-    const fetchMock = vi.fn().mockResolvedValue(new Response("rate limited", { status: 429 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new globalThis.Response("rate limited", { status: 429 }));
     vi.stubGlobal("fetch", fetchMock);
     vi.useFakeTimers();
     const recorder = createScenarioRecorder(fixturePath);
@@ -77,8 +78,8 @@ describe("scenario recorder", () => {
     const fixturePath = createFixturePath();
     process.env.RECORD = "true";
     const responses = [
-      new Response("rate limited", { status: 429 }),
-      new Response(JSON.stringify({ recorded: true }), { status: 200 }),
+      new globalThis.Response("rate limited", { status: 429 }),
+      new globalThis.Response(JSON.stringify({ recorded: true }), { status: 200 }),
     ];
     const fetchMock = vi
       .fn()
@@ -221,7 +222,7 @@ describe("scenario recorder", () => {
     const liveBody = { results: [] };
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(JSON.stringify(liveBody), { status: 200 }));
+      .mockResolvedValue(new globalThis.Response(JSON.stringify(liveBody), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const recorder = createScenarioRecorder(fixturePath);

@@ -359,6 +359,10 @@ export interface ScenarioRecorder {
       text: () => Promise<string>;
     };
   }>;
+  handleFetch: (
+    rawUrl: unknown,
+    init?: { method?: string; headers?: Record<string, string>; body?: string },
+  ) => Promise<Response>;
   save: () => Promise<void>;
   isRecording: boolean;
   size: () => number;
@@ -405,6 +409,9 @@ export function createScenarioRecorder(
   }
 
   let modified = false;
+  // Capture the real fetch at creation time so that stubbing `globalThis.fetch`
+  // With `handleFetch` does not recurse when recording against the live API.
+  const liveFetch = globalThis.fetch.bind(globalThis);
 
   return {
     isRecording: shouldRecord,
@@ -471,7 +478,7 @@ export function createScenarioRecorder(
 
       let liveRes: Response | null = null;
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        liveRes = await globalThis.fetch(rawUrl, {
+        liveRes = await liveFetch(rawUrl, {
           method,
           headers: requestHeaders,
           body: init?.body,
@@ -523,6 +530,30 @@ export function createScenarioRecorder(
             ),
         },
       };
+    },
+
+    async handleFetch(
+      rawUrl: unknown,
+      init?: { method?: string; headers?: Record<string, string>; body?: string },
+    ): Promise<Response> {
+      const url = typeof rawUrl === "string" ? rawUrl : String(rawUrl);
+      const res = await this.handleRequest(url, {
+        method: init?.method,
+        headers: { ...init?.headers },
+        body: init?.body,
+      });
+      let statusText = String(res.statusCode);
+      if (res.statusCode === 200) {
+        statusText = "OK";
+      } else if (res.statusCode === 404) {
+        statusText = "Not Found";
+      }
+      const data = await res.body.json();
+      return new globalThis.Response(typeof data === "string" ? data : JSON.stringify(data), {
+        status: res.statusCode,
+        statusText,
+        headers: { "content-type": "application/json", ...res.headers },
+      });
     },
 
     save() {

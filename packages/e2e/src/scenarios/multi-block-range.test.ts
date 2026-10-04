@@ -19,18 +19,16 @@ const END_BLOCK = 47786;
 
 const recorder = createScenarioRecorder("multi-block-range.json");
 
-vi.mock("undici", () => ({
-  request: (
-    url: string,
-    init?: { method?: string; headers?: Record<string, string>; body?: string },
-  ) => recorder.handleRequest(url, init),
-}));
-
 describe("e2E: Multi-block bounded range scenario", () => {
   const database = createScenarioDatabase();
   const logger = createLogger({ level: 0 });
 
   beforeAll(async () => {
+    vi.stubGlobal(
+      "fetch",
+      (url: unknown, init?: { method?: string; headers?: Record<string, string>; body?: string }) =>
+        recorder.handleFetch(url, init),
+    );
     await database.setup();
   });
 
@@ -42,6 +40,7 @@ describe("e2E: Multi-block bounded range scenario", () => {
     registerScenarioBenchmark("multi-block-range", recorder.getBenchmarkSummary());
     await recorder.save();
     await database.teardown();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
