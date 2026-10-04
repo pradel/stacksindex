@@ -1,6 +1,23 @@
 import path from "node:path";
 
+import {
+  antipattern,
+  correctness,
+  effectNative,
+  recommended,
+  style,
+} from "@effect/tsgo/oxlint-presets";
 import { defineConfig } from "vite-plus";
+
+// Effect migration is deferred: correctness rules are on, the rest of the presets stay off until the server port.
+const deferredEffectRules = Object.fromEntries(
+  [
+    ...Object.keys(recommended.rules ?? {}),
+    ...Object.keys(antipattern.rules ?? {}),
+    ...Object.keys(effectNative.rules ?? {}),
+    ...Object.keys(style.rules ?? {}),
+  ].map((rule) => [rule, "off"]),
+);
 
 export default defineConfig({
   resolve: {
@@ -25,8 +42,8 @@ export default defineConfig({
       restriction: "error",
       style: "error",
     },
-    plugins: ["node", "typescript", "vitest"],
-    options: { typeAware: true, typeCheck: true },
+    plugins: ["node", "typescript", "vitest", ...(recommended.plugins ?? [])],
+    options: { ...recommended.options, typeAware: true, typeCheck: true },
     ignorePatterns: [".agents/**", "tools/oxlint/anti-slop/**"],
     jsPlugins: [
       { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
@@ -36,6 +53,9 @@ export default defineConfig({
       },
     ],
     rules: {
+      ...deferredEffectRules,
+      ...(correctness.rules ?? {}),
+
       "sort-imports": "off",
       "max-lines": "off",
       "max-lines-per-function": "off",
