@@ -9,7 +9,7 @@
     "repos:sync": "./scripts/sync-repos.sh",
     "test": "vp run -r test",
     "build": "vp run -r build",
-    "prepare": "vp config",
+    "prepare": "vp config && effect-tsgo patch --typescript --oxlint",
     "changeset": "changeset",
     "version": "changeset version && vp check --fix",
     "release": "vp run build && cp README.md ./packages/stacksindex && changeset publish"
@@ -17,6 +17,10 @@
   "devDependencies": {
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.2",
+    "@effect/tsgo": "0.48.0",
+    "oxlint": "1.85.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "typescript": "7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

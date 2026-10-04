@@ -1,5 +1,7 @@
 {
+  "$schema": "../../node_modules/@effect/tsgo/schema.json",
   "compilerOptions": {
+    "plugins": [{ "name": "@effect/language-service", "diagnostics": false }],
     "target": "esnext",
     "lib": ["es2023"],
     "moduleDetection": "force",
