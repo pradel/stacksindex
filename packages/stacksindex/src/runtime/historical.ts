@@ -859,7 +859,6 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
             baseUrl: context.api.baseUrl,
             apiKey: context.api.apiKey,
             rateLimit: context.api.rateLimit,
-            logger: context.logger,
           }),
         ),
       );

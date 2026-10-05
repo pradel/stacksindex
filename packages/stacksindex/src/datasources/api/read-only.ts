@@ -13,7 +13,7 @@ import { Effect } from "effect";
 
 import { decodeHex } from "../../codec/index.ts";
 import { type StacksApiError, StacksApiParseError, StacksApiUnexpectedError } from "./errors.ts";
-import type { CallReadResponse, DatasourceStacksApiContext } from "./index.ts";
+import type { CallReadResponse } from "./index.ts";
 
 export type { ContractFunctionArgs, ContractFunctionName, ContractFunctionReturnType };
 
@@ -84,30 +84,36 @@ export type TypedCallReadOnlyFunctionReturnType<
   TFunctionName extends ContractFunctionName<TAbi, "read_only">,
 > = ContractFunctionReturnType<TAbi, "read_only", TFunctionName>;
 
+/**
+ * The raw contract call-read transport used by `readOnly`.
+ */
+export type CallReadFunction = (
+  contractId: string,
+  functionName: string,
+  options?: { args?: string[]; sender?: string; tip?: number },
+) => Effect.Effect<CallReadResponse, StacksApiError>;
+
+const DEFAULT_SENDER = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
+
 function isClarityAbi(abi: ClarityAbi | readonly unknown[]): abi is ClarityAbi {
   return !Array.isArray(abi);
 }
 
 /**
- * Type-safe wrapper around Stacks API call-read endpoint returning an Effect.
+ * Calls a read-only contract function with ABI-aware argument encoding and
+ * result decoding.
  */
-export const typedCallReadFunction = <
+export const readOnly = <
   const TAbi extends ClarityAbi | readonly unknown[],
   TFunctionName extends ContractFunctionName<TAbi, "read_only">,
   const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
-  R = never,
 >(
-  context: DatasourceStacksApiContext,
-  callReadFn: (
-    context: DatasourceStacksApiContext,
-    contractId: string,
-    functionName: string,
-    options?: { args?: string[]; sender?: string; tip?: number },
-  ) => Effect.Effect<CallReadResponse, StacksApiError, R>,
+  callRead: CallReadFunction,
   parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
-): Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError, R> =>
-  Effect.gen(function* typedCallReadFunction() {
+): Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError> =>
+  Effect.gen(function* readOnly() {
     const { abi, contractAddress, contractName, functionName, senderAddress, tip } = parameters;
+    const path = `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`;
     // SAFETY: ContractFunctionArgs constrains TArgs to Clarity argument tuples, which are readonly arrays.
     const functionArgs = (parameters.functionArgs ?? []) as readonly unknown[];
     const abiFunctions = isClarityAbi(abi) ? abi.functions : [];
@@ -120,7 +126,7 @@ export const typedCallReadFunction = <
       return yield* new StacksApiUnexpectedError({
         message: `Function "${functionName}" not found in ABI or is not a read_only function`,
         cause: new Error(`Function "${functionName}" not found in ABI`),
-        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`,
+        path,
       });
     }
 
@@ -128,7 +134,7 @@ export const typedCallReadFunction = <
       return yield* new StacksApiUnexpectedError({
         message: `Function "${functionName}" expects ${abiFunc.args.length} argument(s), but received ${functionArgs.length}`,
         cause: new Error(`Argument count mismatch for "${functionName}"`),
-        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`,
+        path,
       });
     }
 
@@ -141,22 +147,15 @@ export const typedCallReadFunction = <
       return yield* new StacksApiUnexpectedError({
         message: `Failed to encode arguments for function "${functionName}": ${err instanceof Error ? err.message : String(err)}`,
         cause: err,
-        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`,
+        path,
       });
     }
 
-    const sender = senderAddress ?? "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
-
-    const response = yield* callReadFn(
-      context,
-      `${contractAddress}.${contractName}`,
-      functionName,
-      {
-        args: hexArgs,
-        sender,
-        tip,
-      },
-    );
+    const response = yield* callRead(`${contractAddress}.${contractName}`, functionName, {
+      args: hexArgs,
+      sender: senderAddress ?? DEFAULT_SENDER,
+      tip,
+    });
 
     if (!response.okay || !response.result) {
       const cause = response.cause ?? "response not okay";
@@ -164,7 +163,7 @@ export const typedCallReadFunction = <
       return yield* new StacksApiUnexpectedError({
         message: `Read-only call failed: ${cause}`,
         cause: response,
-        path: `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`,
+        path,
       });
     }
 
@@ -175,6 +174,7 @@ export const typedCallReadFunction = <
       return decoded as TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>;
     } catch (err) {
       return yield* new StacksApiParseError({
+        path,
         message: `Failed to decode read-only result: ${err instanceof Error ? err.message : String(err)}`,
         cause: err,
       });

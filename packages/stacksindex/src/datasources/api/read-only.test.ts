@@ -4,10 +4,8 @@ import type { ClarityAbi } from "clarity-abitype";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { createLogger } from "../../logger/index.ts";
 import { StacksApiResponseError, StacksApiUnexpectedError } from "./errors.ts";
-import type { DatasourceStacksApiContext } from "./index.ts";
-import { typedCallReadFunction, type TypedCallReadOnlyFunctionParameters } from "./read-only.ts";
+import { readOnly, type TypedCallReadOnlyFunctionParameters } from "./read-only.ts";
 
 const sampleTokenAbi = {
   functions: [
@@ -103,10 +101,7 @@ const sampleTokenAbi = {
   non_fungible_tokens: [],
 } as const satisfies ClarityAbi;
 
-describe("typedCallReadFunction", () => {
-  const logger = createLogger({ level: 0 });
-  const context: DatasourceStacksApiContext = { logger };
-
+describe("readOnly", () => {
   it("calls 0-argument read-only function and decodes response correctly", async () => {
     const mockCallRead = vi.fn().mockReturnValue(
       Effect.succeed({
@@ -116,7 +111,7 @@ describe("typedCallReadFunction", () => {
     );
 
     const result = await Effect.runPromise(
-      typedCallReadFunction(context, mockCallRead, {
+      readOnly(mockCallRead, {
         abi: sampleTokenAbi,
         contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
         contractName: "test-token",
@@ -127,7 +122,6 @@ describe("typedCallReadFunction", () => {
     expect(result).toStrictEqual({ ok: "TestToken" });
 
     expect(mockCallRead).toHaveBeenCalledWith(
-      context,
       "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
       "get-name",
       {
@@ -147,7 +141,7 @@ describe("typedCallReadFunction", () => {
     );
 
     const result = await Effect.runPromise(
-      typedCallReadFunction(context, mockCallRead, {
+      readOnly(mockCallRead, {
         abi: sampleTokenAbi,
         contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
         contractName: "test-token",
@@ -160,7 +154,6 @@ describe("typedCallReadFunction", () => {
     expect(result).toStrictEqual({ ok: 8n });
 
     expect(mockCallRead).toHaveBeenCalledWith(
-      context,
       "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
       "get-decimals",
       {
@@ -180,7 +173,7 @@ describe("typedCallReadFunction", () => {
     );
 
     const result = await Effect.runPromise(
-      typedCallReadFunction(context, mockCallRead, {
+      readOnly(mockCallRead, {
         abi: sampleTokenAbi,
         contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
         contractName: "test-token",
@@ -192,7 +185,7 @@ describe("typedCallReadFunction", () => {
     expect(result).toStrictEqual({ ok: 5000000n });
 
     expect(mockCallRead).toHaveBeenCalledOnce();
-    const passedOptions = mockCallRead.mock.calls[0]?.[3];
+    const passedOptions = mockCallRead.mock.calls[0]?.[2];
     expect(passedOptions?.args).toHaveLength(1);
     expect(passedOptions?.args?.[0]).toBeTypeOf("string");
     expect(passedOptions?.args?.[0].startsWith("0x")).toBe(true);
@@ -208,7 +201,7 @@ describe("typedCallReadFunction", () => {
     );
 
     const result = await Effect.runPromise(
-      typedCallReadFunction(context, mockCallRead, {
+      readOnly(mockCallRead, {
         abi: sampleTokenAbi,
         contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
         contractName: "test-token",
@@ -225,7 +218,7 @@ describe("typedCallReadFunction", () => {
 
     expect(result).toHaveProperty("ok");
 
-    const passedOptions = mockCallRead.mock.calls[0]?.[3];
+    const passedOptions = mockCallRead.mock.calls[0]?.[2];
     expect(passedOptions?.args).toHaveLength(2);
   });
 
@@ -240,9 +233,7 @@ describe("typedCallReadFunction", () => {
       functionArgs: [100n, "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
     };
 
-    const exit = await Effect.runPromiseExit(
-      typedCallReadFunction(context, mockCallRead, invalidParams),
-    );
+    const exit = await Effect.runPromiseExit(readOnly(mockCallRead, invalidParams));
 
     expect(exit).toBeTaggedError(
       new StacksApiUnexpectedError({
@@ -265,9 +256,7 @@ describe("typedCallReadFunction", () => {
       functionArgs: [],
     };
 
-    const exit = await Effect.runPromiseExit(
-      typedCallReadFunction(context, mockCallRead, invalidParams),
-    );
+    const exit = await Effect.runPromiseExit(readOnly(mockCallRead, invalidParams));
 
     expect(exit).toBeTaggedError(
       new StacksApiUnexpectedError({
@@ -288,7 +277,7 @@ describe("typedCallReadFunction", () => {
     );
 
     const exit = await Effect.runPromiseExit(
-      typedCallReadFunction(context, mockCallRead, {
+      readOnly(mockCallRead, {
         abi: sampleTokenAbi,
         contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
         contractName: "test-token",
@@ -308,15 +297,14 @@ describe("typedCallReadFunction", () => {
   it("propagates HTTP/API errors from datasource call", async () => {
     const apiError = new StacksApiResponseError({
       status: 500,
-      statusText: "Internal Server Error",
       path: "/v2/contracts/call-read/...",
-      errorData: null,
+      body: null,
     });
 
     const mockCallRead = vi.fn().mockReturnValue(Effect.fail(apiError));
 
     const exit = await Effect.runPromiseExit(
-      typedCallReadFunction(context, mockCallRead, {
+      readOnly(mockCallRead, {
         abi: sampleTokenAbi,
         contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
         contractName: "test-token",

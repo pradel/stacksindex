@@ -1,44 +1,34 @@
 import type { paths } from "@stacks/blockchain-api-client";
-import type { ClarityAbi } from "clarity-abitype";
 import { Context, Duration, Effect, Layer, Match, Predicate, Schedule } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
+  type HttpClientError,
   HttpClientRequest,
   type HttpClientResponse,
   type UrlParams,
 } from "effect/http";
 import { RateLimiter } from "effect/persistence";
 
-import { startClock } from "../../lib/timer.ts";
-import type { Logger } from "../../logger/index.ts";
 import {
   type StacksApiError,
   StacksApiParseError,
-  StacksApiRateLimitError,
   StacksApiResponseError,
+  StacksApiTransportError,
   StacksApiUnexpectedError,
 } from "./errors.ts";
-import {
-  type ContractFunctionArgs,
-  type ContractFunctionName,
-  type ContractFunctionReturnType,
-  typedCallReadFunction,
-  type TypedCallReadOnlyFunctionParameters,
-  type TypedCallReadOnlyFunctionReturnType,
-  type UntypedCallReadOnlyFunctionParameters,
-} from "./read-only.ts";
+
+export { readOnly } from "./read-only.ts";
 
 export type {
+  CallReadFunction,
   ContractFunctionArgs,
   ContractFunctionName,
   ContractFunctionReturnType,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,
   UntypedCallReadOnlyFunctionParameters,
-};
-
-export { typedCallReadFunction };
+} from "./read-only.ts";
 
 export type BlockApiResponse =
   paths["/extended/v2/blocks/{height_or_hash}"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -147,410 +137,24 @@ export type NonFungibleTokenAssetEvent = Extract<
   { event_type: "non_fungible_token_asset" }
 >;
 
-export interface DatasourceStacksApiContext {
-  logger?: Logger;
-  api?: {
-    baseUrl?: string;
-    apiKey?: string;
-  };
-}
-
 export interface CallReadResponse {
   okay: boolean;
   result: string;
   cause?: string;
 }
 
-interface RequestOptions {
-  path: string;
-  method: "GET" | "POST";
-  query?: UrlParams.Input | undefined;
-  body?: unknown;
+export interface CallReadBody {
+  sender: string;
+  arguments: string[];
 }
 
-const MAX_RETRIES = 3;
-
-function statusTextFor(status: number): string {
-  return Match.value(status).pipe(
-    Match.when(400, () => "Bad Request"),
-    Match.when(404, () => "Not Found"),
-    Match.when(500, () => "Internal Server Error"),
-    Match.orElse(() => String(status)),
-  );
-}
-
-function readErrorData(response: HttpClientResponse.HttpClientResponse): Effect.Effect<unknown> {
-  return response.text.pipe(
-    Effect.map((text) => {
-      try {
-        return JSON.parse(text);
-      } catch {
-        return text;
-      }
-    }),
-    Effect.catch(() => Effect.succeed(undefined)),
-  );
-}
-
-const exponentialBackoff: Schedule.Schedule<Duration.Duration, StacksApiError> =
-  Schedule.exponential(Duration.millis(500));
-
-const retrySchedule = exponentialBackoff.pipe(
-  Schedule.jittered,
-  Schedule.modifyDelay(({ duration, input }) =>
-    Predicate.isTagged(input, "StacksApiRateLimitError")
-      ? Effect.succeed(Duration.seconds(input.retryAfter))
-      : Effect.succeed(duration),
-  ),
-);
-
-function isRetryable(error: StacksApiError): boolean {
-  return (
-    Predicate.isTagged(error, "StacksApiRateLimitError") ||
-    (Predicate.isTagged(error, "StacksApiResponseError") &&
-      (error.status === 408 ||
-        error.status === 500 ||
-        error.status === 502 ||
-        error.status === 503 ||
-        error.status === 504))
-  );
-}
-
-const DEFAULT_RETRY_AFTER_SECONDS = 1;
-
-const MAX_RETRY_AFTER_SECONDS = 300;
-
-/**
- * Parses a `Retry-After` header, which may be seconds or an HTTP date.
- * Falls back to one second when missing, invalid, or already past.
- */
-function parseRetryAfter(header: string | undefined, now: number = Date.now()): number {
-  const value = header?.trim();
-
-  if (!value) {
-    return DEFAULT_RETRY_AFTER_SECONDS;
-  }
-
-  const seconds = Number(value);
-
-  if (Number.isFinite(seconds) && seconds >= 0) {
-    return Math.min(seconds, MAX_RETRY_AFTER_SECONDS);
-  }
-
-  const date = Date.parse(value);
-
-  if (!Number.isNaN(date)) {
-    const secondsUntilRetry = Math.ceil((date - now) / 1000);
-
-    if (secondsUntilRetry > 0) {
-      return Math.min(secondsUntilRetry, MAX_RETRY_AFTER_SECONDS);
-    }
-  }
-
-  return DEFAULT_RETRY_AFTER_SECONDS;
-}
-
-export const datasourceStacksApi = {
-  _request<ResponseT>(
-    context: DatasourceStacksApiContext,
-    options: RequestOptions,
-  ): Effect.Effect<ResponseT, StacksApiError, HttpClient.HttpClient> {
-    const { path, method } = options;
-    const baseUrl = context.api?.baseUrl ?? "https://api.hiro.so";
-    const url = `${baseUrl}${path}`;
-    const apiKey = context.api?.apiKey;
-    const headers: Record<string, string> = {};
-    const requestClock = startClock();
-
-    if (apiKey !== undefined) {
-      headers["x-api-key"] = apiKey;
-    }
-
-    const attempt = Effect.gen(function* singleAttempt() {
-      const client = yield* HttpClient.HttpClient;
-
-      const baseRequest = HttpClientRequest.make(method)(url, {
-        urlParams: options.query,
-        headers,
-        acceptJson: true,
-      });
-
-      const request =
-        options.body === undefined
-          ? baseRequest
-          : yield* HttpClientRequest.bodyJson(baseRequest, options.body).pipe(
-              Effect.mapError(
-                (err) =>
-                  new StacksApiUnexpectedError({
-                    message: "Failed to encode HTTP request body",
-                    cause: err,
-                    path,
-                  }),
-              ),
-            );
-
-      const response = yield* client.execute(request).pipe(
-        Effect.mapError(
-          (err) =>
-            new StacksApiUnexpectedError({
-              message: "Failed to execute HTTP request",
-              cause: err,
-              path,
-            }),
-        ),
-      );
-
-      yield* Effect.annotateCurrentSpan({ "http.response.status_code": response.status });
-
-      context.logger?.debug({
-        service: "stacksApi",
-        msg: "Stacks API request",
-        method,
-        path,
-        status: response.status,
-        duration: requestClock(),
-      });
-
-      if (response.status === 429) {
-        const retryAfter = parseRetryAfter(response.headers["retry-after"]);
-
-        return yield* new StacksApiRateLimitError({ path, retryAfter });
-      }
-
-      if (response.status < 200 || response.status >= 300) {
-        const errorData = yield* readErrorData(response);
-
-        return yield* new StacksApiResponseError({
-          status: response.status,
-          path,
-          statusText: statusTextFor(response.status),
-          errorData,
-        });
-      }
-
-      const text = yield* response.text.pipe(
-        Effect.mapError(
-          (err) =>
-            new StacksApiUnexpectedError({
-              message: "Failed to read HTTP response body",
-              cause: err,
-              path,
-            }),
-        ),
-      );
-
-      return yield* Effect.try({
-        try: () =>
-          // SAFETY: The endpoint's JSON shape is fixed by the same API contract that selected ResponseT.
-          JSON.parse(text) as ResponseT,
-        catch: (err) =>
-          new StacksApiParseError({ message: "Failed to parse JSON response", cause: err }),
-      });
-    }).pipe(
-      Effect.withSpan("StacksApi.request", {
-        attributes: { "http.request.method": method, "url.path": path },
-      }),
-      Effect.tapError((error) =>
-        Effect.sync(() => {
-          context.logger?.debug({
-            service: "stacksApi",
-            msg: "Stacks API request failed",
-            method,
-            path,
-            error: error instanceof Error ? error : new Error(String(error)),
-          });
-        }),
-      ),
-    );
-
-    return attempt.pipe(
-      Effect.retry({
-        schedule: retrySchedule,
-        times: MAX_RETRIES,
-        while: isRetryable,
-      }),
-    );
-  },
-
-  getBlock(
-    context: DatasourceStacksApiContext,
-    heightOrHash: string | number,
-    options?: GetBlockQuery,
-  ): Effect.Effect<BlockApiResponse, StacksApiError, HttpClient.HttpClient> {
-    return this._request<BlockApiResponse>(context, {
-      path: `/extended/v2/blocks/${heightOrHash}`,
-      method: "GET",
-      query: options,
-    });
-  },
-
-  getBlockTransactions(
-    context: DatasourceStacksApiContext,
-    heightOrHash: string | number,
-    options: GetBlockTransactionsQuery = {},
-  ): Effect.Effect<BlockTransactionsApiResponse, StacksApiError, HttpClient.HttpClient> {
-    return this._request<BlockTransactionsApiResponse>(context, {
-      path: `/extended/v3/blocks/${heightOrHash}/transactions`,
-      method: "GET",
-      query: options,
-    });
-  },
-
-  getTransaction(
-    context: DatasourceStacksApiContext,
-    txId: string,
-    options: GetTransactionQuery = {},
-  ): Effect.Effect<TransactionApiResponse, StacksApiError, HttpClient.HttpClient> {
-    const { include } = options;
-
-    const query =
-      include !== null && include !== undefined && include.length > 0
-        ? { include: include.join(",") }
-        : undefined;
-
-    return this._request<TransactionApiResponse>(context, {
-      path: `/extended/v3/transactions/${txId}`,
-      method: "GET",
-      query,
-    });
-  },
-
-  getV1Transaction(
-    context: DatasourceStacksApiContext,
-    txId: string,
-  ): Effect.Effect<V1TransactionApiResponse, StacksApiError, HttpClient.HttpClient> {
-    return this._request<V1TransactionApiResponse>(context, {
-      path: `/extended/v1/tx/${txId}`,
-      method: "GET",
-    });
-  },
-
-  getTransactionsBatch(
-    context: DatasourceStacksApiContext,
-    txIds: string[],
-  ): Effect.Effect<TransactionsBatchResponse, StacksApiError, HttpClient.HttpClient> {
-    if (txIds.length === 0) {
-      return Effect.succeed({ results: [] });
-    }
-
-    return this._request<TransactionsBatchResponse>(context, {
-      path: "/extended/v3/transactions/batch",
-      method: "GET",
-      query: { tx_id: txIds },
-    });
-  },
-
-  getTransactionEvents(
-    context: DatasourceStacksApiContext,
-    txId: string,
-    options: GetTransactionEventsQuery = {},
-  ): Effect.Effect<TransactionEventsResponse, StacksApiError, HttpClient.HttpClient> {
-    const { limit = 50, cursor, ...rest } = options;
-    const path = `/extended/v3/transactions/${txId}/events`;
-
-    return this._request<TransactionEventsResponse>(context, {
-      path,
-      method: "GET",
-      query: { limit, cursor, ...rest },
-    });
-  },
-
-  getPrincipalTransactions(
-    context: DatasourceStacksApiContext,
-    principal: string,
-    options: GetPrincipalTransactionsQuery = {},
-  ): Effect.Effect<PrincipalTransactionsResponse, StacksApiError, HttpClient.HttpClient> {
-    const { limit = 50, cursor, ...rest } = options;
-    const path = `/extended/v3/principals/${principal}/transactions`;
-
-    return this._request<PrincipalTransactionsResponse>(context, {
-      path,
-      method: "GET",
-      query: { limit, cursor, ...rest },
-    });
-  },
-
-  getContract(
-    context: DatasourceStacksApiContext,
-    contractId: string,
-  ): Effect.Effect<ContractApiResponse, StacksApiError, HttpClient.HttpClient> {
-    const path = `/extended/v3/smart-contracts/${contractId}`;
-
-    return this._request<ContractApiResponse>(context, {
-      path,
-      method: "GET",
-    });
-  },
-
-  getContractLogs(
-    context: DatasourceStacksApiContext,
-    contractId: string,
-    options: GetContractLogsQuery = {},
-  ): Effect.Effect<ContractLogsResponse, StacksApiError, HttpClient.HttpClient> {
-    const { limit = 100, cursor, ...rest } = options;
-    const path = `/extended/v2/smart-contracts/${contractId}/logs`;
-
-    return this._request<ContractLogsResponse>(context, {
-      path,
-      method: "GET",
-      query: { limit, cursor, ...rest },
-    });
-  },
-
-  getStatus(
-    context: DatasourceStacksApiContext,
-  ): Effect.Effect<ApiStatusResponse, StacksApiError, HttpClient.HttpClient> {
-    return this._request<ApiStatusResponse>(context, {
-      path: "/extended",
-      method: "GET",
-    });
-  },
-
-  callReadFunction(
-    context: DatasourceStacksApiContext,
-    contractId: string,
-    functionName: string,
-    options: { args?: string[]; sender?: string; tip?: number } = {},
-  ): Effect.Effect<CallReadResponse, StacksApiError, HttpClient.HttpClient> {
-    const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip } = options;
-    const [contractAddress, contractName] = contractId.split(".");
-
-    const path =
-      contractAddress && contractName
-        ? `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`
-        : `/v2/contracts/call-read/${contractId}/${functionName}`;
-
-    return this._request<CallReadResponse>(context, {
-      path,
-      method: "POST",
-      query: tip === undefined ? undefined : { tip },
-      body: {
-        sender,
-        arguments: args,
-      },
-    });
-  },
-
-  typedCallReadFunction<
-    const TAbi extends ClarityAbi | readonly unknown[],
-    TFunctionName extends ContractFunctionName<TAbi, "read_only">,
-    const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
-  >(
-    context: DatasourceStacksApiContext,
-    parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
-  ): Effect.Effect<
-    TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>,
-    StacksApiError,
-    HttpClient.HttpClient
-  > {
-    return typedCallReadFunction<TAbi, TFunctionName, TArgs, HttpClient.HttpClient>(
-      context,
-      (ctx, contractId, functionName, options) =>
-        this.callReadFunction(ctx, contractId, functionName, options),
-      parameters,
-    );
-  },
-};
+export type StacksApiErrorBody =
+  | string
+  | number
+  | boolean
+  | null
+  | StacksApiErrorBody[]
+  | { [key: string]: StacksApiErrorBody };
 
 export interface StacksClientRateLimit {
   /** Maximum number of requests allowed per `window`. */
@@ -559,18 +163,12 @@ export interface StacksClientRateLimit {
   readonly window: Duration.Input;
 }
 
-export interface StacksClientOptions {
+export interface StacksClientConfig {
   readonly baseUrl: string;
   readonly apiKey?: string | undefined;
   /** Initial request budget; the limiter adapts to `x-ratelimit-*` headers and 429 feedback. */
   readonly rateLimit?: StacksClientRateLimit | undefined;
-  /** Optional logger for per-request debug logs. */
-  readonly logger?: Logger | undefined;
 }
-
-export class StacksClientConfig extends Context.Service<StacksClientConfig, StacksClientOptions>()(
-  "stacksindex/datasources/StacksClientConfig",
-) {}
 
 export interface StacksClientService {
   readonly getStatus: () => Effect.Effect<ApiStatusResponse, StacksApiError>;
@@ -612,78 +210,304 @@ export interface StacksClientService {
   ) => Effect.Effect<CallReadResponse, StacksApiError>;
 }
 
+const MAX_RETRIES = 3;
+
+const MAX_RETRY_AFTER_SECONDS = 300;
+
 const DEFAULT_RATE_LIMIT: StacksClientRateLimit = {
   limit: 50,
   window: Duration.seconds(1),
 };
 
+const DEFAULT_SENDER = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
+
+/**
+ * Parses a `Retry-After` header, which may be seconds or an HTTP date.
+ * Returns `undefined` when the header is missing or invalid so the
+ * exponential backoff applies.
+ */
+function parseRetryAfter(header: string | undefined): Duration.Duration | undefined {
+  const value = header?.trim();
+
+  if (!value) {
+    return undefined;
+  }
+
+  const seconds = Number(value);
+
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Duration.seconds(Math.min(seconds, MAX_RETRY_AFTER_SECONDS));
+  }
+
+  const date = Date.parse(value);
+
+  if (!Number.isNaN(date)) {
+    const secondsUntilRetry = Math.ceil((date - Date.now()) / 1000);
+
+    if (secondsUntilRetry > 0) {
+      return Duration.seconds(Math.min(secondsUntilRetry, MAX_RETRY_AFTER_SECONDS));
+    }
+  }
+
+  return undefined;
+}
+
+function retryAfterFromError(
+  error: HttpClientError.HttpClientError | RateLimiter.RateLimiterError,
+): Duration.Duration | undefined {
+  if (!Predicate.isTagged(error, "HttpClientError")) {
+    return undefined;
+  }
+
+  if (!Predicate.isTagged(error.reason, "StatusCodeError")) {
+    return undefined;
+  }
+
+  return parseRetryAfter(error.reason.response.headers["retry-after"]);
+}
+
+const exponentialBackoff: Schedule.Schedule<
+  Duration.Duration,
+  HttpClientError.HttpClientError | RateLimiter.RateLimiterError
+> = Schedule.exponential(Duration.millis(500));
+
+const retrySchedule = exponentialBackoff.pipe(
+  Schedule.jittered,
+  Schedule.modifyDelay(({ duration, input }) => {
+    const retryAfter = retryAfterFromError(input);
+
+    return Effect.succeed(retryAfter ?? duration);
+  }),
+);
+
+function parseBodyText(text: string): StacksApiErrorBody {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function readErrorBody(
+  response: HttpClientResponse.HttpClientResponse,
+): Effect.Effect<StacksApiErrorBody | undefined> {
+  return response.text.pipe(
+    Effect.map(parseBodyText),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
+}
+
+function toStacksApiError(
+  error: HttpClientError.HttpClientError,
+  path: string,
+): Effect.Effect<StacksApiError> {
+  return Match.value(error.reason).pipe(
+    Match.tag("StatusCodeError", (reason) =>
+      readErrorBody(reason.response).pipe(
+        Effect.map(
+          (body) => new StacksApiResponseError({ status: reason.response.status, path, body }),
+        ),
+      ),
+    ),
+    Match.tag("TransportError", () =>
+      Effect.succeed(new StacksApiTransportError({ path, cause: error })),
+    ),
+    Match.tag("DecodeError", () =>
+      Effect.succeed(
+        new StacksApiParseError({
+          path,
+          message: "Failed to parse JSON response",
+          cause: error,
+        }),
+      ),
+    ),
+    Match.tag("EmptyBodyError", () =>
+      Effect.succeed(
+        new StacksApiParseError({
+          path,
+          message: "Response body is empty",
+          cause: error,
+        }),
+      ),
+    ),
+    Match.orElse(() =>
+      Effect.succeed(new StacksApiUnexpectedError({ path, message: error.message, cause: error })),
+    ),
+  );
+}
+
+/**
+ * Executes a request and trusts the API contract for the response shape.
+ * No runtime decoding is performed, keeping the hot path allocation-free.
+ */
+function execute<A>(
+  client: HttpClient.HttpClient,
+  request: HttpClientRequest.HttpClientRequest,
+  path: string,
+): Effect.Effect<A, StacksApiError> {
+  return client.execute(request).pipe(
+    Effect.flatMap((response) => response.json),
+    Effect.map(
+      (json) =>
+        // SAFETY: The endpoint's JSON shape is fixed by the API contract that selected A.
+        json as A,
+    ),
+    Effect.catch((error) => Effect.flatMap(toStacksApiError(error, path), Effect.fail)),
+    Effect.withSpan("StacksApi.request", {
+      attributes: { "http.request.method": request.method, "url.path": path },
+    }),
+    Effect.annotateLogs({ "stacksapi.path": path, "http.request.method": request.method }),
+  );
+}
+
+function makeHttpClient(
+  config: StacksClientConfig,
+): Effect.Effect<HttpClient.HttpClient, never, HttpClient.HttpClient | RateLimiter.RateLimiter> {
+  return Effect.gen(function* () {
+    const baseClient = yield* HttpClient.HttpClient;
+    const limiter = yield* RateLimiter.RateLimiter;
+    const rateLimit = config.rateLimit ?? DEFAULT_RATE_LIMIT;
+
+    const rateLimited = baseClient.pipe(
+      // Throttle proactively and learn the budget from `x-ratelimit-*` headers.
+      HttpClient.withRateLimiter({
+        limiter,
+        key: "stacksindex/datasources/StacksClient",
+        window: rateLimit.window,
+        limit: rateLimit.limit,
+        times: 0,
+      }),
+      // Turn non-2xx responses into errors so a single retry policy handles them.
+      HttpClient.filterStatusOk,
+      // Retry transient transport and HTTP failures with `Retry-After`-aware backoff.
+      HttpClient.retryTransient({
+        retryOn: "errors-only",
+        times: MAX_RETRIES,
+        schedule: retrySchedule,
+      }),
+    );
+
+    // SAFETY: `toStacksApiError` maps every HTTP and rate limiter failure to `StacksApiError`.
+    return rateLimited as HttpClient.HttpClient;
+  });
+}
+
 export class StacksClient extends Context.Service<StacksClient, StacksClientService>()(
   "stacksindex/datasources/StacksClient",
 ) {
-  /** Composable client layer requiring a caller-provided transport and rate limiter. */
-  static readonly baseLayer = Layer.effect(
-    StacksClient,
-    Effect.gen(function* layer() {
-      const config = yield* StacksClientConfig;
-      const baseClient = yield* HttpClient.HttpClient;
-      const limiter = yield* RateLimiter.RateLimiter;
-      const rateLimit = config.rateLimit ?? DEFAULT_RATE_LIMIT;
+  /** Raw constructor; provide `HttpClient` and `RateLimiter`, e.g. mocks in tests. */
+  static readonly make = (
+    config: StacksClientConfig,
+  ): Effect.Effect<StacksClientService, never, HttpClient.HttpClient | RateLimiter.RateLimiter> =>
+    Effect.gen(function* () {
+      const client = yield* makeHttpClient(config);
+      const headers: Record<string, string> = {};
 
-      const rateLimited = baseClient.pipe(
-        HttpClient.withRateLimiter({
-          limiter,
-          key: "stacksindex/datasources/StacksClient",
-          window: rateLimit.window,
-          limit: rateLimit.limit,
-          times: 0,
-        }),
-      );
+      if (config.apiKey !== undefined) {
+        headers["x-api-key"] = config.apiKey;
+      }
 
-      // SAFETY: `_request` maps both `HttpClientError` and `RateLimiterError` failures to `StacksApiError`.
-      const httpClient = rateLimited as HttpClient.HttpClient;
+      const get = <A>(path: string, query?: UrlParams.Input) =>
+        execute<A>(
+          client,
+          HttpClientRequest.get(`${config.baseUrl}${path}`, {
+            urlParams: query,
+            headers,
+            acceptJson: true,
+          }),
+          path,
+        );
 
-      const provide = <A>(
-        effect: Effect.Effect<A, StacksApiError, HttpClient.HttpClient>,
-      ): Effect.Effect<A, StacksApiError> =>
-        Effect.provideService(effect, HttpClient.HttpClient, httpClient);
+      const post = <A>(path: string, query: UrlParams.Input | undefined, body: CallReadBody) =>
+        Effect.gen(function* () {
+          const request = yield* HttpClientRequest.bodyJson(
+            HttpClientRequest.post(`${config.baseUrl}${path}`, {
+              urlParams: query,
+              headers,
+              acceptJson: true,
+            }),
+            body,
+          ).pipe(Effect.mapError((cause) => new StacksApiTransportError({ path, cause })));
 
-      const ctx: DatasourceStacksApiContext = {
-        logger: config.logger,
-        api: { baseUrl: config.baseUrl, apiKey: config.apiKey },
-      };
+          return yield* execute<A>(client, request, path);
+        });
 
-      const service: StacksClientService = {
-        getStatus: () => provide(datasourceStacksApi.getStatus(ctx)),
+      return StacksClient.of({
+        getStatus: () => get<ApiStatusResponse>("/extended"),
         getBlock: (heightOrHash, options) =>
-          provide(datasourceStacksApi.getBlock(ctx, heightOrHash, options)),
+          get<BlockApiResponse>(`/extended/v2/blocks/${heightOrHash}`, options),
         getBlockTransactions: (heightOrHash, options) =>
-          provide(datasourceStacksApi.getBlockTransactions(ctx, heightOrHash, options)),
-        getTransaction: (txId, options) =>
-          provide(datasourceStacksApi.getTransaction(ctx, txId, options)),
-        getV1Transaction: (txId) => provide(datasourceStacksApi.getV1Transaction(ctx, txId)),
+          get<BlockTransactionsApiResponse>(
+            `/extended/v3/blocks/${heightOrHash}/transactions`,
+            options,
+          ),
+        getTransaction: (txId, options = {}) => {
+          const { include } = options;
+
+          const query =
+            include !== null && include !== undefined && include.length > 0
+              ? { include: include.join(",") }
+              : undefined;
+
+          return get<TransactionApiResponse>(`/extended/v3/transactions/${txId}`, query);
+        },
+        getV1Transaction: (txId) => get<V1TransactionApiResponse>(`/extended/v1/tx/${txId}`),
         getTransactionsBatch: (txIds) =>
-          provide(datasourceStacksApi.getTransactionsBatch(ctx, txIds)),
-        getTransactionEvents: (txId, options) =>
-          provide(datasourceStacksApi.getTransactionEvents(ctx, txId, options)),
-        getPrincipalTransactions: (principal, options) =>
-          provide(datasourceStacksApi.getPrincipalTransactions(ctx, principal, options)),
-        getContract: (contractId) => provide(datasourceStacksApi.getContract(ctx, contractId)),
-        getContractLogs: (contractId, options) =>
-          provide(datasourceStacksApi.getContractLogs(ctx, contractId, options)),
-        callReadFunction: (contractId, functionName, options) =>
-          provide(datasourceStacksApi.callReadFunction(ctx, contractId, functionName, options)),
-      };
+          txIds.length === 0
+            ? Effect.succeed<TransactionsBatchResponse>({ results: [] })
+            : get<TransactionsBatchResponse>("/extended/v3/transactions/batch", {
+                tx_id: txIds,
+              }),
+        getTransactionEvents: (txId, options = {}) => {
+          const { limit = 50, cursor, ...rest } = options;
 
-      return StacksClient.of(service);
-    }),
-  );
+          return get<TransactionEventsResponse>(`/extended/v3/transactions/${txId}/events`, {
+            limit,
+            cursor,
+            ...rest,
+          });
+        },
+        getPrincipalTransactions: (principal, options = {}) => {
+          const { limit = 50, cursor, ...rest } = options;
 
-  /** Self-contained client layer using the fetch transport and an in-memory rate limiter. */
-  static readonly layer = (options: StacksClientOptions): Layer.Layer<StacksClient> =>
-    StacksClient.baseLayer.pipe(
+          return get<PrincipalTransactionsResponse>(
+            `/extended/v3/principals/${principal}/transactions`,
+            { limit, cursor, ...rest },
+          );
+        },
+        getContract: (contractId) =>
+          get<ContractApiResponse>(`/extended/v3/smart-contracts/${contractId}`),
+        getContractLogs: (contractId, options = {}) => {
+          const { limit = 100, cursor, ...rest } = options;
+
+          return get<ContractLogsResponse>(`/extended/v2/smart-contracts/${contractId}/logs`, {
+            limit,
+            cursor,
+            ...rest,
+          });
+        },
+        callReadFunction: (contractId, functionName, options = {}) => {
+          const { args = [], sender = DEFAULT_SENDER, tip } = options;
+          const [contractAddress, contractName] = contractId.split(".");
+
+          const path =
+            contractAddress && contractName
+              ? `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`
+              : `/v2/contracts/call-read/${contractId}/${functionName}`;
+
+          return post<CallReadResponse>(path, tip === undefined ? undefined : { tip }, {
+            sender,
+            arguments: args,
+          });
+        },
+      });
+    });
+
+  /** Self-contained layer using the fetch transport and an in-memory rate limiter. */
+  static readonly layer = (config: StacksClientConfig): Layer.Layer<StacksClient> =>
+    Layer.effect(StacksClient, StacksClient.make(config)).pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.succeed(StacksClientConfig, options),
           FetchHttpClient.layer,
           RateLimiter.layer.pipe(Layer.provide(RateLimiter.layerStoreMemory)),
         ),

@@ -4,19 +4,13 @@ import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } fr
 import { RateLimiter } from "effect/persistence";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { createLogger } from "../../logger/index.ts";
 import {
+  type StacksApiError,
   StacksApiParseError,
-  StacksApiRateLimitError,
   StacksApiResponseError,
-  StacksApiUnexpectedError,
+  StacksApiTransportError,
 } from "./errors.ts";
-import {
-  datasourceStacksApi,
-  StacksClient,
-  StacksClientConfig,
-  type StacksClientOptions,
-} from "./index.ts";
+import { StacksClient, type StacksClientConfig, type StacksClientService } from "./index.ts";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -80,31 +74,42 @@ const httpClient = HttpClient.make((request) =>
   }),
 );
 
-const testStacksClientLayer = (options: StacksClientOptions) =>
-  StacksClient.baseLayer.pipe(
+const testStacksClientLayer = (config: StacksClientConfig) =>
+  Layer.effect(StacksClient, StacksClient.make(config)).pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.succeed(StacksClientConfig, options),
         Layer.succeed(HttpClient.HttpClient, httpClient),
         RateLimiter.layer.pipe(Layer.provide(RateLimiter.layerStoreMemory)),
       ),
     ),
   );
 
-const context = {
-  logger: createLogger({ level: 0 }),
-};
+const context: StacksClientConfig = { baseUrl: "https://api.hiro.so" };
 
-const runRequest = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) =>
-  Effect.runPromise(effect.pipe(Effect.provideService(HttpClient.HttpClient, httpClient)));
+const withClient = <A>(
+  f: (client: StacksClientService) => Effect.Effect<A, StacksApiError>,
+  config: StacksClientConfig = context,
+) =>
+  Effect.gen(function* () {
+    const client = yield* StacksClient;
 
-const runRequestExit = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) =>
-  Effect.runPromiseExit(effect.pipe(Effect.provideService(HttpClient.HttpClient, httpClient)));
+    return yield* f(client);
+  }).pipe(Effect.provide(testStacksClientLayer(config)));
+
+const runRequest = <A>(
+  f: (client: StacksClientService) => Effect.Effect<A, StacksApiError>,
+  config: StacksClientConfig = context,
+) => Effect.runPromise(withClient(f, config));
+
+const runRequestExit = <A>(
+  f: (client: StacksClientService) => Effect.Effect<A, StacksApiError>,
+  config: StacksClientConfig = context,
+) => Effect.runPromiseExit(withClient(f, config));
 
 const runStacksClient = <A, E>(
   effect: Effect.Effect<A, E, StacksClient>,
-  options: StacksClientOptions = { baseUrl: "https://api.hiro.so" },
-) => Effect.runPromise(effect.pipe(Effect.provide(testStacksClientLayer(options))));
+  config: StacksClientConfig = context,
+) => Effect.runPromise(effect.pipe(Effect.provide(testStacksClientLayer(config))));
 
 describe("aPI DataSource", () => {
   beforeEach(() => {
@@ -119,7 +124,7 @@ describe("aPI DataSource", () => {
     test("returns data on 200", async () => {
       mockHandler.mockResolvedValue(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const result = await runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const result = await runRequest((client) => client.getTransaction("0xabc123"));
 
       expect(result).toStrictEqual({ hash: "0xabc123", block_height: 123_456 });
     });
@@ -127,14 +132,13 @@ describe("aPI DataSource", () => {
     test("returns StacksApiResponseError on 404", async () => {
       mockHandler.mockResolvedValue(jsonResponse({ error: "Not found" }, 404));
 
-      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "404"));
+      const exit = await runRequestExit((client) => client.getTransaction("404"));
 
       expect(exit).toBeTaggedError(
         new StacksApiResponseError({
           status: 404,
-          statusText: "Not Found",
           path: "/extended/v3/transactions/404",
-          errorData: { error: "Not found" },
+          body: { error: "Not found" },
         }),
       );
     });
@@ -142,14 +146,13 @@ describe("aPI DataSource", () => {
     test("returns StacksApiResponseError on 500", async () => {
       mockHandler.mockResolvedValue(jsonResponse({ error: "Bad request" }, 400));
 
-      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "500"));
+      const exit = await runRequestExit((client) => client.getTransaction("500"));
 
       expect(exit).toBeTaggedError(
         new StacksApiResponseError({
           status: 400,
-          statusText: "Bad Request",
           path: "/extended/v3/transactions/500",
-          errorData: { error: "Bad request" },
+          body: { error: "Bad request" },
         }),
       );
     });
@@ -163,10 +166,13 @@ describe("aPI DataSource", () => {
         }),
       );
 
-      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "parse-error"));
+      const exit = await runRequestExit((client) => client.getTransaction("parse-error"));
 
       expect(exit).toBeTaggedError(
-        new StacksApiParseError({ message: "Failed to parse JSON response" }),
+        new StacksApiParseError({
+          path: "/extended/v3/transactions/parse-error",
+          message: "Failed to parse JSON response",
+        }),
       );
     });
 
@@ -179,14 +185,13 @@ describe("aPI DataSource", () => {
         }),
       );
 
-      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "500"));
+      const exit = await runRequestExit((client) => client.getTransaction("500"));
 
       expect(exit).toBeTaggedError(
         new StacksApiResponseError({
           status: 400,
-          statusText: "Bad Request",
           path: "/extended/v3/transactions/500",
-          errorData: "Bad Request",
+          body: "Bad Request",
         }),
       );
     });
@@ -202,31 +207,35 @@ describe("aPI DataSource", () => {
 
       mockHandler.mockResolvedValue(mockBrokenResponse);
 
-      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "500"));
+      const exit = await runRequestExit((client) => client.getTransaction("500"));
 
       expect(exit).toBeTaggedError(
         new StacksApiResponseError({
           status: 400,
-          statusText: "Bad Request",
           path: "/extended/v3/transactions/500",
-          errorData: undefined,
+          body: undefined,
         }),
       );
     });
 
-    test("returns StacksApiUnexpectedError when request throws unexpected error", async () => {
+    test("retries transport errors and returns StacksApiTransportError", async () => {
+      vi.useFakeTimers();
       mockHandler.mockRejectedValue(new Error("Network error"));
 
-      const exit = await runRequestExit(
-        datasourceStacksApi.getTransaction(context, "network-error"),
-      );
+      const promise = runRequestExit((client) => client.getTransaction("network-error"));
+
+      await vi.runAllTimersAsync();
+
+      const exit = await promise;
 
       expect(exit).toBeTaggedError(
-        new StacksApiUnexpectedError({
-          message: "Failed to execute HTTP request",
+        new StacksApiTransportError({
           path: "/extended/v3/transactions/network-error",
         }),
       );
+      expect(mockHandler).toHaveBeenCalledTimes(4);
+
+      vi.useRealTimers();
     });
 
     test("retries on 429 after retryAfter seconds and eventually succeeds", async () => {
@@ -235,9 +244,9 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "2" }))
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest((client) => client.getTransaction("0xabc123"));
 
-      await vi.advanceTimersByTimeAsync(2000);
+      await vi.runAllTimersAsync();
 
       const result = await promise;
 
@@ -253,16 +262,17 @@ describe("aPI DataSource", () => {
         jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "1" }),
       );
 
-      const promise = runRequestExit(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequestExit((client) => client.getTransaction("0xabc123"));
 
-      await vi.advanceTimersByTimeAsync(4000);
+      await vi.runAllTimersAsync();
 
       const exit = await promise;
 
       expect(exit).toBeTaggedError(
-        new StacksApiRateLimitError({
+        new StacksApiResponseError({
+          status: 429,
           path: "/extended/v3/transactions/0xabc123",
-          retryAfter: 1,
+          body: { error: "Rate limited" },
         }),
       );
       expect(mockHandler).toHaveBeenCalledTimes(4);
@@ -276,9 +286,9 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "0" }))
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest((client) => client.getTransaction("0xabc123"));
 
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.runAllTimersAsync();
 
       const result = await promise;
 
@@ -297,9 +307,9 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest((client) => client.getTransaction("0xabc123"));
 
-      await vi.advanceTimersByTimeAsync(2000);
+      await vi.runAllTimersAsync();
 
       const result = await promise;
 
@@ -317,9 +327,9 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest((client) => client.getTransaction("0xabc123"));
 
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.runAllTimersAsync();
 
       const result = await promise;
 
@@ -338,9 +348,9 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest((client) => client.getTransaction("0xabc123"));
 
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.runAllTimersAsync();
 
       const result = await promise;
 
@@ -357,9 +367,9 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Bad gateway" }, 502))
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest((client) => client.getTransaction("0xabc123"));
 
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.runAllTimersAsync();
 
       const result = await promise;
 
@@ -377,18 +387,17 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Down" }, 503))
         .mockResolvedValueOnce(jsonResponse({ error: "Down" }, 503));
 
-      const promise = runRequestExit(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequestExit((client) => client.getTransaction("0xabc123"));
 
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.runAllTimersAsync();
 
       const exit = await promise;
 
       expect(exit).toBeTaggedError(
         new StacksApiResponseError({
           status: 503,
-          statusText: "503",
           path: "/extended/v3/transactions/0xabc123",
-          errorData: { error: "Down" },
+          body: { error: "Down" },
         }),
       );
       expect(mockHandler).toHaveBeenCalledTimes(4);
@@ -403,9 +412,9 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Gateway timeout" }, 504))
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest((client) => client.getTransaction("0xabc123"));
 
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.runAllTimersAsync();
 
       const result = await promise;
 
@@ -421,11 +430,11 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "1" }))
         .mockResolvedValueOnce(jsonResponse({ okay: true, result: "0x01" }));
 
-      const promise = runRequest(
-        datasourceStacksApi.callReadFunction(context, "SP123.contract", "my-function"),
+      const promise = runRequest((client) =>
+        client.callReadFunction("SP123.contract", "my-function"),
       );
 
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.runAllTimersAsync();
 
       const result = await promise;
 
@@ -444,9 +453,9 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest((client) => client.getTransaction("0xabc123"));
 
-      await vi.advanceTimersByTimeAsync(300_000);
+      await vi.runAllTimersAsync();
 
       const result = await promise;
 
@@ -456,30 +465,34 @@ describe("aPI DataSource", () => {
       vi.useRealTimers();
     });
 
-    test("returns StacksApiParseError for an empty 2xx body", async () => {
+    test("returns null for an empty 2xx body", async () => {
       mockHandler.mockResolvedValue(
         new Response("", { status: 200, headers: { "content-type": "application/json" } }),
       );
 
-      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const result = await runRequest((client) => client.getTransaction("0xabc123"));
 
-      expect(exit).toBeTaggedError(
-        new StacksApiParseError({ message: "Failed to parse JSON response" }),
-      );
+      expect(result).toBeNull();
     });
 
-    test("maps aborted requests to StacksApiUnexpectedError", async () => {
+    test("retries aborted requests and returns StacksApiTransportError", async () => {
+      vi.useFakeTimers();
       mockHandler.mockRejectedValue(new DOMException("The operation was aborted", "AbortError"));
 
-      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequestExit((client) => client.getTransaction("0xabc123"));
+
+      await vi.runAllTimersAsync();
+
+      const exit = await promise;
 
       expect(exit).toBeTaggedError(
-        new StacksApiUnexpectedError({
-          message: "Failed to execute HTTP request",
+        new StacksApiTransportError({
           path: "/extended/v3/transactions/0xabc123",
         }),
       );
-      expect(mockHandler).toHaveBeenCalledTimes(1);
+      expect(mockHandler).toHaveBeenCalledTimes(4);
+
+      vi.useRealTimers();
     });
   });
 
@@ -491,7 +504,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ hash: "0xabc123", height: 123_456 }));
       });
 
-      const result = await runRequest(datasourceStacksApi.getBlock(context, "0xabc123"));
+      const result = await runRequest((client) => client.getBlock("0xabc123"));
       expect(result).toStrictEqual({ hash: "0xabc123", height: 123_456 });
     });
 
@@ -502,7 +515,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ hash: "0xabc123", height: 123_456 }));
       });
 
-      const result = await runRequest(datasourceStacksApi.getBlock(context, 123_456));
+      const result = await runRequest((client) => client.getBlock(123_456));
       expect(result).toStrictEqual({ hash: "0xabc123", height: 123_456 });
     });
   });
@@ -534,8 +547,8 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockResponse));
       });
 
-      const result = await runRequest(
-        datasourceStacksApi.getBlockTransactions(context, "0xabc123", {
+      const result = await runRequest((client) =>
+        client.getBlockTransactions("0xabc123", {
           limit: 20,
           cursor: "100:0:0",
         }),
@@ -564,7 +577,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockResponse));
       });
 
-      const result = await runRequest(datasourceStacksApi.getBlockTransactions(context, 123_456));
+      const result = await runRequest((client) => client.getBlockTransactions(123_456));
 
       expect(result).toStrictEqual(mockResponse);
     });
@@ -587,7 +600,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockTx));
       });
 
-      const result = await runRequest(datasourceStacksApi.getTransaction(context, "0xtx123"));
+      const result = await runRequest((client) => client.getTransaction("0xtx123"));
 
       expect(result).toStrictEqual(mockTx);
     });
@@ -601,8 +614,8 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ tx_id: "0xtx123" }));
       });
 
-      const result = await runRequest(
-        datasourceStacksApi.getTransaction(context, "0xtx123", {
+      const result = await runRequest((client) =>
+        client.getTransaction("0xtx123", {
           include: ["result", "post_conditions"],
         }),
       );
@@ -629,7 +642,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockV1Tx));
       });
 
-      const result = await runRequest(datasourceStacksApi.getV1Transaction(context, "0xtx123"));
+      const result = await runRequest((client) => client.getV1Transaction("0xtx123"));
 
       expect(result).toStrictEqual(mockV1Tx);
     });
@@ -666,15 +679,13 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockResponse));
       });
 
-      const result = await runRequest(
-        datasourceStacksApi.getTransactionsBatch(context, ["0xtx1", "0xtx2"]),
-      );
+      const result = await runRequest((client) => client.getTransactionsBatch(["0xtx1", "0xtx2"]));
 
       expect(result).toStrictEqual(mockResponse);
     });
 
     test("returns empty results without a request when txIds is empty", async () => {
-      const result = await runRequest(datasourceStacksApi.getTransactionsBatch(context, []));
+      const result = await runRequest((client) => client.getTransactionsBatch([]));
       expect(result).toStrictEqual({ results: [] });
       expect(mockHandler).not.toHaveBeenCalled();
     });
@@ -682,16 +693,13 @@ describe("aPI DataSource", () => {
     test("returns StacksApiResponseError on 404", async () => {
       mockHandler.mockResolvedValue(jsonResponse({ error: "Not found" }, 404));
 
-      const exit = await runRequestExit(
-        datasourceStacksApi.getTransactionsBatch(context, ["0xtx1"]),
-      );
+      const exit = await runRequestExit((client) => client.getTransactionsBatch(["0xtx1"]));
 
       expect(exit).toBeTaggedError(
         new StacksApiResponseError({
           status: 404,
-          statusText: "Not Found",
           path: "/extended/v3/transactions/batch",
-          errorData: { error: "Not found" },
+          body: { error: "Not found" },
         }),
       );
     });
@@ -726,9 +734,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockResponse));
       });
 
-      const result = await runRequest(
-        datasourceStacksApi.getTransactionEvents(context, txId, { limit: 50 }),
-      );
+      const result = await runRequest((client) => client.getTransactionEvents(txId, { limit: 50 }));
 
       expect(result).toStrictEqual(mockResponse);
     });
@@ -765,8 +771,8 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockResponse));
       });
 
-      const result = await runRequest(
-        datasourceStacksApi.getPrincipalTransactions(context, principal, {
+      const result = await runRequest((client) =>
+        client.getPrincipalTransactions(principal, {
           limit: 50,
           cursor: "curr_1",
         }),
@@ -806,7 +812,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockContract));
       });
 
-      const result = await runRequest(datasourceStacksApi.getContract(context, contractId));
+      const result = await runRequest((client) => client.getContract(contractId));
       expect(result).toStrictEqual(mockContract);
     });
   });
@@ -839,7 +845,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockLogs));
       });
 
-      const result = await runRequest(datasourceStacksApi.getContractLogs(context, contractId));
+      const result = await runRequest((client) => client.getContractLogs(contractId));
 
       expect(result).toStrictEqual({
         results: [
@@ -861,11 +867,9 @@ describe("aPI DataSource", () => {
 
   describe("baseUrl and apiKey configuration", () => {
     test("uses custom baseUrl", async () => {
-      const customContext = {
+      const customContext: StacksClientConfig = {
         ...context,
-        api: {
-          baseUrl: "https://custom-stacks-node.example.com",
-        },
+        baseUrl: "https://custom-stacks-node.example.com",
       };
 
       mockHandler.mockImplementation((request) => {
@@ -876,17 +880,15 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ tx_id: "0xtx123", block: { height: 123_456 } }));
       });
 
-      const result = await runRequest(datasourceStacksApi.getTransaction(customContext, "0xtx123"));
+      const result = await runRequest((client) => client.getTransaction("0xtx123"), customContext);
 
       expect(result).toStrictEqual({ tx_id: "0xtx123", block: { height: 123_456 } });
     });
 
     test("sends x-api-key header when apiKey is provided", async () => {
-      const apiKeyContext = {
+      const apiKeyContext: StacksClientConfig = {
         ...context,
-        api: {
-          apiKey: "my-test-api-key",
-        },
+        apiKey: "my-test-api-key",
       };
 
       mockHandler.mockImplementation((request) => {
@@ -896,7 +898,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ tx_id: "0xtx123", block: { height: 123_456 } }));
       });
 
-      const result = await runRequest(datasourceStacksApi.getTransaction(apiKeyContext, "0xtx123"));
+      const result = await runRequest((client) => client.getTransaction("0xtx123"), apiKeyContext);
 
       expect(result).toStrictEqual({ tx_id: "0xtx123", block: { height: 123_456 } });
     });
@@ -908,18 +910,16 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ tx_id: "0xtx123", block: { height: 123_456 } }));
       });
 
-      const result = await runRequest(datasourceStacksApi.getTransaction(context, "0xtx123"));
+      const result = await runRequest((client) => client.getTransaction("0xtx123"));
 
       expect(result).toStrictEqual({ tx_id: "0xtx123", block: { height: 123_456 } });
     });
 
     test("sends both x-api-key and content-type on POST requests", async () => {
-      const apiKeyContext = {
+      const apiKeyContext: StacksClientConfig = {
         ...context,
-        api: {
-          baseUrl: "https://custom-stacks-node.example.com",
-          apiKey: "my-test-api-key",
-        },
+        baseUrl: "https://custom-stacks-node.example.com",
+        apiKey: "my-test-api-key",
       };
 
       mockHandler.mockImplementation((request) => {
@@ -938,7 +938,8 @@ describe("aPI DataSource", () => {
       });
 
       const result = await runRequest(
-        datasourceStacksApi.callReadFunction(apiKeyContext, "SP123.contract", "my-function"),
+        (client) => client.callReadFunction("SP123.contract", "my-function"),
+        apiKeyContext,
       );
 
       expect(result).toStrictEqual({ okay: true, result: "0x01" });
@@ -955,7 +956,7 @@ describe("aPI DataSource", () => {
 
       mockHandler.mockResolvedValue(jsonResponse(mockResponse));
 
-      const result = await runRequest(datasourceStacksApi.getStatus(context));
+      const result = await runRequest((client) => client.getStatus());
       expect(result).toStrictEqual(mockResponse);
       expect(toUrlString(mockHandler.mock.calls[0][0])).toBe("https://api.hiro.so/extended");
       expect(mockHandler.mock.calls[0][0]?.method).toBe("GET");
@@ -1003,7 +1004,7 @@ describe("aPI DataSource", () => {
         rateLimit: { limit: 1, window: Duration.seconds(1) },
       });
 
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.runAllTimersAsync();
 
       await promise;
 
@@ -1029,7 +1030,7 @@ describe("aPI DataSource", () => {
         rateLimit: { limit: 50, window: Duration.seconds(1) },
       });
 
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.runAllTimersAsync();
 
       await promise;
 

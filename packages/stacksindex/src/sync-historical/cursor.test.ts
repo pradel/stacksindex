@@ -10,7 +10,7 @@ import { RateLimiter } from "effect/persistence";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { StacksApiResponseError } from "../datasources/api/errors.ts";
-import { StacksClient, StacksClientConfig } from "../datasources/api/index.ts";
+import { StacksClient } from "../datasources/api/index.ts";
 import { createLogger } from "../logger/index.ts";
 import {
   buildLogsCursor,
@@ -90,10 +90,12 @@ const httpClient = HttpClient.make((request) =>
   }),
 );
 
-const stacksClientLayer = StacksClient.baseLayer.pipe(
+const stacksClientLayer = Layer.effect(
+  StacksClient,
+  StacksClient.make({ baseUrl: "https://api.hiro.so" }),
+).pipe(
   Layer.provide(
     Layer.mergeAll(
-      Layer.succeed(StacksClientConfig, { baseUrl: "https://api.hiro.so" }),
       Layer.succeed(HttpClient.HttpClient, httpClient),
       RateLimiter.layer.pipe(Layer.provide(RateLimiter.layerStoreMemory)),
     ),
@@ -135,9 +137,8 @@ describe("getContractEventsFirstCursor", () => {
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 404,
-        statusText: "Not Found",
         path: `/extended/v3/smart-contracts/${contractId}`,
-        errorData: { error: "Contract not found" },
+        body: { error: "Contract not found" },
       }),
     );
   });
@@ -558,9 +559,8 @@ describe("getContractEventsFirstCursor", () => {
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
-        statusText: "Bad Request",
         path: `/extended/v3/principals/${contractId}/transactions`,
-        errorData: { error: "API error" },
+        body: { error: "API error" },
       }),
     );
   });
@@ -607,9 +607,8 @@ describe("getContractEventsFirstCursor", () => {
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
-        statusText: "Bad Request",
         path: "/extended/v3/transactions/tx-1",
-        errorData: { error: "Tx API error" },
+        body: { error: "Tx API error" },
       }),
     );
   });
@@ -689,9 +688,8 @@ describe("getContractEventsFirstCursor", () => {
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
-        statusText: "Bad Request",
         path: "/extended/v1/tx/tx-1",
-        errorData: { error: "v1 tx failed" },
+        body: { error: "v1 tx failed" },
       }),
     );
   });

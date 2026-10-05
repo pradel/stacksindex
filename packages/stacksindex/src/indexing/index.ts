@@ -2,7 +2,7 @@ import { Cause, Effect } from "effect";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
 import { toThenable, type IndexerDb } from "../database/index.ts";
-import { StacksClient, typedCallReadFunction } from "../datasources/api/index.ts";
+import { readOnly, StacksClient } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
 import type { HandlerContext, HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
@@ -56,15 +56,10 @@ export const createIndexing = (context: IndexingContext) => ({
             callReadOnly: ((options: any) => {
               if ("abi" in options) {
                 return toThenable(
-                  typedCallReadFunction(
-                    {},
-                    (_context, contractId, functionName, callOptions) =>
-                      stacksClient.callReadFunction(contractId, functionName, callOptions),
-                    {
-                      ...options,
-                      tip: options.tip ?? event.block_height,
-                    },
-                  ),
+                  readOnly(stacksClient.callReadFunction, {
+                    ...options,
+                    tip: options.tip ?? event.block_height,
+                  }),
                 );
               }
 

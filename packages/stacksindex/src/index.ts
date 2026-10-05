@@ -28,20 +28,15 @@ export {
 
 export type { NetworkName, NetworkOption, ResolvedNetwork } from "./lib/network.ts";
 
-export {
-  datasourceStacksApi,
-  StacksClient,
-  StacksClientConfig,
-  typedCallReadFunction,
-} from "./datasources/api/index.ts";
+export { readOnly, StacksClient } from "./datasources/api/index.ts";
 
 export type {
+  CallReadFunction,
   CallReadResponse,
   ContractFunctionArgs,
   ContractFunctionName,
   ContractFunctionReturnType,
-  DatasourceStacksApiContext,
-  StacksClientOptions,
+  StacksClientConfig,
   StacksClientRateLimit,
   StacksClientService,
   TypedCallReadOnlyFunctionParameters,
@@ -61,8 +56,8 @@ export { FilterValidationError, HandlerExecutionError, SyncStoreError } from "./
 
 export {
   StacksApiParseError,
-  StacksApiRateLimitError,
   StacksApiResponseError,
+  StacksApiTransportError,
   StacksApiUnexpectedError,
 } from "./datasources/api/errors.ts";
 

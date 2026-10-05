@@ -1136,9 +1136,8 @@ describe("historical runtime", () => {
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
-        statusText: "Bad Request",
         path: `/extended/v2/smart-contracts/${contractId}/logs`,
-        errorData: { error: "Logs API error" },
+        body: { error: "Logs API error" },
       }),
     );
   });
@@ -5212,9 +5211,8 @@ describe("historical runtime with handlers", () => {
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
-        statusText: "Bad Request",
         path: "/extended/v3/transactions/batch",
-        errorData: { error: "boom" },
+        body: { error: "boom" },
       }),
     );
     expect(handler).not.toHaveBeenCalled();

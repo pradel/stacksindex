@@ -32,18 +32,16 @@ describe("toBeTaggedError", () => {
     const result = Exit.fail(
       new StacksApiResponseError({
         status: 404,
-        statusText: "Not Found",
         path: "/extended/v3/transactions/404",
-        errorData: { error: "Not found" },
+        body: { error: "Not found" },
       }),
     );
 
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 404,
-        statusText: "Not Found",
         path: "/extended/v3/transactions/404",
-        errorData: { error: "Not found" },
+        body: { error: "Not found" },
       }),
     );
   });

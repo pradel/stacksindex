@@ -1,5 +1,31 @@
 import { Schema } from "effect";
 
+export class StacksApiResponseError extends Schema.TaggedError<StacksApiResponseError>()(
+  "StacksApiResponseError",
+  {
+    status: Schema.Number,
+    path: Schema.String,
+    body: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+export class StacksApiTransportError extends Schema.TaggedError<StacksApiTransportError>()(
+  "StacksApiTransportError",
+  {
+    path: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+export class StacksApiParseError extends Schema.TaggedError<StacksApiParseError>()(
+  "StacksApiParseError",
+  {
+    path: Schema.String,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
 export class StacksApiUnexpectedError extends Schema.TaggedError<StacksApiUnexpectedError>()(
   "StacksApiUnexpectedError",
   {
@@ -9,34 +35,8 @@ export class StacksApiUnexpectedError extends Schema.TaggedError<StacksApiUnexpe
   },
 ) {}
 
-export class StacksApiResponseError extends Schema.TaggedError<StacksApiResponseError>()(
-  "StacksApiResponseError",
-  {
-    status: Schema.Number,
-    path: Schema.String,
-    statusText: Schema.String,
-    errorData: Schema.optional(Schema.Unknown),
-  },
-) {}
-
-export class StacksApiRateLimitError extends Schema.TaggedError<StacksApiRateLimitError>()(
-  "StacksApiRateLimitError",
-  {
-    path: Schema.String,
-    retryAfter: Schema.Number,
-  },
-) {}
-
-export class StacksApiParseError extends Schema.TaggedError<StacksApiParseError>()(
-  "StacksApiParseError",
-  {
-    message: Schema.String,
-    cause: Schema.optional(Schema.Unknown),
-  },
-) {}
-
 export type StacksApiError =
-  | StacksApiUnexpectedError
   | StacksApiResponseError
-  | StacksApiRateLimitError
-  | StacksApiParseError;
+  | StacksApiTransportError
+  | StacksApiParseError
+  | StacksApiUnexpectedError;
