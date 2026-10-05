@@ -43,7 +43,7 @@ export type {
   ContractFunctionParameters,
 } from "clarity-abitype";
 
-export { FilterValidationError, HandlerExecutionError } from "./lib/errors.ts";
+export { FilterValidationError, HandlerExecutionError, SyncStoreError } from "./lib/errors.ts";
 
 export { StacksApiUnexpectedError } from "./datasources/api/errors.ts";
 

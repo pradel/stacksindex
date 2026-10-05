@@ -12,7 +12,11 @@ import {
 } from "../datasources/api/index.ts";
 import { createIndexing } from "../indexing/index.ts";
 import { chunkArray } from "../lib/array.ts";
-import { FilterValidationError, type HandlerExecutionError } from "../lib/errors.ts";
+import {
+  FilterValidationError,
+  type HandlerExecutionError,
+  SyncStoreError,
+} from "../lib/errors.ts";
 import { resolveNetwork, type NetworkOption, type ResolvedNetwork } from "../lib/network.ts";
 import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
@@ -663,7 +667,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
     }
   }
 
-  return {
+  const runtime = {
     async run(
       filters: Filter[],
     ): Promise<Result<void, StacksApiError | HandlerExecutionError | FilterValidationError>> {
@@ -849,6 +853,31 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
       });
 
       return Result.ok(undefined);
+    },
+  };
+
+  return {
+    async run(
+      filters: Filter[],
+    ): Promise<
+      Result<void, StacksApiError | HandlerExecutionError | FilterValidationError | SyncStoreError>
+    > {
+      try {
+        return await runtime.run(filters);
+      } catch (error) {
+        if (SyncStoreError.is(error)) {
+          context.logger.error({
+            service: "historicalRuntime",
+            msg: `Sync store operation failed: ${error.operation}`,
+            operation: error.operation,
+            error: error.cause instanceof Error ? error.cause : new Error(String(error.cause)),
+          });
+
+          return Result.err(error);
+        }
+
+        throw error;
+      }
     },
   };
 };
