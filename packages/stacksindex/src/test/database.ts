@@ -10,6 +10,7 @@ import {
 
 export interface TestDatabase {
   db: IndexerDb;
+  run: <A, E>(effect: Effect.Effect<A, E, IndexerDatabase>) => Promise<A>;
   cleanup: () => Promise<void>;
   close: () => Promise<void>;
 }
@@ -21,12 +22,16 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     Layer.build(IndexerDatabase.layer({ kind: "pglite" })).pipe(Scope.provide(scope)),
   );
 
-  const db = toThenable(Context.get(context, IndexerDatabase));
+  const rawDb = Context.get(context, IndexerDatabase);
+  const db = toThenable(rawDb);
 
-  await Effect.runPromise(migrateDatabase(db));
+  await Effect.runPromise(migrateDatabase().pipe(Effect.provideService(IndexerDatabase, rawDb)));
 
   return {
     db,
+
+    run: <A, E>(effect: Effect.Effect<A, E, IndexerDatabase>) =>
+      Effect.runPromise(effect.pipe(Effect.provideService(IndexerDatabase, rawDb))),
 
     async cleanup() {
       await Effect.runPromise(

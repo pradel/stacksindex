@@ -67,21 +67,22 @@ export function getMigrationsFolder(): string {
   return candidate1;
 }
 
-export function migrate(
-  indexerDb: IndexerDb,
-  options?: { migrationsFolder?: string },
-): Effect.Effect<void, unknown> & PromiseLike<void> {
+export function migrate(options?: {
+  migrationsFolder?: string;
+}): Effect.Effect<void, unknown, IndexerDatabase> {
   const migrationsFolder = options?.migrationsFolder ?? getMigrationsFolder();
 
-  // SAFETY: Both IndexerDb variants expose the same migrator session surface, and its concrete error union safely widens to `unknown`.
-  const effect = (
-    migratePglite(indexerDb as PgliteEffectPgDatabase, { migrationsFolder }) as Effect.Effect<
-      void,
-      unknown
-    >
-  ).pipe(Effect.asVoid);
+  return Effect.gen(function* () {
+    const indexerDb = yield* IndexerDatabase;
 
-  return toThenable(effect);
+    // SAFETY: Both IndexerDb variants expose the same migrator session surface, and its concrete error union safely widens to `unknown`.
+    yield* (
+      migratePglite(indexerDb as PgliteEffectPgDatabase, { migrationsFolder }) as Effect.Effect<
+        void,
+        unknown
+      >
+    ).pipe(Effect.asVoid);
+  });
 }
 
 export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>()(
@@ -123,6 +124,23 @@ export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>
 
     return Layer.provide(dbLayer, clientLayer);
   };
+
+  static readonly transaction = <A, E, R>(
+    f: (db: IndexerDb) => Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, unknown, R | IndexerDatabase> =>
+    Effect.gen(function* () {
+      const indexerDb = yield* IndexerDatabase;
+
+      // SAFETY: Both IndexerDb variants expose the same transaction surface, and its handle satisfies IndexerDb.
+      const db = indexerDb as PgliteEffectPgDatabase;
+
+      return yield* db.transaction((tx) => {
+        // SAFETY: Drizzle's transaction handle exposes the same query surface as IndexerDb.
+        const transactionDb = tx as IndexerDb;
+
+        return f(transactionDb).pipe(Effect.provideService(IndexerDatabase, transactionDb));
+      });
+    });
 }
 
 function isProxyable<T>(target: T): target is T & object {
@@ -189,7 +207,8 @@ export function makeDatabase(config: DatabaseConfig): Effect.Effect<
 
       return {
         db,
-        migrate: (options?: { migrationsFolder?: string }) => migrate(db, options),
+        migrate: (options?: { migrationsFolder?: string }) =>
+          migrate(options).pipe(Effect.provideService(IndexerDatabase, rawDb)),
       };
     }
 
@@ -204,7 +223,8 @@ export function makeDatabase(config: DatabaseConfig): Effect.Effect<
 
     return {
       db,
-      migrate: (options?: { migrationsFolder?: string }) => migrate(db, options),
+      migrate: (options?: { migrationsFolder?: string }) =>
+        migrate(options).pipe(Effect.provideService(IndexerDatabase, rawDb)),
     };
   });
 }

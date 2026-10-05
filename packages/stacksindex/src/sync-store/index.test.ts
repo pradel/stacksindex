@@ -101,12 +101,11 @@ describe("syncStore", () => {
 
   describe("insertBlocks", () => {
     test("insert blocks", async () => {
-      await syncStore.insertBlocks(
-        {
+      await testDb.run(
+        syncStore.insertBlocks({
           blocks: [block],
           chainId: 1,
-        },
-        { db: testDb.db },
+        }),
       );
 
       const result = await testDb.db.select().from(blocksTable);
@@ -122,12 +121,11 @@ describe("syncStore", () => {
     });
 
     test("insert blocks with custom chainId", async () => {
-      await syncStore.insertBlocks(
-        {
+      await testDb.run(
+        syncStore.insertBlocks({
           blocks: [block],
           chainId: 2147483648,
-        },
-        { db: testDb.db },
+        }),
       );
 
       const result = await testDb.db.select().from(blocksTable);
@@ -145,12 +143,11 @@ describe("syncStore", () => {
 
   describe("insertTransactions", () => {
     test("insert transactions", async () => {
-      await syncStore.insertTransactions(
-        {
+      await testDb.run(
+        syncStore.insertTransactions({
           transactions: [transaction],
           chainId: 1,
-        },
-        { db: testDb.db },
+        }),
       );
 
       const result = await testDb.db.select().from(transactionsTable);
@@ -171,12 +168,11 @@ describe("syncStore", () => {
     });
 
     test("insert transactions with custom chainId", async () => {
-      await syncStore.insertTransactions(
-        {
+      await testDb.run(
+        syncStore.insertTransactions({
           transactions: [transaction],
           chainId: 2147483648,
-        },
-        { db: testDb.db },
+        }),
       );
 
       const result = await testDb.db.select().from(transactionsTable);
@@ -199,9 +195,8 @@ describe("syncStore", () => {
 
   describe("getSyncProgress", () => {
     test("returns null when no progress exists", async () => {
-      const result = await syncStore.getSyncProgress(
-        { contractId: "SP123.token", chainId: 1 },
-        { db: testDb.db },
+      const result = await testDb.run(
+        syncStore.getSyncProgress({ contractId: "SP123.token", chainId: 1 }),
       );
 
       expect(result).toBeNull();
@@ -215,9 +210,8 @@ describe("syncStore", () => {
         lastBlockHeight: 100n,
       });
 
-      const result = await syncStore.getSyncProgress(
-        { contractId: "SP123.token", chainId: 1 },
-        { db: testDb.db },
+      const result = await testDb.run(
+        syncStore.getSyncProgress({ contractId: "SP123.token", chainId: 1 }),
       );
 
       expect(result).toStrictEqual({
@@ -232,9 +226,13 @@ describe("syncStore", () => {
 
   describe("upsertSyncProgress", () => {
     test("inserts new progress", async () => {
-      await syncStore.upsertSyncProgress(
-        { contractId: "SP123.token", chainId: 1, cursor: "200:0:3:1", lastBlockHeight: 200 },
-        { db: testDb.db },
+      await testDb.run(
+        syncStore.upsertSyncProgress({
+          contractId: "SP123.token",
+          chainId: 1,
+          cursor: "200:0:3:1",
+          lastBlockHeight: 200,
+        }),
       );
 
       const result = await testDb.db.select().from(syncProgressTable);
@@ -257,9 +255,13 @@ describe("syncStore", () => {
         lastBlockHeight: 100n,
       });
 
-      await syncStore.upsertSyncProgress(
-        { contractId: "SP123.token", chainId: 1, cursor: "300:0:1:0", lastBlockHeight: 300 },
-        { db: testDb.db },
+      await testDb.run(
+        syncStore.upsertSyncProgress({
+          contractId: "SP123.token",
+          chainId: 1,
+          cursor: "300:0:1:0",
+          lastBlockHeight: 300,
+        }),
       );
 
       const result = await testDb.db.select().from(syncProgressTable);
@@ -275,15 +277,14 @@ describe("syncStore", () => {
     });
 
     test("saves completed status with null cursor", async () => {
-      await syncStore.upsertSyncProgress(
-        {
+      await testDb.run(
+        syncStore.upsertSyncProgress({
           contractId: "SP123.token",
           chainId: 1,
           cursor: null,
           lastBlockHeight: 500,
           isComplete: true,
-        },
-        { db: testDb.db },
+        }),
       );
 
       const result = await testDb.db.select().from(syncProgressTable);
@@ -301,9 +302,8 @@ describe("syncStore", () => {
 
   describe("getExistingTransactions", () => {
     test("returns empty array when no transactions exist", async () => {
-      const result = await syncStore.getExistingTransactions(
-        { txIds: ["tx-1", "tx-2"], chainId: 1 },
-        { db: testDb.db },
+      const result = await testDb.run(
+        syncStore.getExistingTransactions({ txIds: ["tx-1", "tx-2"], chainId: 1 }),
       );
 
       expect(result).toStrictEqual([]);
@@ -323,9 +323,8 @@ describe("syncStore", () => {
         txStatus: "success",
       });
 
-      const result = await syncStore.getExistingTransactions(
-        { txIds: ["tx-1", "tx-2"], chainId: 1 },
-        { db: testDb.db },
+      const result = await testDb.run(
+        syncStore.getExistingTransactions({ txIds: ["tx-1", "tx-2"], chainId: 1 }),
       );
 
       expect(result).toStrictEqual([{ txId: "tx-1", blockHeight: 100n }]);
@@ -334,9 +333,8 @@ describe("syncStore", () => {
 
   describe("getExistingBlocks", () => {
     test("returns empty array when no blocks exist", async () => {
-      const result = await syncStore.getExistingBlocks(
-        { blockHashes: ["block-1", "block-2"], chainId: 1 },
-        { db: testDb.db },
+      const result = await testDb.run(
+        syncStore.getExistingBlocks({ blockHashes: ["block-1", "block-2"], chainId: 1 }),
       );
 
       expect(result).toStrictEqual([]);
@@ -351,9 +349,8 @@ describe("syncStore", () => {
         tenureHeight: 1n,
       });
 
-      const result = await syncStore.getExistingBlocks(
-        { blockHashes: ["block-1", "block-2"], chainId: 1 },
-        { db: testDb.db },
+      const result = await testDb.run(
+        syncStore.getExistingBlocks({ blockHashes: ["block-1", "block-2"], chainId: 1 }),
       );
 
       expect(result).toStrictEqual(["block-1"]);
@@ -362,8 +359,8 @@ describe("syncStore", () => {
 
   describe("insertEvents", () => {
     test("inserts events", async () => {
-      await syncStore.insertEvents(
-        {
+      await testDb.run(
+        syncStore.insertEvents({
           events: [
             {
               event: {
@@ -380,8 +377,7 @@ describe("syncStore", () => {
             },
           ],
           chainId: 1,
-        },
-        { db: testDb.db },
+        }),
       );
 
       const result = await testDb.db.select().from(eventsTable);
@@ -398,8 +394,8 @@ describe("syncStore", () => {
     });
 
     test("inserts events with custom chainId", async () => {
-      await syncStore.insertEvents(
-        {
+      await testDb.run(
+        syncStore.insertEvents({
           events: [
             {
               event: {
@@ -416,8 +412,7 @@ describe("syncStore", () => {
             },
           ],
           chainId: 2147483648,
-        },
-        { db: testDb.db },
+        }),
       );
 
       const result = await testDb.db.select().from(eventsTable);
@@ -445,13 +440,11 @@ describe("syncStore", () => {
         },
       } satisfies SmartContractLogEvent;
 
-      await syncStore.insertEvents(
-        { events: [{ event, blockHeight: 100 }], chainId: 1 },
-        { db: testDb.db },
+      await testDb.run(
+        syncStore.insertEvents({ events: [{ event, blockHeight: 100 }], chainId: 1 }),
       );
-      await syncStore.insertEvents(
-        { events: [{ event, blockHeight: 100 }], chainId: 1 },
-        { db: testDb.db },
+      await testDb.run(
+        syncStore.insertEvents({ events: [{ event, blockHeight: 100 }], chainId: 1 }),
       );
 
       const result = await testDb.db.select().from(eventsTable);
@@ -548,9 +541,8 @@ describe("syncStore", () => {
         blockHeight: 100n,
       });
 
-      const result = await syncStore.getEvents(
-        { chainId: 1, fromBlockHeight: 0, toBlockHeight: 9999 },
-        { db: testDb.db },
+      const result = await testDb.run(
+        syncStore.getEvents({ chainId: 1, fromBlockHeight: 0, toBlockHeight: 9999 }),
       );
 
       expect(result).toHaveLength(3);
@@ -595,9 +587,8 @@ describe("syncStore", () => {
         blockHeight: 100n,
       });
 
-      const result = await syncStore.getEvents(
-        { chainId: 1, fromBlockHeight: 200, toBlockHeight: 300 },
-        { db: testDb.db },
+      const result = await testDb.run(
+        syncStore.getEvents({ chainId: 1, fromBlockHeight: 200, toBlockHeight: 300 }),
       );
 
       expect(result).toHaveLength(0);
@@ -606,7 +597,7 @@ describe("syncStore", () => {
 
   describe("getCheckpoint", () => {
     test("returns null when no checkpoint exists", async () => {
-      const result = await syncStore.getCheckpoint({ chainId: 1 }, { db: testDb.db });
+      const result = await testDb.run(syncStore.getCheckpoint({ chainId: 1 }));
       expect(result).toBeNull();
     });
 
@@ -617,7 +608,7 @@ describe("syncStore", () => {
         blockTime: 1000n,
       });
 
-      const result = await syncStore.getCheckpoint({ chainId: 1 }, { db: testDb.db });
+      const result = await testDb.run(syncStore.getCheckpoint({ chainId: 1 }));
       expect(result).toStrictEqual({
         chainId: 1n,
         blockHeight: 100n,
@@ -628,9 +619,8 @@ describe("syncStore", () => {
 
   describe("upsertCheckpoint", () => {
     test("inserts new checkpoint", async () => {
-      await syncStore.upsertCheckpoint(
-        { chainId: 1, blockHeight: 100, blockTime: 1000 },
-        { db: testDb.db },
+      await testDb.run(
+        syncStore.upsertCheckpoint({ chainId: 1, blockHeight: 100, blockTime: 1000 }),
       );
 
       const result = await testDb.db.select().from(checkpointsTable);
@@ -650,9 +640,8 @@ describe("syncStore", () => {
         blockTime: 1000n,
       });
 
-      await syncStore.upsertCheckpoint(
-        { chainId: 1, blockHeight: 200, blockTime: 2000 },
-        { db: testDb.db },
+      await testDb.run(
+        syncStore.upsertCheckpoint({ chainId: 1, blockHeight: 200, blockTime: 2000 }),
       );
 
       const result = await testDb.db.select().from(checkpointsTable);
@@ -670,7 +659,7 @@ describe("syncStore", () => {
     test("wraps database failures in SyncStoreError", async () => {
       await testDb.db.execute(sql`drop table "blocks"`);
 
-      const promise = syncStore.insertBlocks({ blocks: [block], chainId: 1 }, { db: testDb.db });
+      const promise = testDb.run(syncStore.insertBlocks({ blocks: [block], chainId: 1 }));
 
       await expect(promise).rejects.toBeInstanceOf(SyncStoreError);
       await expect(promise).rejects.toMatchObject({ operation: "insertBlocks" });

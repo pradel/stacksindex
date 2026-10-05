@@ -1,6 +1,6 @@
 import { Effect, Queue } from "effect";
 
-import { migrate, toThenable, type IndexerDb } from "../database/index.ts";
+import { IndexerDatabase, migrate, toThenable, type IndexerDb } from "../database/index.ts";
 import {
   type StacksApiError,
   StacksClient,
@@ -186,7 +186,11 @@ function validateAndResolveFilters(
 function initContractFromScratch(
   filter: ResolvedFilter,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, StacksClient> {
+): Effect.Effect<
+  ContractSyncState,
+  StacksApiError | SyncStoreError,
+  StacksClient | IndexerDatabase
+> {
   return Effect.gen(function* () {
     const cursor = yield* getContractEventsFirstCursor(filter.contractId, {
       startBlock: filter.startBlock,
@@ -194,16 +198,13 @@ function initContractFromScratch(
 
     if (!cursor) {
       yield* Effect.logInfo(`No events found for ${filter.contractId}, skipping`);
-      yield* syncStore.upsertSyncProgress(
-        {
-          contractId: filter.contractId,
-          chainId: context.chainId,
-          cursor: null,
-          lastBlockHeight: filter.endBlock ?? 0,
-          isComplete: filter.endBlock !== undefined,
-        },
-        { db: context.db },
-      );
+      yield* syncStore.upsertSyncProgress({
+        contractId: filter.contractId,
+        chainId: context.chainId,
+        cursor: null,
+        lastBlockHeight: filter.endBlock ?? 0,
+        isComplete: filter.endBlock !== undefined,
+      });
 
       return {
         contractId: filter.contractId,
@@ -221,16 +222,13 @@ function initContractFromScratch(
       yield* Effect.logInfo(
         `First event for ${filter.contractId} at block ${cursorHeight} exceeds endBlock ${filter.endBlock}, skipping`,
       );
-      yield* syncStore.upsertSyncProgress(
-        {
-          contractId: filter.contractId,
-          chainId: context.chainId,
-          cursor: null,
-          lastBlockHeight: filter.endBlock,
-          isComplete: true,
-        },
-        { db: context.db },
-      );
+      yield* syncStore.upsertSyncProgress({
+        contractId: filter.contractId,
+        chainId: context.chainId,
+        cursor: null,
+        lastBlockHeight: filter.endBlock,
+        isComplete: true,
+      });
 
       return {
         contractId: filter.contractId,
@@ -258,7 +256,11 @@ function initContractFromSaved(
   filter: ResolvedFilter,
   saved: NonNullable<Effect.Success<ReturnType<typeof syncStore.getSyncProgress>>>,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, StacksClient> {
+): Effect.Effect<
+  ContractSyncState,
+  StacksApiError | SyncStoreError,
+  StacksClient | IndexerDatabase
+> {
   return Effect.gen(function* () {
     const savedHeight = Number(saved.lastBlockHeight);
 
@@ -312,16 +314,13 @@ function initContractFromSaved(
     });
 
     if (!cursor) {
-      yield* syncStore.upsertSyncProgress(
-        {
-          contractId: filter.contractId,
-          chainId: context.chainId,
-          cursor: null,
-          lastBlockHeight: filter.endBlock ?? savedHeight,
-          isComplete: filter.endBlock !== undefined,
-        },
-        { db: context.db },
-      );
+      yield* syncStore.upsertSyncProgress({
+        contractId: filter.contractId,
+        chainId: context.chainId,
+        cursor: null,
+        lastBlockHeight: filter.endBlock ?? savedHeight,
+        isComplete: filter.endBlock !== undefined,
+      });
 
       return {
         contractId: filter.contractId,
@@ -339,16 +338,13 @@ function initContractFromSaved(
       yield* Effect.logInfo(
         `Next event for ${filter.contractId} at block ${cursorHeight} exceeds endBlock ${filter.endBlock}, skipping`,
       );
-      yield* syncStore.upsertSyncProgress(
-        {
-          contractId: filter.contractId,
-          chainId: context.chainId,
-          cursor: null,
-          lastBlockHeight: filter.endBlock,
-          isComplete: true,
-        },
-        { db: context.db },
-      );
+      yield* syncStore.upsertSyncProgress({
+        contractId: filter.contractId,
+        chainId: context.chainId,
+        cursor: null,
+        lastBlockHeight: filter.endBlock,
+        isComplete: true,
+      });
 
       return {
         contractId: filter.contractId,
@@ -373,15 +369,19 @@ function initContractFromSaved(
 function initializeContractStates(
   filters: ResolvedFilter[],
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState[], StacksApiError | SyncStoreError, StacksClient> {
+): Effect.Effect<
+  ContractSyncState[],
+  StacksApiError | SyncStoreError,
+  StacksClient | IndexerDatabase
+> {
   return Effect.gen(function* () {
     const states: ContractSyncState[] = [];
 
     for (const filter of filters) {
-      const saved = yield* syncStore.getSyncProgress(
-        { contractId: filter.contractId, chainId: context.chainId },
-        { db: context.db },
-      );
+      const saved = yield* syncStore.getSyncProgress({
+        contractId: filter.contractId,
+        chainId: context.chainId,
+      });
 
       const state =
         saved === null
@@ -474,7 +474,7 @@ function advanceContractSyncState(
   currentHeight: number,
   nextCursor: string | null,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<void, SyncStoreError> {
+): Effect.Effect<void, SyncStoreError, IndexerDatabase> {
   return Effect.gen(function* () {
     lowestState.syncedBlockHeight = currentHeight - 1;
 
@@ -485,42 +485,33 @@ function advanceContractSyncState(
 
       if (endBlock !== undefined && isPastEndBlock) {
         yield* Effect.logInfo(`Sync reached endBlock ${endBlock} for ${lowestState.contractId}`);
-        yield* syncStore.upsertSyncProgress(
-          {
-            contractId: lowestState.contractId,
-            chainId: context.chainId,
-            cursor: null,
-            lastBlockHeight: endBlock,
-            isComplete: true,
-          },
-          { db: context.db },
-        );
+        yield* syncStore.upsertSyncProgress({
+          contractId: lowestState.contractId,
+          chainId: context.chainId,
+          cursor: null,
+          lastBlockHeight: endBlock,
+          isComplete: true,
+        });
         lowestState.done = true;
       } else {
-        yield* syncStore.upsertSyncProgress(
-          {
-            contractId: lowestState.contractId,
-            chainId: context.chainId,
-            cursor: nextCursor,
-            lastBlockHeight,
-            isComplete: false,
-          },
-          { db: context.db },
-        );
+        yield* syncStore.upsertSyncProgress({
+          contractId: lowestState.contractId,
+          chainId: context.chainId,
+          cursor: nextCursor,
+          lastBlockHeight,
+          isComplete: false,
+        });
         lowestState.cursor = nextCursor;
       }
     } else {
       yield* Effect.logInfo(`Sync complete for ${lowestState.contractId}`);
-      yield* syncStore.upsertSyncProgress(
-        {
-          contractId: lowestState.contractId,
-          chainId: context.chainId,
-          cursor: null,
-          lastBlockHeight: currentHeight,
-          isComplete: lowestState.endBlock !== undefined,
-        },
-        { db: context.db },
-      );
+      yield* syncStore.upsertSyncProgress({
+        contractId: lowestState.contractId,
+        chainId: context.chainId,
+        cursor: null,
+        lastBlockHeight: currentHeight,
+        isComplete: lowestState.endBlock !== undefined,
+      });
       lowestState.done = true;
     }
   });
@@ -531,20 +522,25 @@ function processEventsUpTo(
   indexing: ReturnType<typeof createIndexing>,
   filterMap: Map<string, ResolvedFilter>,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<void, StacksApiError | HandlerExecutionError | SyncStoreError, StacksClient> {
+): Effect.Effect<
+  void,
+  StacksApiError | HandlerExecutionError | SyncStoreError,
+  StacksClient | IndexerDatabase
+> {
   return Effect.gen(function* () {
     const { chainId } = context;
-    const checkpoint = yield* syncStore.getCheckpoint({ chainId }, { db: context.db });
+    const checkpoint = yield* syncStore.getCheckpoint({ chainId });
     const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
 
     if (fromBlockHeight >= toBlockHeight) {
       return;
     }
 
-    const rows = yield* syncStore.getEvents(
-      { chainId, fromBlockHeight: fromBlockHeight + 1, toBlockHeight },
-      { db: context.db },
-    );
+    const rows = yield* syncStore.getEvents({
+      chainId,
+      fromBlockHeight: fromBlockHeight + 1,
+      toBlockHeight,
+    });
 
     if (rows.length === 0) {
       return;
@@ -588,14 +584,11 @@ function processEventsUpTo(
     }
 
     const lastRow = rows[rows.length - 1];
-    yield* syncStore.upsertCheckpoint(
-      {
-        chainId,
-        blockHeight: Number(lastRow.blockHeight),
-        blockTime: Number(lastRow.blockTime),
-      },
-      { db: context.db },
-    );
+    yield* syncStore.upsertCheckpoint({
+      chainId,
+      blockHeight: Number(lastRow.blockHeight),
+      blockTime: Number(lastRow.blockTime),
+    });
 
     yield* Effect.logInfo(
       `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
@@ -626,7 +619,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
 
         const resolvedFilters = yield* validateAndResolveFilters(filters);
 
-        yield* migrate(context.db).pipe(
+        yield* migrate().pipe(
           Effect.mapError((cause) =>
             cause instanceof SyncStoreError
               ? cause
@@ -647,10 +640,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
 
         const client = yield* StacksClient;
 
-        const indexing = createIndexing({
-          db: context.db,
-          handlers,
-        });
+        const indexing = createIndexing({ handlers });
 
         const states = yield* initializeContractStates(resolvedFilters, context);
 
@@ -702,10 +692,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
               ),
             ];
 
-            const existingTxs = yield* syncStore.getExistingTransactions(
-              { txIds, chainId },
-              { db: context.db },
-            );
+            const existingTxs = yield* syncStore.getExistingTransactions({ txIds, chainId });
 
             const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
             const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
@@ -745,21 +732,19 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
               })
               .filter((item) => item.blockHeight > 0);
 
-            yield* context.db
-              .transaction((tx) =>
-                Effect.all([
-                  syncStore.insertBlocks({ blocks, chainId }, { db: tx }),
-                  syncStore.insertTransactions({ transactions, chainId }, { db: tx }),
-                  syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }, { db: tx }),
-                ]),
-              )
-              .pipe(
-                Effect.mapError((cause) =>
-                  cause instanceof SyncStoreError
-                    ? cause
-                    : new SyncStoreError({ operation: "insertBatch", cause }),
-                ),
-              );
+            yield* IndexerDatabase.transaction(() =>
+              Effect.all([
+                syncStore.insertBlocks({ blocks, chainId }),
+                syncStore.insertTransactions({ transactions, chainId }),
+                syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }),
+              ]),
+            ).pipe(
+              Effect.mapError((cause) =>
+                cause instanceof SyncStoreError
+                  ? cause
+                  : new SyncStoreError({ operation: "insertBatch", cause }),
+              ),
+            );
 
             yield* advanceContractSyncState(lowestState, currentHeight, nextCursor, context);
 
@@ -805,6 +790,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
             apiKey: context.api.apiKey,
           }),
         ),
+        Effect.provideService(IndexerDatabase, context.db),
       );
 
       return toThenable(runnable);

@@ -455,7 +455,7 @@ describe("historical runtime", () => {
     expect(transactions).toHaveLength(2);
 
     // Verify sync progress
-    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
 
     if (progress === null) {
       throw new Error("Expected progress to be defined");
@@ -814,9 +814,13 @@ describe("historical runtime", () => {
     const contractId = "SP123.token";
 
     // Pre-seed sync progress
-    await syncStore.upsertSyncProgress(
-      { contractId, chainId: 1, cursor: "100:0:0:0", lastBlockHeight: 100 },
-      { db: testDb.db },
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+      }),
     );
 
     const txByIdResume: Dictionary<Schema.Json> = {
@@ -946,9 +950,13 @@ describe("historical runtime", () => {
     const contractId = "SP123.token";
 
     // Pre-seed sync progress, transaction, and block
-    await syncStore.upsertSyncProgress(
-      { contractId, chainId: 1, cursor: "100:0:0:0", lastBlockHeight: 100 },
-      { db: testDb.db },
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+      }),
     );
     await testDb.db.insert(transactionsTable).values({
       chainId: 1n,
@@ -1900,14 +1908,15 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockResolvedValue(undefined);
 
     // Pre-seed checkpoint so block 100 is already processed
-    await syncStore.upsertCheckpoint(
-      { chainId: 1, blockHeight: 100, blockTime: 1000 },
-      { db: testDb.db },
-    );
+    await testDb.run(syncStore.upsertCheckpoint({ chainId: 1, blockHeight: 100, blockTime: 1000 }));
     // Pre-seed sync progress so it skips first cursor discovery
-    await syncStore.upsertSyncProgress(
-      { contractId, chainId: 1, cursor: "100:0:0:0", lastBlockHeight: 100 },
-      { db: testDb.db },
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+      }),
     );
     // Pre-seed block, transaction, and event
     await testDb.db.insert(blocksTable).values({
@@ -3497,15 +3506,14 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockResolvedValue(undefined);
 
     // Pre-populate sync progress as complete up to block 150
-    await syncStore.upsertSyncProgress(
-      {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
         contractId,
         chainId: 1,
         cursor: null,
         lastBlockHeight: 150,
         isComplete: true,
-      },
-      { db: testDb.db },
+      }),
     );
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -3531,15 +3539,14 @@ describe("historical runtime with handlers", () => {
     });
 
     // Contract was completed up to block 100 in previous run
-    await syncStore.upsertSyncProgress(
-      {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
         contractId,
         chainId: 1,
         cursor: null,
         lastBlockHeight: 100,
         isComplete: true,
-      },
-      { db: testDb.db },
+      }),
     );
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -3699,7 +3706,7 @@ describe("historical runtime with handlers", () => {
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([150]);
 
-    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: true,
@@ -3718,15 +3725,14 @@ describe("historical runtime with handlers", () => {
     });
 
     // Contract was synced up to block 100 in an earlier unbounded run (isComplete: false, cursor: null)
-    await syncStore.upsertSyncProgress(
-      {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
         contractId,
         chainId: 1,
         cursor: null,
         lastBlockHeight: 100,
         isComplete: false,
-      },
-      { db: testDb.db },
+      }),
     );
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -3885,7 +3891,7 @@ describe("historical runtime with handlers", () => {
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([150]);
 
-    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: false,
@@ -3925,15 +3931,14 @@ describe("historical runtime with handlers", () => {
     });
 
     // Pre-seed sync progress with cursor pointing to block 100
-    await syncStore.upsertSyncProgress(
-      {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
         contractId,
         chainId: 1,
         cursor: "100:0:0:0",
         lastBlockHeight: 100,
         isComplete: false,
-      },
-      { db: testDb.db },
+      }),
     );
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -4234,7 +4239,7 @@ describe("historical runtime with handlers", () => {
     expect(page3Calls).toHaveLength(0);
 
     // Sync progress should be marked complete for endBlock 100
-    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: true,
@@ -4521,7 +4526,7 @@ describe("historical runtime with handlers", () => {
     expect(page5Calls).toHaveLength(0);
 
     // Sync progress should be marked complete for endBlock 100
-    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: true,
@@ -4681,24 +4686,20 @@ describe("historical runtime with handlers", () => {
     expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
 
-    const progress = await syncStore.getSyncProgress(
-      { contractId, chainId: customChainId },
-      { db: testDb.db },
+    const progress = await testDb.run(
+      syncStore.getSyncProgress({ contractId, chainId: customChainId }),
     );
 
     expect(progress).not.toBeNull();
     expect(progress?.chainId).toBe(BigInt(customChainId));
 
-    const checkpoint = await syncStore.getCheckpoint({ chainId: customChainId }, { db: testDb.db });
+    const checkpoint = await testDb.run(syncStore.getCheckpoint({ chainId: customChainId }));
     expect(checkpoint).not.toBeNull();
     expect(checkpoint?.chainId).toBe(BigInt(customChainId));
     expect(checkpoint?.blockHeight).toBe(50n);
 
     // Verify chainId: 1 has no records
-    const defaultProgress = await syncStore.getSyncProgress(
-      { contractId, chainId: 1 },
-      { db: testDb.db },
-    );
+    const defaultProgress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
 
     expect(defaultProgress).toBeNull();
   });
@@ -4747,9 +4748,8 @@ describe("historical runtime with handlers", () => {
       expect(new URL(requestedUrl).origin).toBe("https://api.testnet.hiro.so");
     }
 
-    const progress = await syncStore.getSyncProgress(
-      { contractId, chainId: 2_147_483_648 },
-      { db: testDb.db },
+    const progress = await testDb.run(
+      syncStore.getSyncProgress({ contractId, chainId: 2_147_483_648 }),
     );
 
     expect(progress).not.toBeNull();
@@ -4801,9 +4801,8 @@ describe("historical runtime with handlers", () => {
       expect(new URL(requestedUrl).origin).toBe("https://custom.example");
     }
 
-    const progress = await syncStore.getSyncProgress(
-      { contractId, chainId: 2_147_483_648 },
-      { db: testDb.db },
+    const progress = await testDb.run(
+      syncStore.getSyncProgress({ contractId, chainId: 2_147_483_648 }),
     );
 
     expect(progress).not.toBeNull();

@@ -5,7 +5,7 @@ import type { ClarityAbi } from "clarity-abitype";
 import { Effect, References } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import type { IndexerDb } from "../database/index.ts";
+import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import { StacksClient, type StacksClientService } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
@@ -82,7 +82,6 @@ describe("indexing engine", () => {
     };
 
     const indexing = createIndexing({
-      db: mockDb,
       handlers,
     });
 
@@ -92,6 +91,7 @@ describe("indexing engine", () => {
       indexing
         .executeEvent(event)
         .pipe(
+          Effect.provideService(IndexerDatabase, mockDb),
           Effect.provideService(StacksClient, stacksClient),
           Effect.provideService(References.MinimumLogLevel, "None"),
         ),
@@ -151,7 +151,6 @@ describe("indexing engine", () => {
     };
 
     const indexing = createIndexing({
-      db: mockDb,
       handlers,
     });
 
@@ -161,6 +160,7 @@ describe("indexing engine", () => {
       indexing
         .executeEvent(event)
         .pipe(
+          Effect.provideService(IndexerDatabase, mockDb),
           Effect.provideService(StacksClient, stacksClient),
           Effect.provideService(References.MinimumLogLevel, "None"),
         ),
@@ -214,7 +214,6 @@ describe("indexing engine", () => {
     };
 
     const indexing = createIndexing({
-      db: mockDb,
       handlers,
     });
 
@@ -224,6 +223,7 @@ describe("indexing engine", () => {
       indexing
         .executeEvent(event)
         .pipe(
+          Effect.provideService(IndexerDatabase, mockDb),
           Effect.provideService(StacksClient, stacksClient),
           Effect.provideService(References.MinimumLogLevel, "None"),
         ),
@@ -243,7 +243,6 @@ describe("indexing engine", () => {
     const handlers: Handlers = {};
 
     const indexing = createIndexing({
-      db: mockDb,
       handlers,
     });
 
@@ -253,6 +252,7 @@ describe("indexing engine", () => {
       indexing
         .executeEvent(event)
         .pipe(
+          Effect.provideService(IndexerDatabase, mockDb),
           Effect.provideService(StacksClient, stacksClient),
           Effect.provideService(References.MinimumLogLevel, "None"),
         ),
@@ -268,7 +268,6 @@ describe("indexing engine", () => {
     };
 
     const indexing = createIndexing({
-      db: mockDb,
       handlers,
     });
 
@@ -279,6 +278,7 @@ describe("indexing engine", () => {
       indexing
         .executeEvent(event)
         .pipe(
+          Effect.provideService(IndexerDatabase, mockDb),
           Effect.provideService(StacksClient, stacksClient),
           Effect.provideService(References.MinimumLogLevel, "None"),
         ),
@@ -324,7 +324,6 @@ describe("transactional event handlers", () => {
       .mockImplementation((_event: HandlerEvent, context: HandlerContext) => insertBlock(context));
 
     const indexing = createIndexing({
-      db: testDb.db,
       handlers: { "SP123.token": handler },
     });
 
@@ -333,6 +332,7 @@ describe("transactional event handlers", () => {
       indexing
         .executeEvent(createMockEvent())
         .pipe(
+          Effect.provideService(IndexerDatabase, testDb.db),
           Effect.provideService(StacksClient, stacksClient),
           Effect.provideService(References.MinimumLogLevel, "None"),
         ),
@@ -351,7 +351,6 @@ describe("transactional event handlers", () => {
       );
 
     const indexing = createIndexing({
-      db: testDb.db,
       handlers: { "SP123.token": handler },
     });
 
@@ -361,6 +360,7 @@ describe("transactional event handlers", () => {
       indexing
         .executeEvent(createMockEvent())
         .pipe(
+          Effect.provideService(IndexerDatabase, testDb.db),
           Effect.provideService(StacksClient, stacksClient),
           Effect.provideService(References.MinimumLogLevel, "None"),
         ),
