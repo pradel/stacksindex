@@ -137,19 +137,23 @@ describe("aPI DataSource", () => {
       mockHandler.mockResolvedValue(jsonResponse({ error: "Not found" }, 404));
 
       const exit = await runRequestExit((client) => client.getTransaction("404"));
-      const response = expectStatusError(exit, 404);
 
-      await expect(Effect.runPromise(response.json)).resolves.toStrictEqual({ error: "Not found" });
+      await expectStatusError(exit, {
+        status: 404,
+        path: "/extended/v3/transactions/404",
+        body: { error: "Not found" },
+      });
     });
 
     test("returns the response status error on 500", async () => {
       mockHandler.mockResolvedValue(jsonResponse({ error: "Bad request" }, 400));
 
       const exit = await runRequestExit((client) => client.getTransaction("500"));
-      const response = expectStatusError(exit, 400);
 
-      await expect(Effect.runPromise(response.json)).resolves.toStrictEqual({
-        error: "Bad request",
+      await expectStatusError(exit, {
+        status: 400,
+        path: "/extended/v3/transactions/500",
+        body: { error: "Bad request" },
       });
     });
 
@@ -164,7 +168,11 @@ describe("aPI DataSource", () => {
 
       const exit = await runRequestExit((client) => client.getTransaction("parse-error"));
 
-      expectDecodeError(exit);
+      const reason = expectDecodeError(exit, {
+        path: "/extended/v3/transactions/parse-error",
+      });
+
+      expect(reason.cause).toBeInstanceOf(SyntaxError);
     });
 
     test("exposes the raw text body when the error response is not JSON", async () => {
@@ -177,9 +185,12 @@ describe("aPI DataSource", () => {
       );
 
       const exit = await runRequestExit((client) => client.getTransaction("500"));
-      const response = expectStatusError(exit, 400);
 
-      await expect(Effect.runPromise(response.text)).resolves.toBe("Bad Request");
+      await expectStatusError(exit, {
+        status: 400,
+        path: "/extended/v3/transactions/500",
+        body: "Bad Request",
+      });
     });
 
     test("fails when the error body cannot be read", async () => {
@@ -195,7 +206,10 @@ describe("aPI DataSource", () => {
 
       const exit = await runRequestExit((client) => client.getTransaction("500"));
 
-      expectStatusError(exit, 400);
+      await expectStatusError(exit, {
+        status: 400,
+        path: "/extended/v3/transactions/500",
+      });
     });
 
     test("retries transport errors", async () => {
@@ -208,7 +222,10 @@ describe("aPI DataSource", () => {
 
       const exit = await promise;
 
-      expectTransportError(exit);
+      expectTransportError(exit, {
+        path: "/extended/v3/transactions/network-error",
+        causeMessage: "Network error",
+      });
       expect(mockHandler).toHaveBeenCalledTimes(4);
 
       vi.useRealTimers();
@@ -243,11 +260,14 @@ describe("aPI DataSource", () => {
       await vi.runAllTimersAsync();
 
       const exit = await promise;
-      const response = expectStatusError(exit, 429);
 
-      await expect(Effect.runPromise(response.json)).resolves.toStrictEqual({
-        error: "Rate limited",
+      const response = await expectStatusError(exit, {
+        status: 429,
+        path: "/extended/v3/transactions/0xabc123",
+        body: { error: "Rate limited" },
       });
+
+      expect(response.headers["retry-after"]).toBe("1");
       expect(mockHandler).toHaveBeenCalledTimes(4);
 
       vi.useRealTimers();
@@ -365,9 +385,12 @@ describe("aPI DataSource", () => {
       await vi.runAllTimersAsync();
 
       const exit = await promise;
-      const response = expectStatusError(exit, 503);
 
-      await expect(Effect.runPromise(response.json)).resolves.toStrictEqual({ error: "Down" });
+      await expectStatusError(exit, {
+        status: 503,
+        path: "/extended/v3/transactions/0xabc123",
+        body: { error: "Down" },
+      });
       expect(mockHandler).toHaveBeenCalledTimes(4);
 
       vi.useRealTimers();
@@ -433,7 +456,10 @@ describe("aPI DataSource", () => {
 
       const exit = await promise;
 
-      expectTransportError(exit);
+      expectTransportError(exit, {
+        path: "/extended/v3/transactions/0xabc123",
+        causeMessage: "The operation was aborted",
+      });
       expect(mockHandler).toHaveBeenCalledTimes(4);
 
       vi.useRealTimers();
@@ -639,7 +665,11 @@ describe("aPI DataSource", () => {
 
       const exit = await runRequestExit((client) => client.getTransactionsBatch(["0xtx1"]));
 
-      expectStatusError(exit, 404);
+      await expectStatusError(exit, {
+        status: 404,
+        path: "/extended/v3/transactions/batch",
+        body: { error: "Not found" },
+      });
     });
   });
 

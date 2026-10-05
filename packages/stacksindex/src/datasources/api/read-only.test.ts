@@ -239,7 +239,10 @@ describe("readOnly", () => {
 
     const exit = await Effect.runPromiseExit(readOnly(mockCallRead, invalidParams));
 
-    expectDie(exit);
+    expectDie(
+      exit,
+      'Function "transfer" not found in ABI or is not a read_only function (/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/test-token/transfer)',
+    );
     expect(mockCallRead).not.toHaveBeenCalled();
   });
 
@@ -256,7 +259,10 @@ describe("readOnly", () => {
 
     const exit = await Effect.runPromiseExit(readOnly(mockCallRead, invalidParams));
 
-    expectDie(exit);
+    expectDie(
+      exit,
+      'Function "get-balance" expects 1 argument(s), but received 0 (/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/test-token/get-balance)',
+    );
   });
 
   it("returns error when API call returns okay: false", async () => {
@@ -280,6 +286,7 @@ describe("readOnly", () => {
     expect(exit).toBeTaggedError(
       new ReadOnlyCallError({
         message: "Read-only call failed: NoSuchContract",
+        cause: { okay: false, result: "", cause: "NoSuchContract" },
         path: "/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/test-token/get-name",
       }),
     );

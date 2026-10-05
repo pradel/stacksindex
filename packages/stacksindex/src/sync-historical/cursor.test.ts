@@ -133,7 +133,11 @@ describe("contract events first cursor", () => {
 
     const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
 
-    expectStatusError(result, 404);
+    await expectStatusError(result, {
+      status: 404,
+      path: `/extended/v3/smart-contracts/${contractId}`,
+      body: { error: "Contract not found" },
+    });
   });
 
   test("returns null when contract has no transactions", async () => {
@@ -543,7 +547,11 @@ describe("contract events first cursor", () => {
 
     const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
 
-    expectStatusError(result, 400);
+    await expectStatusError(result, {
+      status: 400,
+      path: `/extended/v3/principals/${contractId}/transactions`,
+      body: { error: "API error" },
+    });
   });
 
   test("returns error when getTransaction fails", async () => {
@@ -584,7 +592,12 @@ describe("contract events first cursor", () => {
     });
 
     const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
-    expectStatusError(result, 400);
+
+    await expectStatusError(result, {
+      status: 400,
+      path: "/extended/v3/transactions/tx-1",
+      body: { error: "Tx API error" },
+    });
   });
 
   test("returns error when getV1Transaction fails", async () => {
@@ -658,7 +671,12 @@ describe("contract events first cursor", () => {
     });
 
     const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
-    expectStatusError(result, 400);
+
+    await expectStatusError(result, {
+      status: 400,
+      path: "/extended/v1/tx/tx-1",
+      body: { error: "v1 tx failed" },
+    });
   });
 
   test("constructs cursor with anchor block microblock_sequence 2147483647", async () => {

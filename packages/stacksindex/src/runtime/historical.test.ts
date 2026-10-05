@@ -1138,7 +1138,11 @@ describe("historical runtime", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
 
-    expectStatusError(result, 400);
+    await expectStatusError(result, {
+      status: 400,
+      path: `/extended/v2/smart-contracts/${contractId}/logs`,
+      body: { error: "Logs API error" },
+    });
   });
 
   test("completes immediately when contract has no events", async () => {
@@ -5201,7 +5205,11 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
-    expectStatusError(result, 400);
+    await expectStatusError(result, {
+      status: 400,
+      path: "/extended/v3/transactions/batch",
+      body: { error: "boom" },
+    });
     expect(handler).not.toHaveBeenCalled();
   });
 
