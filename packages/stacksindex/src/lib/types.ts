@@ -3,6 +3,7 @@
 import type { Result } from "better-result";
 import type { ClarityAbi } from "clarity-abitype";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgAsyncTransaction, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
@@ -43,9 +44,19 @@ export interface IndexingClient {
   ): Promise<Result<CallReadResponse, StacksApiError>>;
 }
 
+/**
+ * Database handle passed to event handlers: a Drizzle database or the
+ * transaction handle active while the handler runs.
+ */
+export type IndexerDb =
+  | NodePgDatabase
+  | PgliteDatabase
+  // oxlint-disable-next-line typescript/no-explicit-any
+  | PgAsyncTransaction<PgQueryResultHKT, any>;
+
 // oxlint-disable-next-line typescript/no-explicit-any
 export interface HandlerContext<_TSchema extends Record<string, unknown> = any> {
-  db: NodePgDatabase | PgliteDatabase;
+  db: IndexerDb;
   client: IndexingClient;
 }
 

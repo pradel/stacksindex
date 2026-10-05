@@ -85,7 +85,10 @@ export const createIndexing = (context: IndexingContext) => ({
         },
       };
 
-      await handler(event, { db: context.db, client });
+      await context.db.transaction(async (tx) => {
+        await handler(event, { db: tx, client });
+      });
+
       const duration = handlerClock();
       context.logger.debug({
         msg: "Executed event handler",
