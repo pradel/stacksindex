@@ -1,6 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { Effect } from "effect";
-import { createHistoricalRuntime, loggerLayer, type Filter } from "stacksindex";
+import { HistoricalRuntime, IndexerDatabase, loggerLayer, type Filter } from "stacksindex";
 import { expect } from "vite-plus/test";
 
 import { createTestDatabase, type TestDatabase } from "./test-db.ts";
@@ -68,7 +68,6 @@ export async function runScenario(options: {
   contracts: ScenarioContract[];
 }): Promise<ScenarioOutcome> {
   const tracer = createTraceCollector();
-  const runtime = createHistoricalRuntime({ db: options.db });
 
   const filters: Filter[] = options.contracts.map((contract) => ({
     contractId: contract.contractId,
@@ -82,7 +81,14 @@ export async function runScenario(options: {
   }));
 
   await Effect.runPromise(
-    runtime.run(filters).pipe(Effect.provide(loggerLayer({ level: "None" }))),
+    Effect.gen(function* () {
+      const runtime = yield* HistoricalRuntime;
+      yield* runtime.run(filters);
+    }).pipe(
+      Effect.provide(HistoricalRuntime.layer()),
+      Effect.provideService(IndexerDatabase, options.db),
+      Effect.provide(loggerLayer({ level: "None" })),
+    ),
   );
 
   return { tracer, events: tracer.getEvents() };

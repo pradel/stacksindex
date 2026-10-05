@@ -81,9 +81,7 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const indexing = createIndexing({
-      handlers,
-    });
+    const indexing = createIndexing(handlers);
 
     const event = createMockEvent();
     const stacksClient = makeStacksClient();
@@ -150,9 +148,7 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const indexing = createIndexing({
-      handlers,
-    });
+    const indexing = createIndexing(handlers);
 
     const event = createMockEvent({ block_height: 54321 });
     const stacksClient = makeStacksClient({ callReadFunction });
@@ -213,9 +209,7 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const indexing = createIndexing({
-      handlers,
-    });
+    const indexing = createIndexing(handlers);
 
     const event = createMockEvent({ block_height: 77777 });
     const stacksClient = makeStacksClient({ callReadFunction });
@@ -242,9 +236,7 @@ describe("indexing engine", () => {
   test("returns ok when no handler matches contract", async () => {
     const handlers: Handlers = {};
 
-    const indexing = createIndexing({
-      handlers,
-    });
+    const indexing = createIndexing(handlers);
 
     const event = createMockEvent();
     const stacksClient = makeStacksClient();
@@ -267,9 +259,7 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const indexing = createIndexing({
-      handlers,
-    });
+    const indexing = createIndexing(handlers);
 
     const event = createMockEvent();
     const stacksClient = makeStacksClient();
@@ -323,9 +313,7 @@ describe("transactional event handlers", () => {
       .fn()
       .mockImplementation((_event: HandlerEvent, context: HandlerContext) => insertBlock(context));
 
-    const indexing = createIndexing({
-      handlers: { "SP123.token": handler },
-    });
+    const indexing = createIndexing({ "SP123.token": handler });
 
     const stacksClient = makeStacksClient();
     await Effect.runPromise(
@@ -350,9 +338,7 @@ describe("transactional event handlers", () => {
         insertBlock(context).pipe(Effect.andThen(Effect.fail(error))),
       );
 
-    const indexing = createIndexing({
-      handlers: { "SP123.token": handler },
-    });
+    const indexing = createIndexing({ "SP123.token": handler });
 
     const stacksClient = makeStacksClient();
 

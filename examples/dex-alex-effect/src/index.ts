@@ -2,7 +2,7 @@ import fs from "node:fs";
 import process from "node:process";
 
 import { Cause, Effect, Exit, Fiber } from "effect";
-import { createHistoricalRuntime, loggerLayer, makeDatabase } from "stacksindex";
+import { HistoricalRuntime, IndexerDatabase, loggerLayer, makeDatabase } from "stacksindex";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 
@@ -20,16 +20,7 @@ const program = Effect.gen(function* () {
 
   yield* appDatabase.migrate({ migrationsFolder: "./drizzle" });
 
-  const indexerDatabase = yield* makeDatabase({
-    kind: "pglite",
-    directory: "./data/indexer.db",
-  });
-
-  const runtime = createHistoricalRuntime({
-    db: indexerDatabase.db,
-    network: "mainnet",
-    api: { apiKey },
-  });
+  const runtime = yield* HistoricalRuntime;
 
   yield* runtime.run([
     {
@@ -40,7 +31,11 @@ const program = Effect.gen(function* () {
 });
 
 const fiber = Effect.runFork(
-  Effect.scoped(program).pipe(Effect.provide(loggerLayer({ level: "Info" }))),
+  Effect.scoped(program).pipe(
+    Effect.provide(HistoricalRuntime.layer({ network: "mainnet", api: { apiKey } })),
+    Effect.provide(IndexerDatabase.layer({ kind: "pglite", directory: "./data/indexer.db" })),
+    Effect.provide(loggerLayer({ level: "Info" })),
+  ),
 );
 
 let isShuttingDown = false;

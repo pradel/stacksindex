@@ -10,7 +10,7 @@ import { sql } from "drizzle-orm";
 import { Effect, Exit, Match, Predicate, References, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { createDatabase } from "../database/index.ts";
+import { createDatabase, IndexerDatabase, toThenable, type IndexerDb } from "../database/index.ts";
 import {
   FilterValidationError,
   HandlerExecutionError,
@@ -27,14 +27,23 @@ import {
 } from "../sync-store/schema.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
-import { createHistoricalRuntime } from "./historical.ts";
+import { HistoricalRuntime, type Filter, type HistoricalRuntimeOptions } from "./historical.ts";
 
-const makeRuntime = (input: Parameters<typeof createHistoricalRuntime>[0]) => {
-  const runtime = createHistoricalRuntime(input);
+const makeRuntime = (input: { db: IndexerDb } & HistoricalRuntimeOptions) => {
+  const layer = HistoricalRuntime.layer({ network: input.network, api: input.api });
 
   return {
-    run: (filters: Parameters<typeof runtime.run>[0]) =>
-      runtime.run(filters).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
+    run: (filters: Filter[]) =>
+      toThenable(
+        Effect.gen(function* () {
+          const runtime = yield* HistoricalRuntime;
+          yield* runtime.run(filters);
+        }).pipe(
+          Effect.provide(layer),
+          Effect.provideService(IndexerDatabase, input.db),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
+      ),
   };
 };
 

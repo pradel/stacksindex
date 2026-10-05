@@ -104,7 +104,7 @@ const handler = async (event, { client }) => {
 
 ## Configuration Reference
 
-### `createHistoricalRuntime(context)`
+### `createHistoricalRuntimePromise(context)`
 
 | Option        | Type                               | Default           | Description                                                                                                                                      |
 | ------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |

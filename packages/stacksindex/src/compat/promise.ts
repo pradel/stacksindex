@@ -1,19 +1,35 @@
 import { Effect } from "effect";
 
+import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import {
-  createHistoricalRuntime as createEffectHistoricalRuntime,
+  HistoricalRuntime,
   type Filter,
-  type HistoricalRuntimeContext,
+  type HistoricalRuntimeOptions,
 } from "../runtime/historical.ts";
 
-export interface HistoricalRuntime {
+export interface PromiseHistoricalRuntime {
   run: (filters: Filter[]) => Promise<void>;
 }
 
-export function createHistoricalRuntime(input: HistoricalRuntimeContext): HistoricalRuntime {
-  const runtime = createEffectHistoricalRuntime(input);
+export interface PromiseHistoricalRuntimeOptions extends HistoricalRuntimeOptions {
+  db: IndexerDb;
+}
+
+export function createHistoricalRuntime(
+  input: PromiseHistoricalRuntimeOptions,
+): PromiseHistoricalRuntime {
+  const { db, ...options } = input;
 
   return {
-    run: (filters: Filter[]): Promise<void> => Effect.runPromise(runtime.run(filters)),
+    run: (filters: Filter[]): Promise<void> =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const runtime = yield* HistoricalRuntime;
+          yield* runtime.run(filters);
+        }).pipe(
+          Effect.provide(HistoricalRuntime.layer(options)),
+          Effect.provideService(IndexerDatabase, db),
+        ),
+      ),
   };
 }

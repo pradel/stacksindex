@@ -12,11 +12,20 @@ export {
 
 export type { DatabaseConfig, DatabaseResult, IndexerDb } from "./database/index.ts";
 
-export { createHistoricalRuntime } from "./runtime/historical.ts";
+export { HistoricalRuntime } from "./runtime/historical.ts";
 
 export { createHistoricalRuntime as createHistoricalRuntimePromise } from "./compat/promise.ts";
 
-export type { Filter, HistoricalRuntimeContext } from "./runtime/historical.ts";
+export type {
+  Filter,
+  HistoricalRuntimeError,
+  HistoricalRuntimeOptions,
+  HistoricalRuntimeService,
+} from "./runtime/historical.ts";
+
+export { Indexing } from "./indexing/index.ts";
+
+export type { IndexingService } from "./indexing/index.ts";
 
 export {
   MAINNET_API_BASE_URL,

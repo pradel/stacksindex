@@ -1,4 +1,4 @@
-import { Cause, Effect } from "effect";
+import { Cause, Context, Effect, Layer } from "effect";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
 import { IndexerDatabase, toThenable } from "../database/index.ts";
@@ -6,15 +6,15 @@ import { readOnly, StacksClient } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
 
-export interface IndexingContext {
-  handlers: Handlers;
+export interface IndexingService {
+  readonly executeEvent: (
+    event: HandlerEvent,
+  ) => Effect.Effect<void, HandlerExecutionError, StacksClient | IndexerDatabase>;
 }
 
-export const createIndexing = (context: IndexingContext) => ({
-  executeEvent(
-    event: HandlerEvent,
-  ): Effect.Effect<void, HandlerExecutionError, StacksClient | IndexerDatabase> {
-    const handler = context.handlers[event.contract_log.contract_id];
+export const createIndexing = (handlers: Handlers): IndexingService => ({
+  executeEvent(event: HandlerEvent) {
+    const handler = handlers[event.contract_log.contract_id];
 
     if (handler === undefined) {
       return Effect.logDebug("No handler found for event").pipe(
@@ -124,3 +124,10 @@ export const createIndexing = (context: IndexingContext) => ({
     );
   },
 });
+
+export class Indexing extends Context.Service<Indexing, IndexingService>()(
+  "stacksindex/indexing/Indexing",
+) {
+  static readonly layer = (options: { handlers: Handlers }): Layer.Layer<Indexing> =>
+    Layer.succeed(Indexing, createIndexing(options.handlers));
+}
