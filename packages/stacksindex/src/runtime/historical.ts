@@ -41,9 +41,9 @@ interface ResolvedFilter {
 }
 
 // oxlint-disable-next-line typescript/no-explicit-any
-export interface HistoricalRuntimeContext<TSchema extends Record<string, unknown> = any> {
+export interface HistoricalRuntimeContext<_TSchema extends Record<string, unknown> = any> {
   logger: Logger;
-  db: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>;
+  db: NodePgDatabase | PgliteDatabase;
   /** Which chain to index. Defaults to `"mainnet"`. */
   network?: NetworkOption;
   api?: {

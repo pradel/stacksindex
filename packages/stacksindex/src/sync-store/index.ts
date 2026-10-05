@@ -1,6 +1,6 @@
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { PgQueryResultHKT, PgTransaction } from "drizzle-orm/pg-core";
+import type { PgAsyncTransaction, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 import type {
@@ -23,8 +23,8 @@ interface Context {
     | PgliteDatabase
     // Accept Drizzle transaction objects from db.transaction(). Generic params
     // Are intentionally broad to accept PgliteTransaction with any schema.
-    // oxlint-disable-next-line typescript-eslint/no-explicit-any
-    | PgTransaction<PgQueryResultHKT, any, any>;
+    // oxlint-disable-next-line typescript/no-explicit-any
+    | PgAsyncTransaction<PgQueryResultHKT, any>;
 }
 
 export const syncStore = {
