@@ -1,7 +1,7 @@
 import { Exit, Schema } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
-import { StacksApiResponseError } from "../datasources/api/errors.ts";
+import { ReadOnlyCallError } from "../datasources/api/read-only.ts";
 
 class TestErrorA extends Schema.TaggedError<TestErrorA>()("TestErrorA", {
   message: Schema.String,
@@ -30,20 +30,16 @@ describe("toBeTaggedError", () => {
 
   test("passes for real domain errors with identical props", () => {
     const result = Exit.fail(
-      new StacksApiResponseError({
-        status: 404,
-        statusText: "Not Found",
-        path: "/extended/v3/transactions/404",
-        errorData: { error: "Not found" },
+      new ReadOnlyCallError({
+        path: "/v2/contracts/call-read/SP123/token/get-name",
+        message: "Read-only call failed",
       }),
     );
 
     expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 404,
-        statusText: "Not Found",
-        path: "/extended/v3/transactions/404",
-        errorData: { error: "Not found" },
+      new ReadOnlyCallError({
+        path: "/v2/contracts/call-read/SP123/token/get-name",
+        message: "Read-only call failed",
       }),
     );
   });

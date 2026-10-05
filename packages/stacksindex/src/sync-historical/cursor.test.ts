@@ -4,27 +4,29 @@
 // oxlint-disable typescript/no-explicit-any
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable vitest/no-conditional-in-test
-import { Effect, Match, Predicate } from "effect";
+import { Effect, Layer, Match } from "effect";
+import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
+import { RateLimiter } from "effect/persistence";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { StacksApiResponseError } from "../datasources/api/errors.ts";
+import { StacksClient } from "../datasources/api/index.ts";
 import { createLogger } from "../logger/index.ts";
+import { expectStatusError } from "../test-utils/http-errors.ts";
 import {
   buildLogsCursor,
   buildTransactionCursor,
-  createHistoricalSync,
+  getContractEventsFirstCursor,
   parseLogsCursor,
   parseTransactionCursor,
 } from "./index.ts";
 
 const mockRequest = vi.fn();
 
-type FetchInput = string | URL;
+const toUrlString = (request: HttpClientRequest.HttpClientRequest): string =>
+  Effect.runSync(HttpClientRequest.toWeb(request)).url;
 
-const toUrlString = (url: FetchInput): string => (Predicate.isString(url) ? url : url.href);
-
-const mockFetch = vi.fn(async (rawUrl: FetchInput) => {
-  const url = toUrlString(rawUrl);
+const mockHandler = vi.fn(async (request: HttpClientRequest.HttpClientRequest) => {
+  const url = toUrlString(request);
   let res: any;
 
   try {
@@ -78,21 +80,47 @@ const context = {
   logger: createLogger({ level: 0 }),
 };
 
+const httpClient = HttpClient.make((request) =>
+  Effect.tryPromise({
+    try: async () => HttpClientResponse.fromWeb(request, await mockHandler(request)),
+    catch: (cause) =>
+      new HttpClientError.HttpClientError({
+        reason: new HttpClientError.TransportError({ request, cause }),
+      }),
+  }),
+);
+
+const stacksClientLayer = Layer.effect(
+  StacksClient,
+  StacksClient.make({ baseUrl: "https://api.hiro.so" }),
+).pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      Layer.succeed(HttpClient.HttpClient, httpClient),
+      RateLimiter.layer.pipe(Layer.provide(RateLimiter.layerStoreMemory)),
+    ),
+  ),
+);
+
+const runRequest = <A, E>(effect: Effect.Effect<A, E, StacksClient>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(stacksClientLayer)));
+
+const runRequestExit = <A, E>(effect: Effect.Effect<A, E, StacksClient>) =>
+  Effect.runPromiseExit(effect.pipe(Effect.provide(stacksClientLayer)));
+
 const contractId = "SP123.token";
 
 const mockBody = <T>(data: T) => ({
   json: () => Promise.resolve(data),
 });
 
-describe("getContractEventsFirstCursor", () => {
+describe("contract events first cursor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal("fetch", mockFetch);
   });
 
   afterAll(() => {
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
   });
 
   test("returns error when getContract fails", async () => {
@@ -103,17 +131,13 @@ describe("getContractEventsFirstCursor", () => {
       headers: { "content-type": "application/json" },
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
 
-    expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 404,
-        statusText: "Not Found",
-        path: `/extended/v3/smart-contracts/${contractId}`,
-        errorData: { error: "Contract not found" },
-      }),
-    );
+    await expectStatusError(result, {
+      status: 404,
+      path: `/extended/v3/smart-contracts/${contractId}`,
+      body: { error: "Contract not found" },
+    });
   });
 
   test("returns null when contract has no transactions", async () => {
@@ -144,8 +168,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBeNull();
   });
@@ -219,8 +242,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBe("100:0:5:2");
   });
@@ -328,8 +350,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBe("200:0:1:1");
   });
@@ -393,8 +414,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBeNull();
   });
@@ -495,8 +515,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBe("2:0:0:0");
   });
@@ -526,17 +545,13 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
 
-    expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 400,
-        statusText: "Bad Request",
-        path: `/extended/v3/principals/${contractId}/transactions`,
-        errorData: { error: "API error" },
-      }),
-    );
+    await expectStatusError(result, {
+      status: 400,
+      path: `/extended/v3/principals/${contractId}/transactions`,
+      body: { error: "API error" },
+    });
   });
 
   test("returns error when getTransaction fails", async () => {
@@ -576,16 +591,13 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
-    expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 400,
-        statusText: "Bad Request",
-        path: "/extended/v3/transactions/tx-1",
-        errorData: { error: "Tx API error" },
-      }),
-    );
+    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
+
+    await expectStatusError(result, {
+      status: 400,
+      path: "/extended/v3/transactions/tx-1",
+      body: { error: "Tx API error" },
+    });
   });
 
   test("returns error when getV1Transaction fails", async () => {
@@ -658,16 +670,13 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
-    expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 400,
-        statusText: "Bad Request",
-        path: "/extended/v1/tx/tx-1",
-        errorData: { error: "v1 tx failed" },
-      }),
-    );
+    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
+
+    await expectStatusError(result, {
+      status: 400,
+      path: "/extended/v1/tx/tx-1",
+      body: { error: "v1 tx failed" },
+    });
   });
 
   test("constructs cursor with anchor block microblock_sequence 2147483647", async () => {
@@ -745,8 +754,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBe("132191:2147483647:6:0");
   });
@@ -826,8 +834,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBe("147279:14:161:3");
   });
@@ -900,10 +907,8 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-
-    const result = await Effect.runPromise(
-      sync.getContractEventsFirstCursor(contractId, { startBlock: 150 }),
+    const result = await runRequest(
+      getContractEventsFirstCursor(context.logger, contractId, { startBlock: 150 }),
     );
 
     expect(result).toBe("150:0:0:0");
@@ -977,10 +982,8 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-
-    const result = await Effect.runPromise(
-      sync.getContractEventsFirstCursor(contractId, { startBlock: 50 }),
+    const result = await runRequest(
+      getContractEventsFirstCursor(context.logger, contractId, { startBlock: 50 }),
     );
 
     expect(result).toBe("100:0:0:0");

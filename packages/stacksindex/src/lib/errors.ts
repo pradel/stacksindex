@@ -19,3 +19,13 @@ export class SyncStoreError extends Schema.TaggedError<SyncStoreError>()("SyncSt
   operation: Schema.String,
   cause: Schema.optional(Schema.Unknown),
 }) {}
+
+/**
+ * Raised when the transactions batch endpoint omits requested transaction ids.
+ */
+export class TransactionBatchError extends Schema.TaggedError<TransactionBatchError>()(
+  "TransactionBatchError",
+  {
+    missingIds: Schema.Array(Schema.String),
+  },
+) {}

@@ -1,10 +1,9 @@
 import { Effect, Queue } from "effect";
 
 import { migrate, toThenable, type IndexerDb } from "../database/index.ts";
-import { StacksApiUnexpectedError, type StacksApiError } from "../datasources/api/errors.ts";
 import {
-  datasourceStacksApi,
-  type DatasourceStacksApiContext,
+  type StacksApiError,
+  StacksClient,
   type StorableBlock,
   type StorableTransaction,
 } from "../datasources/api/index.ts";
@@ -14,12 +13,13 @@ import {
   FilterValidationError,
   type HandlerExecutionError,
   SyncStoreError,
+  TransactionBatchError,
 } from "../lib/errors.ts";
 import { resolveNetwork, type NetworkOption, type ResolvedNetwork } from "../lib/network.ts";
 import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
-import { createHistoricalSync, parseLogsCursor } from "../sync-historical/index.ts";
+import { getContractEventsFirstCursor, parseLogsCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 
 /**
@@ -110,9 +110,11 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
 
 function validateAndResolveFilters(
   filters: Filter[],
-  context: DatasourceStacksApiContext,
-): Effect.Effect<ResolvedFilter[], StacksApiError | FilterValidationError> {
+  context: ResolvedHistoricalRuntimeContext,
+): Effect.Effect<ResolvedFilter[], StacksApiError | FilterValidationError, StacksClient> {
   return Effect.gen(function* () {
+    const client = yield* StacksClient;
+
     for (const filter of filters) {
       if (filter.startBlock !== undefined) {
         if (!Number.isInteger(filter.startBlock) || filter.startBlock < 0) {
@@ -139,7 +141,7 @@ function validateAndResolveFilters(
     const hasLatestTag = filters.some((filter) => filter.endBlock === "latest");
 
     if (hasLatestTag) {
-      const status = yield* datasourceStacksApi.getStatus(context);
+      const status = yield* client.getStatus();
       const chainTipHeight = status.chain_tip?.block_height;
 
       if (chainTipHeight === undefined) {
@@ -191,11 +193,9 @@ function validateAndResolveFilters(
 function initContractFromScratch(
   filter: ResolvedFilter,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError> {
+): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, StacksClient> {
   return Effect.gen(function* () {
-    const historicalSync = createHistoricalSync(context);
-
-    const cursor = yield* historicalSync.getContractEventsFirstCursor(filter.contractId, {
+    const cursor = yield* getContractEventsFirstCursor(context.logger, filter.contractId, {
       startBlock: filter.startBlock,
     });
 
@@ -272,7 +272,7 @@ function initContractFromSaved(
   filter: ResolvedFilter,
   saved: NonNullable<Effect.Success<ReturnType<typeof syncStore.getSyncProgress>>>,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError> {
+): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, StacksClient> {
   return Effect.gen(function* () {
     const savedHeight = Number(saved.lastBlockHeight);
 
@@ -326,9 +326,7 @@ function initContractFromSaved(
       };
     }
 
-    const historicalSync = createHistoricalSync(context);
-
-    const cursor = yield* historicalSync.getContractEventsFirstCursor(filter.contractId, {
+    const cursor = yield* getContractEventsFirstCursor(context.logger, filter.contractId, {
       startBlock: Math.max(filter.startBlock ?? 0, savedHeight + 1),
     });
 
@@ -395,7 +393,7 @@ function initContractFromSaved(
 function initializeContractStates(
   filters: ResolvedFilter[],
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState[], StacksApiError | SyncStoreError> {
+): Effect.Effect<ContractSyncState[], StacksApiError | SyncStoreError, StacksClient> {
   return Effect.gen(function* () {
     const states: ContractSyncState[] = [];
 
@@ -420,9 +418,10 @@ function initializeContractStates(
 function fetchChunkViaBatch(
   context: ResolvedHistoricalRuntimeContext,
   chunk: string[],
-): Effect.Effect<StorableTransaction[], StacksApiError> {
+): Effect.Effect<StorableTransaction[], StacksApiError | TransactionBatchError, StacksClient> {
   return Effect.gen(function* () {
-    const batchResponse = yield* datasourceStacksApi.getTransactionsBatch(context, chunk);
+    const client = yield* StacksClient;
+    const batchResponse = yield* client.getTransactionsBatch(chunk);
     // The batch endpoint returns mined transactions in newest-first
     // Order, not in request order, and omits unknown / mempool
     // Ids instead of erroring. Index by id to restore request order.
@@ -430,13 +429,7 @@ function fetchChunkViaBatch(
     const missingIds = chunk.filter((txId) => !byId.has(txId));
 
     if (missingIds.length > 0) {
-      return yield* Effect.fail(
-        new StacksApiUnexpectedError({
-          message: `Batch lookup missed ${missingIds.length} transaction(s): ${missingIds.join(", ")}`,
-          cause: { missingIds },
-          path: "/extended/v3/transactions/batch",
-        }),
-      );
+      return yield* Effect.fail(new TransactionBatchError({ missingIds }));
     }
 
     const ordered: StorableTransaction[] = [];
@@ -457,7 +450,7 @@ function fetchMissingTransactions(
   context: ResolvedHistoricalRuntimeContext,
   txIds: string[],
   maxBlockHeight?: number,
-): Effect.Effect<StorableTransaction[], StacksApiError> {
+): Effect.Effect<StorableTransaction[], StacksApiError | TransactionBatchError, StacksClient> {
   return Effect.gen(function* () {
     const transactions: StorableTransaction[] = [];
 
@@ -564,7 +557,7 @@ function processEventsUpTo(
   indexing: ReturnType<typeof createIndexing>,
   filterMap: Map<string, ResolvedFilter>,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<void, StacksApiError | HandlerExecutionError | SyncStoreError> {
+): Effect.Effect<void, StacksApiError | HandlerExecutionError | SyncStoreError, StacksClient> {
   return Effect.gen(function* () {
     const { chainId } = context;
     const checkpoint = yield* syncStore.getCheckpoint({ chainId }, { db: context.db });
@@ -652,7 +645,11 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
       filters: Filter[],
     ): Effect.Effect<
       void,
-      StacksApiError | HandlerExecutionError | FilterValidationError | SyncStoreError
+      | StacksApiError
+      | HandlerExecutionError
+      | FilterValidationError
+      | SyncStoreError
+      | TransactionBatchError
     > &
       PromiseLike<void> {
       const effect = Effect.gen(function* run() {
@@ -684,11 +681,12 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
           handlers[filter.contractId] = filter.handler;
         }
 
+        const client = yield* StacksClient;
+
         const indexing = createIndexing({
           logger: context.logger,
           db: context.db,
           handlers,
-          api: context.api,
         });
 
         const states = yield* initializeContractStates(resolvedFilters, context);
@@ -721,11 +719,9 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
             }
 
             // Fetch one page of events
-            const logsResponse = yield* datasourceStacksApi.getContractLogs(
-              context,
-              lowestState.contractId,
-              { cursor: lowestState.cursor },
-            );
+            const logsResponse = yield* client.getContractLogs(lowestState.contractId, {
+              cursor: lowestState.cursor,
+            });
 
             const { results: events, next_cursor: nextCursor } = logsResponse;
             const currentHeight = parseLogsCursor(lowestState.cursor).blockHeight;
@@ -845,12 +841,16 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         });
       });
 
-      // SAFETY: toThenable attaches a `then` accessor at runtime; the effect's error channel is already the documented union.
-      return toThenable(effect) as Effect.Effect<
-        void,
-        StacksApiError | HandlerExecutionError | FilterValidationError | SyncStoreError
-      > &
-        PromiseLike<void>;
+      const runnable = effect.pipe(
+        Effect.provide(
+          StacksClient.layer({
+            baseUrl: context.api.baseUrl,
+            apiKey: context.api.apiKey,
+          }),
+        ),
+      );
+
+      return toThenable(runnable);
     },
   };
 };

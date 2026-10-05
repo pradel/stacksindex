@@ -28,19 +28,17 @@ export {
 
 export type { NetworkName, NetworkOption, ResolvedNetwork } from "./lib/network.ts";
 
-export {
-  datasourceStacksApi,
-  StacksClient,
-  StacksClientConfig,
-  typedCallReadFunction,
-} from "./datasources/api/index.ts";
+export { readOnly, StacksClient } from "./datasources/api/index.ts";
 
 export type {
+  CallReadFunction,
   CallReadResponse,
   ContractFunctionArgs,
   ContractFunctionName,
   ContractFunctionReturnType,
-  DatasourceStacksApiContext,
+  StacksClientConfig,
+  StacksClientService,
+  StacksHttpError,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,
   UntypedCallReadOnlyFunctionParameters,
@@ -54,16 +52,16 @@ export type {
   ContractFunctionParameters,
 } from "clarity-abitype";
 
-export { FilterValidationError, HandlerExecutionError, SyncStoreError } from "./lib/errors.ts";
-
 export {
-  StacksApiParseError,
-  StacksApiRateLimitError,
-  StacksApiResponseError,
-  StacksApiUnexpectedError,
-} from "./datasources/api/errors.ts";
+  FilterValidationError,
+  HandlerExecutionError,
+  SyncStoreError,
+  TransactionBatchError,
+} from "./lib/errors.ts";
 
-export type { StacksApiError } from "./datasources/api/errors.ts";
+export { ReadOnlyCallError } from "./datasources/api/index.ts";
+
+export type { StacksApiError } from "./datasources/api/index.ts";
 
 export {
   ClarityTypeID,

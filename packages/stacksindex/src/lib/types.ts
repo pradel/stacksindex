@@ -4,12 +4,12 @@ import type { ClarityAbi } from "clarity-abitype";
 import type { Effect, Schema } from "effect";
 
 import type { IndexerDb } from "../database/index.ts";
-import type { StacksApiError } from "../datasources/api/errors.ts";
 import type {
   CallReadResponse,
   ContractFunctionArgs,
   ContractFunctionName,
   SmartContractLogEvent,
+  StacksApiError,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,
   UntypedCallReadOnlyFunctionParameters,

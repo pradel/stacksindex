@@ -1,21 +1,13 @@
 import { Effect } from "effect";
 
-import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
-  datasourceStacksApi,
   type PrincipalTransactionsResponse,
+  StacksClient,
+  type StacksApiError,
   type TransactionEventsResponse,
 } from "../datasources/api/index.ts";
 import { startClock } from "../lib/timer.ts";
 import type { Logger } from "../logger/index.ts";
-
-export interface HistoricalSyncContext {
-  logger: Logger;
-  api?: {
-    baseUrl?: string;
-    apiKey?: string;
-  };
-}
 
 export interface LogsCursor {
   blockHeight: number;
@@ -73,19 +65,18 @@ export const parseTransactionCursor = (cursor: string): TransactionCursor => {
 };
 
 function findFirstMatchingContractEvent(
-  context: HistoricalSyncContext,
   txId: string,
   contractId: string,
-): Effect.Effect<{ event_index: number } | null, StacksApiError> {
+): Effect.Effect<{ event_index: number } | null, StacksApiError, StacksClient> {
   return Effect.gen(function* () {
+    const client = yield* StacksClient;
     let eventCursor: string | null = "initial";
 
     while (eventCursor) {
-      const eventsResponse: TransactionEventsResponse =
-        yield* datasourceStacksApi.getTransactionEvents(context, txId, {
-          limit: 50,
-          cursor: eventCursor === "initial" ? undefined : eventCursor,
-        });
+      const eventsResponse: TransactionEventsResponse = yield* client.getTransactionEvents(txId, {
+        limit: 50,
+        cursor: eventCursor === "initial" ? undefined : eventCursor,
+      });
 
       const { results, cursor } = eventsResponse;
 
@@ -105,18 +96,18 @@ function findFirstMatchingContractEvent(
 }
 
 function checkTransactionForMatchingEvent(
-  context: HistoricalSyncContext,
   txId: string,
   contractId: string,
-): Effect.Effect<LogsCursor | null, StacksApiError> {
+): Effect.Effect<LogsCursor | null, StacksApiError, StacksClient> {
   return Effect.gen(function* () {
-    const fullTx = yield* datasourceStacksApi.getTransaction(context, txId);
+    const client = yield* StacksClient;
+    const fullTx = yield* client.getTransaction(txId);
 
     if (fullTx.event_count === 0) {
       return null;
     }
 
-    const matchingEvent = yield* findFirstMatchingContractEvent(context, fullTx.tx_id, contractId);
+    const matchingEvent = yield* findFirstMatchingContractEvent(fullTx.tx_id, contractId);
 
     if (!matchingEvent) {
       return null;
@@ -127,7 +118,7 @@ function checkTransactionForMatchingEvent(
     // While microblock transactions have 0..N. Because v3 endpoints completely dropped microblock_sequence and
     // V3 cursors do not expose it, GET /extended/v1/tx/{tx_id} is the only endpoint that provides the true
     // Microblock_sequence needed to construct a valid cursor.
-    const v1Tx = yield* datasourceStacksApi.getV1Transaction(context, fullTx.tx_id);
+    const v1Tx = yield* client.getV1Transaction(fullTx.tx_id);
 
     return {
       blockHeight: fullTx.block.height,
@@ -138,141 +129,141 @@ function checkTransactionForMatchingEvent(
   });
 }
 
-export const createHistoricalSync = (context: HistoricalSyncContext) => ({
-  /**
-   * Discovers the initial cursor required to start synchronizing smart contract logs.
-   *
-   * ### Background & API Limitations
-   * 1. **`/extended/v2/smart-contracts/{contract_id}/logs` requires an existing on-chain cursor**:
-   *    - The logs endpoint expects a 4-part cursor formatted as `block_height:microblock_sequence:tx_index:event_index`.
-   *    - The API strictly validates that this cursor matches an actual existing event on-chain; passing arbitrary or
-   *      synthesized cursors (such as `0:0:0:0` or `${deploymentBlock}:0:0:0`) returns `404 Not Found (Cursor not found)`.
-   *
-   * 2. **`/extended/v3/principals/{principal}/transactions` defaults to reverse-chronological order (newest first)**:
-   *    - Default pagination starts from the latest tip and only paginates backwards via `cursor.next`.
-   *    - For active contracts with hundreds of thousands of transactions, traversing from the tip backwards would require
-   *      thousands of sequential HTTP requests just to reach the contract's genesis.
-   *    - However, the transactions endpoint allows inequality coordinate querying (`<= cursor`). Passing a cursor like
-   *      `${deploymentBlock}:0:0` jumps directly to that block's transactions without validating prior existence.
-   *
-   * 3. **Transactions may contain non-log events or logs for other contracts**:
-   *    - In v3, transaction objects return `event_count` rather than an inline `events` array.
-   *    - A transaction's events may be token transfers (`ft_asset`, `stx_asset`), locks, or print logs for other contracts
-   *      in a multi-contract transaction.
-   *    - Blindly using `event_index: 0` can result in a 404 from `/logs` if index 0 is not a `contract_log` for that contract.
-   *
-   * 4. **`microblock_sequence` resolution requires `GET /extended/v1/tx/{tx_id}`**:
-   *    - `/logs` strictly validates `microblock_sequence` (`2147483647` for anchor blocks, `0..N` for microblocks).
-   *    - V3 transaction endpoints dropped `microblock_sequence`, and v3 pagination cursors do not contain it.
-   *    - Since `/logs` lacks inequality querying, fetching `GET /extended/v1/tx/{tx_id}` once for the first matching
-   *      event is the only way to obtain the exact `microblock_sequence` needed for the initial cursor.
-   *
-   * ### Implementation Strategy
-   * 1. Fetch contract metadata via `GET /extended/v3/smart-contracts/{contract_id}` (1 request) to obtain its deployment `block.height`.
-   * 2. Jump straight to the deployment block by querying `getPrincipalTransactions` with `cursor: "${deploymentBlock}:0:0"`.
-   * 3. Iterate transactions from oldest to newest within the page:
-   *    - If `event_count === 0`, skip immediately (0 extra requests).
-   *    - If `event_count > 0`, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
-   *      matching `contract_id`.
-   *    - When found, fetch `GET /extended/v1/tx/{tx_id}` to obtain its `microblock_sequence`
-   *      (e.g. `2147483647` for anchor blocks, `0..N` for microblocks) and construct the exact 4-part cursor
-   *      (`block.height:microblock_sequence:block.tx_index:event_index`) for `getContractLogs`.
-   * 5. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
-   */
-  getContractEventsFirstCursor(
-    contractId: string,
-    options?: { startBlock?: number },
-  ): Effect.Effect<string | null, StacksApiError> {
-    return Effect.gen(function* getContractEventsFirstCursor() {
-      const stopClock = startClock();
-      const ADDRESS_TX_LIMIT = 50;
+/**
+ * Discovers the initial cursor required to start synchronizing smart contract logs.
+ *
+ * ### Background & API Limitations
+ * 1. **`/extended/v2/smart-contracts/{contract_id}/logs` requires an existing on-chain cursor**:
+ *    - The logs endpoint expects a 4-part cursor formatted as `block_height:microblock_sequence:tx_index:event_index`.
+ *    - The API strictly validates that this cursor matches an actual existing event on-chain; passing arbitrary or
+ *      synthesized cursors (such as `0:0:0:0` or `${deploymentBlock}:0:0:0`) returns `404 Not Found (Cursor not found)`.
+ *
+ * 2. **`/extended/v3/principals/{principal}/transactions` defaults to reverse-chronological order (newest first)**:
+ *    - Default pagination starts from the latest tip and only paginates backwards via `cursor.next`.
+ *    - For active contracts with hundreds of thousands of transactions, traversing from the tip backwards would require
+ *      thousands of sequential HTTP requests just to reach the contract's genesis.
+ *    - However, the transactions endpoint allows inequality coordinate querying (`<= cursor`). Passing a cursor like
+ *      `${deploymentBlock}:0:0` jumps directly to that block's transactions without validating prior existence.
+ *
+ * 3. **Transactions may contain non-log events or logs for other contracts**:
+ *    - In v3, transaction objects return `event_count` rather than an inline `events` array.
+ *    - A transaction's events may be token transfers (`ft_asset`, `stx_asset`), locks, or print logs for other contracts
+ *      in a multi-contract transaction.
+ *    - Blindly using `event_index: 0` can result in a 404 from `/logs` if index 0 is not a `contract_log` for that contract.
+ *
+ * 4. **`microblock_sequence` resolution requires `GET /extended/v1/tx/{tx_id}`**:
+ *    - `/logs` strictly validates `microblock_sequence` (`2147483647` for anchor blocks, `0..N` for microblocks).
+ *    - V3 transaction endpoints dropped `microblock_sequence`, and v3 pagination cursors do not contain it.
+ *    - Since `/logs` lacks inequality querying, fetching `GET /extended/v1/tx/{tx_id}` once for the first matching
+ *      event is the only way to obtain the exact `microblock_sequence` needed for the initial cursor.
+ *
+ * ### Implementation Strategy
+ * 1. Fetch contract metadata via `GET /extended/v3/smart-contracts/{contract_id}` (1 request) to obtain its deployment `block.height`.
+ * 2. Jump straight to the deployment block by querying `getPrincipalTransactions` with `cursor: "${deploymentBlock}:0:0"`.
+ * 3. Iterate transactions from oldest to newest within the page:
+ *    - If `event_count === 0`, skip immediately (0 extra requests).
+ *    - If `event_count > 0`, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
+ *      matching `contract_id`.
+ *    - When found, fetch `GET /extended/v1/tx/{tx_id}` to obtain its `microblock_sequence`
+ *      (e.g. `2147483647` for anchor blocks, `0..N` for microblocks) and construct the exact 4-part cursor
+ *      (`block.height:microblock_sequence:block.tx_index:event_index`) for `getContractLogs`.
+ * 5. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
+ */
+export const getContractEventsFirstCursor = (
+  logger: Logger,
+  contractId: string,
+  options?: { startBlock?: number },
+): Effect.Effect<string | null, StacksApiError, StacksClient> =>
+  Effect.gen(function* getContractEventsFirstCursor() {
+    const client = yield* StacksClient;
+    const stopClock = startClock();
+    const ADDRESS_TX_LIMIT = 50;
 
-      context.logger.info({
+    logger.info({
+      service: "getContractEventsFirstCursor",
+      msg: `Looking for deployment of ${contractId}`,
+    });
+
+    const contract = yield* client.getContract(contractId);
+    const deploymentBlockHeight = contract.block.height;
+
+    const initialBlockHeight =
+      options?.startBlock === undefined
+        ? deploymentBlockHeight
+        : Math.max(deploymentBlockHeight, options.startBlock);
+
+    logger.info({
+      service: "getContractEventsFirstCursor",
+      msg: `Looking for first event of ${contractId} starting at block ${initialBlockHeight}`,
+      deploymentBlockHeight,
+      initialBlockHeight,
+    });
+
+    let currentCursor: string | null = buildTransactionCursor({
+      blockHeight: initialBlockHeight,
+      microblockSequence: 0,
+      txIndex: 0,
+    });
+
+    while (currentCursor) {
+      logger.debug({
         service: "getContractEventsFirstCursor",
-        msg: `Looking for deployment of ${contractId}`,
+        msg: `Scanning page for ${contractId}`,
+        cursor: currentCursor,
       });
 
-      const contract = yield* datasourceStacksApi.getContract(context, contractId);
-      const deploymentBlockHeight = contract.block.height;
-
-      const initialBlockHeight =
-        options?.startBlock === undefined
-          ? deploymentBlockHeight
-          : Math.max(deploymentBlockHeight, options.startBlock);
-
-      context.logger.info({
-        service: "getContractEventsFirstCursor",
-        msg: `Looking for first event of ${contractId} starting at block ${initialBlockHeight}`,
-        deploymentBlockHeight,
-        initialBlockHeight,
-      });
-
-      let currentCursor: string | null = buildTransactionCursor({
-        blockHeight: initialBlockHeight,
-        microblockSequence: 0,
-        txIndex: 0,
-      });
-
-      while (currentCursor) {
-        context.logger.debug({
-          service: "getContractEventsFirstCursor",
-          msg: `Scanning page for ${contractId}`,
+      const page: PrincipalTransactionsResponse = yield* client.getPrincipalTransactions(
+        contractId,
+        {
+          limit: ADDRESS_TX_LIMIT,
           cursor: currentCursor,
-        });
+        },
+      );
 
-        const page: PrincipalTransactionsResponse =
-          yield* datasourceStacksApi.getPrincipalTransactions(context, contractId, {
-            limit: ADDRESS_TX_LIMIT,
-            cursor: currentCursor,
-          });
+      const { results, cursor } = page;
 
-        const { results, cursor } = page;
-
-        if (results.length === 0) {
-          break;
-        }
-
-        // Iterate from oldest to newest within the page
-        for (const item of results.slice().reverse()) {
-          const itemBlockHeight = item.transaction.block.height;
-
-          const isBeforeStart =
-            options?.startBlock !== undefined && itemBlockHeight < options.startBlock;
-
-          if (!isBeforeStart) {
-            const cursorResult = yield* checkTransactionForMatchingEvent(
-              context,
-              item.transaction.tx_id,
-              contractId,
-            );
-
-            if (cursorResult) {
-              const firstCursor = buildLogsCursor(cursorResult);
-              const duration = stopClock();
-              context.logger.info({
-                service: "getContractEventsFirstCursor",
-                msg: `Found first cursor for ${contractId} at block ${cursorResult.blockHeight}`,
-                block: cursorResult.blockHeight,
-                duration,
-              });
-
-              return firstCursor;
-            }
-          }
-        }
-
-        // Move forward in time to newer transactions
-        currentCursor = cursor.previous;
+      if (results.length === 0) {
+        break;
       }
 
-      const duration = stopClock();
-      context.logger.info({
-        service: "getContractEventsFirstCursor",
-        msg: `No events found for ${contractId}`,
-        duration,
-      });
+      // Iterate from oldest to newest within the page
+      for (const item of results.slice().reverse()) {
+        const itemBlockHeight = item.transaction.block.height;
 
-      return null;
+        const isBeforeStart =
+          options?.startBlock !== undefined && itemBlockHeight < options.startBlock;
+
+        if (!isBeforeStart) {
+          const cursorResult = yield* checkTransactionForMatchingEvent(
+            item.transaction.tx_id,
+            contractId,
+          );
+
+          if (cursorResult) {
+            const firstCursor = buildLogsCursor(cursorResult);
+            const duration = stopClock();
+            logger.info({
+              service: "getContractEventsFirstCursor",
+              msg: `Found first cursor for ${contractId} at block ${cursorResult.blockHeight}`,
+              block: cursorResult.blockHeight,
+              duration,
+            });
+
+            return firstCursor;
+          }
+        }
+      }
+
+      // Move forward in time to newer transactions
+      currentCursor = cursor.previous;
+    }
+
+    const duration = stopClock();
+    logger.info({
+      service: "getContractEventsFirstCursor",
+      msg: `No events found for ${contractId}`,
+      duration,
     });
-  },
-});
+
+    return null;
+  });
