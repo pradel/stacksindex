@@ -8,6 +8,7 @@ import type {
   StorableBlock,
   StorableTransaction,
 } from "../datasources/api/index.ts";
+import { SyncStoreError } from "../lib/errors.ts";
 import { encodeBlock, encodeEvent, encodeTransaction } from "./encode.js";
 import {
   blocksTable,
@@ -27,6 +28,17 @@ interface Context {
     | PgAsyncTransaction<PgQueryResultHKT, any>;
 }
 
+async function runWithSyncStoreError<TResult>(
+  operation: string,
+  run: () => PromiseLike<TResult>,
+): Promise<TResult> {
+  try {
+    return await run();
+  } catch (cause) {
+    throw new SyncStoreError({ operation, cause });
+  }
+}
+
 export const syncStore = {
   insertBlocks: async (
     { blocks, chainId }: { blocks: StorableBlock[]; chainId: number },
@@ -36,12 +48,14 @@ export const syncStore = {
       return;
     }
 
-    await context.db
-      .insert(blocksTable)
-      .values(blocks.map((block) => encodeBlock({ block, chainId })))
-      .onConflictDoNothing({
-        target: [blocksTable.chainId, blocksTable.height],
-      });
+    await runWithSyncStoreError("insertBlocks", () =>
+      context.db
+        .insert(blocksTable)
+        .values(blocks.map((block) => encodeBlock({ block, chainId })))
+        .onConflictDoNothing({
+          target: [blocksTable.chainId, blocksTable.height],
+        }),
+    );
   },
 
   insertTransactions: async (
@@ -52,12 +66,14 @@ export const syncStore = {
       return;
     }
 
-    await context.db
-      .insert(transactionsTable)
-      .values(transactions.map((tx) => encodeTransaction({ transaction: tx, chainId })))
-      .onConflictDoNothing({
-        target: [transactionsTable.chainId, transactionsTable.txId],
-      });
+    await runWithSyncStoreError("insertTransactions", () =>
+      context.db
+        .insert(transactionsTable)
+        .values(transactions.map((tx) => encodeTransaction({ transaction: tx, chainId })))
+        .onConflictDoNothing({
+          target: [transactionsTable.chainId, transactionsTable.txId],
+        }),
+    );
   },
 
   getExistingTransactions: async (
@@ -68,14 +84,17 @@ export const syncStore = {
       return [];
     }
 
-    const result = await context.db
-      .select({ txId: transactionsTable.txId, blockHeight: transactionsTable.blockHeight })
-      .from(transactionsTable)
-      .where(
-        and(eq(transactionsTable.chainId, BigInt(chainId)), inArray(transactionsTable.txId, txIds)),
-      );
-
-    return result;
+    return runWithSyncStoreError("getExistingTransactions", () =>
+      context.db
+        .select({ txId: transactionsTable.txId, blockHeight: transactionsTable.blockHeight })
+        .from(transactionsTable)
+        .where(
+          and(
+            eq(transactionsTable.chainId, BigInt(chainId)),
+            inArray(transactionsTable.txId, txIds),
+          ),
+        ),
+    );
   },
 
   getExistingBlocks: async (
@@ -86,31 +105,36 @@ export const syncStore = {
       return [];
     }
 
-    const result = await context.db
-      .select({ hash: blocksTable.hash })
-      .from(blocksTable)
-      .where(and(eq(blocksTable.chainId, BigInt(chainId)), inArray(blocksTable.hash, blockHashes)));
+    return runWithSyncStoreError("getExistingBlocks", async () => {
+      const result = await context.db
+        .select({ hash: blocksTable.hash })
+        .from(blocksTable)
+        .where(
+          and(eq(blocksTable.chainId, BigInt(chainId)), inArray(blocksTable.hash, blockHashes)),
+        );
 
-    return result.map((row) => row.hash);
+      return result.map((row) => row.hash);
+    });
   },
 
   getSyncProgress: async (
     { contractId, chainId }: { contractId: string; chainId: number },
     context: Context,
-  ): Promise<typeof syncProgressTable.$inferSelect | null> => {
-    const result = await context.db
-      .select()
-      .from(syncProgressTable)
-      .where(
-        and(
-          eq(syncProgressTable.chainId, BigInt(chainId)),
-          eq(syncProgressTable.contractId, contractId),
-        ),
-      )
-      .limit(1);
+  ): Promise<typeof syncProgressTable.$inferSelect | null> =>
+    runWithSyncStoreError("getSyncProgress", async () => {
+      const result = await context.db
+        .select()
+        .from(syncProgressTable)
+        .where(
+          and(
+            eq(syncProgressTable.chainId, BigInt(chainId)),
+            eq(syncProgressTable.contractId, contractId),
+          ),
+        )
+        .limit(1);
 
-    return result[0] ?? null;
-  },
+      return result[0] ?? null;
+    }),
 
   upsertSyncProgress: async (
     {
@@ -128,23 +152,25 @@ export const syncStore = {
     },
     context: Context,
   ) => {
-    await context.db
-      .insert(syncProgressTable)
-      .values({
-        chainId: BigInt(chainId),
-        contractId,
-        cursor,
-        lastBlockHeight: BigInt(lastBlockHeight),
-        isComplete,
-      })
-      .onConflictDoUpdate({
-        target: [syncProgressTable.chainId, syncProgressTable.contractId],
-        set: {
+    await runWithSyncStoreError("upsertSyncProgress", () =>
+      context.db
+        .insert(syncProgressTable)
+        .values({
+          chainId: BigInt(chainId),
+          contractId,
           cursor,
           lastBlockHeight: BigInt(lastBlockHeight),
           isComplete,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: [syncProgressTable.chainId, syncProgressTable.contractId],
+          set: {
+            cursor,
+            lastBlockHeight: BigInt(lastBlockHeight),
+            isComplete,
+          },
+        }),
+    );
   },
 
   insertEvents: async (
@@ -161,12 +187,16 @@ export const syncStore = {
       return;
     }
 
-    await context.db
-      .insert(eventsTable)
-      .values(events.map(({ event, blockHeight }) => encodeEvent({ event, chainId, blockHeight })))
-      .onConflictDoNothing({
-        target: [eventsTable.chainId, eventsTable.txId, eventsTable.eventIndex],
-      });
+    await runWithSyncStoreError("insertEvents", () =>
+      context.db
+        .insert(eventsTable)
+        .values(
+          events.map(({ event, blockHeight }) => encodeEvent({ event, chainId, blockHeight })),
+        )
+        .onConflictDoNothing({
+          target: [eventsTable.chainId, eventsTable.txId, eventsTable.eventIndex],
+        }),
+    );
   },
 
   getEvents: async (
@@ -190,51 +220,54 @@ export const syncStore = {
       conditions.push(lte(eventsTable.blockHeight, BigInt(toBlockHeight)));
     }
 
-    return context.db
-      .select({
-        eventIndex: eventsTable.eventIndex,
-        eventType: eventsTable.eventType,
-        txId: eventsTable.txId,
-        contractId: eventsTable.contractId,
-        topic: eventsTable.topic,
-        valueHex: eventsTable.valueHex,
-        valueRepr: eventsTable.valueRepr,
-        blockHeight: eventsTable.blockHeight,
-        blockTime: blocksTable.blockTime,
-        txIndex: transactionsTable.txIndex,
-        senderAddress: transactionsTable.senderAddress,
-      })
-      .from(eventsTable)
-      .innerJoin(
-        transactionsTable,
-        and(
-          eq(eventsTable.chainId, transactionsTable.chainId),
-          eq(eventsTable.txId, transactionsTable.txId),
-        ),
-      )
-      .innerJoin(
-        blocksTable,
-        and(
-          eq(transactionsTable.chainId, blocksTable.chainId),
-          eq(transactionsTable.blockHeight, blocksTable.height),
-        ),
-      )
-      .where(and(...conditions))
-      .orderBy(eventsTable.blockHeight, transactionsTable.txIndex, eventsTable.eventIndex);
+    return runWithSyncStoreError("getEvents", () =>
+      context.db
+        .select({
+          eventIndex: eventsTable.eventIndex,
+          eventType: eventsTable.eventType,
+          txId: eventsTable.txId,
+          contractId: eventsTable.contractId,
+          topic: eventsTable.topic,
+          valueHex: eventsTable.valueHex,
+          valueRepr: eventsTable.valueRepr,
+          blockHeight: eventsTable.blockHeight,
+          blockTime: blocksTable.blockTime,
+          txIndex: transactionsTable.txIndex,
+          senderAddress: transactionsTable.senderAddress,
+        })
+        .from(eventsTable)
+        .innerJoin(
+          transactionsTable,
+          and(
+            eq(eventsTable.chainId, transactionsTable.chainId),
+            eq(eventsTable.txId, transactionsTable.txId),
+          ),
+        )
+        .innerJoin(
+          blocksTable,
+          and(
+            eq(transactionsTable.chainId, blocksTable.chainId),
+            eq(transactionsTable.blockHeight, blocksTable.height),
+          ),
+        )
+        .where(and(...conditions))
+        .orderBy(eventsTable.blockHeight, transactionsTable.txIndex, eventsTable.eventIndex),
+    );
   },
 
   getCheckpoint: async (
     { chainId }: { chainId: number },
     context: Context,
-  ): Promise<typeof checkpointsTable.$inferSelect | null> => {
-    const result = await context.db
-      .select()
-      .from(checkpointsTable)
-      .where(eq(checkpointsTable.chainId, BigInt(chainId)))
-      .limit(1);
+  ): Promise<typeof checkpointsTable.$inferSelect | null> =>
+    runWithSyncStoreError("getCheckpoint", async () => {
+      const result = await context.db
+        .select()
+        .from(checkpointsTable)
+        .where(eq(checkpointsTable.chainId, BigInt(chainId)))
+        .limit(1);
 
-    return result[0] ?? null;
-  },
+      return result[0] ?? null;
+    }),
 
   upsertCheckpoint: async (
     {
@@ -248,19 +281,21 @@ export const syncStore = {
     },
     context: Context,
   ) => {
-    await context.db
-      .insert(checkpointsTable)
-      .values({
-        chainId: BigInt(chainId),
-        blockHeight: BigInt(blockHeight),
-        blockTime: BigInt(blockTime),
-      })
-      .onConflictDoUpdate({
-        target: [checkpointsTable.chainId],
-        set: {
+    await runWithSyncStoreError("upsertCheckpoint", () =>
+      context.db
+        .insert(checkpointsTable)
+        .values({
+          chainId: BigInt(chainId),
           blockHeight: BigInt(blockHeight),
           blockTime: BigInt(blockTime),
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: [checkpointsTable.chainId],
+          set: {
+            blockHeight: BigInt(blockHeight),
+            blockTime: BigInt(blockTime),
+          },
+        }),
+    );
   },
 };

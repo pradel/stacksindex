@@ -1,6 +1,8 @@
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
 import type { SmartContractLogEvent, TransactionApiResponse } from "../datasources/api/index.ts";
+import { SyncStoreError } from "../lib/errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { syncStore } from "./index.ts";
 import {
@@ -661,6 +663,17 @@ describe("syncStore", () => {
           blockTime: 2000n,
         },
       ]);
+    });
+  });
+
+  describe("error handling", () => {
+    test("wraps database failures in SyncStoreError", async () => {
+      await testDb.db.execute(sql`drop table "blocks"`);
+
+      const promise = syncStore.insertBlocks({ blocks: [block], chainId: 1 }, { db: testDb.db });
+
+      await expect(promise).rejects.toBeInstanceOf(SyncStoreError);
+      await expect(promise).rejects.toMatchObject({ operation: "insertBlocks" });
     });
   });
 });

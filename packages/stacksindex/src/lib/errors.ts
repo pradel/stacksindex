@@ -8,3 +8,8 @@ export class HandlerExecutionError extends TaggedError("HandlerExecutionError")<
 export class FilterValidationError extends TaggedError("FilterValidationError")<{
   message: string;
 }> {}
+
+export class SyncStoreError extends TaggedError("SyncStoreError")<{
+  operation: string;
+  cause: unknown;
+}> {}
