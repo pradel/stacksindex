@@ -4,7 +4,6 @@ import { migrate, toThenable, type IndexerDb } from "../database/index.ts";
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
   StacksClient,
-  type StacksClientRateLimit,
   type StorableBlock,
   type StorableTransaction,
 } from "../datasources/api/index.ts";
@@ -53,14 +52,12 @@ export interface HistoricalRuntimeContext<_TSchema extends Record<string, unknow
     /** Overrides the network's default API endpoint. */
     baseUrl?: string;
     apiKey?: string;
-    /** Initial request budget; the limiter adapts to `x-ratelimit-*` headers and 429 feedback. */
-    rateLimit?: StacksClientRateLimit;
   };
 }
 
 type ResolvedHistoricalRuntimeContext = Omit<HistoricalRuntimeContext, "network" | "api"> & {
   chainId: number;
-  api: { baseUrl: string; apiKey?: string; rateLimit?: StacksClientRateLimit };
+  api: { baseUrl: string; apiKey?: string };
   network: ResolvedNetwork;
 };
 
@@ -71,10 +68,6 @@ function resolveContext(context: HistoricalRuntimeContext): ResolvedHistoricalRu
 
   if (context.api?.apiKey !== undefined) {
     api.apiKey = context.api.apiKey;
-  }
-
-  if (context.api?.rateLimit !== undefined) {
-    api.rateLimit = context.api.rateLimit;
   }
 
   return {
@@ -857,7 +850,6 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
           StacksClient.layer({
             baseUrl: context.api.baseUrl,
             apiKey: context.api.apiKey,
-            rateLimit: context.api.rateLimit,
           }),
         ),
       );

@@ -37,7 +37,6 @@ export type {
   ContractFunctionName,
   ContractFunctionReturnType,
   StacksClientConfig,
-  StacksClientRateLimit,
   StacksClientService,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,

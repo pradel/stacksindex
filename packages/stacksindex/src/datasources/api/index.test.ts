@@ -1,5 +1,5 @@
 // oxlint-disable vitest/prefer-called-once
-import { Duration, Effect, Layer, Predicate } from "effect";
+import { Effect, Layer, Predicate } from "effect";
 import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { RateLimiter } from "effect/persistence";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
@@ -947,27 +947,7 @@ describe("aPI DataSource", () => {
       expect(mockHandler.mock.calls[0][0]?.headers["x-api-key"]).toBe("secret-key");
     });
 
-    test("throttles requests through the rate limiter", async () => {
-      vi.useFakeTimers();
-      mockHandler
-        .mockResolvedValueOnce(jsonResponse({ status: "ready" }))
-        .mockResolvedValueOnce(jsonResponse({ status: "ready" }));
-
-      const promise = runStacksClient(twoStatusProgram, {
-        baseUrl: "https://api.hiro.so",
-        rateLimit: { limit: 1, window: Duration.seconds(1) },
-      });
-
-      await vi.runAllTimersAsync();
-
-      await promise;
-
-      expect(mockHandler).toHaveBeenCalledTimes(2);
-
-      vi.useRealTimers();
-    });
-
-    test("adapts the rate limit from x-ratelimit headers", async () => {
+    test("throttles requests from x-ratelimit headers", async () => {
       vi.useFakeTimers();
       mockHandler
         .mockResolvedValueOnce(
@@ -979,10 +959,7 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ status: "ready" }));
 
-      const promise = runStacksClient(twoStatusProgram, {
-        baseUrl: "https://api.hiro.so",
-        rateLimit: { limit: 50, window: Duration.seconds(1) },
-      });
+      const promise = runStacksClient(twoStatusProgram);
 
       await vi.runAllTimersAsync();
 

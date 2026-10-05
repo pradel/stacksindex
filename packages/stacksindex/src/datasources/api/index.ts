@@ -141,18 +141,9 @@ export interface CallReadBody {
   arguments: string[];
 }
 
-export interface StacksClientRateLimit {
-  /** Maximum number of requests allowed per `window`. */
-  readonly limit: number;
-  /** Duration of the rate limit window. */
-  readonly window: Duration.Input;
-}
-
 export interface StacksClientConfig {
   readonly baseUrl: string;
   readonly apiKey?: string | undefined;
-  /** Initial request budget; the limiter adapts to `x-ratelimit-*` headers and 429 feedback. */
-  readonly rateLimit?: StacksClientRateLimit | undefined;
 }
 
 export interface StacksClientService {
@@ -199,7 +190,11 @@ const MAX_RETRIES = 3;
 
 const MAX_RETRY_AFTER_SECONDS = 300;
 
-const DEFAULT_RATE_LIMIT: StacksClientRateLimit = {
+/**
+ * Initial request budget before the limiter learns the real limits from
+ * `x-ratelimit-*` response headers and 429 feedback.
+ */
+const DEFAULT_RATE_LIMIT = {
   limit: 50,
   window: Duration.seconds(1),
 };
@@ -288,19 +283,18 @@ function execute<A>(
   );
 }
 
-const makeHttpClient = (config: StacksClientConfig) =>
+const makeHttpClient = () =>
   Effect.gen(function* () {
     const baseClient = yield* HttpClient.HttpClient;
     const limiter = yield* RateLimiter.RateLimiter;
-    const rateLimit = config.rateLimit ?? DEFAULT_RATE_LIMIT;
 
     return baseClient.pipe(
       // Throttle proactively and learn the budget from `x-ratelimit-*` headers.
       HttpClient.withRateLimiter({
         limiter,
         key: "stacksindex/datasources/StacksClient",
-        window: rateLimit.window,
-        limit: rateLimit.limit,
+        window: DEFAULT_RATE_LIMIT.window,
+        limit: DEFAULT_RATE_LIMIT.limit,
         times: 0,
       }),
       // Turn non-2xx responses into errors so a single retry policy handles them.
@@ -324,7 +318,7 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
     config: StacksClientConfig,
   ): Effect.Effect<StacksClientService, never, HttpClient.HttpClient | RateLimiter.RateLimiter> =>
     Effect.gen(function* () {
-      const client = yield* makeHttpClient(config);
+      const client = yield* makeHttpClient();
       const headers: Record<string, string> = {};
 
       if (config.apiKey !== undefined) {

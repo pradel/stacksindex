@@ -114,14 +114,13 @@ const handler = async (event, { client }) => {
 
 ### `createHistoricalRuntime(context)`
 
-| Option          | Type                               | Default           | Description                                                                                                                                      |
-| --------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `db`            | `IndexerDb`                        | _Required_        | Drizzle database instance for sync storage and checkpoints.                                                                                      |
-| `logger`        | `Logger`                           | _Required_        | Logger instance from `createLogger({ level })`.                                                                                                  |
-| `network`       | `"mainnet" \| "testnet" \| number` | `"mainnet"`       | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                                 |
-| `api.baseUrl`   | `string`                           | _Network default_ | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the network default. |
-| `api.apiKey`    | `string`                           | `undefined`       | Optional Hiro API key.                                                                                                                           |
-| `api.rateLimit` | `{ limit, window }`                | `50` per second   | Initial request budget. The client adapts to the API's `x-ratelimit-*` headers and 429 feedback.                                                 |
+| Option        | Type                               | Default           | Description                                                                                                                                      |
+| ------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `db`          | `IndexerDb`                        | _Required_        | Drizzle database instance for sync storage and checkpoints.                                                                                      |
+| `logger`      | `Logger`                           | _Required_        | Logger instance from `createLogger({ level })`.                                                                                                  |
+| `network`     | `"mainnet" \| "testnet" \| number` | `"mainnet"`       | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                                 |
+| `api.baseUrl` | `string`                           | _Network default_ | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the network default. |
+| `api.apiKey`  | `string`                           | `undefined`       | Optional Hiro API key.                                                                                                                           |
 
 ### Filter
 
