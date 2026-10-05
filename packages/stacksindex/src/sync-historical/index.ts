@@ -1,9 +1,9 @@
 import { Effect } from "effect";
 
-import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
   type PrincipalTransactionsResponse,
   StacksClient,
+  type StacksApiError,
   type TransactionEventsResponse,
 } from "../datasources/api/index.ts";
 import { startClock } from "../lib/timer.ts";

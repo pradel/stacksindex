@@ -9,8 +9,12 @@ import {
   expectStatusError,
   expectTransportError,
 } from "../../test-utils/http-errors.ts";
-import type { StacksApiError } from "./errors.ts";
-import { StacksClient, type StacksClientConfig, type StacksClientService } from "./index.ts";
+import {
+  StacksClient,
+  type StacksApiError,
+  type StacksClientConfig,
+  type StacksClientService,
+} from "./index.ts";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 

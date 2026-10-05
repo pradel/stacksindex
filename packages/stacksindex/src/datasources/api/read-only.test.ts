@@ -5,8 +5,11 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { expectDie } from "../../test-utils/http-errors.ts";
-import { ReadOnlyCallError } from "./errors.ts";
-import { readOnly, type TypedCallReadOnlyFunctionParameters } from "./read-only.ts";
+import {
+  ReadOnlyCallError,
+  readOnly,
+  type TypedCallReadOnlyFunctionParameters,
+} from "./read-only.ts";
 
 const sampleTokenAbi = {
   functions: [

@@ -1,8 +1,8 @@
 import { Effect, Queue } from "effect";
 
 import { migrate, toThenable, type IndexerDb } from "../database/index.ts";
-import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
+  type StacksApiError,
   StacksClient,
   type StorableBlock,
   type StorableTransaction,

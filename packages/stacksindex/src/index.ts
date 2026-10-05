@@ -58,9 +58,9 @@ export {
   TransactionBatchError,
 } from "./lib/errors.ts";
 
-export { ReadOnlyCallError } from "./datasources/api/errors.ts";
+export { ReadOnlyCallError } from "./datasources/api/index.ts";
 
-export type { StacksApiError } from "./datasources/api/errors.ts";
+export type { StacksApiError } from "./datasources/api/index.ts";
 
 export {
   ClarityTypeID,

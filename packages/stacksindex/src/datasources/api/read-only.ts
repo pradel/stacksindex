@@ -9,13 +9,32 @@ import type {
   UnionWiden,
 } from "clarity-abitype";
 import { primitivesToCVs } from "clarity-abitype/stacks-js";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+import type { HttpClientError } from "effect/http";
+import type { RateLimiter } from "effect/persistence";
 
 import { decodeHex } from "../../codec/index.ts";
-import { ReadOnlyCallError, type StacksApiError } from "./errors.ts";
-import type { CallReadResponse } from "./index.ts";
+import type { StacksClientService } from "./index.ts";
 
 export type { ContractFunctionArgs, ContractFunctionName, ContractFunctionReturnType };
+
+/**
+ * Domain failure raised when a read-only contract call returns a Clarity
+ * error response or its result cannot be decoded.
+ */
+export class ReadOnlyCallError extends Schema.TaggedError<ReadOnlyCallError>()(
+  "ReadOnlyCallError",
+  {
+    path: Schema.String,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+export type StacksApiError =
+  | HttpClientError.HttpClientError
+  | RateLimiter.RateLimiterError
+  | ReadOnlyCallError;
 
 /**
  * Parameters for calling a read-only function without ABI (raw hex arguments).
@@ -87,11 +106,7 @@ export type TypedCallReadOnlyFunctionReturnType<
 /**
  * The raw contract call-read transport used by `readOnly`.
  */
-export type CallReadFunction = (
-  contractId: string,
-  functionName: string,
-  options?: { args?: string[]; sender?: string; tip?: number },
-) => Effect.Effect<CallReadResponse, StacksApiError>;
+export type CallReadFunction = StacksClientService["callReadFunction"];
 
 const DEFAULT_SENDER = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
 

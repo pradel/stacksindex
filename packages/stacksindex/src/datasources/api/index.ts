@@ -3,19 +3,20 @@ import { Context, Duration, Effect, Layer, Predicate, Schedule } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
-  type HttpClientError,
+  HttpClientError,
   HttpClientRequest,
   type UrlParams,
 } from "effect/http";
 import { RateLimiter } from "effect/persistence";
 
-import type { StacksApiError } from "./errors.ts";
+import type { StacksApiError } from "./read-only.ts";
 
-export { readOnly } from "./read-only.ts";
+export { readOnly, ReadOnlyCallError } from "./read-only.ts";
 
 export type {
   CallReadFunction,
   ContractFunctionArgs,
+  StacksApiError,
   ContractFunctionName,
   ContractFunctionReturnType,
   TypedCallReadOnlyFunctionParameters,
@@ -136,7 +137,7 @@ export interface CallReadResponse {
   cause?: string;
 }
 
-export interface CallReadBody {
+interface CallReadBody {
   sender: string;
   arguments: string[];
 }
@@ -208,7 +209,7 @@ const DEFAULT_SENDER = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
 function isRetryable(
   error: HttpClientError.HttpClientError | RateLimiter.RateLimiterError,
 ): boolean {
-  if (!Predicate.isTagged(error, "HttpClientError")) {
+  if (!HttpClientError.isHttpClientError(error)) {
     return false;
   }
 
@@ -231,8 +232,9 @@ const retrySchedule = Schedule.exponential(Duration.millis(500)).pipe(Schedule.j
 function execute<A>(
   client: StacksHttpClient,
   request: HttpClientRequest.HttpClientRequest,
-  path: string,
 ): Effect.Effect<A, StacksApiError> {
+  const path = new URL(request.url).pathname;
+
   return client.execute(request).pipe(
     Effect.retry({ schedule: retrySchedule, times: MAX_RETRIES, while: isRetryable }),
     Effect.flatMap((response) => response.json),
@@ -293,7 +295,6 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
             headers,
             acceptJson: true,
           }),
-          path,
         );
 
       const post = <A>(path: string, query: UrlParams.Input | undefined, body: CallReadBody) =>
@@ -307,7 +308,7 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
             body,
           ).pipe(Effect.orDie);
 
-          return yield* execute<A>(client, request, path);
+          return yield* execute<A>(client, request);
         });
 
       return StacksClient.of({

@@ -1,7 +1,7 @@
 import { Exit, Schema } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
-import { ReadOnlyCallError } from "../datasources/api/errors.ts";
+import { ReadOnlyCallError } from "../datasources/api/read-only.ts";
 
 class TestErrorA extends Schema.TaggedError<TestErrorA>()("TestErrorA", {
   message: Schema.String,
