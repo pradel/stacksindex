@@ -44,8 +44,8 @@ export interface IndexingClient {
 }
 
 // oxlint-disable-next-line typescript/no-explicit-any
-export interface HandlerContext<TSchema extends Record<string, unknown> = any> {
-  db: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>;
+export interface HandlerContext<_TSchema extends Record<string, unknown> = any> {
+  db: NodePgDatabase | PgliteDatabase;
   client: IndexingClient;
 }
 

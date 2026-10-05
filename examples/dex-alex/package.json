@@ -10,13 +10,13 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.8",
-    "drizzle-orm": "0.45.2",
+    "drizzle-orm": "1.0.0-rc.5-5935859",
     "stacksindex": "workspace:*",
     "zod": "4.6.1"
   },
   "devDependencies": {
     "@types/node": "26.4.0",
-    "drizzle-kit": "0.31.10",
+    "drizzle-kit": "1.0.0-rc.5-5935859",
     "typescript": "7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"

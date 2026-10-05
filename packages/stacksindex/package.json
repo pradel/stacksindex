@@ -48,8 +48,8 @@
     "@types/node": "26.4.0",
     "@types/pg": "8.23.1",
     "@vitest/coverage-v8": "catalog:",
-    "drizzle-kit": "0.31.10",
-    "drizzle-orm": "0.45.2",
+    "drizzle-kit": "1.0.0-rc.5-5935859",
+    "drizzle-orm": "1.0.0-rc.5-5935859",
     "pg": "8.23.0",
     "publint": "0.3.24",
     "typescript": "7.0.2",
@@ -59,7 +59,7 @@
   },
   "peerDependencies": {
     "@electric-sql/pglite": "^0.5.0",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "^1.0.0-rc.5-5935859",
     "pg": "^8.0.0"
   },
   "peerDependenciesMeta": {
