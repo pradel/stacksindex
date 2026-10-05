@@ -1,7 +1,7 @@
 import { Effect, Queue } from "effect";
 
 import { migrate, toThenable, type IndexerDb } from "../database/index.ts";
-import { StacksApiUnexpectedError, type StacksApiError } from "../datasources/api/errors.ts";
+import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
   StacksClient,
   type StacksClientRateLimit,
@@ -14,6 +14,7 @@ import {
   FilterValidationError,
   type HandlerExecutionError,
   SyncStoreError,
+  TransactionBatchError,
 } from "../lib/errors.ts";
 import { resolveNetwork, type NetworkOption, type ResolvedNetwork } from "../lib/network.ts";
 import { startClock } from "../lib/timer.ts";
@@ -428,7 +429,7 @@ function initializeContractStates(
 function fetchChunkViaBatch(
   context: ResolvedHistoricalRuntimeContext,
   chunk: string[],
-): Effect.Effect<StorableTransaction[], StacksApiError, StacksClient> {
+): Effect.Effect<StorableTransaction[], StacksApiError | TransactionBatchError, StacksClient> {
   return Effect.gen(function* () {
     const client = yield* StacksClient;
     const batchResponse = yield* client.getTransactionsBatch(chunk);
@@ -439,13 +440,7 @@ function fetchChunkViaBatch(
     const missingIds = chunk.filter((txId) => !byId.has(txId));
 
     if (missingIds.length > 0) {
-      return yield* Effect.fail(
-        new StacksApiUnexpectedError({
-          message: `Batch lookup missed ${missingIds.length} transaction(s): ${missingIds.join(", ")}`,
-          cause: { missingIds },
-          path: "/extended/v3/transactions/batch",
-        }),
-      );
+      return yield* Effect.fail(new TransactionBatchError({ missingIds }));
     }
 
     const ordered: StorableTransaction[] = [];
@@ -466,7 +461,7 @@ function fetchMissingTransactions(
   context: ResolvedHistoricalRuntimeContext,
   txIds: string[],
   maxBlockHeight?: number,
-): Effect.Effect<StorableTransaction[], StacksApiError, StacksClient> {
+): Effect.Effect<StorableTransaction[], StacksApiError | TransactionBatchError, StacksClient> {
   return Effect.gen(function* () {
     const transactions: StorableTransaction[] = [];
 
@@ -661,7 +656,11 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
       filters: Filter[],
     ): Effect.Effect<
       void,
-      StacksApiError | HandlerExecutionError | FilterValidationError | SyncStoreError
+      | StacksApiError
+      | HandlerExecutionError
+      | FilterValidationError
+      | SyncStoreError
+      | TransactionBatchError
     > &
       PromiseLike<void> {
       const effect = Effect.gen(function* run() {
@@ -866,7 +865,11 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
       // SAFETY: toThenable attaches a `then` accessor at runtime; the effect's error channel is already the documented union.
       return toThenable(runnable) as Effect.Effect<
         void,
-        StacksApiError | HandlerExecutionError | FilterValidationError | SyncStoreError
+        | StacksApiError
+        | HandlerExecutionError
+        | FilterValidationError
+        | SyncStoreError
+        | TransactionBatchError
       > &
         PromiseLike<void>;
     },

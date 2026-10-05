@@ -11,8 +11,12 @@ import { Effect, Exit, Match, Predicate, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createDatabase } from "../database/index.ts";
-import { StacksApiResponseError, StacksApiUnexpectedError } from "../datasources/api/errors.ts";
-import { FilterValidationError, HandlerExecutionError, SyncStoreError } from "../lib/errors.ts";
+import {
+  FilterValidationError,
+  HandlerExecutionError,
+  SyncStoreError,
+  TransactionBatchError,
+} from "../lib/errors.ts";
 import { createLogger } from "../logger/index.ts";
 import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -22,6 +26,7 @@ import {
   eventsTable,
   transactionsTable,
 } from "../sync-store/schema.ts";
+import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createHistoricalRuntime } from "./historical.ts";
 
@@ -1133,13 +1138,7 @@ describe("historical runtime", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
 
-    expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 400,
-        path: `/extended/v2/smart-contracts/${contractId}/logs`,
-        body: { error: "Logs API error" },
-      }),
-    );
+    expectStatusError(result, 400);
   });
 
   test("completes immediately when contract has no events", async () => {
@@ -5084,13 +5083,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
-    expect(result).toBeTaggedError(
-      new StacksApiUnexpectedError({
-        message: "Batch lookup missed 1 transaction(s): tx-2",
-        cause: { missingIds: ["tx-2"] },
-        path: "/extended/v3/transactions/batch",
-      }),
-    );
+    expect(result).toBeTaggedError(new TransactionBatchError({ missingIds: ["tx-2"] }));
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -5208,13 +5201,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
-    expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 400,
-        path: "/extended/v3/transactions/batch",
-        body: { error: "boom" },
-      }),
-    );
+    expectStatusError(result, 400);
     expect(handler).not.toHaveBeenCalled();
   });
 

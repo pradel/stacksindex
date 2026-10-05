@@ -12,7 +12,7 @@ import { primitivesToCVs } from "clarity-abitype/stacks-js";
 import { Effect } from "effect";
 
 import { decodeHex } from "../../codec/index.ts";
-import { type StacksApiError, StacksApiParseError, StacksApiUnexpectedError } from "./errors.ts";
+import { ReadOnlyCallError, type StacksApiError } from "./errors.ts";
 import type { CallReadResponse } from "./index.ts";
 
 export type { ContractFunctionArgs, ContractFunctionName, ContractFunctionReturnType };
@@ -123,19 +123,19 @@ export const readOnly = <
     );
 
     if (!abiFunc) {
-      return yield* new StacksApiUnexpectedError({
-        message: `Function "${functionName}" not found in ABI or is not a read_only function`,
-        cause: new Error(`Function "${functionName}" not found in ABI`),
-        path,
-      });
+      return yield* Effect.die(
+        new Error(
+          `Function "${functionName}" not found in ABI or is not a read_only function (${path})`,
+        ),
+      );
     }
 
     if (functionArgs.length !== abiFunc.args.length) {
-      return yield* new StacksApiUnexpectedError({
-        message: `Function "${functionName}" expects ${abiFunc.args.length} argument(s), but received ${functionArgs.length}`,
-        cause: new Error(`Argument count mismatch for "${functionName}"`),
-        path,
-      });
+      return yield* Effect.die(
+        new Error(
+          `Function "${functionName}" expects ${abiFunc.args.length} argument(s), but received ${functionArgs.length} (${path})`,
+        ),
+      );
     }
 
     let hexArgs: string[];
@@ -144,11 +144,12 @@ export const readOnly = <
       const clarityArgs = primitivesToCVs(functionArgs, abiFunc.args);
       hexArgs = clarityArgs.map((cv) => cvToHex(cv));
     } catch (err) {
-      return yield* new StacksApiUnexpectedError({
-        message: `Failed to encode arguments for function "${functionName}": ${err instanceof Error ? err.message : String(err)}`,
-        cause: err,
-        path,
-      });
+      return yield* Effect.die(
+        new Error(
+          `Failed to encode arguments for function "${functionName}": ${err instanceof Error ? err.message : String(err)} (${path})`,
+          { cause: err },
+        ),
+      );
     }
 
     const response = yield* callRead(`${contractAddress}.${contractName}`, functionName, {
@@ -160,10 +161,10 @@ export const readOnly = <
     if (!response.okay || !response.result) {
       const cause = response.cause ?? "response not okay";
 
-      return yield* new StacksApiUnexpectedError({
+      return yield* new ReadOnlyCallError({
+        path,
         message: `Read-only call failed: ${cause}`,
         cause: response,
-        path,
       });
     }
 
@@ -173,7 +174,7 @@ export const readOnly = <
       // SAFETY: decodeHex parses the on-chain Clarity value, whose shape is fixed by the read-only function's ABI return type.
       return decoded as TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>;
     } catch (err) {
-      return yield* new StacksApiParseError({
+      return yield* new ReadOnlyCallError({
         path,
         message: `Failed to decode read-only result: ${err instanceof Error ? err.message : String(err)}`,
         cause: err,

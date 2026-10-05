@@ -52,14 +52,14 @@ export type {
   ContractFunctionParameters,
 } from "clarity-abitype";
 
-export { FilterValidationError, HandlerExecutionError, SyncStoreError } from "./lib/errors.ts";
-
 export {
-  StacksApiParseError,
-  StacksApiResponseError,
-  StacksApiTransportError,
-  StacksApiUnexpectedError,
-} from "./datasources/api/errors.ts";
+  FilterValidationError,
+  HandlerExecutionError,
+  SyncStoreError,
+  TransactionBatchError,
+} from "./lib/errors.ts";
+
+export { ReadOnlyCallError } from "./datasources/api/errors.ts";
 
 export type { StacksApiError } from "./datasources/api/errors.ts";
 

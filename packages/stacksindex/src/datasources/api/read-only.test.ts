@@ -4,7 +4,8 @@ import type { ClarityAbi } from "clarity-abitype";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { StacksApiResponseError, StacksApiUnexpectedError } from "./errors.ts";
+import { expectDie } from "../../test-utils/http-errors.ts";
+import { ReadOnlyCallError } from "./errors.ts";
 import { readOnly, type TypedCallReadOnlyFunctionParameters } from "./read-only.ts";
 
 const sampleTokenAbi = {
@@ -222,7 +223,7 @@ describe("readOnly", () => {
     expect(passedOptions?.args).toHaveLength(2);
   });
 
-  it("returns error if function is public instead of read_only", async () => {
+  it("dies if function is public instead of read_only", async () => {
     const mockCallRead = vi.fn();
 
     const invalidParams: TypedCallReadOnlyFunctionParameters = {
@@ -235,17 +236,11 @@ describe("readOnly", () => {
 
     const exit = await Effect.runPromiseExit(readOnly(mockCallRead, invalidParams));
 
-    expect(exit).toBeTaggedError(
-      new StacksApiUnexpectedError({
-        message: 'Function "transfer" not found in ABI or is not a read_only function',
-        cause: new Error('Function "transfer" not found in ABI'),
-        path: "/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/test-token/transfer",
-      }),
-    );
+    expectDie(exit);
     expect(mockCallRead).not.toHaveBeenCalled();
   });
 
-  it("returns error if argument count mismatches ABI", async () => {
+  it("dies if argument count mismatches ABI", async () => {
     const mockCallRead = vi.fn();
 
     const invalidParams: TypedCallReadOnlyFunctionParameters = {
@@ -258,13 +253,7 @@ describe("readOnly", () => {
 
     const exit = await Effect.runPromiseExit(readOnly(mockCallRead, invalidParams));
 
-    expect(exit).toBeTaggedError(
-      new StacksApiUnexpectedError({
-        message: 'Function "get-balance" expects 1 argument(s), but received 0',
-        cause: new Error('Argument count mismatch for "get-balance"'),
-        path: "/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/test-token/get-balance",
-      }),
-    );
+    expectDie(exit);
   });
 
   it("returns error when API call returns okay: false", async () => {
@@ -286,19 +275,17 @@ describe("readOnly", () => {
     );
 
     expect(exit).toBeTaggedError(
-      new StacksApiUnexpectedError({
+      new ReadOnlyCallError({
         message: "Read-only call failed: NoSuchContract",
-        cause: { okay: false, result: "", cause: "NoSuchContract" },
         path: "/v2/contracts/call-read/SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9/test-token/get-name",
       }),
     );
   });
 
-  it("propagates HTTP/API errors from datasource call", async () => {
-    const apiError = new StacksApiResponseError({
-      status: 500,
+  it("propagates errors from the call-read transport", async () => {
+    const apiError = new ReadOnlyCallError({
       path: "/v2/contracts/call-read/...",
-      body: null,
+      message: "HTTP 500",
     });
 
     const mockCallRead = vi.fn().mockReturnValue(Effect.fail(apiError));

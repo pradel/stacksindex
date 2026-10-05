@@ -9,9 +9,9 @@ import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } fr
 import { RateLimiter } from "effect/persistence";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { StacksApiResponseError } from "../datasources/api/errors.ts";
 import { StacksClient } from "../datasources/api/index.ts";
 import { createLogger } from "../logger/index.ts";
+import { expectStatusError } from "../test-utils/http-errors.ts";
 import {
   buildLogsCursor,
   buildTransactionCursor,
@@ -134,13 +134,7 @@ describe("getContractEventsFirstCursor", () => {
     const sync = createHistoricalSync(context);
     const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 404,
-        path: `/extended/v3/smart-contracts/${contractId}`,
-        body: { error: "Contract not found" },
-      }),
-    );
+    expectStatusError(result, 404);
   });
 
   test("returns null when contract has no transactions", async () => {
@@ -556,13 +550,7 @@ describe("getContractEventsFirstCursor", () => {
     const sync = createHistoricalSync(context);
     const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
 
-    expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 400,
-        path: `/extended/v3/principals/${contractId}/transactions`,
-        body: { error: "API error" },
-      }),
-    );
+    expectStatusError(result, 400);
   });
 
   test("returns error when getTransaction fails", async () => {
@@ -604,13 +592,7 @@ describe("getContractEventsFirstCursor", () => {
 
     const sync = createHistoricalSync(context);
     const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
-    expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 400,
-        path: "/extended/v3/transactions/tx-1",
-        body: { error: "Tx API error" },
-      }),
-    );
+    expectStatusError(result, 400);
   });
 
   test("returns error when getV1Transaction fails", async () => {
@@ -685,13 +667,7 @@ describe("getContractEventsFirstCursor", () => {
 
     const sync = createHistoricalSync(context);
     const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
-    expect(result).toBeTaggedError(
-      new StacksApiResponseError({
-        status: 400,
-        path: "/extended/v1/tx/tx-1",
-        body: { error: "v1 tx failed" },
-      }),
-    );
+    expectStatusError(result, 400);
   });
 
   test("constructs cursor with anchor block microblock_sequence 2147483647", async () => {

@@ -1,22 +1,15 @@
 import type { paths } from "@stacks/blockchain-api-client";
-import { Context, Duration, Effect, Layer, Match, Predicate, Schedule } from "effect";
+import { Context, Duration, Effect, Layer, Predicate, Schedule } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
   type HttpClientError,
   HttpClientRequest,
-  type HttpClientResponse,
   type UrlParams,
 } from "effect/http";
 import { RateLimiter } from "effect/persistence";
 
-import {
-  type StacksApiError,
-  StacksApiParseError,
-  StacksApiResponseError,
-  StacksApiTransportError,
-  StacksApiUnexpectedError,
-} from "./errors.ts";
+import type { StacksApiError } from "./errors.ts";
 
 export { readOnly } from "./read-only.ts";
 
@@ -148,14 +141,6 @@ export interface CallReadBody {
   arguments: string[];
 }
 
-export type StacksApiErrorBody =
-  | string
-  | number
-  | boolean
-  | null
-  | StacksApiErrorBody[]
-  | { [key: string]: StacksApiErrorBody };
-
 export interface StacksClientRateLimit {
   /** Maximum number of requests allowed per `window`. */
   readonly limit: number;
@@ -280,68 +265,12 @@ const retrySchedule = exponentialBackoff.pipe(
   }),
 );
 
-function parseBodyText(text: string): StacksApiErrorBody {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function readErrorBody(
-  response: HttpClientResponse.HttpClientResponse,
-): Effect.Effect<StacksApiErrorBody | undefined> {
-  return response.text.pipe(
-    Effect.map(parseBodyText),
-    Effect.catch(() => Effect.succeed(undefined)),
-  );
-}
-
-function toStacksApiError(
-  error: HttpClientError.HttpClientError,
-  path: string,
-): Effect.Effect<StacksApiError> {
-  return Match.value(error.reason).pipe(
-    Match.tag("StatusCodeError", (reason) =>
-      readErrorBody(reason.response).pipe(
-        Effect.map(
-          (body) => new StacksApiResponseError({ status: reason.response.status, path, body }),
-        ),
-      ),
-    ),
-    Match.tag("TransportError", () =>
-      Effect.succeed(new StacksApiTransportError({ path, cause: error })),
-    ),
-    Match.tag("DecodeError", () =>
-      Effect.succeed(
-        new StacksApiParseError({
-          path,
-          message: "Failed to parse JSON response",
-          cause: error,
-        }),
-      ),
-    ),
-    Match.tag("EmptyBodyError", () =>
-      Effect.succeed(
-        new StacksApiParseError({
-          path,
-          message: "Response body is empty",
-          cause: error,
-        }),
-      ),
-    ),
-    Match.orElse(() =>
-      Effect.succeed(new StacksApiUnexpectedError({ path, message: error.message, cause: error })),
-    ),
-  );
-}
-
 /**
  * Executes a request and trusts the API contract for the response shape.
  * No runtime decoding is performed, keeping the hot path allocation-free.
  */
 function execute<A>(
-  client: HttpClient.HttpClient,
+  client: StacksHttpClient,
   request: HttpClientRequest.HttpClientRequest,
   path: string,
 ): Effect.Effect<A, StacksApiError> {
@@ -352,7 +281,6 @@ function execute<A>(
         // SAFETY: The endpoint's JSON shape is fixed by the API contract that selected A.
         json as A,
     ),
-    Effect.catch((error) => Effect.flatMap(toStacksApiError(error, path), Effect.fail)),
     Effect.withSpan("StacksApi.request", {
       attributes: { "http.request.method": request.method, "url.path": path },
     }),
@@ -360,15 +288,13 @@ function execute<A>(
   );
 }
 
-function makeHttpClient(
-  config: StacksClientConfig,
-): Effect.Effect<HttpClient.HttpClient, never, HttpClient.HttpClient | RateLimiter.RateLimiter> {
-  return Effect.gen(function* () {
+const makeHttpClient = (config: StacksClientConfig) =>
+  Effect.gen(function* () {
     const baseClient = yield* HttpClient.HttpClient;
     const limiter = yield* RateLimiter.RateLimiter;
     const rateLimit = config.rateLimit ?? DEFAULT_RATE_LIMIT;
 
-    const rateLimited = baseClient.pipe(
+    return baseClient.pipe(
       // Throttle proactively and learn the budget from `x-ratelimit-*` headers.
       HttpClient.withRateLimiter({
         limiter,
@@ -386,11 +312,9 @@ function makeHttpClient(
         schedule: retrySchedule,
       }),
     );
-
-    // SAFETY: `toStacksApiError` maps every HTTP and rate limiter failure to `StacksApiError`.
-    return rateLimited as HttpClient.HttpClient;
   });
-}
+
+type StacksHttpClient = Effect.Success<ReturnType<typeof makeHttpClient>>;
 
 export class StacksClient extends Context.Service<StacksClient, StacksClientService>()(
   "stacksindex/datasources/StacksClient",
@@ -427,7 +351,7 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
               acceptJson: true,
             }),
             body,
-          ).pipe(Effect.mapError((cause) => new StacksApiTransportError({ path, cause })));
+          ).pipe(Effect.orDie);
 
           return yield* execute<A>(client, request, path);
         });

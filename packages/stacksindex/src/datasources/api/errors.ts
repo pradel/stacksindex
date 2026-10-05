@@ -1,42 +1,21 @@
 import { Schema } from "effect";
+import type { HttpClientError } from "effect/http";
+import type { RateLimiter } from "effect/persistence";
 
-export class StacksApiResponseError extends Schema.TaggedError<StacksApiResponseError>()(
-  "StacksApiResponseError",
-  {
-    status: Schema.Number,
-    path: Schema.String,
-    body: Schema.optional(Schema.Unknown),
-  },
-) {}
-
-export class StacksApiTransportError extends Schema.TaggedError<StacksApiTransportError>()(
-  "StacksApiTransportError",
-  {
-    path: Schema.String,
-    cause: Schema.optional(Schema.Unknown),
-  },
-) {}
-
-export class StacksApiParseError extends Schema.TaggedError<StacksApiParseError>()(
-  "StacksApiParseError",
+/**
+ * Domain failure raised when a read-only contract call returns a Clarity
+ * error response or its result cannot be decoded.
+ */
+export class ReadOnlyCallError extends Schema.TaggedError<ReadOnlyCallError>()(
+  "ReadOnlyCallError",
   {
     path: Schema.String,
     message: Schema.String,
     cause: Schema.optional(Schema.Unknown),
-  },
-) {}
-
-export class StacksApiUnexpectedError extends Schema.TaggedError<StacksApiUnexpectedError>()(
-  "StacksApiUnexpectedError",
-  {
-    message: Schema.String,
-    cause: Schema.optional(Schema.Unknown),
-    path: Schema.String,
   },
 ) {}
 
 export type StacksApiError =
-  | StacksApiResponseError
-  | StacksApiTransportError
-  | StacksApiParseError
-  | StacksApiUnexpectedError;
+  | HttpClientError.HttpClientError
+  | RateLimiter.RateLimiterError
+  | ReadOnlyCallError;
