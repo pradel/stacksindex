@@ -15,7 +15,7 @@ import { expectStatusError } from "../test-utils/http-errors.ts";
 import {
   buildLogsCursor,
   buildTransactionCursor,
-  createHistoricalSync,
+  getContractEventsFirstCursor,
   parseLogsCursor,
   parseTransactionCursor,
 } from "./index.ts";
@@ -114,7 +114,7 @@ const mockBody = <T>(data: T) => ({
   json: () => Promise.resolve(data),
 });
 
-describe("getContractEventsFirstCursor", () => {
+describe("contract events first cursor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -131,8 +131,7 @@ describe("getContractEventsFirstCursor", () => {
       headers: { "content-type": "application/json" },
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
 
     expectStatusError(result, 404);
   });
@@ -165,8 +164,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBeNull();
   });
@@ -240,8 +238,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBe("100:0:5:2");
   });
@@ -349,8 +346,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBe("200:0:1:1");
   });
@@ -414,8 +410,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBeNull();
   });
@@ -516,8 +511,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBe("2:0:0:0");
   });
@@ -547,8 +541,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
 
     expectStatusError(result, 400);
   });
@@ -590,8 +583,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
     expectStatusError(result, 400);
   });
 
@@ -665,8 +657,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
     expectStatusError(result, 400);
   });
 
@@ -745,8 +736,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBe("132191:2147483647:6:0");
   });
@@ -826,8 +816,7 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
 
     expect(result).toBe("147279:14:161:3");
   });
@@ -900,10 +889,8 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-
     const result = await runRequest(
-      sync.getContractEventsFirstCursor(contractId, { startBlock: 150 }),
+      getContractEventsFirstCursor(context.logger, contractId, { startBlock: 150 }),
     );
 
     expect(result).toBe("150:0:0:0");
@@ -977,10 +964,8 @@ describe("getContractEventsFirstCursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const sync = createHistoricalSync(context);
-
     const result = await runRequest(
-      sync.getContractEventsFirstCursor(contractId, { startBlock: 50 }),
+      getContractEventsFirstCursor(context.logger, contractId, { startBlock: 50 }),
     );
 
     expect(result).toBe("100:0:0:0");

@@ -81,8 +81,7 @@ export function migrate(
     >
   ).pipe(Effect.asVoid);
 
-  // SAFETY: toThenable wraps effects with a `then` accessor, so the result satisfies PromiseLike.
-  return toThenable(effect) as Effect.Effect<void, unknown> & PromiseLike<void>;
+  return toThenable(effect);
 }
 
 export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>()(
@@ -131,6 +130,13 @@ function isProxyable<T>(target: T): target is T & object {
 }
 
 type PromiseThenParameters = Parameters<Promise<unknown>["then"]>;
+
+/**
+ * Wraps an Effect so it can also be awaited as a Promise.
+ */
+export function toThenable<A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> & PromiseLike<A>;
+
+export function toThenable<T>(target: T): T;
 
 export function toThenable<T>(target: T): T {
   if (!isProxyable(target)) {

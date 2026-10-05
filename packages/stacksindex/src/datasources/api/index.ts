@@ -9,7 +9,7 @@ import {
 } from "effect/http";
 import { RateLimiter } from "effect/persistence";
 
-import type { StacksApiError } from "./read-only.ts";
+import { DEFAULT_SENDER, type StacksHttpError } from "./read-only.ts";
 
 export { readOnly, ReadOnlyCallError } from "./read-only.ts";
 
@@ -17,6 +17,7 @@ export type {
   CallReadFunction,
   ContractFunctionArgs,
   StacksApiError,
+  StacksHttpError,
   ContractFunctionName,
   ContractFunctionReturnType,
   TypedCallReadOnlyFunctionParameters,
@@ -24,42 +25,33 @@ export type {
   UntypedCallReadOnlyFunctionParameters,
 } from "./read-only.ts";
 
-export type BlockApiResponse =
+type BlockApiResponse =
   paths["/extended/v2/blocks/{height_or_hash}"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type GetBlockQuery =
-  paths["/extended/v2/blocks/{height_or_hash}"]["get"]["parameters"]["query"];
+type GetBlockQuery = paths["/extended/v2/blocks/{height_or_hash}"]["get"]["parameters"]["query"];
 
-export type BlockTransactionsApiResponse =
+type BlockTransactionsApiResponse =
   paths["/extended/v3/blocks/{height_or_hash}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type GetBlockTransactionsQuery =
+type GetBlockTransactionsQuery =
   paths["/extended/v3/blocks/{height_or_hash}/transactions"]["get"]["parameters"]["query"];
 
-export type GetContractLogsQuery =
+type GetContractLogsQuery =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["parameters"]["query"];
 
-export type GetTransactionQuery =
-  paths["/extended/v3/transactions/{tx_id}"]["get"]["parameters"]["query"];
+type GetTransactionQuery = paths["/extended/v3/transactions/{tx_id}"]["get"]["parameters"]["query"];
 
-export type GetTransactionsBatchQuery =
-  paths["/extended/v3/transactions/batch"]["get"]["parameters"]["query"];
-
-export type TransactionsBatchResponse =
+type TransactionsBatchResponse =
   paths["/extended/v3/transactions/batch"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type TransactionSummary = TransactionsBatchResponse["results"][number];
-
-export type GetPrincipalTransactionsQuery =
+type GetPrincipalTransactionsQuery =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["parameters"]["query"];
 
-export type GetTransactionEventsQuery =
+type GetTransactionEventsQuery =
   paths["/extended/v3/transactions/{tx_id}/events"]["get"]["parameters"]["query"];
 
 export type TransactionEventsResponse =
   paths["/extended/v3/transactions/{tx_id}/events"]["get"]["responses"]["200"]["content"]["application/json"];
-
-export type TransactionEvent = TransactionEventsResponse["results"][number];
 
 export type TransactionApiResponse = Extract<
   paths["/extended/v3/transactions/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
@@ -97,39 +89,25 @@ export interface StorableBlock {
 export type PrincipalTransactionsResponse =
   paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type ContractApiResponse =
+type ContractApiResponse =
   paths["/extended/v3/smart-contracts/{contract_id}"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type ContractLogsResponse =
+type ContractLogsResponse =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type ApiStatusResponse =
+type ApiStatusResponse =
   paths["/extended"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type V1TransactionApiResponse = Extract<
+type V1TransactionApiResponse = Extract<
   paths["/extended/v1/tx/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
   { block_height: number }
 >;
 
 type MinedV1Transaction = V1TransactionApiResponse;
 
-export type ContractEvent = MinedV1Transaction["events"][number];
+type ContractEvent = MinedV1Transaction["events"][number];
 
 export type SmartContractLogEvent = Extract<ContractEvent, { event_type: "smart_contract_log" }>;
-
-export type StxLockEvent = Extract<ContractEvent, { event_type: "stx_lock" }>;
-
-export type StxAssetEvent = Extract<ContractEvent, { event_type: "stx_asset" }>;
-
-export type FungibleTokenAssetEvent = Extract<
-  ContractEvent,
-  { event_type: "fungible_token_asset" }
->;
-
-export type NonFungibleTokenAssetEvent = Extract<
-  ContractEvent,
-  { event_type: "non_fungible_token_asset" }
->;
 
 export interface CallReadResponse {
   okay: boolean;
@@ -148,43 +126,43 @@ export interface StacksClientConfig {
 }
 
 export interface StacksClientService {
-  readonly getStatus: () => Effect.Effect<ApiStatusResponse, StacksApiError>;
+  readonly getStatus: () => Effect.Effect<ApiStatusResponse, StacksHttpError>;
   readonly getBlock: (
     heightOrHash: string | number,
     options?: GetBlockQuery,
-  ) => Effect.Effect<BlockApiResponse, StacksApiError>;
+  ) => Effect.Effect<BlockApiResponse, StacksHttpError>;
   readonly getBlockTransactions: (
     heightOrHash: string | number,
     options?: GetBlockTransactionsQuery,
-  ) => Effect.Effect<BlockTransactionsApiResponse, StacksApiError>;
+  ) => Effect.Effect<BlockTransactionsApiResponse, StacksHttpError>;
   readonly getTransaction: (
     txId: string,
     options?: GetTransactionQuery,
-  ) => Effect.Effect<TransactionApiResponse, StacksApiError>;
+  ) => Effect.Effect<TransactionApiResponse, StacksHttpError>;
   readonly getV1Transaction: (
     txId: string,
-  ) => Effect.Effect<V1TransactionApiResponse, StacksApiError>;
+  ) => Effect.Effect<V1TransactionApiResponse, StacksHttpError>;
   readonly getTransactionsBatch: (
     txIds: string[],
-  ) => Effect.Effect<TransactionsBatchResponse, StacksApiError>;
+  ) => Effect.Effect<TransactionsBatchResponse, StacksHttpError>;
   readonly getTransactionEvents: (
     txId: string,
     options?: GetTransactionEventsQuery,
-  ) => Effect.Effect<TransactionEventsResponse, StacksApiError>;
+  ) => Effect.Effect<TransactionEventsResponse, StacksHttpError>;
   readonly getPrincipalTransactions: (
     principal: string,
     options?: GetPrincipalTransactionsQuery,
-  ) => Effect.Effect<PrincipalTransactionsResponse, StacksApiError>;
-  readonly getContract: (contractId: string) => Effect.Effect<ContractApiResponse, StacksApiError>;
+  ) => Effect.Effect<PrincipalTransactionsResponse, StacksHttpError>;
+  readonly getContract: (contractId: string) => Effect.Effect<ContractApiResponse, StacksHttpError>;
   readonly getContractLogs: (
     contractId: string,
     options?: GetContractLogsQuery,
-  ) => Effect.Effect<ContractLogsResponse, StacksApiError>;
+  ) => Effect.Effect<ContractLogsResponse, StacksHttpError>;
   readonly callReadFunction: (
     contractId: string,
     functionName: string,
     options?: { args?: string[]; sender?: string; tip?: number },
-  ) => Effect.Effect<CallReadResponse, StacksApiError>;
+  ) => Effect.Effect<CallReadResponse, StacksHttpError>;
 }
 
 const MAX_RETRIES = 3;
@@ -199,8 +177,6 @@ const DEFAULT_RATE_LIMIT = {
   limit: 50,
   window: Duration.seconds(1),
 };
-
-const DEFAULT_SENDER = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
 
 /**
  * Retries transport failures and transient HTTP statuses. Rate limits (429)
@@ -232,7 +208,7 @@ const retrySchedule = Schedule.exponential(Duration.millis(500)).pipe(Schedule.j
 function execute<A>(
   client: StacksHttpClient,
   request: HttpClientRequest.HttpClientRequest,
-): Effect.Effect<A, StacksApiError> {
+): Effect.Effect<A, StacksHttpError> {
   const path = new URL(request.url).pathname;
 
   return client.execute(request).pipe(

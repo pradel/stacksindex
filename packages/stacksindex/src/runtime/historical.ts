@@ -19,7 +19,7 @@ import { resolveNetwork, type NetworkOption, type ResolvedNetwork } from "../lib
 import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import type { Logger } from "../logger/index.ts";
-import { createHistoricalSync, parseLogsCursor } from "../sync-historical/index.ts";
+import { getContractEventsFirstCursor, parseLogsCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 
 /**
@@ -195,9 +195,7 @@ function initContractFromScratch(
   context: ResolvedHistoricalRuntimeContext,
 ): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, StacksClient> {
   return Effect.gen(function* () {
-    const historicalSync = createHistoricalSync(context);
-
-    const cursor = yield* historicalSync.getContractEventsFirstCursor(filter.contractId, {
+    const cursor = yield* getContractEventsFirstCursor(context.logger, filter.contractId, {
       startBlock: filter.startBlock,
     });
 
@@ -328,9 +326,7 @@ function initContractFromSaved(
       };
     }
 
-    const historicalSync = createHistoricalSync(context);
-
-    const cursor = yield* historicalSync.getContractEventsFirstCursor(filter.contractId, {
+    const cursor = yield* getContractEventsFirstCursor(context.logger, filter.contractId, {
       startBlock: Math.max(filter.startBlock ?? 0, savedHeight + 1),
     });
 
@@ -854,16 +850,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         ),
       );
 
-      // SAFETY: toThenable attaches a `then` accessor at runtime; the effect's error channel is already the documented union.
-      return toThenable(runnable) as Effect.Effect<
-        void,
-        | StacksApiError
-        | HandlerExecutionError
-        | FilterValidationError
-        | SyncStoreError
-        | TransactionBatchError
-      > &
-        PromiseLike<void>;
+      return toThenable(runnable);
     },
   };
 };

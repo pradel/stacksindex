@@ -38,6 +38,7 @@ export type {
   ContractFunctionReturnType,
   StacksClientConfig,
   StacksClientService,
+  StacksHttpError,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,
   UntypedCallReadOnlyFunctionParameters,

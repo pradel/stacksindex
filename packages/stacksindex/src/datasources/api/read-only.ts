@@ -31,10 +31,9 @@ export class ReadOnlyCallError extends Schema.TaggedError<ReadOnlyCallError>()(
   },
 ) {}
 
-export type StacksApiError =
-  | HttpClientError.HttpClientError
-  | RateLimiter.RateLimiterError
-  | ReadOnlyCallError;
+export type StacksHttpError = HttpClientError.HttpClientError | RateLimiter.RateLimiterError;
+
+export type StacksApiError = StacksHttpError | ReadOnlyCallError;
 
 /**
  * Parameters for calling a read-only function without ABI (raw hex arguments).
@@ -108,7 +107,7 @@ export type TypedCallReadOnlyFunctionReturnType<
  */
 export type CallReadFunction = StacksClientService["callReadFunction"];
 
-const DEFAULT_SENDER = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
+export const DEFAULT_SENDER = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
 
 function isClarityAbi(abi: ClarityAbi | readonly unknown[]): abi is ClarityAbi {
   return !Array.isArray(abi);
