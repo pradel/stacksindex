@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import type { HttpClient } from "effect/http";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
@@ -76,7 +77,7 @@ function findFirstMatchingContractEvent(
   context: HistoricalSyncContext,
   txId: string,
   contractId: string,
-): Effect.Effect<{ event_index: number } | null, StacksApiError> {
+): Effect.Effect<{ event_index: number } | null, StacksApiError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     let eventCursor: string | null = "initial";
 
@@ -108,7 +109,7 @@ function checkTransactionForMatchingEvent(
   context: HistoricalSyncContext,
   txId: string,
   contractId: string,
-): Effect.Effect<LogsCursor | null, StacksApiError> {
+): Effect.Effect<LogsCursor | null, StacksApiError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const fullTx = yield* datasourceStacksApi.getTransaction(context, txId);
 
@@ -182,7 +183,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
   getContractEventsFirstCursor(
     contractId: string,
     options?: { startBlock?: number },
-  ): Effect.Effect<string | null, StacksApiError> {
+  ): Effect.Effect<string | null, StacksApiError, HttpClient.HttpClient> {
     return Effect.gen(function* getContractEventsFirstCursor() {
       const stopClock = startClock();
       const ADDRESS_TX_LIMIT = 50;

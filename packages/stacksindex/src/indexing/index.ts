@@ -1,4 +1,5 @@
 import { Cause, Effect } from "effect";
+import { HttpClient } from "effect/http";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
 import { toThenable, type IndexerDb } from "../database/index.ts";
@@ -21,6 +22,7 @@ export interface IndexingContext {
   logger: Logger;
   db: IndexerDb;
   handlers: Handlers;
+  httpClient: HttpClient.HttpClient;
   api?: {
     baseUrl?: string;
     apiKey?: string;
@@ -52,6 +54,11 @@ export const createIndexing = (context: IndexingContext) => ({
     return (
       context.db.transaction((tx) =>
         Effect.gen(function* executeEvent() {
+          const provideClient = <A, E>(
+            effect: Effect.Effect<A, E, HttpClient.HttpClient>,
+          ): Effect.Effect<A, E> =>
+            Effect.provideService(effect, HttpClient.HttpClient, context.httpClient);
+
           // SAFETY: The runtime dispatch below mirrors both overloads: an `abi` field selects the typed read path.
           const client: IndexingClient = {
             // oxlint-disable-next-line typescript/no-explicit-any
@@ -63,21 +70,30 @@ export const createIndexing = (context: IndexingContext) => ({
 
               if ("abi" in options) {
                 return toThenable(
-                  datasourceStacksApi.typedCallReadFunction(apiContext, {
-                    ...options,
-                    tip: options.tip ?? event.block_height,
-                  }),
+                  provideClient(
+                    datasourceStacksApi.typedCallReadFunction(apiContext, {
+                      ...options,
+                      tip: options.tip ?? event.block_height,
+                    }),
+                  ),
                 );
               }
 
               const contractId = `${options.contractAddress}.${options.contractName}`;
 
               return toThenable(
-                datasourceStacksApi.callReadFunction(apiContext, contractId, options.functionName, {
-                  args: options.args,
-                  sender: options.senderAddress,
-                  tip: options.tip ?? event.block_height,
-                }),
+                provideClient(
+                  datasourceStacksApi.callReadFunction(
+                    apiContext,
+                    contractId,
+                    options.functionName,
+                    {
+                      args: options.args,
+                      sender: options.senderAddress,
+                      tip: options.tip ?? event.block_height,
+                    },
+                  ),
+                ),
               );
             }) as IndexingClient["callReadOnly"],
           };

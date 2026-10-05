@@ -5,6 +5,7 @@
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable vitest/no-conditional-in-test
 import { Effect, Match, Predicate } from "effect";
+import { FetchHttpClient, type HttpClient } from "effect/http";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { StacksApiResponseError } from "../datasources/api/errors.ts";
@@ -78,6 +79,12 @@ const context = {
   logger: createLogger({ level: 0 }),
 };
 
+const runRequest = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(FetchHttpClient.layer)));
+
+const runRequestExit = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) =>
+  Effect.runPromiseExit(effect.pipe(Effect.provide(FetchHttpClient.layer)));
+
 const contractId = "SP123.token";
 
 const mockBody = <T>(data: T) => ({
@@ -104,7 +111,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
 
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
@@ -145,7 +152,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
 
     expect(result).toBeNull();
   });
@@ -220,7 +227,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
 
     expect(result).toBe("100:0:5:2");
   });
@@ -329,7 +336,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
 
     expect(result).toBe("200:0:1:1");
   });
@@ -394,7 +401,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
 
     expect(result).toBeNull();
   });
@@ -496,7 +503,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
 
     expect(result).toBe("2:0:0:0");
   });
@@ -527,7 +534,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
 
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
@@ -577,7 +584,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
@@ -659,7 +666,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromiseExit(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(sync.getContractEventsFirstCursor(contractId));
     expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
@@ -746,7 +753,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
 
     expect(result).toBe("132191:2147483647:6:0");
   });
@@ -827,7 +834,7 @@ describe("getContractEventsFirstCursor", () => {
     });
 
     const sync = createHistoricalSync(context);
-    const result = await Effect.runPromise(sync.getContractEventsFirstCursor(contractId));
+    const result = await runRequest(sync.getContractEventsFirstCursor(contractId));
 
     expect(result).toBe("147279:14:161:3");
   });
@@ -902,7 +909,7 @@ describe("getContractEventsFirstCursor", () => {
 
     const sync = createHistoricalSync(context);
 
-    const result = await Effect.runPromise(
+    const result = await runRequest(
       sync.getContractEventsFirstCursor(contractId, { startBlock: 150 }),
     );
 
@@ -979,7 +986,7 @@ describe("getContractEventsFirstCursor", () => {
 
     const sync = createHistoricalSync(context);
 
-    const result = await Effect.runPromise(
+    const result = await runRequest(
       sync.getContractEventsFirstCursor(contractId, { startBlock: 50 }),
     );
 

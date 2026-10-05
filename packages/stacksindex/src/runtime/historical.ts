@@ -1,4 +1,5 @@
 import { Effect, Queue } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/http";
 
 import { migrate, toThenable, type IndexerDb } from "../database/index.ts";
 import { StacksApiUnexpectedError, type StacksApiError } from "../datasources/api/errors.ts";
@@ -111,7 +112,7 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
 function validateAndResolveFilters(
   filters: Filter[],
   context: DatasourceStacksApiContext,
-): Effect.Effect<ResolvedFilter[], StacksApiError | FilterValidationError> {
+): Effect.Effect<ResolvedFilter[], StacksApiError | FilterValidationError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     for (const filter of filters) {
       if (filter.startBlock !== undefined) {
@@ -191,7 +192,7 @@ function validateAndResolveFilters(
 function initContractFromScratch(
   filter: ResolvedFilter,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError> {
+): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const historicalSync = createHistoricalSync(context);
 
@@ -272,7 +273,7 @@ function initContractFromSaved(
   filter: ResolvedFilter,
   saved: NonNullable<Effect.Success<ReturnType<typeof syncStore.getSyncProgress>>>,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError> {
+): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const savedHeight = Number(saved.lastBlockHeight);
 
@@ -395,7 +396,7 @@ function initContractFromSaved(
 function initializeContractStates(
   filters: ResolvedFilter[],
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState[], StacksApiError | SyncStoreError> {
+): Effect.Effect<ContractSyncState[], StacksApiError | SyncStoreError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const states: ContractSyncState[] = [];
 
@@ -420,7 +421,7 @@ function initializeContractStates(
 function fetchChunkViaBatch(
   context: ResolvedHistoricalRuntimeContext,
   chunk: string[],
-): Effect.Effect<StorableTransaction[], StacksApiError> {
+): Effect.Effect<StorableTransaction[], StacksApiError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const batchResponse = yield* datasourceStacksApi.getTransactionsBatch(context, chunk);
     // The batch endpoint returns mined transactions in newest-first
@@ -457,7 +458,7 @@ function fetchMissingTransactions(
   context: ResolvedHistoricalRuntimeContext,
   txIds: string[],
   maxBlockHeight?: number,
-): Effect.Effect<StorableTransaction[], StacksApiError> {
+): Effect.Effect<StorableTransaction[], StacksApiError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const transactions: StorableTransaction[] = [];
 
@@ -684,11 +685,14 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
           handlers[filter.contractId] = filter.handler;
         }
 
+        const httpClient = yield* HttpClient.HttpClient;
+
         const indexing = createIndexing({
           logger: context.logger,
           db: context.db,
           handlers,
           api: context.api,
+          httpClient,
         });
 
         const states = yield* initializeContractStates(resolvedFilters, context);
@@ -845,8 +849,10 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         });
       });
 
+      const runnable = effect.pipe(Effect.provide(FetchHttpClient.layer));
+
       // SAFETY: toThenable attaches a `then` accessor at runtime; the effect's error channel is already the documented union.
-      return toThenable(effect) as Effect.Effect<
+      return toThenable(runnable) as Effect.Effect<
         void,
         StacksApiError | HandlerExecutionError | FilterValidationError | SyncStoreError
       > &

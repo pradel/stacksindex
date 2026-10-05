@@ -3,6 +3,7 @@
 
 import type { ClarityAbi } from "clarity-abitype";
 import { Effect } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/http";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import type { IndexerDb } from "../database/index.ts";
@@ -13,6 +14,12 @@ import { createLogger } from "../logger/index.ts";
 import { blocksTable } from "../sync-store/schema.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createIndexing } from "./index.ts";
+
+const httpClient = Effect.runSync(
+  Effect.gen(function* getHttpClient() {
+    return yield* HttpClient.HttpClient;
+  }).pipe(Effect.provide(FetchHttpClient.layer)),
+);
 
 // SAFETY: The test double implements only `transaction`, the sole IndexerDb member createIndexing reads.
 const mockDb = {
@@ -69,6 +76,7 @@ describe("indexing engine", () => {
       logger: createLogger({ level: 0 }),
       db: mockDb,
       handlers,
+      httpClient,
     });
 
     const event = createMockEvent();
@@ -134,6 +142,7 @@ describe("indexing engine", () => {
       logger,
       db: mockDb,
       handlers,
+      httpClient,
       api,
     });
 
@@ -213,6 +222,7 @@ describe("indexing engine", () => {
       logger,
       db: mockDb,
       handlers,
+      httpClient,
     });
 
     const event = createMockEvent({ block_height: 77777 });
@@ -242,6 +252,7 @@ describe("indexing engine", () => {
       logger: createLogger({ level: 0 }),
       db: mockDb,
       handlers,
+      httpClient,
     });
 
     const event = createMockEvent();
@@ -260,6 +271,7 @@ describe("indexing engine", () => {
       logger: createLogger({ level: 0 }),
       db: mockDb,
       handlers,
+      httpClient,
     });
 
     const event = createMockEvent();
@@ -308,6 +320,7 @@ describe("transactional event handlers", () => {
       logger: createLogger({ level: 0 }),
       db: testDb.db,
       handlers: { "SP123.token": handler },
+      httpClient,
     });
 
     await Effect.runPromise(indexing.executeEvent(createMockEvent()));
@@ -328,6 +341,7 @@ describe("transactional event handlers", () => {
       logger: createLogger({ level: 0 }),
       db: testDb.db,
       handlers: { "SP123.token": handler },
+      httpClient,
     });
 
     const result = await Effect.runPromiseExit(indexing.executeEvent(createMockEvent()));

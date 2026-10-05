@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { FetchHttpClient, type HttpClient } from "effect/http";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createLogger } from "../../logger/index.ts";
@@ -67,6 +68,12 @@ const context = {
   logger: createLogger({ level: 0 }),
 };
 
+const runRequest = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(FetchHttpClient.layer)));
+
+const runRequestExit = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) =>
+  Effect.runPromiseExit(effect.pipe(Effect.provide(FetchHttpClient.layer)));
+
 describe("aPI DataSource", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,9 +89,7 @@ describe("aPI DataSource", () => {
     test("returns data on 200", async () => {
       mockFetch.mockResolvedValue(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const result = await Effect.runPromise(
-        datasourceStacksApi.getTransaction(context, "0xabc123"),
-      );
+      const result = await runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
 
       expect(result).toStrictEqual({ hash: "0xabc123", block_height: 123_456 });
     });
@@ -92,7 +97,7 @@ describe("aPI DataSource", () => {
     test("returns StacksApiResponseError on 404", async () => {
       mockFetch.mockResolvedValue(jsonResponse({ error: "Not found" }, 404));
 
-      const exit = await Effect.runPromiseExit(datasourceStacksApi.getTransaction(context, "404"));
+      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "404"));
 
       expect(exit).toBeTaggedError(
         new StacksApiResponseError({
@@ -107,7 +112,7 @@ describe("aPI DataSource", () => {
     test("returns StacksApiResponseError on 500", async () => {
       mockFetch.mockResolvedValue(jsonResponse({ error: "Bad request" }, 400));
 
-      const exit = await Effect.runPromiseExit(datasourceStacksApi.getTransaction(context, "500"));
+      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "500"));
 
       expect(exit).toBeTaggedError(
         new StacksApiResponseError({
@@ -128,9 +133,7 @@ describe("aPI DataSource", () => {
         }),
       );
 
-      const exit = await Effect.runPromiseExit(
-        datasourceStacksApi.getTransaction(context, "parse-error"),
-      );
+      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "parse-error"));
 
       expect(exit).toBeTaggedError(
         new StacksApiParseError({ message: "Failed to parse JSON response" }),
@@ -146,7 +149,7 @@ describe("aPI DataSource", () => {
         }),
       );
 
-      const exit = await Effect.runPromiseExit(datasourceStacksApi.getTransaction(context, "500"));
+      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "500"));
 
       expect(exit).toBeTaggedError(
         new StacksApiResponseError({
@@ -169,7 +172,7 @@ describe("aPI DataSource", () => {
 
       mockFetch.mockResolvedValue(mockBrokenResponse);
 
-      const exit = await Effect.runPromiseExit(datasourceStacksApi.getTransaction(context, "500"));
+      const exit = await runRequestExit(datasourceStacksApi.getTransaction(context, "500"));
 
       expect(exit).toBeTaggedError(
         new StacksApiResponseError({
@@ -184,7 +187,7 @@ describe("aPI DataSource", () => {
     test("returns StacksApiUnexpectedError when request throws unexpected error", async () => {
       mockFetch.mockRejectedValue(new Error("Network error"));
 
-      const exit = await Effect.runPromiseExit(
+      const exit = await runRequestExit(
         datasourceStacksApi.getTransaction(context, "network-error"),
       );
 
@@ -202,7 +205,7 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "2" }))
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = Effect.runPromise(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
 
       await vi.advanceTimersByTimeAsync(2000);
 
@@ -220,9 +223,7 @@ describe("aPI DataSource", () => {
         jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "1" }),
       );
 
-      const promise = Effect.runPromiseExit(
-        datasourceStacksApi.getTransaction(context, "0xabc123"),
-      );
+      const promise = runRequestExit(datasourceStacksApi.getTransaction(context, "0xabc123"));
 
       await vi.advanceTimersByTimeAsync(4000);
 
@@ -245,7 +246,7 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "0" }))
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = Effect.runPromise(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
 
       await vi.advanceTimersByTimeAsync(0);
 
@@ -266,7 +267,7 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = Effect.runPromise(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
 
       await vi.advanceTimersByTimeAsync(2000);
 
@@ -286,7 +287,7 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = Effect.runPromise(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
 
       await vi.advanceTimersByTimeAsync(1000);
 
@@ -307,7 +308,7 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = Effect.runPromise(datasourceStacksApi.getTransaction(context, "0xabc123"));
+      const promise = runRequest(datasourceStacksApi.getTransaction(context, "0xabc123"));
 
       await vi.advanceTimersByTimeAsync(1000);
 
@@ -328,7 +329,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ hash: "0xabc123", height: 123_456 }));
       });
 
-      const result = await Effect.runPromise(datasourceStacksApi.getBlock(context, "0xabc123"));
+      const result = await runRequest(datasourceStacksApi.getBlock(context, "0xabc123"));
       expect(result).toStrictEqual({ hash: "0xabc123", height: 123_456 });
     });
 
@@ -339,7 +340,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ hash: "0xabc123", height: 123_456 }));
       });
 
-      const result = await Effect.runPromise(datasourceStacksApi.getBlock(context, 123_456));
+      const result = await runRequest(datasourceStacksApi.getBlock(context, 123_456));
       expect(result).toStrictEqual({ hash: "0xabc123", height: 123_456 });
     });
   });
@@ -371,7 +372,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockResponse));
       });
 
-      const result = await Effect.runPromise(
+      const result = await runRequest(
         datasourceStacksApi.getBlockTransactions(context, "0xabc123", {
           limit: 20,
           cursor: "100:0:0",
@@ -399,9 +400,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockResponse));
       });
 
-      const result = await Effect.runPromise(
-        datasourceStacksApi.getBlockTransactions(context, 123_456),
-      );
+      const result = await runRequest(datasourceStacksApi.getBlockTransactions(context, 123_456));
 
       expect(result).toStrictEqual(mockResponse);
     });
@@ -424,9 +423,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockTx));
       });
 
-      const result = await Effect.runPromise(
-        datasourceStacksApi.getTransaction(context, "0xtx123"),
-      );
+      const result = await runRequest(datasourceStacksApi.getTransaction(context, "0xtx123"));
 
       expect(result).toStrictEqual(mockTx);
     });
@@ -440,7 +437,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ tx_id: "0xtx123" }));
       });
 
-      const result = await Effect.runPromise(
+      const result = await runRequest(
         datasourceStacksApi.getTransaction(context, "0xtx123", {
           include: ["result", "post_conditions"],
         }),
@@ -468,9 +465,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockV1Tx));
       });
 
-      const result = await Effect.runPromise(
-        datasourceStacksApi.getV1Transaction(context, "0xtx123"),
-      );
+      const result = await runRequest(datasourceStacksApi.getV1Transaction(context, "0xtx123"));
 
       expect(result).toStrictEqual(mockV1Tx);
     });
@@ -507,7 +502,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockResponse));
       });
 
-      const result = await Effect.runPromise(
+      const result = await runRequest(
         datasourceStacksApi.getTransactionsBatch(context, ["0xtx1", "0xtx2"]),
       );
 
@@ -515,7 +510,7 @@ describe("aPI DataSource", () => {
     });
 
     test("returns empty results without a request when txIds is empty", async () => {
-      const result = await Effect.runPromise(datasourceStacksApi.getTransactionsBatch(context, []));
+      const result = await runRequest(datasourceStacksApi.getTransactionsBatch(context, []));
       expect(result).toStrictEqual({ results: [] });
       expect(mockFetch).not.toHaveBeenCalled();
     });
@@ -523,7 +518,7 @@ describe("aPI DataSource", () => {
     test("returns StacksApiResponseError on 404", async () => {
       mockFetch.mockResolvedValue(jsonResponse({ error: "Not found" }, 404));
 
-      const exit = await Effect.runPromiseExit(
+      const exit = await runRequestExit(
         datasourceStacksApi.getTransactionsBatch(context, ["0xtx1"]),
       );
 
@@ -567,7 +562,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockResponse));
       });
 
-      const result = await Effect.runPromise(
+      const result = await runRequest(
         datasourceStacksApi.getTransactionEvents(context, txId, { limit: 50 }),
       );
 
@@ -606,7 +601,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockResponse));
       });
 
-      const result = await Effect.runPromise(
+      const result = await runRequest(
         datasourceStacksApi.getPrincipalTransactions(context, principal, {
           limit: 50,
           cursor: "curr_1",
@@ -647,7 +642,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockContract));
       });
 
-      const result = await Effect.runPromise(datasourceStacksApi.getContract(context, contractId));
+      const result = await runRequest(datasourceStacksApi.getContract(context, contractId));
       expect(result).toStrictEqual(mockContract);
     });
   });
@@ -680,9 +675,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse(mockLogs));
       });
 
-      const result = await Effect.runPromise(
-        datasourceStacksApi.getContractLogs(context, contractId),
-      );
+      const result = await runRequest(datasourceStacksApi.getContractLogs(context, contractId));
 
       expect(result).toStrictEqual({
         results: [
@@ -719,9 +712,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ tx_id: "0xtx123", block: { height: 123_456 } }));
       });
 
-      const result = await Effect.runPromise(
-        datasourceStacksApi.getTransaction(customContext, "0xtx123"),
-      );
+      const result = await runRequest(datasourceStacksApi.getTransaction(customContext, "0xtx123"));
 
       expect(result).toStrictEqual({ tx_id: "0xtx123", block: { height: 123_456 } });
     });
@@ -741,9 +732,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ tx_id: "0xtx123", block: { height: 123_456 } }));
       });
 
-      const result = await Effect.runPromise(
-        datasourceStacksApi.getTransaction(apiKeyContext, "0xtx123"),
-      );
+      const result = await runRequest(datasourceStacksApi.getTransaction(apiKeyContext, "0xtx123"));
 
       expect(result).toStrictEqual({ tx_id: "0xtx123", block: { height: 123_456 } });
     });
@@ -757,9 +746,7 @@ describe("aPI DataSource", () => {
         },
       );
 
-      const result = await Effect.runPromise(
-        datasourceStacksApi.getTransaction(context, "0xtx123"),
-      );
+      const result = await runRequest(datasourceStacksApi.getTransaction(context, "0xtx123"));
 
       expect(result).toStrictEqual({ tx_id: "0xtx123", block: { height: 123_456 } });
     });
@@ -793,7 +780,7 @@ describe("aPI DataSource", () => {
         },
       );
 
-      const result = await Effect.runPromise(
+      const result = await runRequest(
         datasourceStacksApi.callReadFunction(apiKeyContext, "SP123.contract", "my-function"),
       );
 
@@ -811,7 +798,7 @@ describe("aPI DataSource", () => {
 
       mockFetch.mockResolvedValue(jsonResponse(mockResponse));
 
-      const result = await Effect.runPromise(datasourceStacksApi.getStatus(context));
+      const result = await runRequest(datasourceStacksApi.getStatus(context));
       expect(result).toStrictEqual(mockResponse);
       expect(toUrlString(mockFetch.mock.calls[0][0])).toBe("https://api.hiro.so/extended");
       expect(mockFetch.mock.calls[0][1]).toMatchObject({ method: "GET" });

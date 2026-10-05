@@ -95,6 +95,7 @@ export const typedCallReadFunction = <
   const TAbi extends ClarityAbi | readonly unknown[],
   TFunctionName extends ContractFunctionName<TAbi, "read_only">,
   const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
+  R = never,
 >(
   context: DatasourceStacksApiContext,
   callReadFn: (
@@ -102,9 +103,9 @@ export const typedCallReadFunction = <
     contractId: string,
     functionName: string,
     options?: { args?: string[]; sender?: string; tip?: number },
-  ) => Effect.Effect<CallReadResponse, StacksApiError>,
+  ) => Effect.Effect<CallReadResponse, StacksApiError, R>,
   parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
-): Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError> =>
+): Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError, R> =>
   Effect.gen(function* typedCallReadFunction() {
     const { abi, contractAddress, contractName, functionName, senderAddress, tip } = parameters;
     // SAFETY: ContractFunctionArgs constrains TArgs to Clarity argument tuples, which are readonly arrays.
