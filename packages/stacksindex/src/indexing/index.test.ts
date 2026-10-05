@@ -1,21 +1,26 @@
 // oxlint-disable typescript/no-unsafe-assignment
+// oxlint-disable typescript/no-unsafe-type-assertion
 // oxlint-disable vitest/prefer-called-once, vitest/no-conditional-expect, vitest/no-conditional-in-test
 
 import { Result } from "better-result";
 import type { ClarityAbi } from "clarity-abitype";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { describe, expect, test, vi } from "vite-plus/test";
+import type { PgliteDatabase } from "drizzle-orm/pglite";
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import { datasourceStacksApi } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
 import { createLogger } from "../logger/index.ts";
+import { blocksTable } from "../sync-store/schema.ts";
+import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createIndexing } from "./index.ts";
 
-// SAFETY: Indexing tests pass the db handle through as an opaque token and never invoke NodePgDatabase methods.
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-const mockDb = {} as NodePgDatabase;
+// SAFETY: Indexing tests pass the db handle through as an opaque token; only `transaction` runs the callback inline.
+const mockDb = {
+  transaction: (run: (tx: NodePgDatabase) => Promise<void>) => run(mockDb),
+} as NodePgDatabase;
 
 const testAbi = {
   functions: [
@@ -271,5 +276,74 @@ describe("indexing engine", () => {
     expect(result).toBeBetterErr(
       new HandlerExecutionError({ contractId: "SP123.token", cause: error }),
     );
+  });
+});
+
+describe("transactional event handlers", () => {
+  // oxlint-disable-next-line init-declarations
+  let testDb: TestDatabase;
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase();
+  });
+
+  beforeEach(async () => {
+    await testDb.cleanup();
+  });
+
+  afterAll(async () => {
+    await testDb.close();
+  });
+
+  const insertBlock = async (context: HandlerContext): Promise<void> => {
+    // SAFETY: The indexing tests always pass a PGlite database.
+    const db = context.db as PgliteDatabase;
+
+    await db.insert(blocksTable).values({
+      chainId: 1n,
+      height: 100n,
+      hash: "0x0000000000000000000000000000000000000000000000000000000000000001",
+      blockTime: 1000n,
+      tenureHeight: 1n,
+    });
+  };
+
+  test("commits handler writes together with the event", async () => {
+    const handler = vi.fn().mockImplementation(async (_event, context: HandlerContext) => {
+      await insertBlock(context);
+    });
+
+    const indexing = createIndexing({
+      logger: createLogger({ level: 0 }),
+      db: testDb.db,
+      handlers: { "SP123.token": handler },
+    });
+
+    const result = await indexing.executeEvent(createMockEvent());
+
+    expect(result.isOk()).toBe(true);
+    await expect(testDb.db.select().from(blocksTable)).resolves.toHaveLength(1);
+  });
+
+  test("rolls back handler writes when the handler throws", async () => {
+    const error = new Error("Handler failed");
+
+    const handler = vi.fn().mockImplementation(async (_event, context: HandlerContext) => {
+      await insertBlock(context);
+      throw error;
+    });
+
+    const indexing = createIndexing({
+      logger: createLogger({ level: 0 }),
+      db: testDb.db,
+      handlers: { "SP123.token": handler },
+    });
+
+    const result = await indexing.executeEvent(createMockEvent());
+
+    expect(result).toBeBetterErr(
+      new HandlerExecutionError({ contractId: "SP123.token", cause: error }),
+    );
+    await expect(testDb.db.select().from(blocksTable)).resolves.toHaveLength(0);
   });
 });
