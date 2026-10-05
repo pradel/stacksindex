@@ -5,7 +5,7 @@
 Redesign the Stacks API datasource around a single Effect-native client.
 
 - `StacksClient` is now the only API: `StacksClient.layer(config)` builds a self-contained client (fetch transport, adaptive rate limiter, retry policy) and `StacksClient.make(config)` exposes the raw effect for custom transports. `datasourceStacksApi`, `DatasourceStacksApiContext`, and the `StacksClientConfig` service tag are removed.
-- Requests run through one executor: non-2xx responses are turned into errors once, a single `retryTransient` policy retries transport and transient HTTP failures 3 times with jittered exponential backoff honoring `Retry-After`, and `withRateLimiter` adapts the budget from `x-ratelimit-*` headers and 429 feedback.
+- Requests run through one executor: `HttpClient.withRateLimiter` throttles from `x-ratelimit-*` headers and owns 429 retries (honoring `Retry-After`), `HttpClient.filterStatusOk` gives a single error path, and an `Effect.retry` with jittered exponential backoff retries transport failures and transient statuses (408/5xx) 3 times.
 - Responses are trusted, not decoded: no runtime schema validation, so the hot path does no extra allocation.
 - Typed read-only calls are now `readOnly(client.callReadFunction, parameters)` instead of a context/callback wrapper.
 - Error handling now uses Effect's built-in `HttpClientError` reasons (`StatusCodeError`, `TransportError`, `DecodeError`); `StacksApiResponseError`, `StacksApiTransportError`, `StacksApiParseError`, and `StacksApiRateLimitError` are removed. `StacksApiError` is an alias for `HttpClientError | RateLimiterError | ReadOnlyCallError`.

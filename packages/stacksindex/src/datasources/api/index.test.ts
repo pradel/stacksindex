@@ -409,26 +409,6 @@ describe("aPI DataSource", () => {
       vi.useRealTimers();
     });
 
-    test("clamps Retry-After to 300 seconds", async () => {
-      vi.useFakeTimers();
-      mockHandler
-        .mockResolvedValueOnce(
-          jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "9999" }),
-        )
-        .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
-
-      const promise = runRequest((client) => client.getTransaction("0xabc123"));
-
-      await vi.runAllTimersAsync();
-
-      const result = await promise;
-
-      expect(result).toStrictEqual({ hash: "0xabc123", block_height: 123_456 });
-      expect(mockHandler).toHaveBeenCalledTimes(2);
-
-      vi.useRealTimers();
-    });
-
     test("returns null for an empty 2xx body", async () => {
       mockHandler.mockResolvedValue(
         new Response("", { status: 200, headers: { "content-type": "application/json" } }),

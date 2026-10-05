@@ -188,7 +188,7 @@ export interface StacksClientService {
 
 const MAX_RETRIES = 3;
 
-const MAX_RETRY_AFTER_SECONDS = 300;
+const RETRYABLE_STATUSES = [408, 500, 502, 503, 504];
 
 /**
  * Initial request budget before the limiter learns the real limits from
@@ -202,63 +202,27 @@ const DEFAULT_RATE_LIMIT = {
 const DEFAULT_SENDER = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
 
 /**
- * Parses a `Retry-After` header, which may be seconds or an HTTP date.
- * Returns `undefined` when the header is missing or invalid so the
- * exponential backoff applies.
+ * Retries transport failures and transient HTTP statuses. Rate limits (429)
+ * are owned by `withRateLimiter`, which honors the `Retry-After` header.
  */
-function parseRetryAfter(header: string | undefined): Duration.Duration | undefined {
-  const value = header?.trim();
-
-  if (!value) {
-    return undefined;
-  }
-
-  const seconds = Number(value);
-
-  if (Number.isFinite(seconds) && seconds >= 0) {
-    return Duration.seconds(Math.min(seconds, MAX_RETRY_AFTER_SECONDS));
-  }
-
-  const date = Date.parse(value);
-
-  if (!Number.isNaN(date)) {
-    const secondsUntilRetry = Math.ceil((date - Date.now()) / 1000);
-
-    if (secondsUntilRetry > 0) {
-      return Duration.seconds(Math.min(secondsUntilRetry, MAX_RETRY_AFTER_SECONDS));
-    }
-  }
-
-  return undefined;
-}
-
-function retryAfterFromError(
+function isRetryable(
   error: HttpClientError.HttpClientError | RateLimiter.RateLimiterError,
-): Duration.Duration | undefined {
+): boolean {
   if (!Predicate.isTagged(error, "HttpClientError")) {
-    return undefined;
+    return false;
   }
 
-  if (!Predicate.isTagged(error.reason, "StatusCodeError")) {
-    return undefined;
+  if (Predicate.isTagged(error.reason, "TransportError")) {
+    return true;
   }
 
-  return parseRetryAfter(error.reason.response.headers["retry-after"]);
+  return (
+    Predicate.isTagged(error.reason, "StatusCodeError") &&
+    RETRYABLE_STATUSES.includes(error.reason.response.status)
+  );
 }
 
-const exponentialBackoff: Schedule.Schedule<
-  Duration.Duration,
-  HttpClientError.HttpClientError | RateLimiter.RateLimiterError
-> = Schedule.exponential(Duration.millis(500));
-
-const retrySchedule = exponentialBackoff.pipe(
-  Schedule.jittered,
-  Schedule.modifyDelay(({ duration, input }) => {
-    const retryAfter = retryAfterFromError(input);
-
-    return Effect.succeed(retryAfter ?? duration);
-  }),
-);
+const retrySchedule = Schedule.exponential(Duration.millis(500)).pipe(Schedule.jittered);
 
 /**
  * Executes a request and trusts the API contract for the response shape.
@@ -270,6 +234,7 @@ function execute<A>(
   path: string,
 ): Effect.Effect<A, StacksApiError> {
   return client.execute(request).pipe(
+    Effect.retry({ schedule: retrySchedule, times: MAX_RETRIES, while: isRetryable }),
     Effect.flatMap((response) => response.json),
     Effect.map(
       (json) =>
@@ -289,22 +254,17 @@ const makeHttpClient = () =>
     const limiter = yield* RateLimiter.RateLimiter;
 
     return baseClient.pipe(
-      // Throttle proactively and learn the budget from `x-ratelimit-*` headers.
+      // Throttle proactively, learn the budget from `x-ratelimit-*` headers, and
+      // Retry rate limits (429) honoring the `Retry-After` header.
       HttpClient.withRateLimiter({
         limiter,
         key: "stacksindex/datasources/StacksClient",
         window: DEFAULT_RATE_LIMIT.window,
         limit: DEFAULT_RATE_LIMIT.limit,
-        times: 0,
-      }),
-      // Turn non-2xx responses into errors so a single retry policy handles them.
-      HttpClient.filterStatusOk,
-      // Retry transient transport and HTTP failures with `Retry-After`-aware backoff.
-      HttpClient.retryTransient({
-        retryOn: "errors-only",
         times: MAX_RETRIES,
-        schedule: retrySchedule,
       }),
+      // Turn non-2xx responses into errors so `isRetryable` sees them.
+      HttpClient.filterStatusOk,
     );
   });
 
