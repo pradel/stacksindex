@@ -4,7 +4,7 @@ import process from "node:process";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { createDatabase, createHistoricalRuntime, createLogger } from "stacksindex";
+import { createDatabase, createHistoricalRuntimePromise, createLogger } from "stacksindex";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 
@@ -63,23 +63,24 @@ process.on("SIGTERM", () => {
   void shutdown(0);
 });
 
-const runtime = createHistoricalRuntime({
+const runtime = createHistoricalRuntimePromise({
   logger,
   db: indexerDatabase.db,
   network: "mainnet",
   api: { apiKey },
 });
 
-const result = await runtime.run([
-  {
-    contractId: POOL_CONTRACT,
-    handler: createPoolHandler({ db: appDb, logger }),
-  },
-]);
-
-if (result.isErr()) {
-  logger.error({ msg: "Error running historical sync", error: result.error });
-  await shutdown(1);
-} else {
+try {
+  await runtime.run([
+    {
+      contractId: POOL_CONTRACT,
+      handler: createPoolHandler({ db: appDb, logger }),
+    },
+  ]);
   await shutdown(0);
+} catch (err) {
+  const error = err instanceof Error ? err : new Error(String(err));
+
+  logger.error({ msg: "Error running historical sync", error });
+  await shutdown(1);
 }

@@ -217,13 +217,41 @@ importers:
         version: 0.5.8
       drizzle-orm:
         specifier: 1.0.0-rc.5-5935859
-        version: 1.0.0-rc.5-5935859(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.0)(pg@8.23.0)(zod@4.6.1)
+        version: 1.0.0-rc.5-5935859(@effect/sql-pg@4.0.0(effect@4.0.0))(@effect/sql-pglite@4.0.0(effect@4.0.0))(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.0)(pg@8.23.0)(zod@4.6.1)
       stacksindex:
         specifier: workspace:*
         version: link:../../packages/stacksindex
       zod:
         specifier: 4.6.1
         version: 4.6.1
+    devDependencies:
+      '@types/node':
+        specifier: 26.4.0
+        version: 26.4.0
+      drizzle-kit:
+        specifier: 1.0.0-rc.5-5935859
+        version: 1.0.0-rc.5-5935859
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@arethetypeswrong/core@0.18.5)(@types/node@26.4.0)(esbuild@0.27.5)(jiti@2.6.1)(publint@0.3.24)(tsx@4.21.0)(typescript@7.0.2)(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@arethetypeswrong/core@0.18.5)(@types/node@26.4.0)(@vitest/coverage-v8@5.0.1)(@vitest/ui@5.0.1)(esbuild@0.27.5)(jiti@2.6.1)(publint@0.3.24)(tsx@4.21.0)(typescript@7.0.2)(yaml@2.9.0)
+
+  examples/dex-alex-effect:
+    dependencies:
+      drizzle-orm:
+        specifier: 1.0.0-rc.5-5935859
+        version: 1.0.0-rc.5-5935859(@effect/sql-pg@4.0.0(effect@4.0.0))(@effect/sql-pglite@4.0.0(effect@4.0.0))(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.0)(pg@8.23.0)(zod@4.6.1)
+      effect:
+        specifier: 4.0.0
+        version: 4.0.0
+      stacksindex:
+        specifier: workspace:*
+        version: link:../../packages/stacksindex
     devDependencies:
       '@types/node':
         specifier: 26.4.0
@@ -249,12 +277,9 @@ importers:
       '@stacks/codec':
         specifier: 2.1.0
         version: 2.1.0
-      better-result:
-        specifier: 3.0.1
-        version: 3.0.1
       drizzle-orm:
         specifier: 1.0.0-rc.5-5935859
-        version: 1.0.0-rc.5-5935859(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.0)(pg@8.23.0)(zod@4.6.1)
+        version: 1.0.0-rc.5-5935859(@effect/sql-pg@4.0.0(effect@4.0.0))(@effect/sql-pglite@4.0.0(effect@4.0.0))(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.0)(pg@8.23.0)(zod@4.6.1)
       stacksindex:
         specifier: workspace:*
         version: link:../stacksindex
@@ -280,6 +305,12 @@ importers:
 
   packages/stacksindex:
     dependencies:
+      '@effect/sql-pg':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)
+      '@effect/sql-pglite':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)
       '@stacks/blockchain-api-client':
         specifier: 9.2.0
         version: 9.2.0(supports-color@7.2.0)
@@ -289,15 +320,15 @@ importers:
       '@stacks/transactions':
         specifier: 7.6.0
         version: 7.6.0
-      better-result:
-        specifier: 3.0.1
-        version: 3.0.1
       clarity-abitype:
         specifier: 0.7.1
         version: 0.7.1(@stacks/network@7.6.0)(@stacks/transactions@7.6.0)(typescript@7.0.2)
       consola:
         specifier: 3.4.2
         version: 3.4.2
+      drizzle-orm:
+        specifier: 1.0.0-rc.5-5935859
+        version: 1.0.0-rc.5-5935859(@effect/sql-pg@4.0.0(effect@4.0.0))(@effect/sql-pglite@4.0.0(effect@4.0.0))(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.0)(pg@8.23.0)(zod@4.6.1)
       effect:
         specifier: 4.0.0
         version: 4.0.0
@@ -305,6 +336,9 @@ importers:
       '@arethetypeswrong/core':
         specifier: 0.18.5
         version: 0.18.5
+      '@effect/vitest':
+        specifier: 4.0.0
+        version: 4.0.0(effect@4.0.0)(vitest@5.0.1)
       '@electric-sql/pglite':
         specifier: 0.5.8
         version: 0.5.8
@@ -320,9 +354,6 @@ importers:
       drizzle-kit:
         specifier: 1.0.0-rc.5-5935859
         version: 1.0.0-rc.5-5935859
-      drizzle-orm:
-        specifier: 1.0.0-rc.5-5935859
-        version: 1.0.0-rc.5-5935859(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.0)(pg@8.23.0)(zod@4.6.1)
       pg:
         specifier: 8.23.0
         version: 8.23.0
@@ -466,6 +497,16 @@ packages:
   '@drizzle-team/brocli@0.12.1':
     resolution: {integrity: sha512-yHwomvolVafvUXhy5TdiJVkuNCxXn+bKOs2aWiWEQh/5YaV97Oa/abJz3dmx7lxgIUsUlS1Jl4mEfvJPo3YsVw==}
 
+  '@effect/sql-pg@4.0.0':
+    resolution: {integrity: sha512-w0sRMA08Tgz73aReYpFSxD+nz2LUKYhH/4zaRpo4G5b5YG+eqiAL7XYhqIjvGZ8MZacazbG71Jhprv6ccz9HDg==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  '@effect/sql-pglite@4.0.0':
+    resolution: {integrity: sha512-BTlCPSipKMHZJEoJ94rR4f8Gx8cv8tLpZeHc3sajg2ko/2GY8s6CyycSra3Z6GLFUhcivRTYQ9Zc5LThz64qfQ==}
+    peerDependencies:
+      effect: ^4.0.0
+
   '@effect/tsgo-darwin-arm64@0.48.0':
     resolution: {integrity: sha512-MGfjTc/ZLlX045/7br+adgpyo6z/4MJIzMgnISYVWvUgIOzGbGbwdlkINHn4x0ADKZh3f8M2jBzGPv0BPp9m/A==}
     cpu: [arm64]
@@ -504,6 +545,12 @@ packages:
   '@effect/tsgo@0.48.0':
     resolution: {integrity: sha512-802nDQDmDxT/zGtGqJp+AVvhMMHfnHNxdAK92612hDU1ba1fWrXlxY2ayuTi3iACIP94NCIdSaFRaTcqw/FEnw==}
     hasBin: true
+
+  '@effect/vitest@4.0.0':
+    resolution: {integrity: sha512-kGElCPFGtP+CgMCwV/HjJWqtE3zYo6I1+8MSA54l+EI24lPU9p2Efa+TBp1jfkg9j711KKzEqgSAy3VzTsb76Q==}
+    peerDependencies:
+      effect: ^4.0.0
+      vitest: 5.0.1
 
   '@electric-sql/pglite@0.5.8':
     resolution: {integrity: sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q==}
@@ -1647,9 +1694,6 @@ packages:
   base-x@4.0.1:
     resolution: {integrity: sha512-uAZ8x6r6S3aUM9rbHGVOIsR15U/ZSc82b3ymnCPsT45Gk1DDvhDPdIgB5MrhirZWt+5K0EEPQH985kNqZgNPFw==}
 
-  better-result@3.0.1:
-    resolution: {integrity: sha512-rnCeqEXkKPHmz5MO5ZroPRDyHe4YvlNPyy7qj8cVcWs/GnvSvC3086G74/220W+wWcIWlXgzvcjskFV0A4blUQ==}
-
   c32check@2.0.0:
     resolution: {integrity: sha512-rpwfAcS/CMqo0oCqDf3r9eeLgScRE3l/xHDCXhM3UyrfvIn7PrLq63uHh7yYbv8NzaZn5MVsVhIRpQ+5GZ5HyA==}
     engines: {node: '>=8'}
@@ -2593,6 +2637,15 @@ snapshots:
 
   '@drizzle-team/brocli@0.12.1': {}
 
+  '@effect/sql-pg@4.0.0(effect@4.0.0)':
+    dependencies:
+      effect: 4.0.0
+
+  '@effect/sql-pglite@4.0.0(effect@4.0.0)':
+    dependencies:
+      '@electric-sql/pglite': 0.5.8
+      effect: 4.0.0
+
   '@effect/tsgo-darwin-arm64@0.48.0':
     optional: true
 
@@ -2623,6 +2676,11 @@ snapshots:
       '@effect/tsgo-linux-x64': 0.48.0
       '@effect/tsgo-win32-arm64': 0.48.0
       '@effect/tsgo-win32-x64': 0.48.0
+
+  '@effect/vitest@4.0.0(effect@4.0.0)(vitest@5.0.1)':
+    dependencies:
+      effect: 4.0.0
+      vitest: 5.0.1(@types/node@26.4.0)(@vitest/browser-preview@5.0.1)(@vitest/coverage-v8@5.0.1)(@vitest/ui@5.0.1)(@voidzero-dev/vite-plus-core@1.0.0(@arethetypeswrong/core@0.18.5)(@types/node@26.4.0)(esbuild@0.27.5)(jiti@2.6.1)(publint@0.3.24)(tsx@4.21.0)(typescript@7.0.2)(yaml@2.9.0))
 
   '@electric-sql/pglite@0.5.8': {}
 
@@ -3340,8 +3398,6 @@ snapshots:
 
   base-x@4.0.1: {}
 
-  better-result@3.0.1: {}
-
   c32check@2.0.0:
     dependencies:
       '@noble/hashes': 1.1.5
@@ -3391,8 +3447,10 @@ snapshots:
       get-tsconfig: 4.13.7
       jiti: 2.6.1
 
-  drizzle-orm@1.0.0-rc.5-5935859(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.0)(pg@8.23.0)(zod@4.6.1):
+  drizzle-orm@1.0.0-rc.5-5935859(@effect/sql-pg@4.0.0(effect@4.0.0))(@effect/sql-pglite@4.0.0(effect@4.0.0))(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.0)(pg@8.23.0)(zod@4.6.1):
     optionalDependencies:
+      '@effect/sql-pg': 4.0.0(effect@4.0.0)
+      '@effect/sql-pglite': 4.0.0(effect@4.0.0)
       '@electric-sql/pglite': 0.5.8
       '@types/pg': 8.23.1
       effect: 4.0.0

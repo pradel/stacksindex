@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { Effect } from "effect";
 import { afterAll, describe, expect, test } from "vite-plus/test";
 
 import { blocksTable, eventsTable } from "../sync-store/schema.ts";
@@ -25,10 +26,10 @@ describe("database", () => {
     await database.migrate();
 
     // Verify tables exist and queries work
-    const blocks = await database.db.select().from(blocksTable);
+    const blocks = await Effect.runPromise(database.db.select().from(blocksTable));
     expect(blocks).toStrictEqual([]);
 
-    const events = await database.db.select().from(eventsTable);
+    const events = await Effect.runPromise(database.db.select().from(eventsTable));
     expect(events).toStrictEqual([]);
 
     await database.close();
@@ -45,7 +46,7 @@ describe("database", () => {
 
     await database.migrate();
 
-    const blocks = await database.db.select().from(blocksTable);
+    const blocks = await Effect.runPromise(database.db.select().from(blocksTable));
     expect(blocks).toStrictEqual([]);
 
     await database.close();

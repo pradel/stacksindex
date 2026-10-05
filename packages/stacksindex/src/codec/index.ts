@@ -1,4 +1,5 @@
 import { ClarityTypeID, type ClarityValue, decodeClarityValue } from "@stacks/codec";
+import { Effect, Schema } from "effect";
 
 /**
  * JSON-compatible value produced by decoding a Clarity value. `bigint` is kept
@@ -105,5 +106,19 @@ export function encodeUint(value: bigint): string {
 
   return `0x01${hex}`;
 }
+
+/**
+ * Decodes a Clarity hex string into a typed object validated by an Effect Schema.
+ *
+ * Malformed hex is reported through the Effect error channel instead of
+ * escaping as a synchronous throw.
+ */
+export const decodeClarityWithSchema =
+  <A>(schema: Schema.Schema<A>) =>
+  (hex: string) =>
+    Effect.flatMap(
+      Effect.sync(() => decodeHex(hex)).pipe(Effect.catchDefect((defect) => Effect.fail(defect))),
+      (decoded) => Schema.decodeUnknownEffect(schema)(decoded),
+    );
 
 export { ClarityTypeID, type ClarityValue, decodeClarityValue };

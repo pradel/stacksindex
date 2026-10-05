@@ -1,34 +1,43 @@
-import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
-import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
+import { Context, Effect, Exit, Layer, Scope } from "effect";
 
-import { migrate } from "../database/index.ts";
+import {
+  IndexerDatabase,
+  migrate as migrateDatabase,
+  toThenable,
+  type IndexerDb,
+} from "../database/index.ts";
 
 export interface TestDatabase {
-  db: PgliteDatabase;
-  client: PGlite;
+  db: IndexerDb;
   cleanup: () => Promise<void>;
   close: () => Promise<void>;
 }
 
 export async function createTestDatabase(): Promise<TestDatabase> {
-  const client = new PGlite();
-  const db = drizzle({ client });
+  const scope = await Effect.runPromise(Scope.make());
 
-  await migrate(db);
+  const context = await Effect.runPromise(
+    Layer.build(IndexerDatabase.layer({ kind: "pglite" })).pipe(Scope.provide(scope)),
+  );
+
+  const db = toThenable(Context.get(context, IndexerDatabase));
+
+  await Effect.runPromise(migrateDatabase(db));
 
   return {
     db,
-    client,
 
     async cleanup() {
-      await db.execute(
-        sql`truncate table "transactions", "blocks", "sync_progress", "events", "checkpoints" cascade`,
+      await Effect.runPromise(
+        db.execute(
+          sql`truncate table "transactions", "blocks", "sync_progress", "events", "checkpoints" cascade`,
+        ),
       );
     },
 
     async close() {
-      await client.close();
+      await Effect.runPromise(Scope.close(scope, Exit.void));
     },
   };
 }

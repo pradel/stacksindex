@@ -128,23 +128,19 @@ export async function insertTokenIfNotExists({
     throw new Error(`Invalid tokenAddress: ${tokenAddress}`);
   }
 
-  const decimalsRes = (
-    await client.callReadOnly({
-      abi: sip010Abi,
-      contractAddress,
-      contractName,
-      functionName: "get-decimals",
-    })
-  ).unwrap();
+  const decimalsRes = await client.callReadOnly({
+    abi: sip010Abi,
+    contractAddress,
+    contractName,
+    functionName: "get-decimals",
+  });
 
-  const symbolRes = (
-    await client.callReadOnly({
-      abi: sip010Abi,
-      contractAddress,
-      contractName,
-      functionName: "get-symbol",
-    })
-  ).unwrap();
+  const symbolRes = await client.callReadOnly({
+    abi: sip010Abi,
+    contractAddress,
+    contractName,
+    functionName: "get-symbol",
+  });
 
   if (decimalsRes.ok === undefined) {
     throw new Error(
@@ -192,28 +188,24 @@ export async function syncPoolTokens({
     throw new Error(`Invalid poolContract: ${poolContract}`);
   }
 
-  const poolId = (
-    await client.callReadOnly({
-      abi: fixedWeightPoolAbi,
-      contractAddress,
-      contractName,
-      functionName: "get-pool-count",
-    })
-  ).unwrap();
+  const poolId = await client.callReadOnly({
+    abi: fixedWeightPoolAbi,
+    contractAddress,
+    contractName,
+    functionName: "get-pool-count",
+  });
 
   if (poolId === 0n) {
     throw new Error(`Failed to fetch pool count from ${poolContract}: pool count is 0`);
   }
 
-  const contractsResult = (
-    await client.callReadOnly({
-      abi: fixedWeightPoolAbi,
-      contractAddress,
-      contractName,
-      functionName: "get-pool-contracts",
-      functionArgs: [poolId],
-    })
-  ).unwrap();
+  const contractsResult = await client.callReadOnly({
+    abi: fixedWeightPoolAbi,
+    contractAddress,
+    contractName,
+    functionName: "get-pool-contracts",
+    functionArgs: [poolId],
+  });
 
   if (contractsResult.ok === undefined) {
     throw new Error(

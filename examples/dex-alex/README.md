@@ -1,12 +1,13 @@
 # ALEX DEX Pool Indexer Example
 
-An end-to-end example demonstrating how to index ALEX DEX pool events using `stacksindex`.
+An end-to-end example demonstrating how to index ALEX DEX pool events using the promise-based `stacksindex` API and Zod. See [`examples/dex-alex-effect`](../dex-alex-effect) for the same indexer written with the Effect API.
 
 ## Features Demonstrated
 
 - **Historical Event Sync**: Indexes pool creation, swaps, and liquidity changes.
 - **Typed Read-Only Calls**: Uses Clarity ABIs to fetch pool tokens and decimals at the exact event block height.
 - **Relational Storage**: Stores derived data in PGlite tables (`pool`, `swap`, `token`) using Drizzle ORM.
+- **Zod Validation**: Parses decoded contract logs with Zod schemas.
 
 ## Running the Example
 

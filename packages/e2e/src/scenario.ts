@@ -5,18 +5,20 @@ import { expect } from "vite-plus/test";
 import { createTestDatabase, type TestDatabase } from "./test-db.ts";
 import { createTraceCollector, type RecordedTraceEvent, type TraceCollector } from "./tracer.ts";
 
-function isRowArray<Row>(value: unknown): value is Row[] {
-  return Array.isArray(value);
+function isRowsResult<Row>(value: unknown): value is { rows: Row[] } {
+  return (
+    typeof value === "object" && value !== null && "rows" in value && Array.isArray(value.rows)
+  );
 }
 
 export async function selectRows<Row>(database: TestDatabase["db"], query: SQL): Promise<Row[]> {
   const result = await database.execute(query);
 
-  if (isRowArray<Row>(result)) {
+  if (Array.isArray(result)) {
     return result;
   }
 
-  return isRowArray<Row>(result.rows) ? result.rows : [];
+  return isRowsResult<Row>(result) ? result.rows : [];
 }
 
 export interface ScenarioDatabase {
@@ -79,8 +81,7 @@ export async function runScenario(options: {
     },
   }));
 
-  const result = await runtime.run(filters);
-  expect(result.isOk()).toBe(true);
+  await runtime.run(filters);
 
   return { tracer, events: tracer.getEvents() };
 }

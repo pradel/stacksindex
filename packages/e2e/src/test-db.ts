@@ -1,33 +1,28 @@
-import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
-import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
-import { migrate } from "stacksindex";
+import { createDatabase, type IndexerDb } from "stacksindex";
 
 export interface TestDatabase {
-  db: PgliteDatabase;
-  client: PGlite;
+  db: IndexerDb;
   cleanup: () => Promise<void>;
   close: () => Promise<void>;
 }
 
 export async function createTestDatabase(): Promise<TestDatabase> {
-  const client = new PGlite();
-  const db = drizzle({ client });
+  const dbResult = await createDatabase({ kind: "pglite" });
 
-  await migrate(db);
+  await dbResult.migrate();
 
   return {
-    db,
-    client,
+    db: dbResult.db,
 
     async cleanup() {
-      await db.execute(
+      await dbResult.db.execute(
         sql`truncate table "transactions", "blocks", "sync_progress", "events", "checkpoints" cascade`,
       );
     },
 
     async close() {
-      await client.close();
+      await dbResult.close();
     },
   };
 }

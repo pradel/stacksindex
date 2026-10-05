@@ -7,6 +7,7 @@
 import { URL } from "node:url";
 
 import { sql } from "drizzle-orm";
+import { Effect, Exit, Match, Predicate, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createDatabase } from "../database/index.ts";
@@ -21,30 +22,79 @@ import {
   eventsTable,
   transactionsTable,
 } from "../sync-store/schema.ts";
-import { createFetchMock, type JsonValue } from "../test-utils/fetch-mock.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createHistoricalRuntime } from "./historical.ts";
 
+interface Dictionary<TValue> {
+  [key: string]: TValue;
+}
+
+type FetchInput = string | URL;
+
 const mockRequest = vi.hoisted(() => vi.fn());
 
-const mockFetch = createFetchMock(mockRequest, {
-  fallback: (url) => {
-    if (!url.includes("/extended/v1/tx/")) {
-      return undefined;
+const toUrlString = (url: FetchInput): string => (Predicate.isString(url) ? url : url.href);
+
+const mockFetch = vi.fn(async (rawUrl: FetchInput, init?: any) => {
+  const url = toUrlString(rawUrl);
+  let headersObj: Dictionary<string> = {};
+
+  if (init?.headers) {
+    if (Predicate.isFunction(init.headers.entries)) {
+      headersObj = Object.fromEntries(init.headers.entries());
+    } else if (Predicate.isObject(init.headers)) {
+      headersObj = { ...init.headers };
+    }
+  }
+
+  const requestInit = { ...init, headers: headersObj };
+  let res: any;
+
+  try {
+    res = await mockRequest(url, requestInit);
+  } catch (err: any) {
+    if (url.includes("/extended/v1/tx/")) {
+      const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
+
+      return new Response(
+        JSON.stringify({
+          tx_id: txId,
+          block_height: 100,
+          tx_index: 0,
+          microblock_sequence: 0,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
     }
 
-    const txId = url.split("/").pop()?.split("?")[0] ?? "tx-1";
+    throw err;
+  }
 
-    return new globalThis.Response(
-      JSON.stringify({
-        tx_id: txId,
-        block_height: 100,
-        tx_index: 0,
-        microblock_sequence: 0,
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
+  if (!res) {
+    throw new Error(`mockRequest returned undefined for ${url}`);
+  }
+
+  if (res instanceof Response) {
+    return res;
+  }
+
+  const status = res.statusCode ?? 200;
+
+  const statusText =
+    res.statusText ??
+    Match.value(status).pipe(
+      Match.when(200, () => "OK"),
+      Match.when(404, () => "Not Found"),
+      Match.orElse(() => String(status)),
     );
-  },
+
+  const data = res.body?.json ? await res.body.json() : (res.body ?? res);
+
+  return new Response(JSON.stringify(data), {
+    status,
+    statusText,
+    headers: { "content-type": "application/json", ...res.headers },
+  });
 });
 
 const context = {
@@ -53,8 +103,8 @@ const context = {
 
 const noopHandler = () => Promise.resolve();
 
-const mockBody = (data: JsonValue) => ({
-  json: () => data,
+const mockBody = <T>(data: T) => ({
+  json: () => Promise.resolve(data),
 });
 
 const parseBatchIds = (url: string): string[] => {
@@ -90,13 +140,7 @@ const standardTx = (txId: string, height: number, hash: string, txIndex = 0) => 
   bitcoin_block: { height, time: 1000 },
 });
 
-type StandardTx = ReturnType<typeof standardTx>;
-
-interface StandardTxById {
-  readonly [txId: string]: StandardTx;
-}
-
-const standardTxById: StandardTxById = {
+const standardTxById: Dictionary<Schema.Json> = {
   "tx-1": standardTx("tx-1", 100, "block-1"),
   "tx-2": standardTx("tx-2", 200, "block-2"),
   "tx-100": standardTx("tx-100", 100, "block-100"),
@@ -124,15 +168,15 @@ describe("historical runtime", () => {
   });
 
   afterAll(async () => {
-    vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     await testDb.close();
   });
 
   test("fetches and stores blocks and transactions for a single contract", async () => {
     const contractId = "SP123.token";
 
-    const txById: StandardTxById = {
+    const txById: Dictionary<Schema.Json> = {
       "tx-1": {
         tx_id: "tx-1",
         event_count: 1,
@@ -389,7 +433,7 @@ describe("historical runtime", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
 
     // Verify blocks stored
     const blocks = await testDb.db.select().from(blocksTable);
@@ -454,13 +498,7 @@ describe("historical runtime", () => {
       ],
     });
 
-    type ScheduledTx = ReturnType<typeof makeTxData>;
-
-    interface ScheduledTxById {
-      readonly [txId: string]: ScheduledTx;
-    }
-
-    const txMap: ScheduledTxById = {
+    const txMap: Dictionary<ReturnType<typeof makeTxData>> = {
       "tx-a-init": makeTxData({
         txId: "tx-a-init",
         blockHeight: 100,
@@ -606,17 +644,17 @@ describe("historical runtime", () => {
               limit: 50,
               cursor: { next: null, previous: null, current: "0" },
               results: events.map((event) => {
-                const mapped = {
+                const mappedEvent = {
                   event_index: event.event_index,
                   type:
                     event.event_type === "smart_contract_log" ? "contract_log" : event.event_type,
                 };
 
-                if (event.event_type === "smart_contract_log") {
-                  return { ...mapped, contract_log: event.contract_log };
+                if (event.event_type !== "smart_contract_log") {
+                  return mappedEvent;
                 }
 
-                return mapped;
+                return { ...mappedEvent, contract_log: event.contract_log };
               }),
             }),
           };
@@ -737,34 +775,29 @@ describe("historical runtime", () => {
       { contractId: contractB, handler: noopHandler },
     ]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
 
     // Verify fair scheduling by checking the order of getContractLogs calls
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
     const logsCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/logs?limit=100&cursor="),
+      String(call[0]).includes("/logs?limit=100&cursor="),
     );
 
     expect(logsCalls).toHaveLength(4);
 
     // B starts at 50, A at 100 -> B should go first
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
-    expect(decodeURIComponent(logsCalls[0][0] as string)).toContain("cursor=50:0:0:0");
+    expect(decodeURIComponent(String(logsCalls[0][0]))).toContain("cursor=50:0:0:0");
     expect(logsCalls[0][0]).toContain(contractB);
 
     // After B advances to 150, A is at 100 -> A should go next
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
-    expect(decodeURIComponent(logsCalls[1][0] as string)).toContain("cursor=100:0:0:0");
+    expect(decodeURIComponent(String(logsCalls[1][0]))).toContain("cursor=100:0:0:0");
     expect(logsCalls[1][0]).toContain(contractA);
 
     // A advances to 200, B is at 150 -> B should go next
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
-    expect(decodeURIComponent(logsCalls[2][0] as string)).toContain("cursor=150:0:0:0");
+    expect(decodeURIComponent(String(logsCalls[2][0]))).toContain("cursor=150:0:0:0");
     expect(logsCalls[2][0]).toContain(contractB);
 
     // Finally A at 200
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
-    expect(decodeURIComponent(logsCalls[3][0] as string)).toContain("cursor=200:0:0:0");
+    expect(decodeURIComponent(String(logsCalls[3][0]))).toContain("cursor=200:0:0:0");
     expect(logsCalls[3][0]).toContain(contractA);
   });
 
@@ -777,13 +810,7 @@ describe("historical runtime", () => {
       { db: testDb.db },
     );
 
-    type ResumeTx = Omit<StandardTx, "event_count">;
-
-    interface ResumeTxById {
-      readonly [txId: string]: ResumeTx;
-    }
-
-    const txByIdResume: ResumeTxById = {
+    const txByIdResume: Dictionary<Schema.Json> = {
       "tx-1": {
         tx_id: "tx-1",
         type: "contract_call",
@@ -892,12 +919,11 @@ describe("historical runtime", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
 
     // Should not have called getPrincipalTransactions (first cursor discovery)
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
     const addressTxCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/principals/"),
+      String(call[0]).includes("/principals/"),
     );
 
     expect(addressTxCalls).toHaveLength(0);
@@ -980,17 +1006,15 @@ describe("historical runtime", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
 
     // Verify no getTransaction or getBlock calls were made
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
     const txCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/extended/v3/transactions/"),
+      String(call[0]).includes("/extended/v3/transactions/"),
     );
 
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
     const blockCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/extended/v2/blocks/"),
+      String(call[0]).includes("/extended/v2/blocks/"),
     );
 
     expect(txCalls).toHaveLength(0);
@@ -1107,9 +1131,9 @@ describe("historical runtime", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+    const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
 
-    expect(result).toBeBetterErr(
+    expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
         statusText: "Bad Request",
@@ -1152,7 +1176,7 @@ describe("historical runtime", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
 
     // Nothing should be stored
     const blocks = await testDb.db.select().from(blocksTable);
@@ -1162,7 +1186,7 @@ describe("historical runtime", () => {
   test("skips non-smart_contract_log events without crashing", async () => {
     const contractId = "SP123.token";
 
-    const txByIdNonLog: StandardTxById = {
+    const txByIdNonLog: Dictionary<Schema.Json> = {
       "tx-1": {
         tx_id: "tx-1",
         event_count: 2,
@@ -1344,7 +1368,7 @@ describe("historical runtime", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
 
     const storedEvents = await testDb.db.select().from(eventsTable);
     expect(storedEvents).toHaveLength(1);
@@ -1405,12 +1429,10 @@ describe("historical runtime with handlers", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockRequest.mockReset();
-    vi.stubGlobal("fetch", mockFetch);
     await testDb.cleanup();
   });
 
   afterAll(async () => {
-    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     await testDb.close();
   });
@@ -1458,13 +1480,7 @@ describe("historical runtime with handlers", () => {
       ],
     });
 
-    type ScheduledTx = ReturnType<typeof makeTxData>;
-
-    interface ScheduledTxById {
-      readonly [txId: string]: ScheduledTx;
-    }
-
-    const txMap: ScheduledTxById = {
+    const txMap: Dictionary<ReturnType<typeof makeTxData>> = {
       "tx-a-init": makeTxData({
         txId: "tx-a-init",
         blockHeight: 100,
@@ -1598,17 +1614,17 @@ describe("historical runtime with handlers", () => {
               limit: 50,
               cursor: { next: null, previous: null, current: "0" },
               results: events.map((event) => {
-                const mapped = {
+                const mappedEvent = {
                   event_index: event.event_index,
                   type:
                     event.event_type === "smart_contract_log" ? "contract_log" : event.event_type,
                 };
 
-                if (event.event_type === "smart_contract_log") {
-                  return { ...mapped, contract_log: event.contract_log };
+                if (event.event_type !== "smart_contract_log") {
+                  return mappedEvent;
                 }
 
-                return mapped;
+                return { ...mappedEvent, contract_log: event.contract_log };
               }),
             }),
           };
@@ -1690,7 +1706,7 @@ describe("historical runtime with handlers", () => {
       { contractId: contractB, handler: handlerB },
     ]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
 
     // Both handlers should be called
     expect(handlerA).toHaveBeenCalledTimes(1);
@@ -1865,7 +1881,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
 
     // Verify checkpoint was updated
@@ -1958,7 +1974,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     // Handler should NOT be called because the event is at block 100 which is already checkpointed
     expect(handler).not.toHaveBeenCalled();
   });
@@ -2121,9 +2137,9 @@ describe("historical runtime with handlers", () => {
       db: testDb.db,
     });
 
-    const result = await runtime.run([{ contractId, handler }]);
+    const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
-    expect(result).toBeBetterErr(
+    expect(result).toBeTaggedError(
       new HandlerExecutionError({
         contractId,
         cause: new Error("Handler failed"),
@@ -2187,7 +2203,7 @@ describe("historical runtime with handlers", () => {
     });
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(mockRequest).toHaveBeenCalledTimes(2);
   });
 
@@ -2401,14 +2417,14 @@ describe("historical runtime with handlers", () => {
             functionName: "get-total-supply",
           });
 
-          if (readResult.isOk() && readResult.value.okay) {
+          if (readResult.okay) {
             callReadOnlySuccess = true;
           }
         },
       },
     ]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handlerCalled).toBe(true);
     expect(callReadOnlySuccess).toBe(true);
     expect(callReadOnlyUrl).toBe(
@@ -2455,7 +2471,7 @@ describe("historical runtime with handlers", () => {
     });
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
 
     await indexerDb.close();
   });
@@ -2625,7 +2641,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100 }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([100]);
   });
@@ -2882,7 +2898,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(2);
     expect(handledHeights).toStrictEqual([100, 150]);
   });
@@ -2967,7 +2983,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler, endBlock: 100 }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -3177,13 +3193,12 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
 
     // Block-200 should not have been fetched
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
     const block200Calls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/extended/v2/blocks/block-200"),
+      String(call[0]).includes("/extended/v2/blocks/block-200"),
     );
 
     expect(block200Calls).toHaveLength(0);
@@ -3193,19 +3208,22 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
 
-    const negativeResult = await runtime.run([
-      { contractId, handler: noopHandler, startBlock: -1 },
-    ]);
+    const negativeResult = await Effect.runPromiseExit(
+      runtime.run([{ contractId, handler: noopHandler, startBlock: -1 }]),
+    );
 
-    expect(negativeResult).toBeBetterErr(
+    expect(negativeResult).toBeTaggedError(
       new FilterValidationError({
         message:
           "Validation failed: Invalid startBlock for 'SP123.token'. Got -1, expected a non-negative integer.",
       }),
     );
 
-    const floatResult = await runtime.run([{ contractId, handler: noopHandler, startBlock: 1.5 }]);
-    expect(floatResult).toBeBetterErr(
+    const floatResult = await Effect.runPromiseExit(
+      runtime.run([{ contractId, handler: noopHandler, startBlock: 1.5 }]),
+    );
+
+    expect(floatResult).toBeTaggedError(
       new FilterValidationError({
         message:
           "Validation failed: Invalid startBlock for 'SP123.token'. Got 1.5, expected a non-negative integer.",
@@ -3217,16 +3235,22 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
 
-    const negativeResult = await runtime.run([{ contractId, handler: noopHandler, endBlock: -5 }]);
-    expect(negativeResult).toBeBetterErr(
+    const negativeResult = await Effect.runPromiseExit(
+      runtime.run([{ contractId, handler: noopHandler, endBlock: -5 }]),
+    );
+
+    expect(negativeResult).toBeTaggedError(
       new FilterValidationError({
         message:
           "Validation failed: Invalid endBlock for 'SP123.token'. Got -5, expected a non-negative integer or \"latest\".",
       }),
     );
 
-    const floatResult = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100.2 }]);
-    expect(floatResult).toBeBetterErr(
+    const floatResult = await Effect.runPromiseExit(
+      runtime.run([{ contractId, handler: noopHandler, endBlock: 100.2 }]),
+    );
+
+    expect(floatResult).toBeTaggedError(
       new FilterValidationError({
         message:
           "Validation failed: Invalid endBlock for 'SP123.token'. Got 100.2, expected a non-negative integer or \"latest\".",
@@ -3238,11 +3262,11 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
 
-    const result = await runtime.run([
-      { contractId, handler: noopHandler, startBlock: 200, endBlock: 100 },
-    ]);
+    const result = await Effect.runPromiseExit(
+      runtime.run([{ contractId, handler: noopHandler, startBlock: 200, endBlock: 100 }]),
+    );
 
-    expect(result).toBeBetterErr(
+    expect(result).toBeTaggedError(
       new FilterValidationError({
         message:
           "Validation failed: Start block (200) is after end block (100) for contract 'SP123.token'.",
@@ -3432,44 +3456,42 @@ describe("historical runtime with handlers", () => {
       { contractId, handler, startBlock: 100, endBlock: "latest" },
     ]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([100]);
   });
 
-  // 5xx responses are retried with exponential backoff (~7s total).
-  test(
-    "returns error when endBlock: 'latest' fails to fetch API status",
-    { timeout: 15_000 },
-    async () => {
-      const contractId = "SP123.token";
-      mockRequest.mockImplementation((rawUrl: string) => {
-        const url = decodeURIComponent(rawUrl);
+  test("returns error when endBlock: 'latest' fails to fetch API status", async () => {
+    const contractId = "SP123.token";
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
 
-        if (url.includes("/extended/v3/transactions/batch")) {
-          const results = parseBatchIds(url)
-            .map((id) => standardTxById[id])
-            .filter(Boolean);
+      if (url.includes("/extended/v3/transactions/batch")) {
+        const results = parseBatchIds(url)
+          .map((id) => standardTxById[id])
+          .filter(Boolean);
 
-          return { statusCode: 200, body: mockBody({ results }) };
-        }
+        return { statusCode: 200, body: mockBody({ results }) };
+      }
 
-        if (url.endsWith("/extended")) {
-          return {
-            statusCode: 500,
-            body: mockBody({ error: "Internal Server Error" }),
-          };
-        }
+      if (url.endsWith("/extended")) {
+        return {
+          statusCode: 500,
+          body: mockBody({ error: "Internal Server Error" }),
+        };
+      }
 
-        throw new Error(`Unexpected URL: ${url}`);
-      });
+      throw new Error(`Unexpected URL: ${url}`);
+    });
 
-      const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-      const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: "latest" }]);
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
 
-      expect(result.isErr()).toBe(true);
-    },
-  );
+    const result = await Effect.runPromiseExit(
+      runtime.run([{ contractId, handler: noopHandler, endBlock: "latest" }]),
+    );
+
+    expect(Exit.isFailure(result)).toBe(true);
+  });
 
   test("skips sync and network requests when contract is already marked complete for endBlock", async () => {
     const contractId = "SP123.token";
@@ -3494,7 +3516,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(mockRequest).not.toHaveBeenCalled();
     expect(handler).not.toHaveBeenCalled();
   });
@@ -3674,7 +3696,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 200 }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([150]);
 
@@ -3860,7 +3882,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([150]);
 
@@ -3960,7 +3982,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([100]);
 
@@ -4196,7 +4218,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 100 }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     // Should have processed all 3 events belonging to block 100
     expect(handler).toHaveBeenCalledTimes(3);
     expect(handledEvents).toStrictEqual([
@@ -4206,9 +4228,8 @@ describe("historical runtime with handlers", () => {
     ]);
 
     // Should NOT fetch page with cursor 200:0:0:0 because currentHeight (150) >= endBlock (100) on page 2
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
     const page3Calls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("cursor=200"),
+      String(call[0]).includes("cursor=200"),
     );
 
     expect(page3Calls).toHaveLength(0);
@@ -4484,7 +4505,7 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 100 }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     // Should have processed all 3 events across the multiple pages in block 100
     expect(handler).toHaveBeenCalledTimes(3);
     expect(handledEvents).toStrictEqual([
@@ -4494,9 +4515,8 @@ describe("historical runtime with handlers", () => {
     ]);
 
     // Should NOT fetch page with cursor 200:0:0:0
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
     const page5Calls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("cursor=200"),
+      String(call[0]).includes("cursor=200"),
     );
 
     expect(page5Calls).toHaveLength(0);
@@ -4660,7 +4680,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
 
     const progress = await syncStore.getSyncProgress(
@@ -4723,7 +4743,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(requestedUrls.length).toBeGreaterThan(0);
 
     for (const requestedUrl of requestedUrls) {
@@ -4778,7 +4798,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(requestedUrls.length).toBeGreaterThan(0);
 
     for (const requestedUrl of requestedUrls) {
@@ -4937,29 +4957,24 @@ describe("historical runtime with handlers", () => {
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result.isOk()).toBe(true);
+    expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(2);
 
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
     const batchCalls = mockRequest.mock.calls.filter((call: any) =>
-      (call[0] as string).includes("/extended/v3/transactions/batch"),
+      String(call[0]).includes("/extended/v3/transactions/batch"),
     );
 
     expect(batchCalls).toHaveLength(1);
 
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
     const singleTxCalls = mockRequest.mock.calls.filter(
       (call: any) =>
-        (call[0] as string).includes("/extended/v3/transactions/tx-") &&
-        !(call[0] as string).includes("/events") &&
-        !(call[0] as string).includes("/batch"),
+        String(call[0]).includes("/extended/v3/transactions/tx-") &&
+        !String(call[0]).includes("/events") &&
+        !String(call[0]).includes("/batch"),
     );
 
     // Tx-1 single fetch happens once during cursor discovery; tx-2 must come from batch only
-    // SAFETY: mockRequest records the requested URL string as the first call argument.
-    expect(singleTxCalls.filter((call: any) => (call[0] as string).includes("tx-2"))).toHaveLength(
-      0,
-    );
+    expect(singleTxCalls.filter((call: any) => String(call[0]).includes("tx-2"))).toHaveLength(0);
 
     const storedTxs = await testDb.db.select().from(transactionsTable);
     expect(storedTxs).toHaveLength(2);
@@ -5068,9 +5083,9 @@ describe("historical runtime with handlers", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId, handler }]);
+    const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
-    expect(result).toBeBetterErr(
+    expect(result).toBeTaggedError(
       new StacksApiUnexpectedError({
         message: "Batch lookup missed 1 transaction(s): tx-2",
         cause: { missingIds: ["tx-2"] },
@@ -5192,9 +5207,9 @@ describe("historical runtime with handlers", () => {
     });
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId, handler }]);
+    const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
-    expect(result).toBeBetterErr(
+    expect(result).toBeTaggedError(
       new StacksApiResponseError({
         status: 400,
         statusText: "Bad Request",
@@ -5235,19 +5250,12 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    // Force the next sync-store write to fail.
+    // Force the next sync-store read to fail.
     await testDb.db.execute(sql`drop table "sync_progress"`);
 
     const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
-    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+    const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
 
-    expect(result.isErr()).toBe(true);
-
-    if (!result.isErr()) {
-      throw new Error("Expected run() to fail with a SyncStoreError");
-    }
-
-    expect(SyncStoreError.is(result.error)).toBe(true);
-    expect(result.error).toHaveProperty("operation", "getSyncProgress");
+    expect(result).toBeTaggedError(new SyncStoreError({ operation: "getSyncProgress" }));
   });
 });

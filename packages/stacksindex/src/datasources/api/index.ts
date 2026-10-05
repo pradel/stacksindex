@@ -1,8 +1,8 @@
 import type { paths } from "@stacks/blockchain-api-client";
-import { Result } from "better-result";
 import type { ClarityAbi } from "clarity-abitype";
+import { Context, Duration, Effect, Layer, Match, Predicate, Schedule } from "effect";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
-import { sleep, startClock } from "../../lib/timer.ts";
 import type { Logger } from "../../logger/index.ts";
 import {
   type StacksApiError,
@@ -140,7 +140,7 @@ export type NonFungibleTokenAssetEvent = Extract<
 >;
 
 export interface DatasourceStacksApiContext {
-  logger: Logger;
+  logger?: Logger;
   api?: {
     baseUrl?: string;
     apiKey?: string;
@@ -153,111 +153,70 @@ export interface CallReadResponse {
   cause?: string;
 }
 
-type QueryScalar = string | number | boolean;
-
-type QueryValue = QueryScalar | QueryScalar[] | null | undefined;
-
-interface RequestOptions<QueryT extends Record<string, QueryValue> | undefined = undefined> {
+interface RequestOptions<QueryT = unknown> {
   path: string;
   method: "GET" | "POST";
   query?: QueryT;
   body?: unknown;
 }
 
-function defaultStatusText(status: number): string {
-  if (status === 200) {
-    return "OK";
-  }
-
-  if (status === 400) {
-    return "Bad Request";
-  }
-
-  if (status === 404) {
-    return "Not Found";
-  }
-
-  if (status === 429) {
-    return "Too Many Requests";
-  }
-
-  if (status === 500) {
-    return "Internal Server Error";
-  }
-
-  return String(status);
+function isString(value: unknown): value is string {
+  return typeof value === "string";
 }
 
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+const DEFAULT_RETRY_AFTER_SECONDS = 1;
 
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null) {
-    return true;
+const MAX_RETRY_AFTER_SECONDS = 300;
+
+/**
+ * Parses a `Retry-After` header, which may be seconds or an HTTP date.
+ * Falls back to one second when missing, invalid, or already past.
+ */
+function parseRetryAfter(header: string | undefined, now: number = Date.now()): number {
+  const value = header?.trim();
+
+  if (!value) {
+    return DEFAULT_RETRY_AFTER_SECONDS;
   }
 
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return true;
+  const seconds = Number(value);
+
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds, MAX_RETRY_AFTER_SECONDS);
   }
 
-  if (Array.isArray(value)) {
-    return value.every((item) => isJsonValue(item));
-  }
+  const date = Date.parse(value);
 
-  if (typeof value === "object") {
-    return Object.values(value).every((item) => isJsonValue(item));
-  }
+  if (!Number.isNaN(date)) {
+    const secondsUntilRetry = Math.ceil((date - now) / 1000);
 
-  return false;
-}
-
-function parseErrorData(rawBody: string | null, contentType: string): JsonValue {
-  if (rawBody === null) {
-    return null;
-  }
-
-  if (contentType.includes("application/json")) {
-    try {
-      const parsed: unknown = JSON.parse(rawBody);
-
-      return isJsonValue(parsed) ? parsed : rawBody;
-    } catch {
-      return rawBody;
+    if (secondsUntilRetry > 0) {
+      return Math.min(secondsUntilRetry, MAX_RETRY_AFTER_SECONDS);
     }
   }
 
-  return rawBody;
+  return DEFAULT_RETRY_AFTER_SECONDS;
 }
 
 export const datasourceStacksApi = {
-  async _request<ResponseT, QueryT extends Record<string, QueryValue> | undefined>(
+  _request<ResponseT, QueryT extends Record<string, unknown> | undefined>(
     context: DatasourceStacksApiContext,
     options: RequestOptions<QueryT>,
-  ): Promise<Result<ResponseT, StacksApiError>> {
-    return this._requestWithRetry<ResponseT, QueryT>(context, options, 0);
-  },
-
-  async _requestWithRetry<ResponseT, QueryT extends Record<string, QueryValue> | undefined>(
-    context: DatasourceStacksApiContext,
-    options: RequestOptions<QueryT>,
-    attempt: number,
-  ): Promise<Result<ResponseT, StacksApiError>> {
-    const maxRateLimitRetries = 3;
+  ): Effect.Effect<ResponseT, StacksApiError> {
     const { path, method } = options;
-
     const baseUrl = context.api?.baseUrl ?? "https://api.hiro.so";
     let url = `${baseUrl}${path}`;
 
     if (options.query) {
       const parts: string[] = [];
-      const { query } = options;
 
-      for (const key of Object.keys(query)) {
-        const value = query[key];
+      for (const [key, value] of Object.entries(options.query)) {
         const vals = Array.isArray(value) ? value : [value];
 
         for (const entry of vals) {
           if (entry !== null && entry !== undefined) {
-            parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(entry))}`);
+            const str = isString(entry) ? entry : String(entry);
+            parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(str)}`);
           }
         }
       }
@@ -267,134 +226,115 @@ export const datasourceStacksApi = {
       }
     }
 
-    const result = await Result.tryPromise(
-      {
-        try: async () => {
-          const stopClock = startClock();
-          context.logger.trace({
-            service: "datasourceStacksApi",
-            msg: `${method} ${path} request`,
-          });
+    const singleAttempt = Effect.gen(function* singleAttempt() {
+      let req = method === "GET" ? HttpClientRequest.get(url) : HttpClientRequest.post(url);
 
-          const requestInit: RequestInit = { method };
-          const requestHeaders: Record<string, string> = {};
+      if (context.api?.apiKey) {
+        req = HttpClientRequest.setHeader(req, "x-api-key", context.api.apiKey);
+      }
 
-          if (context.api?.apiKey) {
-            requestHeaders["x-api-key"] = context.api.apiKey;
-          }
+      if (options.body !== undefined) {
+        req = HttpClientRequest.bodyJsonUnsafe(req, options.body);
+      }
 
-          if (options.body !== undefined) {
-            requestHeaders["content-type"] = "application/json";
-            requestInit.body = JSON.stringify(options.body);
-          }
+      const client = yield* HttpClient.HttpClient;
 
-          requestInit.headers = requestHeaders;
-
-          const response = await globalThis.fetch(url, requestInit);
-
-          let duration = stopClock();
-
-          if (duration > 15000) {
-            context.logger.warn({
-              service: "datasourceStacksApi",
-              msg: `Slow API call`,
+      const res = yield* client.execute(req).pipe(
+        Effect.mapError(
+          (err) =>
+            new StacksApiUnexpectedError({
+              message: "Failed to execute HTTP request",
+              cause: err,
               path,
-              duration,
-            });
+            }),
+        ),
+      );
+
+      if (res.status === 429) {
+        const retryAfter = parseRetryAfter(res.headers["retry-after"]);
+
+        return yield* new StacksApiRateLimitError({ path, retryAfter });
+      }
+
+      if (res.status < 200 || res.status >= 300) {
+        const errorData = yield* res.json.pipe(
+          Effect.catch(() => res.text),
+          Effect.match({
+            onSuccess: (data) => data,
+            onFailure: () => undefined,
+          }),
+        );
+
+        // SAFETY: Effect's fetch-backed HttpClientResponse keeps the original fetch Response on its private `source` field; only statusText is read.
+        // oxlint-disable-next-line typescript/no-explicit-any, typescript/no-unsafe-member-access
+        const upstreamStatusText = (res as any).source?.statusText;
+
+        const statusText =
+          upstreamStatusText ||
+          Match.value(res.status).pipe(
+            Match.when(404, () => "Not Found"),
+            Match.when(400, () => "Bad Request"),
+            Match.when(500, () => "Internal Server Error"),
+            Match.orElse(() => String(res.status)),
+          );
+
+        return yield* new StacksApiResponseError({
+          status: res.status,
+          path,
+          statusText,
+          errorData,
+        });
+      }
+
+      const data = yield* res.json.pipe(
+        Effect.mapError(
+          (err) =>
+            new StacksApiParseError({
+              message: "Failed to parse JSON response",
+              cause: err,
+            }),
+        ),
+      );
+
+      // SAFETY: The endpoint's JSON shape is fixed by the same API contract that selected ResponseT.
+      return data as ResponseT;
+    });
+
+    // Handle rate limit retries (up to 3 times) and 5xx transient retries (up to 3 times)
+    const executeWithRetry = (
+      attempt: number,
+    ): Effect.Effect<ResponseT, StacksApiError, HttpClient.HttpClient> =>
+      singleAttempt.pipe(
+        Effect.catchTag("StacksApiRateLimitError", (err) => {
+          if (attempt >= 3) {
+            return Effect.fail(err);
           }
 
-          const statusCode = response.status;
-          const statusText = response.statusText || defaultStatusText(statusCode);
+          const delay = Duration.seconds(err.retryAfter);
 
-          if (statusCode !== 200) {
-            const contentType = response.headers.get("content-type") ?? "";
-            const rawErrorBody = await response.text().catch(() => null);
-            const errorData = parseErrorData(rawErrorBody, contentType);
+          return Effect.logDebug(
+            `Rate limited on ${path}, retrying in ${err.retryAfter}s (attempt ${attempt + 1})`,
+          ).pipe(
+            Effect.andThen(Effect.sleep(delay)),
+            Effect.andThen(executeWithRetry(attempt + 1)),
+          );
+        }),
+        Effect.retry({
+          schedule: Schedule.exponential(Duration.millis(500)).pipe(Schedule.upTo({ times: 3 })),
+          while: (err) =>
+            Predicate.isTagged(err, "StacksApiResponseError") &&
+            (err.status === 500 || err.status === 502 || err.status === 503),
+        }),
+      );
 
-            duration = stopClock();
-            context.logger.trace({
-              service: "datasourceStacksApi",
-              msg: `error response ${statusCode}`,
-              path,
-              duration,
-            });
-
-            if (statusCode === 429) {
-              const retryAfter = Number(response.headers.get("retry-after") ?? 1);
-              throw new StacksApiRateLimitError({ path, retryAfter });
-            }
-
-            throw new StacksApiResponseError({ status: statusCode, path, statusText, errorData });
-          }
-
-          try {
-            const data = await response.json();
-
-            duration = stopClock();
-            context.logger.trace({
-              service: "datasourceStacksApi",
-              msg: `${path} response`,
-              path,
-              duration,
-            });
-
-            // SAFETY: `ResponseT` is the response body schema declared for the exact `path` requested by each caller.
-            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-            return data as ResponseT;
-          } catch (error) {
-            throw new StacksApiParseError({
-              message: error instanceof Error ? error.message : String(error),
-              cause: error,
-            });
-          }
-        },
-        catch: (error) =>
-          StacksApiResponseError.is(error) ||
-          StacksApiRateLimitError.is(error) ||
-          StacksApiParseError.is(error)
-            ? error
-            : new StacksApiUnexpectedError({
-                message: "Unexpected Stacks API error",
-                cause: error,
-                path,
-              }),
-      },
-      {
-        retry: {
-          times: 3,
-          delayMs: 1000,
-          backoff: "exponential",
-          shouldRetry: (error) =>
-            StacksApiResponseError.is(error) &&
-            (error.status === 500 || error.status === 502 || error.status === 503),
-        },
-      },
-    );
-
-    if (result.isOk()) {
-      return result;
-    }
-
-    if (StacksApiRateLimitError.is(result.error) && attempt < maxRateLimitRetries) {
-      const delayMs = result.error.retryAfter * 1000;
-      context.logger.debug({
-        service: "datasourceStacksApi",
-        msg: `${path} rate limited, retrying after ${result.error.retryAfter}s, attempt ${attempt + 1}`,
-        path,
-      });
-      await sleep(delayMs);
-
-      return this._requestWithRetry(context, options, attempt + 1);
-    }
-
-    return result;
+    return executeWithRetry(0).pipe(Effect.provide(FetchHttpClient.layer));
   },
 
   getBlock(
     context: DatasourceStacksApiContext,
     heightOrHash: string | number,
     options?: GetBlockQuery,
-  ) {
+  ): Effect.Effect<BlockApiResponse, StacksApiError> {
     return this._request<BlockApiResponse, GetBlockQuery>(context, {
       path: `/extended/v2/blocks/${heightOrHash}`,
       method: "GET",
@@ -406,7 +346,7 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     heightOrHash: string | number,
     options: GetBlockTransactionsQuery = {},
-  ) {
+  ): Effect.Effect<BlockTransactionsApiResponse, StacksApiError> {
     return this._request<BlockTransactionsApiResponse, GetBlockTransactionsQuery>(context, {
       path: `/extended/v3/blocks/${heightOrHash}/transactions`,
       method: "GET",
@@ -418,7 +358,7 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     txId: string,
     options: GetTransactionQuery = {},
-  ) {
+  ): Effect.Effect<TransactionApiResponse, StacksApiError> {
     const { include } = options;
 
     return this._request<TransactionApiResponse, { include?: string | null }>(context, {
@@ -428,18 +368,22 @@ export const datasourceStacksApi = {
     });
   },
 
-  getV1Transaction(context: DatasourceStacksApiContext, txId: string) {
+  getV1Transaction(
+    context: DatasourceStacksApiContext,
+    txId: string,
+  ): Effect.Effect<V1TransactionApiResponse, StacksApiError> {
     return this._request<V1TransactionApiResponse, undefined>(context, {
       path: `/extended/v1/tx/${txId}`,
       method: "GET",
     });
   },
 
-  getTransactionsBatch(context: DatasourceStacksApiContext, txIds: string[]) {
+  getTransactionsBatch(
+    context: DatasourceStacksApiContext,
+    txIds: string[],
+  ): Effect.Effect<TransactionsBatchResponse, StacksApiError> {
     if (txIds.length === 0) {
-      const emptyBatch: TransactionsBatchResponse = { results: [] };
-
-      return Promise.resolve(Result.ok(emptyBatch));
+      return Effect.succeed({ results: [] });
     }
 
     return this._request<TransactionsBatchResponse, GetTransactionsBatchQuery>(context, {
@@ -453,7 +397,7 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     txId: string,
     options: GetTransactionEventsQuery = {},
-  ) {
+  ): Effect.Effect<TransactionEventsResponse, StacksApiError> {
     const { limit = 50, cursor, ...rest } = options;
     const path = `/extended/v3/transactions/${txId}/events`;
 
@@ -468,7 +412,7 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     principal: string,
     options: GetPrincipalTransactionsQuery = {},
-  ) {
+  ): Effect.Effect<PrincipalTransactionsResponse, StacksApiError> {
     const { limit = 50, cursor, ...rest } = options;
     const path = `/extended/v3/principals/${principal}/transactions`;
 
@@ -479,7 +423,10 @@ export const datasourceStacksApi = {
     });
   },
 
-  getContract(context: DatasourceStacksApiContext, contractId: string) {
+  getContract(
+    context: DatasourceStacksApiContext,
+    contractId: string,
+  ): Effect.Effect<ContractApiResponse, StacksApiError> {
     const path = `/extended/v3/smart-contracts/${contractId}`;
 
     return this._request<ContractApiResponse, undefined>(context, {
@@ -492,7 +439,7 @@ export const datasourceStacksApi = {
     context: DatasourceStacksApiContext,
     contractId: string,
     options: GetContractLogsQuery = {},
-  ) {
+  ): Effect.Effect<ContractLogsResponse, StacksApiError> {
     const { limit = 100, cursor, ...rest } = options;
     const path = `/extended/v2/smart-contracts/${contractId}/logs`;
 
@@ -503,7 +450,7 @@ export const datasourceStacksApi = {
     });
   },
 
-  getStatus(context: DatasourceStacksApiContext) {
+  getStatus(context: DatasourceStacksApiContext): Effect.Effect<ApiStatusResponse, StacksApiError> {
     return this._request<ApiStatusResponse, undefined>(context, {
       path: "/extended",
       method: "GET",
@@ -515,7 +462,7 @@ export const datasourceStacksApi = {
     contractId: string,
     functionName: string,
     options: { args?: string[]; sender?: string; tip?: number } = {},
-  ) {
+  ): Effect.Effect<CallReadResponse, StacksApiError> {
     const { args = [], sender = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip } = options;
     const [contractAddress, contractName] = contractId.split(".");
 
@@ -542,11 +489,73 @@ export const datasourceStacksApi = {
   >(
     context: DatasourceStacksApiContext,
     parameters: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
-  ) {
-    return typedCallReadFunction(
+  ): Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError> {
+    return typedCallReadFunction<TAbi, TFunctionName, TArgs>(
       context,
-      (ctx, cId, fn, opts) => this.callReadFunction(ctx, cId, fn, opts),
+      (ctx, contractId, functionName, options) =>
+        this.callReadFunction(ctx, contractId, functionName, options),
       parameters,
     );
   },
 };
+
+export class StacksClientConfig extends Context.Service<
+  StacksClientConfig,
+  {
+    readonly baseUrl: string;
+    readonly apiKey?: string;
+  }
+>()("stacksindex/datasources/StacksClientConfig") {}
+
+export class StacksClient extends Context.Service<
+  StacksClient,
+  {
+    readonly getStatus: Effect.Effect<ApiStatusResponse, StacksApiError>;
+    readonly getContract: (
+      contractId: string,
+    ) => Effect.Effect<ContractApiResponse, StacksApiError>;
+    readonly getPrincipalTransactions: (
+      principal: string,
+      options?: GetPrincipalTransactionsQuery,
+    ) => Effect.Effect<PrincipalTransactionsResponse, StacksApiError>;
+    readonly getTransactionEvents: (
+      txId: string,
+      options?: GetTransactionEventsQuery,
+    ) => Effect.Effect<TransactionEventsResponse, StacksApiError>;
+    readonly getContractLogs: (
+      contractId: string,
+      options?: GetContractLogsQuery,
+    ) => Effect.Effect<ContractLogsResponse, StacksApiError>;
+    readonly getTransactionsBatch: (
+      txIds: string[],
+    ) => Effect.Effect<TransactionsBatchResponse, StacksApiError>;
+    readonly callReadFunction: (
+      contractId: string,
+      functionName: string,
+      options?: { args?: string[]; sender?: string; tip?: number },
+    ) => Effect.Effect<CallReadResponse, StacksApiError>;
+  }
+>()("stacksindex/datasources/StacksClient") {
+  static readonly layer = Layer.effect(
+    StacksClient,
+    Effect.gen(function* layer() {
+      const config = yield* StacksClientConfig;
+
+      const ctx: DatasourceStacksApiContext = {
+        api: { baseUrl: config.baseUrl, apiKey: config.apiKey },
+      };
+
+      return StacksClient.of({
+        getStatus: datasourceStacksApi.getStatus(ctx),
+        getContract: (cId) => datasourceStacksApi.getContract(ctx, cId),
+        getPrincipalTransactions: (p, opts) =>
+          datasourceStacksApi.getPrincipalTransactions(ctx, p, opts),
+        getTransactionEvents: (t, opts) => datasourceStacksApi.getTransactionEvents(ctx, t, opts),
+        getContractLogs: (cId, opts) => datasourceStacksApi.getContractLogs(ctx, cId, opts),
+        getTransactionsBatch: (ids) => datasourceStacksApi.getTransactionsBatch(ctx, ids),
+        callReadFunction: (cId, fn, opts) =>
+          datasourceStacksApi.callReadFunction(ctx, cId, fn, opts),
+      });
+    }),
+  );
+}

@@ -1,41 +1,80 @@
-import { TaggedError } from "better-result";
+import { Exit, Option } from "effect";
 import type { MatcherResult, MatcherState } from "vite-plus/test";
 
-import type { JsonValue } from "./fetch-mock.ts";
+type ComparableValue =
+  | string
+  | number
+  | boolean
+  | bigint
+  | null
+  | undefined
+  | ComparableValue[]
+  | ComparableObject;
 
-interface ResultLike {
-  isErr: () => boolean;
-  isOk: () => boolean;
-  error?: unknown;
+interface ComparableObject {
+  [key: string]: ComparableValue;
 }
 
-interface TaggedErrorLike extends Error {
-  readonly _tag: string;
-  toJSON: () => object;
+type ComparableInput = Error | ComparableValue;
+
+function isComparableInput(value: unknown): value is ComparableInput {
+  if (value === null || value === undefined) {
+    return true;
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return true;
+  }
+
+  if (value instanceof Error) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((item) => isComparableInput(item));
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value).every((entry) => isComparableInput(entry));
+  }
+
+  return false;
 }
 
-function isResultLike(value: ResultLike | null | undefined): value is ResultLike {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "isErr" in value &&
-    "isOk" in value &&
-    typeof value.isErr === "function" &&
-    typeof value.isOk === "function"
-  );
-}
-
-function isJsonRecord(value: JsonValue): value is { [key: string]: JsonValue } {
+function isComparableRecord(value: ComparableInput): value is ComparableObject {
   return typeof value === "object" && value !== null;
 }
 
-function stripStack(value: JsonValue): JsonValue {
+function isTagged(value: ComparableInput): value is { readonly _tag: string } {
+  return (
+    typeof value === "object" && value !== null && "_tag" in value && typeof value._tag === "string"
+  );
+}
+
+function stripCause(cause: unknown): ComparableValue {
+  return isComparableInput(cause) ? stripStack(cause) : "unrepresentable cause";
+}
+
+function stripStack(value: ComparableInput): ComparableValue {
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      cause: stripCause(value.cause),
+    };
+  }
+
   if (Array.isArray(value)) {
     return value.map((item) => stripStack(item));
   }
 
-  if (isJsonRecord(value)) {
-    const result: { [key: string]: JsonValue } = {};
+  if (isComparableRecord(value)) {
+    const result: ComparableObject = {};
 
     for (const [key, entryValue] of Object.entries(value)) {
       if (key !== "stack") {
@@ -49,55 +88,87 @@ function stripStack(value: JsonValue): JsonValue {
   return value;
 }
 
-function toComparable(error: TaggedErrorLike): JsonValue {
-  // SAFETY: TaggedError.toJSON() serializes JSON-compatible own properties.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  return stripStack(error.toJSON() as JsonValue);
+function toComparable(value: ComparableInput): ComparableObject {
+  if (!isComparableRecord(value)) {
+    return { value: stripStack(value) };
+  }
+
+  const result: ComparableObject = {};
+
+  for (const key of Object.getOwnPropertyNames(value)) {
+    if (key !== "stack") {
+      result[key] = stripStack(value[key]);
+    }
+  }
+
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (key !== "stack") {
+      result[key] = stripStack(entryValue);
+    }
+  }
+
+  return result;
 }
 
-export function toBeBetterErr(
+export function toBeTaggedError(
   this: MatcherState,
-  received: ResultLike,
-  expected: { readonly _tag: string },
+  received: Exit.Exit<unknown, unknown> | ComparableInput,
+  expected: ComparableInput,
 ): MatcherResult {
   const { matcherHint, printExpected, printReceived, diff } = this.utils;
 
   const hint = (expectedLabel: string, receivedLabel: string): string =>
-    matcherHint("toBeBetterErr", receivedLabel, expectedLabel, {
+    matcherHint("toBeTaggedError", receivedLabel, expectedLabel, {
       isNot: this.isNot,
     });
 
-  if (!TaggedError.is(expected)) {
+  if (!isTagged(expected)) {
     return {
       pass: false,
       message: (): string =>
-        `${hint("expectedError", "received")}\n\nExpected matcher argument to be a better-result TaggedError.\n${printReceived(expected)}`,
+        `${hint("expectedError", "received")}\n\nExpected matcher argument to have a _tag property.\n${printReceived(expected)}`,
     };
   }
 
-  if (!isResultLike(received)) {
-    return {
-      pass: false,
-      message: (): string =>
-        `${hint("expectedError", "received")}\n\nExpected received value to be a better-result Result.\n${printReceived(received)}`,
-    };
+  let actual: ComparableInput;
+
+  if (Exit.isExit(received)) {
+    if (Exit.isSuccess(received)) {
+      return {
+        pass: false,
+        message: (): string =>
+          `${hint("expectedError", "received")}\n\nExpected Exit to be Failure, but it was Success.\n${printReceived(received.value)}`,
+      };
+    }
+
+    const opt = Exit.findErrorOption(received);
+
+    if (Option.isSome(opt)) {
+      if (!isComparableInput(opt.value)) {
+        return {
+          pass: false,
+          message: (): string =>
+            `${hint("expectedError", "received")}\n\nExpected error to have a _tag property.\n${printReceived(opt.value)}`,
+        };
+      }
+
+      actual = opt.value;
+    } else {
+      return {
+        pass: false,
+        message: (): string =>
+          `${hint("expectedError", "received")}\n\nExpected Exit to contain an error, but it did not.\n${printReceived(received.cause)}`,
+      };
+    }
+  } else {
+    actual = received;
   }
 
-  if (!received.isErr()) {
+  if (!isTagged(actual)) {
     return {
       pass: false,
       message: (): string =>
-        `${hint("expectedError", "received")}\n\nExpected Result to be Err, but it was Ok.\n${printReceived(received)}`,
-    };
-  }
-
-  const actual = received.error;
-
-  if (!TaggedError.is(actual)) {
-    return {
-      pass: false,
-      message: (): string =>
-        `${hint("expectedError", "received")}\n\nExpected Result error to be a better-result TaggedError.\n${printReceived(actual)}`,
+        `${hint("expectedError", "received")}\n\nExpected error to have a _tag property.\n${printReceived(actual)}`,
     };
   }
 
@@ -113,25 +184,37 @@ export function toBeBetterErr(
 
   const actualComparable = toComparable(actual);
   const expectedComparable = toComparable(expected);
-  const pass = this.equals(actualComparable, expectedComparable);
+  let pass = true;
+
+  for (const key of Object.keys(expectedComparable)) {
+    if (!this.equals(actualComparable[key], expectedComparable[key])) {
+      pass = false;
+      break;
+    }
+  }
+
   const errorDiff = diff(expectedComparable, actualComparable) ?? "";
 
   return {
     pass,
     message: (): string =>
       pass
-        ? `${hint("expectedError", "received")}\n\nExpected Result error not to match.\n\nExpected: ${printExpected(expectedComparable)}\nReceived: ${printReceived(actualComparable)}`
-        : `${hint("expectedError", "received")}\n\nExpected Result error to match.${errorDiff === "" ? `\n\nExpected: ${printExpected(expectedComparable)}\nReceived: ${printReceived(actualComparable)}` : `\n\n${errorDiff}`}`,
+        ? `${hint("expectedError", "received")}\n\nExpected error not to match.\n\nExpected: ${printExpected(expectedComparable)}\nReceived: ${printReceived(actualComparable)}`
+        : `${hint("expectedError", "received")}\n\nExpected error to match.${errorDiff === "" ? `\n\nExpected: ${printExpected(expectedComparable)}\nReceived: ${printReceived(actualComparable)}` : `\n\n${errorDiff}`}`,
   };
 }
+
+export const toBeBetterErr = toBeTaggedError;
 
 declare module "vitest" {
   // oxlint-disable-next-line id-length
   interface Assertion<R extends void | Promise<void> = void, T = unknown> {
-    toBeBetterErr: (expected: { readonly _tag: string }) => R;
+    toBeTaggedError: (expected: ComparableInput) => void;
+    toBeBetterErr: (expected: ComparableInput) => R;
   }
 
   interface AsymmetricMatchersContaining {
-    toBeBetterErr: (expected: { readonly _tag: string }) => void;
+    toBeTaggedError: (expected: ComparableInput) => void;
+    toBeBetterErr: (expected: ComparableInput) => void;
   }
 }

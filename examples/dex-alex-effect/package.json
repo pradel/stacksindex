@@ -1,0 +1,23 @@
+{
+  "name": "dex-alex-effect",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm build && node --env-file-if-exists=.env dist/index.mjs",
+    "build": "vp pack",
+    "studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "drizzle-orm": "1.0.0-rc.5-5935859",
+    "effect": "4.0.0",
+    "stacksindex": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "drizzle-kit": "1.0.0-rc.5-5935859",
+    "typescript": "7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
