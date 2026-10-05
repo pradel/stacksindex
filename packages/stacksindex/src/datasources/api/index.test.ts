@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Duration, Effect } from "effect";
 import { FetchHttpClient, type HttpClient } from "effect/http";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
@@ -9,7 +9,7 @@ import {
   StacksApiResponseError,
   StacksApiUnexpectedError,
 } from "./errors.ts";
-import { datasourceStacksApi } from "./index.ts";
+import { datasourceStacksApi, StacksClient, type StacksClientOptions } from "./index.ts";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -73,6 +73,11 @@ const runRequest = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) =>
 
 const runRequestExit = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) =>
   Effect.runPromiseExit(effect.pipe(Effect.provide(FetchHttpClient.layer)));
+
+const runStacksClient = <A, E>(
+  effect: Effect.Effect<A, E, StacksClient>,
+  options: StacksClientOptions = { baseUrl: "https://api.hiro.so" },
+) => Effect.runPromise(effect.pipe(Effect.provide(StacksClient.layer(options))));
 
 describe("aPI DataSource", () => {
   beforeEach(() => {
@@ -802,6 +807,83 @@ describe("aPI DataSource", () => {
       expect(result).toStrictEqual(mockResponse);
       expect(toUrlString(mockFetch.mock.calls[0][0])).toBe("https://api.hiro.so/extended");
       expect(mockFetch.mock.calls[0][1]).toMatchObject({ method: "GET" });
+    });
+  });
+
+  describe("stacks client service", () => {
+    const getStatusProgram = Effect.gen(function* getStatusProgram() {
+      const client = yield* StacksClient;
+
+      return yield* client.getStatus();
+    });
+
+    const twoStatusProgram = Effect.gen(function* twoStatusProgram() {
+      const client = yield* StacksClient;
+
+      yield* client.getStatus();
+
+      return yield* client.getStatus();
+    });
+
+    test("forwards baseUrl and apiKey from config", async () => {
+      mockFetch.mockResolvedValue(jsonResponse({ status: "ready" }));
+
+      const result = await runStacksClient(getStatusProgram, {
+        baseUrl: "https://custom-stacks-node.example.com",
+        apiKey: "secret-key",
+      });
+
+      expect(result).toStrictEqual({ status: "ready" });
+      expect(toUrlString(mockFetch.mock.calls[0][0])).toBe(
+        "https://custom-stacks-node.example.com/extended",
+      );
+      expect(mockFetch.mock.calls[0][1]?.headers["x-api-key"]).toBe("secret-key");
+    });
+
+    test("throttles requests through the rate limiter", async () => {
+      vi.useFakeTimers();
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ status: "ready" }))
+        .mockResolvedValueOnce(jsonResponse({ status: "ready" }));
+
+      const promise = runStacksClient(twoStatusProgram, {
+        baseUrl: "https://api.hiro.so",
+        rateLimit: { limit: 1, window: Duration.seconds(1) },
+      });
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      await promise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
+    });
+
+    test("adapts the rate limit from x-ratelimit headers", async () => {
+      vi.useFakeTimers();
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({ status: "ready" }, 200, {
+            "x-ratelimit-limit": "1",
+            "x-ratelimit-remaining": "0",
+            "x-ratelimit-reset": "1",
+          }),
+        )
+        .mockResolvedValueOnce(jsonResponse({ status: "ready" }));
+
+      const promise = runStacksClient(twoStatusProgram, {
+        baseUrl: "https://api.hiro.so",
+        rateLimit: { limit: 50, window: Duration.seconds(1) },
+      });
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      await promise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
     });
   });
 });

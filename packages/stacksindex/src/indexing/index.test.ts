@@ -3,11 +3,10 @@
 
 import type { ClarityAbi } from "clarity-abitype";
 import { Effect } from "effect";
-import { FetchHttpClient, HttpClient } from "effect/http";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import type { IndexerDb } from "../database/index.ts";
-import { datasourceStacksApi } from "../datasources/api/index.ts";
+import { StacksClient, type StacksClientService } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
 import { createLogger } from "../logger/index.ts";
@@ -15,11 +14,22 @@ import { blocksTable } from "../sync-store/schema.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createIndexing } from "./index.ts";
 
-const httpClient = Effect.runSync(
-  Effect.gen(function* getHttpClient() {
-    return yield* HttpClient.HttpClient;
-  }).pipe(Effect.provide(FetchHttpClient.layer)),
-);
+const notUsed = () => Effect.die("StacksClient method not used in this test");
+
+const makeStacksClient = (overrides: Partial<StacksClientService> = {}): StacksClientService => ({
+  getStatus: notUsed,
+  getBlock: notUsed,
+  getBlockTransactions: notUsed,
+  getTransaction: notUsed,
+  getV1Transaction: notUsed,
+  getTransactionsBatch: notUsed,
+  getTransactionEvents: notUsed,
+  getPrincipalTransactions: notUsed,
+  getContract: notUsed,
+  getContractLogs: notUsed,
+  callReadFunction: notUsed,
+  ...overrides,
+});
 
 // SAFETY: The test double implements only `transaction`, the sole IndexerDb member createIndexing reads.
 const mockDb = {
@@ -76,11 +86,13 @@ describe("indexing engine", () => {
       logger: createLogger({ level: 0 }),
       db: mockDb,
       handlers,
-      httpClient,
     });
 
     const event = createMockEvent();
-    await Effect.runPromise(indexing.executeEvent(event));
+    const stacksClient = makeStacksClient();
+    await Effect.runPromise(
+      indexing.executeEvent(event).pipe(Effect.provideService(StacksClient, stacksClient)),
+    );
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith(
@@ -94,13 +106,12 @@ describe("indexing engine", () => {
     );
   });
 
-  test("client.callReadOnly injects event block_height as tip and forwards api config", async () => {
-    const callReadSpy = vi
-      .spyOn(datasourceStacksApi, "callReadFunction")
+  test("client.callReadOnly injects event block_height as tip", async () => {
+    const callReadFunction = vi
+      .fn()
       .mockReturnValue(Effect.succeed({ okay: true, result: "0x01" }));
 
     const logger = createLogger({ level: 0 });
-    const api = { baseUrl: "https://custom.api", apiKey: "secret-key" };
 
     const handler = vi.fn().mockImplementation(async (_event, ctx: HandlerContext) => {
       // Call without explicit tip - should inject event.block_height
@@ -142,56 +153,37 @@ describe("indexing engine", () => {
       logger,
       db: mockDb,
       handlers,
-      httpClient,
-      api,
     });
 
     const event = createMockEvent({ block_height: 54321 });
-    await Effect.runPromise(indexing.executeEvent(event));
+    const stacksClient = makeStacksClient({ callReadFunction });
+    await Effect.runPromise(
+      indexing.executeEvent(event).pipe(Effect.provideService(StacksClient, stacksClient)),
+    );
 
     expect(handler).toHaveBeenCalledTimes(1);
 
-    expect(callReadSpy).toHaveBeenNthCalledWith(
-      1,
-      { logger, api },
-      "SP123.contract",
-      "get-something",
-      {
-        args: ["0x01"],
-        sender: "ST123",
-        tip: 54321,
-      },
-    );
+    expect(callReadFunction).toHaveBeenNthCalledWith(1, "SP123.contract", "get-something", {
+      args: ["0x01"],
+      sender: "ST123",
+      tip: 54321,
+    });
 
-    expect(callReadSpy).toHaveBeenNthCalledWith(
-      2,
-      { logger, api },
-      "SP123.contract",
-      "get-something",
-      {
-        args: undefined,
-        sender: undefined,
-        tip: 99999,
-      },
-    );
+    expect(callReadFunction).toHaveBeenNthCalledWith(2, "SP123.contract", "get-something", {
+      args: undefined,
+      sender: undefined,
+      tip: 99999,
+    });
 
-    expect(callReadSpy).toHaveBeenNthCalledWith(
-      3,
-      { logger, api },
-      "SP123.contract",
-      "get-something",
-      {
-        args: undefined,
-        sender: undefined,
-        tip: 54321,
-      },
-    );
-
-    callReadSpy.mockRestore();
+    expect(callReadFunction).toHaveBeenNthCalledWith(3, "SP123.contract", "get-something", {
+      args: undefined,
+      sender: undefined,
+      tip: 54321,
+    });
   });
 
   test("client.callReadOnly supports typed ABI options and injects event block_height as tip", async () => {
-    const callReadSpy = vi.spyOn(datasourceStacksApi, "callReadFunction").mockReturnValue(
+    const callReadFunction = vi.fn().mockReturnValue(
       Effect.succeed({
         okay: true,
         // ResponseOk(UInt(42))
@@ -222,27 +214,22 @@ describe("indexing engine", () => {
       logger,
       db: mockDb,
       handlers,
-      httpClient,
     });
 
     const event = createMockEvent({ block_height: 77777 });
-    await Effect.runPromise(indexing.executeEvent(event));
+    const stacksClient = makeStacksClient({ callReadFunction });
+    await Effect.runPromise(
+      indexing.executeEvent(event).pipe(Effect.provideService(StacksClient, stacksClient)),
+    );
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handlerResult).toStrictEqual({ ok: 42n });
 
-    expect(callReadSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ logger }),
-      "SP123.contract",
-      "get-decimals",
-      {
-        args: [],
-        sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
-        tip: 77777,
-      },
-    );
-
-    callReadSpy.mockRestore();
+    expect(callReadFunction).toHaveBeenCalledWith("SP123.contract", "get-decimals", {
+      args: [],
+      sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
+      tip: 77777,
+    });
   });
 
   test("returns ok when no handler matches contract", async () => {
@@ -252,11 +239,13 @@ describe("indexing engine", () => {
       logger: createLogger({ level: 0 }),
       db: mockDb,
       handlers,
-      httpClient,
     });
 
     const event = createMockEvent();
-    await Effect.runPromise(indexing.executeEvent(event));
+    const stacksClient = makeStacksClient();
+    await Effect.runPromise(
+      indexing.executeEvent(event).pipe(Effect.provideService(StacksClient, stacksClient)),
+    );
   });
 
   test("returns err when handler throws", async () => {
@@ -271,11 +260,14 @@ describe("indexing engine", () => {
       logger: createLogger({ level: 0 }),
       db: mockDb,
       handlers,
-      httpClient,
     });
 
     const event = createMockEvent();
-    const result = await Effect.runPromiseExit(indexing.executeEvent(event));
+    const stacksClient = makeStacksClient();
+
+    const result = await Effect.runPromiseExit(
+      indexing.executeEvent(event).pipe(Effect.provideService(StacksClient, stacksClient)),
+    );
 
     expect(result).toBeTaggedError(
       new HandlerExecutionError({ contractId: "SP123.token", cause: error }),
@@ -320,10 +312,14 @@ describe("transactional event handlers", () => {
       logger: createLogger({ level: 0 }),
       db: testDb.db,
       handlers: { "SP123.token": handler },
-      httpClient,
     });
 
-    await Effect.runPromise(indexing.executeEvent(createMockEvent()));
+    const stacksClient = makeStacksClient();
+    await Effect.runPromise(
+      indexing
+        .executeEvent(createMockEvent())
+        .pipe(Effect.provideService(StacksClient, stacksClient)),
+    );
 
     await expect(testDb.db.select().from(blocksTable)).resolves.toHaveLength(1);
   });
@@ -341,10 +337,15 @@ describe("transactional event handlers", () => {
       logger: createLogger({ level: 0 }),
       db: testDb.db,
       handlers: { "SP123.token": handler },
-      httpClient,
     });
 
-    const result = await Effect.runPromiseExit(indexing.executeEvent(createMockEvent()));
+    const stacksClient = makeStacksClient();
+
+    const result = await Effect.runPromiseExit(
+      indexing
+        .executeEvent(createMockEvent())
+        .pipe(Effect.provideService(StacksClient, stacksClient)),
+    );
 
     expect(result).toBeTaggedError(
       new HandlerExecutionError({ contractId: "SP123.token", cause: error }),

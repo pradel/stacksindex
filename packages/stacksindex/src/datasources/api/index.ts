@@ -2,11 +2,13 @@ import type { paths } from "@stacks/blockchain-api-client";
 import type { ClarityAbi } from "clarity-abitype";
 import { Context, Duration, Effect, Layer, Match, Predicate, Schedule } from "effect";
 import {
+  FetchHttpClient,
   HttpClient,
   HttpClientRequest,
   type HttpClientResponse,
   type UrlParams,
 } from "effect/http";
+import { RateLimiter } from "effect/persistence";
 
 import type { Logger } from "../../logger/index.ts";
 import {
@@ -518,72 +520,138 @@ export const datasourceStacksApi = {
   },
 };
 
-export class StacksClientConfig extends Context.Service<
-  StacksClientConfig,
-  {
-    readonly baseUrl: string;
-    readonly apiKey?: string;
-  }
->()("stacksindex/datasources/StacksClientConfig") {}
+export interface StacksClientRateLimit {
+  /** Maximum number of requests allowed per `window`. */
+  readonly limit: number;
+  /** Duration of the rate limit window. */
+  readonly window: Duration.Input;
+}
 
-export class StacksClient extends Context.Service<
-  StacksClient,
-  {
-    readonly getStatus: Effect.Effect<ApiStatusResponse, StacksApiError>;
-    readonly getContract: (
-      contractId: string,
-    ) => Effect.Effect<ContractApiResponse, StacksApiError>;
-    readonly getPrincipalTransactions: (
-      principal: string,
-      options?: GetPrincipalTransactionsQuery,
-    ) => Effect.Effect<PrincipalTransactionsResponse, StacksApiError>;
-    readonly getTransactionEvents: (
-      txId: string,
-      options?: GetTransactionEventsQuery,
-    ) => Effect.Effect<TransactionEventsResponse, StacksApiError>;
-    readonly getContractLogs: (
-      contractId: string,
-      options?: GetContractLogsQuery,
-    ) => Effect.Effect<ContractLogsResponse, StacksApiError>;
-    readonly getTransactionsBatch: (
-      txIds: string[],
-    ) => Effect.Effect<TransactionsBatchResponse, StacksApiError>;
-    readonly callReadFunction: (
-      contractId: string,
-      functionName: string,
-      options?: { args?: string[]; sender?: string; tip?: number },
-    ) => Effect.Effect<CallReadResponse, StacksApiError>;
-  }
->()("stacksindex/datasources/StacksClient") {
-  static readonly layer = Layer.effect(
+export interface StacksClientOptions {
+  readonly baseUrl: string;
+  readonly apiKey?: string | undefined;
+  /** Initial request budget; the limiter adapts to `x-ratelimit-*` headers and 429 feedback. */
+  readonly rateLimit?: StacksClientRateLimit | undefined;
+}
+
+export class StacksClientConfig extends Context.Service<StacksClientConfig, StacksClientOptions>()(
+  "stacksindex/datasources/StacksClientConfig",
+) {}
+
+export interface StacksClientService {
+  readonly getStatus: () => Effect.Effect<ApiStatusResponse, StacksApiError>;
+  readonly getBlock: (
+    heightOrHash: string | number,
+    options?: GetBlockQuery,
+  ) => Effect.Effect<BlockApiResponse, StacksApiError>;
+  readonly getBlockTransactions: (
+    heightOrHash: string | number,
+    options?: GetBlockTransactionsQuery,
+  ) => Effect.Effect<BlockTransactionsApiResponse, StacksApiError>;
+  readonly getTransaction: (
+    txId: string,
+    options?: GetTransactionQuery,
+  ) => Effect.Effect<TransactionApiResponse, StacksApiError>;
+  readonly getV1Transaction: (
+    txId: string,
+  ) => Effect.Effect<V1TransactionApiResponse, StacksApiError>;
+  readonly getTransactionsBatch: (
+    txIds: string[],
+  ) => Effect.Effect<TransactionsBatchResponse, StacksApiError>;
+  readonly getTransactionEvents: (
+    txId: string,
+    options?: GetTransactionEventsQuery,
+  ) => Effect.Effect<TransactionEventsResponse, StacksApiError>;
+  readonly getPrincipalTransactions: (
+    principal: string,
+    options?: GetPrincipalTransactionsQuery,
+  ) => Effect.Effect<PrincipalTransactionsResponse, StacksApiError>;
+  readonly getContract: (contractId: string) => Effect.Effect<ContractApiResponse, StacksApiError>;
+  readonly getContractLogs: (
+    contractId: string,
+    options?: GetContractLogsQuery,
+  ) => Effect.Effect<ContractLogsResponse, StacksApiError>;
+  readonly callReadFunction: (
+    contractId: string,
+    functionName: string,
+    options?: { args?: string[]; sender?: string; tip?: number },
+  ) => Effect.Effect<CallReadResponse, StacksApiError>;
+}
+
+const DEFAULT_RATE_LIMIT: StacksClientRateLimit = {
+  limit: 50,
+  window: Duration.seconds(1),
+};
+
+export class StacksClient extends Context.Service<StacksClient, StacksClientService>()(
+  "stacksindex/datasources/StacksClient",
+) {
+  /** Composable client layer requiring a caller-provided transport and rate limiter. */
+  static readonly baseLayer = Layer.effect(
     StacksClient,
     Effect.gen(function* layer() {
       const config = yield* StacksClientConfig;
-      const httpClient = yield* HttpClient.HttpClient;
+      const baseClient = yield* HttpClient.HttpClient;
+      const limiter = yield* RateLimiter.RateLimiter;
+      const rateLimit = config.rateLimit ?? DEFAULT_RATE_LIMIT;
+
+      const rateLimited = baseClient.pipe(
+        HttpClient.withRateLimiter({
+          limiter,
+          key: "stacksindex/datasources/StacksClient",
+          window: rateLimit.window,
+          limit: rateLimit.limit,
+          times: 0,
+        }),
+      );
+
+      // SAFETY: `_request` maps both `HttpClientError` and `RateLimiterError` failures to `StacksApiError`.
+      const httpClient = rateLimited as HttpClient.HttpClient;
+
+      const provide = <A>(
+        effect: Effect.Effect<A, StacksApiError, HttpClient.HttpClient>,
+      ): Effect.Effect<A, StacksApiError> =>
+        Effect.provideService(effect, HttpClient.HttpClient, httpClient);
 
       const ctx: DatasourceStacksApiContext = {
         api: { baseUrl: config.baseUrl, apiKey: config.apiKey },
       };
 
-      const provideClient = <A, E>(
-        effect: Effect.Effect<A, E, HttpClient.HttpClient>,
-      ): Effect.Effect<A, E> =>
-        effect.pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
+      const service: StacksClientService = {
+        getStatus: () => provide(datasourceStacksApi.getStatus(ctx)),
+        getBlock: (heightOrHash, options) =>
+          provide(datasourceStacksApi.getBlock(ctx, heightOrHash, options)),
+        getBlockTransactions: (heightOrHash, options) =>
+          provide(datasourceStacksApi.getBlockTransactions(ctx, heightOrHash, options)),
+        getTransaction: (txId, options) =>
+          provide(datasourceStacksApi.getTransaction(ctx, txId, options)),
+        getV1Transaction: (txId) => provide(datasourceStacksApi.getV1Transaction(ctx, txId)),
+        getTransactionsBatch: (txIds) =>
+          provide(datasourceStacksApi.getTransactionsBatch(ctx, txIds)),
+        getTransactionEvents: (txId, options) =>
+          provide(datasourceStacksApi.getTransactionEvents(ctx, txId, options)),
+        getPrincipalTransactions: (principal, options) =>
+          provide(datasourceStacksApi.getPrincipalTransactions(ctx, principal, options)),
+        getContract: (contractId) => provide(datasourceStacksApi.getContract(ctx, contractId)),
+        getContractLogs: (contractId, options) =>
+          provide(datasourceStacksApi.getContractLogs(ctx, contractId, options)),
+        callReadFunction: (contractId, functionName, options) =>
+          provide(datasourceStacksApi.callReadFunction(ctx, contractId, functionName, options)),
+      };
 
-      return StacksClient.of({
-        getStatus: provideClient(datasourceStacksApi.getStatus(ctx)),
-        getContract: (cId) => provideClient(datasourceStacksApi.getContract(ctx, cId)),
-        getPrincipalTransactions: (p, opts) =>
-          provideClient(datasourceStacksApi.getPrincipalTransactions(ctx, p, opts)),
-        getTransactionEvents: (t, opts) =>
-          provideClient(datasourceStacksApi.getTransactionEvents(ctx, t, opts)),
-        getContractLogs: (cId, opts) =>
-          provideClient(datasourceStacksApi.getContractLogs(ctx, cId, opts)),
-        getTransactionsBatch: (ids) =>
-          provideClient(datasourceStacksApi.getTransactionsBatch(ctx, ids)),
-        callReadFunction: (cId, fn, opts) =>
-          provideClient(datasourceStacksApi.callReadFunction(ctx, cId, fn, opts)),
-      });
+      return StacksClient.of(service);
     }),
   );
+
+  /** Self-contained client layer using the fetch transport and an in-memory rate limiter. */
+  static readonly layer = (options: StacksClientOptions): Layer.Layer<StacksClient> =>
+    StacksClient.baseLayer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(StacksClientConfig, options),
+          FetchHttpClient.layer,
+          RateLimiter.layer.pipe(Layer.provide(RateLimiter.layerStoreMemory)),
+        ),
+      ),
+    );
 }

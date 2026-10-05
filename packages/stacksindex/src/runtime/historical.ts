@@ -1,11 +1,10 @@
 import { Effect, Queue } from "effect";
-import { FetchHttpClient, HttpClient } from "effect/http";
 
 import { migrate, toThenable, type IndexerDb } from "../database/index.ts";
 import { StacksApiUnexpectedError, type StacksApiError } from "../datasources/api/errors.ts";
 import {
-  datasourceStacksApi,
-  type DatasourceStacksApiContext,
+  StacksClient,
+  type StacksClientRateLimit,
   type StorableBlock,
   type StorableTransaction,
 } from "../datasources/api/index.ts";
@@ -53,12 +52,14 @@ export interface HistoricalRuntimeContext<_TSchema extends Record<string, unknow
     /** Overrides the network's default API endpoint. */
     baseUrl?: string;
     apiKey?: string;
+    /** Initial request budget; the limiter adapts to `x-ratelimit-*` headers and 429 feedback. */
+    rateLimit?: StacksClientRateLimit;
   };
 }
 
 type ResolvedHistoricalRuntimeContext = Omit<HistoricalRuntimeContext, "network" | "api"> & {
   chainId: number;
-  api: { baseUrl: string; apiKey?: string };
+  api: { baseUrl: string; apiKey?: string; rateLimit?: StacksClientRateLimit };
   network: ResolvedNetwork;
 };
 
@@ -69,6 +70,10 @@ function resolveContext(context: HistoricalRuntimeContext): ResolvedHistoricalRu
 
   if (context.api?.apiKey !== undefined) {
     api.apiKey = context.api.apiKey;
+  }
+
+  if (context.api?.rateLimit !== undefined) {
+    api.rateLimit = context.api.rateLimit;
   }
 
   return {
@@ -111,9 +116,11 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
 
 function validateAndResolveFilters(
   filters: Filter[],
-  context: DatasourceStacksApiContext,
-): Effect.Effect<ResolvedFilter[], StacksApiError | FilterValidationError, HttpClient.HttpClient> {
+  context: ResolvedHistoricalRuntimeContext,
+): Effect.Effect<ResolvedFilter[], StacksApiError | FilterValidationError, StacksClient> {
   return Effect.gen(function* () {
+    const client = yield* StacksClient;
+
     for (const filter of filters) {
       if (filter.startBlock !== undefined) {
         if (!Number.isInteger(filter.startBlock) || filter.startBlock < 0) {
@@ -140,7 +147,7 @@ function validateAndResolveFilters(
     const hasLatestTag = filters.some((filter) => filter.endBlock === "latest");
 
     if (hasLatestTag) {
-      const status = yield* datasourceStacksApi.getStatus(context);
+      const status = yield* client.getStatus();
       const chainTipHeight = status.chain_tip?.block_height;
 
       if (chainTipHeight === undefined) {
@@ -192,7 +199,7 @@ function validateAndResolveFilters(
 function initContractFromScratch(
   filter: ResolvedFilter,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, HttpClient.HttpClient> {
+): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, StacksClient> {
   return Effect.gen(function* () {
     const historicalSync = createHistoricalSync(context);
 
@@ -273,7 +280,7 @@ function initContractFromSaved(
   filter: ResolvedFilter,
   saved: NonNullable<Effect.Success<ReturnType<typeof syncStore.getSyncProgress>>>,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, HttpClient.HttpClient> {
+): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, StacksClient> {
   return Effect.gen(function* () {
     const savedHeight = Number(saved.lastBlockHeight);
 
@@ -396,7 +403,7 @@ function initContractFromSaved(
 function initializeContractStates(
   filters: ResolvedFilter[],
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<ContractSyncState[], StacksApiError | SyncStoreError, HttpClient.HttpClient> {
+): Effect.Effect<ContractSyncState[], StacksApiError | SyncStoreError, StacksClient> {
   return Effect.gen(function* () {
     const states: ContractSyncState[] = [];
 
@@ -421,9 +428,10 @@ function initializeContractStates(
 function fetchChunkViaBatch(
   context: ResolvedHistoricalRuntimeContext,
   chunk: string[],
-): Effect.Effect<StorableTransaction[], StacksApiError, HttpClient.HttpClient> {
+): Effect.Effect<StorableTransaction[], StacksApiError, StacksClient> {
   return Effect.gen(function* () {
-    const batchResponse = yield* datasourceStacksApi.getTransactionsBatch(context, chunk);
+    const client = yield* StacksClient;
+    const batchResponse = yield* client.getTransactionsBatch(chunk);
     // The batch endpoint returns mined transactions in newest-first
     // Order, not in request order, and omits unknown / mempool
     // Ids instead of erroring. Index by id to restore request order.
@@ -458,7 +466,7 @@ function fetchMissingTransactions(
   context: ResolvedHistoricalRuntimeContext,
   txIds: string[],
   maxBlockHeight?: number,
-): Effect.Effect<StorableTransaction[], StacksApiError, HttpClient.HttpClient> {
+): Effect.Effect<StorableTransaction[], StacksApiError, StacksClient> {
   return Effect.gen(function* () {
     const transactions: StorableTransaction[] = [];
 
@@ -565,7 +573,7 @@ function processEventsUpTo(
   indexing: ReturnType<typeof createIndexing>,
   filterMap: Map<string, ResolvedFilter>,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<void, StacksApiError | HandlerExecutionError | SyncStoreError> {
+): Effect.Effect<void, StacksApiError | HandlerExecutionError | SyncStoreError, StacksClient> {
   return Effect.gen(function* () {
     const { chainId } = context;
     const checkpoint = yield* syncStore.getCheckpoint({ chainId }, { db: context.db });
@@ -685,14 +693,12 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
           handlers[filter.contractId] = filter.handler;
         }
 
-        const httpClient = yield* HttpClient.HttpClient;
+        const client = yield* StacksClient;
 
         const indexing = createIndexing({
           logger: context.logger,
           db: context.db,
           handlers,
-          api: context.api,
-          httpClient,
         });
 
         const states = yield* initializeContractStates(resolvedFilters, context);
@@ -725,11 +731,9 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
             }
 
             // Fetch one page of events
-            const logsResponse = yield* datasourceStacksApi.getContractLogs(
-              context,
-              lowestState.contractId,
-              { cursor: lowestState.cursor },
-            );
+            const logsResponse = yield* client.getContractLogs(lowestState.contractId, {
+              cursor: lowestState.cursor,
+            });
 
             const { results: events, next_cursor: nextCursor } = logsResponse;
             const currentHeight = parseLogsCursor(lowestState.cursor).blockHeight;
@@ -849,7 +853,15 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         });
       });
 
-      const runnable = effect.pipe(Effect.provide(FetchHttpClient.layer));
+      const runnable = effect.pipe(
+        Effect.provide(
+          StacksClient.layer({
+            baseUrl: context.api.baseUrl,
+            apiKey: context.api.apiKey,
+            rateLimit: context.api.rateLimit,
+          }),
+        ),
+      );
 
       // SAFETY: toThenable attaches a `then` accessor at runtime; the effect's error channel is already the documented union.
       return toThenable(runnable) as Effect.Effect<

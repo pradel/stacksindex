@@ -1,10 +1,9 @@
 import { Effect } from "effect";
-import type { HttpClient } from "effect/http";
 
 import type { StacksApiError } from "../datasources/api/errors.ts";
 import {
-  datasourceStacksApi,
   type PrincipalTransactionsResponse,
+  StacksClient,
   type TransactionEventsResponse,
 } from "../datasources/api/index.ts";
 import { startClock } from "../lib/timer.ts";
@@ -12,10 +11,6 @@ import type { Logger } from "../logger/index.ts";
 
 export interface HistoricalSyncContext {
   logger: Logger;
-  api?: {
-    baseUrl?: string;
-    apiKey?: string;
-  };
 }
 
 export interface LogsCursor {
@@ -77,16 +72,16 @@ function findFirstMatchingContractEvent(
   context: HistoricalSyncContext,
   txId: string,
   contractId: string,
-): Effect.Effect<{ event_index: number } | null, StacksApiError, HttpClient.HttpClient> {
+): Effect.Effect<{ event_index: number } | null, StacksApiError, StacksClient> {
   return Effect.gen(function* () {
+    const client = yield* StacksClient;
     let eventCursor: string | null = "initial";
 
     while (eventCursor) {
-      const eventsResponse: TransactionEventsResponse =
-        yield* datasourceStacksApi.getTransactionEvents(context, txId, {
-          limit: 50,
-          cursor: eventCursor === "initial" ? undefined : eventCursor,
-        });
+      const eventsResponse: TransactionEventsResponse = yield* client.getTransactionEvents(txId, {
+        limit: 50,
+        cursor: eventCursor === "initial" ? undefined : eventCursor,
+      });
 
       const { results, cursor } = eventsResponse;
 
@@ -109,9 +104,10 @@ function checkTransactionForMatchingEvent(
   context: HistoricalSyncContext,
   txId: string,
   contractId: string,
-): Effect.Effect<LogsCursor | null, StacksApiError, HttpClient.HttpClient> {
+): Effect.Effect<LogsCursor | null, StacksApiError, StacksClient> {
   return Effect.gen(function* () {
-    const fullTx = yield* datasourceStacksApi.getTransaction(context, txId);
+    const client = yield* StacksClient;
+    const fullTx = yield* client.getTransaction(txId);
 
     if (fullTx.event_count === 0) {
       return null;
@@ -128,7 +124,7 @@ function checkTransactionForMatchingEvent(
     // While microblock transactions have 0..N. Because v3 endpoints completely dropped microblock_sequence and
     // V3 cursors do not expose it, GET /extended/v1/tx/{tx_id} is the only endpoint that provides the true
     // Microblock_sequence needed to construct a valid cursor.
-    const v1Tx = yield* datasourceStacksApi.getV1Transaction(context, fullTx.tx_id);
+    const v1Tx = yield* client.getV1Transaction(fullTx.tx_id);
 
     return {
       blockHeight: fullTx.block.height,
@@ -183,8 +179,9 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
   getContractEventsFirstCursor(
     contractId: string,
     options?: { startBlock?: number },
-  ): Effect.Effect<string | null, StacksApiError, HttpClient.HttpClient> {
+  ): Effect.Effect<string | null, StacksApiError, StacksClient> {
     return Effect.gen(function* getContractEventsFirstCursor() {
+      const client = yield* StacksClient;
       const stopClock = startClock();
       const ADDRESS_TX_LIMIT = 50;
 
@@ -193,7 +190,7 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
         msg: `Looking for deployment of ${contractId}`,
       });
 
-      const contract = yield* datasourceStacksApi.getContract(context, contractId);
+      const contract = yield* client.getContract(contractId);
       const deploymentBlockHeight = contract.block.height;
 
       const initialBlockHeight =
@@ -221,11 +218,13 @@ export const createHistoricalSync = (context: HistoricalSyncContext) => ({
           cursor: currentCursor,
         });
 
-        const page: PrincipalTransactionsResponse =
-          yield* datasourceStacksApi.getPrincipalTransactions(context, contractId, {
+        const page: PrincipalTransactionsResponse = yield* client.getPrincipalTransactions(
+          contractId,
+          {
             limit: ADDRESS_TX_LIMIT,
             cursor: currentCursor,
-          });
+          },
+        );
 
         const { results, cursor } = page;
 

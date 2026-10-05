@@ -5,10 +5,10 @@
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable vitest/no-conditional-in-test
 import { Effect, Match, Predicate } from "effect";
-import { FetchHttpClient, type HttpClient } from "effect/http";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { StacksApiResponseError } from "../datasources/api/errors.ts";
+import { StacksClient } from "../datasources/api/index.ts";
 import { createLogger } from "../logger/index.ts";
 import {
   buildLogsCursor,
@@ -79,11 +79,13 @@ const context = {
   logger: createLogger({ level: 0 }),
 };
 
-const runRequest = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(FetchHttpClient.layer)));
+const stacksClientLayer = StacksClient.layer({ baseUrl: "https://api.hiro.so" });
 
-const runRequestExit = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) =>
-  Effect.runPromiseExit(effect.pipe(Effect.provide(FetchHttpClient.layer)));
+const runRequest = <A, E>(effect: Effect.Effect<A, E, StacksClient>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(stacksClientLayer)));
+
+const runRequestExit = <A, E>(effect: Effect.Effect<A, E, StacksClient>) =>
+  Effect.runPromiseExit(effect.pipe(Effect.provide(stacksClientLayer)));
 
 const contractId = "SP123.token";
 

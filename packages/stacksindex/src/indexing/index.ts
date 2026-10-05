@@ -1,9 +1,8 @@
 import { Cause, Effect } from "effect";
-import { HttpClient } from "effect/http";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
 import { toThenable, type IndexerDb } from "../database/index.ts";
-import { datasourceStacksApi, type DatasourceStacksApiContext } from "../datasources/api/index.ts";
+import { StacksClient, typedCallReadFunction } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import { startClock } from "../lib/timer.ts";
 import type { HandlerContext, HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
@@ -22,15 +21,10 @@ export interface IndexingContext {
   logger: Logger;
   db: IndexerDb;
   handlers: Handlers;
-  httpClient: HttpClient.HttpClient;
-  api?: {
-    baseUrl?: string;
-    apiKey?: string;
-  };
 }
 
 export const createIndexing = (context: IndexingContext) => ({
-  executeEvent(event: HandlerEvent): Effect.Effect<void, HandlerExecutionError> {
+  executeEvent(event: HandlerEvent): Effect.Effect<void, HandlerExecutionError, StacksClient> {
     const endClock = startClock();
     const handler = context.handlers[event.contract_log.contract_id];
 
@@ -54,27 +48,22 @@ export const createIndexing = (context: IndexingContext) => ({
     return (
       context.db.transaction((tx) =>
         Effect.gen(function* executeEvent() {
-          const provideClient = <A, E>(
-            effect: Effect.Effect<A, E, HttpClient.HttpClient>,
-          ): Effect.Effect<A, E> =>
-            Effect.provideService(effect, HttpClient.HttpClient, context.httpClient);
+          const stacksClient = yield* StacksClient;
 
           // SAFETY: The runtime dispatch below mirrors both overloads: an `abi` field selects the typed read path.
           const client: IndexingClient = {
             // oxlint-disable-next-line typescript/no-explicit-any
             callReadOnly: ((options: any) => {
-              const apiContext: DatasourceStacksApiContext = {
-                logger: context.logger,
-                api: context.api,
-              };
-
               if ("abi" in options) {
                 return toThenable(
-                  provideClient(
-                    datasourceStacksApi.typedCallReadFunction(apiContext, {
+                  typedCallReadFunction(
+                    {},
+                    (_context, contractId, functionName, callOptions) =>
+                      stacksClient.callReadFunction(contractId, functionName, callOptions),
+                    {
                       ...options,
                       tip: options.tip ?? event.block_height,
-                    }),
+                    },
                   ),
                 );
               }
@@ -82,18 +71,11 @@ export const createIndexing = (context: IndexingContext) => ({
               const contractId = `${options.contractAddress}.${options.contractName}`;
 
               return toThenable(
-                provideClient(
-                  datasourceStacksApi.callReadFunction(
-                    apiContext,
-                    contractId,
-                    options.functionName,
-                    {
-                      args: options.args,
-                      sender: options.senderAddress,
-                      tip: options.tip ?? event.block_height,
-                    },
-                  ),
-                ),
+                stacksClient.callReadFunction(contractId, options.functionName, {
+                  args: options.args,
+                  sender: options.senderAddress,
+                  tip: options.tip ?? event.block_height,
+                }),
               );
             }) as IndexingClient["callReadOnly"],
           };
