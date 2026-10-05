@@ -2,13 +2,8 @@
 "stacksindex": minor
 ---
 
-Redesign the Stacks API datasource around a single Effect-native client.
+Rework the Stacks API datasource around a single Effect-native `StacksClient`.
 
-- `StacksClient` is now the only API: `StacksClient.layer(config)` builds a self-contained client (fetch transport, adaptive rate limiter, retry policy) and `StacksClient.make(config)` exposes the raw effect for custom transports. `datasourceStacksApi`, `DatasourceStacksApiContext`, and the `StacksClientConfig` service tag are removed.
-- Requests run through one executor: `HttpClient.withRateLimiter` throttles from `x-ratelimit-*` headers and owns 429 retries (honoring `Retry-After`), `HttpClient.filterStatusOk` gives a single error path, and an `Effect.retry` with jittered exponential backoff retries transport failures and transient statuses (408/5xx) 3 times.
-- Responses are trusted, not decoded: no runtime schema validation, so the hot path does no extra allocation.
-- Typed read-only calls are now `readOnly(client.callReadFunction, parameters)` instead of a context/callback wrapper.
-- Error handling now uses Effect's built-in `HttpClientError` reasons (`StatusCodeError`, `TransportError`, `DecodeError`); `StacksApiResponseError`, `StacksApiTransportError`, `StacksApiParseError`, and `StacksApiRateLimitError` are removed. `StacksApiError` is an alias for `HttpClientError | RateLimiterError | ReadOnlyCallError`.
-- Read-only ABI validation failures are defects (`Effect.die`); a contract-level `(err ...)` or undecodable result fails with `ReadOnlyCallError`.
-- The batch endpoint omitting requested transactions now fails with `TransactionBatchError` (runtime error) instead of a datasource error.
-- Requests emit `StacksApi.request` spans and Effect debug logs (`Effect.annotateLogs`/`logDebug`); no logger is threaded through the datasource.
+- `StacksClient.layer(config)` (fetch transport, adaptive rate limiter, retries) and `StacksClient.make(config)` replace `datasourceStacksApi`. Typed reads use `readOnly(client.callReadFunction, parameters)`.
+- Responses are not decoded at runtime. Transient transport/5xx failures are retried with backoff, and 429s are retried by the rate limiter using `x-ratelimit-*` and `Retry-After`.
+- Errors are Effect's `HttpClientError` reasons (`StacksApiError = HttpClientError | RateLimiterError | ReadOnlyCallError`); the custom `StacksApi*` errors are removed, read-only ABI validation failures are defects, and an incomplete transaction batch fails with `TransactionBatchError`.
