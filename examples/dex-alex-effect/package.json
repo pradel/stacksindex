@@ -1,5 +1,5 @@
 {
-  "name": "dex-alex",
+  "name": "dex-alex-effect",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,10 +9,9 @@
     "studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@electric-sql/pglite": "0.5.8",
     "drizzle-orm": "1.0.0-rc.5-5935859",
-    "stacksindex": "workspace:*",
-    "zod": "4.6.1"
+    "effect": "4.0.0",
+    "stacksindex": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "26.4.0",

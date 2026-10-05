@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import process from "node:process";
 
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
 import { createDatabase, createHistoricalRuntimePromise, createLogger } from "stacksindex";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
@@ -9,12 +12,13 @@ const apiKey = process.env.HIRO_API_KEY;
 
 fs.mkdirSync("./data", { recursive: true });
 
-const appDatabase = await createDatabase({
-  kind: "pglite",
-  directory: "./data/app.db",
-});
+const appClient = new PGlite("./data/app.db");
 
-await appDatabase.migrate({ migrationsFolder: "./drizzle" });
+await appClient.waitReady;
+
+const appDb = drizzle({ client: appClient });
+
+await migrate(appDb, { migrationsFolder: "./drizzle" });
 
 const indexerDatabase = await createDatabase({
   kind: "pglite",
@@ -35,7 +39,7 @@ async function shutdown(code: number) {
   isShuttingDown = true;
 
   try {
-    await appDatabase.close();
+    await appClient.close();
   } catch {
     // Ignore error on close
   }
@@ -70,7 +74,7 @@ try {
   await runtime.run([
     {
       contractId: POOL_CONTRACT,
-      handler: createPoolHandler({ db: appDatabase.db, logger }),
+      handler: createPoolHandler({ db: appDb, logger }),
     },
   ]);
   await shutdown(0);
