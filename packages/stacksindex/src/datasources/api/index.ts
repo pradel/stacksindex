@@ -10,6 +10,7 @@ import {
 } from "effect/http";
 import { RateLimiter } from "effect/persistence";
 
+import { startClock } from "../../lib/timer.ts";
 import type { Logger } from "../../logger/index.ts";
 import {
   type StacksApiError,
@@ -207,7 +208,11 @@ function isRetryable(error: StacksApiError): boolean {
   return (
     Predicate.isTagged(error, "StacksApiRateLimitError") ||
     (Predicate.isTagged(error, "StacksApiResponseError") &&
-      (error.status === 500 || error.status === 502 || error.status === 503))
+      (error.status === 408 ||
+        error.status === 500 ||
+        error.status === 502 ||
+        error.status === 503 ||
+        error.status === 504))
   );
 }
 
@@ -255,6 +260,7 @@ export const datasourceStacksApi = {
     const url = `${baseUrl}${path}`;
     const apiKey = context.api?.apiKey;
     const headers: Record<string, string> = {};
+    const requestClock = startClock();
 
     if (apiKey !== undefined) {
       headers["x-api-key"] = apiKey;
@@ -294,6 +300,17 @@ export const datasourceStacksApi = {
         ),
       );
 
+      yield* Effect.annotateCurrentSpan({ "http.response.status_code": response.status });
+
+      context.logger?.debug({
+        service: "stacksApi",
+        msg: "Stacks API request",
+        method,
+        path,
+        status: response.status,
+        duration: requestClock(),
+      });
+
       if (response.status === 429) {
         const retryAfter = parseRetryAfter(response.headers["retry-after"]);
 
@@ -329,7 +346,22 @@ export const datasourceStacksApi = {
         catch: (err) =>
           new StacksApiParseError({ message: "Failed to parse JSON response", cause: err }),
       });
-    });
+    }).pipe(
+      Effect.withSpan("StacksApi.request", {
+        attributes: { "http.request.method": method, "url.path": path },
+      }),
+      Effect.tapError((error) =>
+        Effect.sync(() => {
+          context.logger?.debug({
+            service: "stacksApi",
+            msg: "Stacks API request failed",
+            method,
+            path,
+            error: error instanceof Error ? error : new Error(String(error)),
+          });
+        }),
+      ),
+    );
 
     return attempt.pipe(
       Effect.retry({
@@ -532,6 +564,8 @@ export interface StacksClientOptions {
   readonly apiKey?: string | undefined;
   /** Initial request budget; the limiter adapts to `x-ratelimit-*` headers and 429 feedback. */
   readonly rateLimit?: StacksClientRateLimit | undefined;
+  /** Optional logger for per-request debug logs. */
+  readonly logger?: Logger | undefined;
 }
 
 export class StacksClientConfig extends Context.Service<StacksClientConfig, StacksClientOptions>()(
@@ -614,6 +648,7 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
         Effect.provideService(effect, HttpClient.HttpClient, httpClient);
 
       const ctx: DatasourceStacksApiContext = {
+        logger: config.logger,
         api: { baseUrl: config.baseUrl, apiKey: config.apiKey },
       };
 

@@ -4,11 +4,13 @@
 // oxlint-disable typescript/no-explicit-any
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable vitest/no-conditional-in-test
-import { Effect, Match, Predicate } from "effect";
+import { Effect, Layer, Match } from "effect";
+import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
+import { RateLimiter } from "effect/persistence";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { StacksApiResponseError } from "../datasources/api/errors.ts";
-import { StacksClient } from "../datasources/api/index.ts";
+import { StacksClient, StacksClientConfig } from "../datasources/api/index.ts";
 import { createLogger } from "../logger/index.ts";
 import {
   buildLogsCursor,
@@ -20,12 +22,11 @@ import {
 
 const mockRequest = vi.fn();
 
-type FetchInput = string | URL;
+const toUrlString = (request: HttpClientRequest.HttpClientRequest): string =>
+  Effect.runSync(HttpClientRequest.toWeb(request)).url;
 
-const toUrlString = (url: FetchInput): string => (Predicate.isString(url) ? url : url.href);
-
-const mockFetch = vi.fn(async (rawUrl: FetchInput) => {
-  const url = toUrlString(rawUrl);
+const mockHandler = vi.fn(async (request: HttpClientRequest.HttpClientRequest) => {
+  const url = toUrlString(request);
   let res: any;
 
   try {
@@ -79,7 +80,25 @@ const context = {
   logger: createLogger({ level: 0 }),
 };
 
-const stacksClientLayer = StacksClient.layer({ baseUrl: "https://api.hiro.so" });
+const httpClient = HttpClient.make((request) =>
+  Effect.tryPromise({
+    try: async () => HttpClientResponse.fromWeb(request, await mockHandler(request)),
+    catch: (cause) =>
+      new HttpClientError.HttpClientError({
+        reason: new HttpClientError.TransportError({ request, cause }),
+      }),
+  }),
+);
+
+const stacksClientLayer = StacksClient.baseLayer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      Layer.succeed(StacksClientConfig, { baseUrl: "https://api.hiro.so" }),
+      Layer.succeed(HttpClient.HttpClient, httpClient),
+      RateLimiter.layer.pipe(Layer.provide(RateLimiter.layerStoreMemory)),
+    ),
+  ),
+);
 
 const runRequest = <A, E>(effect: Effect.Effect<A, E, StacksClient>) =>
   Effect.runPromise(effect.pipe(Effect.provide(stacksClientLayer)));
@@ -96,12 +115,10 @@ const mockBody = <T>(data: T) => ({
 describe("getContractEventsFirstCursor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal("fetch", mockFetch);
   });
 
   afterAll(() => {
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
   });
 
   test("returns error when getContract fails", async () => {
