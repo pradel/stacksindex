@@ -40,7 +40,6 @@
     "@stacks/codec": "2.1.0",
     "@stacks/transactions": "7.6.0",
     "clarity-abitype": "0.7.1",
-    "consola": "3.4.2",
     "drizzle-orm": "1.0.0-rc.5-5935859",
     "effect": "4.0.0"
   },

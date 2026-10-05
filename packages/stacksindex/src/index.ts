@@ -1,6 +1,6 @@
-export { createLogger } from "./logger/index.ts";
+export { loggerLayer } from "./logger/index.ts";
 
-export type { Logger } from "./logger/index.ts";
+export type { LoggerLayerOptions } from "./logger/index.ts";
 
 export {
   createDatabase,

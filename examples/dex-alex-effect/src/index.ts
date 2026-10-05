@@ -2,15 +2,11 @@ import fs from "node:fs";
 import process from "node:process";
 
 import { Cause, Effect, Exit, Fiber } from "effect";
-import { createHistoricalRuntime, createLogger, makeDatabase } from "stacksindex";
+import { createHistoricalRuntime, loggerLayer, makeDatabase } from "stacksindex";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 
 const apiKey = process.env.HIRO_API_KEY;
-
-const logger = createLogger({
-  level: 2,
-});
 
 const program = Effect.gen(function* () {
   yield* Effect.sync(() => {
@@ -30,7 +26,6 @@ const program = Effect.gen(function* () {
   });
 
   const runtime = createHistoricalRuntime({
-    logger,
     db: indexerDatabase.db,
     network: "mainnet",
     api: { apiKey },
@@ -39,12 +34,14 @@ const program = Effect.gen(function* () {
   yield* runtime.run([
     {
       contractId: POOL_CONTRACT,
-      handler: createPoolHandler({ db: appDatabase.db, logger }),
+      handler: createPoolHandler({ db: appDatabase.db }),
     },
   ]);
 });
 
-const fiber = Effect.runFork(Effect.scoped(program));
+const fiber = Effect.runFork(
+  Effect.scoped(program).pipe(Effect.provide(loggerLayer({ level: "Info" }))),
+);
 
 let isShuttingDown = false;
 
@@ -74,10 +71,12 @@ const exit = await Effect.runPromise(Fiber.await(fiber));
 if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
   const error = Cause.squash(exit.cause);
 
-  logger.error({
-    msg: "Error running historical sync",
-    error: error instanceof Error ? error : new Error(String(error)),
-  });
+  Effect.runSync(
+    Effect.logError(
+      "Error running historical sync",
+      error instanceof Error ? error : new Error(String(error)),
+    ).pipe(Effect.provide(loggerLayer({ level: "Info" }))),
+  );
 
   await shutdown(1);
 } else {

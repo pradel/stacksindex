@@ -16,9 +16,7 @@ import {
   TransactionBatchError,
 } from "../lib/errors.ts";
 import { resolveNetwork, type NetworkOption, type ResolvedNetwork } from "../lib/network.ts";
-import { startClock } from "../lib/timer.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
-import type { Logger } from "../logger/index.ts";
 import { getContractEventsFirstCursor, parseLogsCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 
@@ -44,7 +42,6 @@ interface ResolvedFilter {
 
 // oxlint-disable-next-line typescript/no-explicit-any
 export interface HistoricalRuntimeContext<_TSchema extends Record<string, unknown> = any> {
-  logger: Logger;
   db: IndexerDb;
   /** Which chain to index. Defaults to `"mainnet"`. */
   network?: NetworkOption;
@@ -71,7 +68,6 @@ function resolveContext(context: HistoricalRuntimeContext): ResolvedHistoricalRu
   }
 
   return {
-    logger: context.logger,
     db: context.db,
     network,
     chainId: network.chainId,
@@ -110,7 +106,6 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
 
 function validateAndResolveFilters(
   filters: Filter[],
-  context: ResolvedHistoricalRuntimeContext,
 ): Effect.Effect<ResolvedFilter[], StacksApiError | FilterValidationError, StacksClient> {
   return Effect.gen(function* () {
     const client = yield* StacksClient;
@@ -154,11 +149,9 @@ function validateAndResolveFilters(
       }
 
       latestBlockHeight = chainTipHeight;
-      context.logger?.info({
-        service: "historicalRuntime",
-        msg: `Resolved "latest" endBlock to block height ${latestBlockHeight}`,
-        latestBlockHeight,
-      });
+      yield* Effect.logInfo(`Resolved "latest" endBlock to block height ${latestBlockHeight}`).pipe(
+        Effect.annotateLogs({ latestBlockHeight }),
+      );
     }
 
     const resolvedFilters: ResolvedFilter[] = [];
@@ -195,15 +188,12 @@ function initContractFromScratch(
   context: ResolvedHistoricalRuntimeContext,
 ): Effect.Effect<ContractSyncState, StacksApiError | SyncStoreError, StacksClient> {
   return Effect.gen(function* () {
-    const cursor = yield* getContractEventsFirstCursor(context.logger, filter.contractId, {
+    const cursor = yield* getContractEventsFirstCursor(filter.contractId, {
       startBlock: filter.startBlock,
     });
 
     if (!cursor) {
-      context.logger.info({
-        service: "historicalRuntime",
-        msg: `No events found for ${filter.contractId}, skipping`,
-      });
+      yield* Effect.logInfo(`No events found for ${filter.contractId}, skipping`);
       yield* syncStore.upsertSyncProgress(
         {
           contractId: filter.contractId,
@@ -228,10 +218,9 @@ function initContractFromScratch(
     const cursorHeight = parseLogsCursor(cursor).blockHeight;
 
     if (filter.endBlock !== undefined && cursorHeight > filter.endBlock) {
-      context.logger.info({
-        service: "historicalRuntime",
-        msg: `First event for ${filter.contractId} at block ${cursorHeight} exceeds endBlock ${filter.endBlock}, skipping`,
-      });
+      yield* Effect.logInfo(
+        `First event for ${filter.contractId} at block ${cursorHeight} exceeds endBlock ${filter.endBlock}, skipping`,
+      );
       yield* syncStore.upsertSyncProgress(
         {
           contractId: filter.contractId,
@@ -253,10 +242,7 @@ function initContractFromScratch(
       };
     }
 
-    context.logger.info({
-      service: "historicalRuntime",
-      msg: `Starting sync for ${filter.contractId} from block ${cursorHeight}`,
-    });
+    yield* Effect.logInfo(`Starting sync for ${filter.contractId} from block ${cursorHeight}`);
 
     return {
       contractId: filter.contractId,
@@ -280,10 +266,9 @@ function initContractFromSaved(
       saved.isComplete && filter.endBlock !== undefined && savedHeight >= filter.endBlock;
 
     if (isAlreadyComplete) {
-      context.logger.info({
-        service: "historicalRuntime",
-        msg: `Sync already completed for ${filter.contractId} (synced up to block ${savedHeight}), skipping`,
-      });
+      yield* Effect.logInfo(
+        `Sync already completed for ${filter.contractId} (synced up to block ${savedHeight}), skipping`,
+      );
 
       return {
         contractId: filter.contractId,
@@ -296,10 +281,9 @@ function initContractFromSaved(
     }
 
     if (filter.endBlock !== undefined && savedHeight > filter.endBlock) {
-      context.logger.info({
-        service: "historicalRuntime",
-        msg: `Resumed progress for ${filter.contractId} at block ${savedHeight} exceeds endBlock ${filter.endBlock}, marking done`,
-      });
+      yield* Effect.logInfo(
+        `Resumed progress for ${filter.contractId} at block ${savedHeight} exceeds endBlock ${filter.endBlock}, marking done`,
+      );
 
       return {
         contractId: filter.contractId,
@@ -312,10 +296,7 @@ function initContractFromSaved(
     }
 
     if (saved.cursor) {
-      context.logger.info({
-        service: "historicalRuntime",
-        msg: `Resuming sync for ${filter.contractId} from block ${savedHeight}`,
-      });
+      yield* Effect.logInfo(`Resuming sync for ${filter.contractId} from block ${savedHeight}`);
 
       return {
         contractId: filter.contractId,
@@ -326,7 +307,7 @@ function initContractFromSaved(
       };
     }
 
-    const cursor = yield* getContractEventsFirstCursor(context.logger, filter.contractId, {
+    const cursor = yield* getContractEventsFirstCursor(filter.contractId, {
       startBlock: Math.max(filter.startBlock ?? 0, savedHeight + 1),
     });
 
@@ -355,10 +336,9 @@ function initContractFromSaved(
     const cursorHeight = parseLogsCursor(cursor).blockHeight;
 
     if (filter.endBlock !== undefined && cursorHeight > filter.endBlock) {
-      context.logger.info({
-        service: "historicalRuntime",
-        msg: `Next event for ${filter.contractId} at block ${cursorHeight} exceeds endBlock ${filter.endBlock}, skipping`,
-      });
+      yield* Effect.logInfo(
+        `Next event for ${filter.contractId} at block ${cursorHeight} exceeds endBlock ${filter.endBlock}, skipping`,
+      );
       yield* syncStore.upsertSyncProgress(
         {
           contractId: filter.contractId,
@@ -504,10 +484,7 @@ function advanceContractSyncState(
       const isPastEndBlock = endBlock !== undefined && currentHeight > endBlock;
 
       if (endBlock !== undefined && isPastEndBlock) {
-        context.logger.info({
-          service: "historicalRuntime",
-          msg: `Sync reached endBlock ${endBlock} for ${lowestState.contractId}`,
-        });
+        yield* Effect.logInfo(`Sync reached endBlock ${endBlock} for ${lowestState.contractId}`);
         yield* syncStore.upsertSyncProgress(
           {
             contractId: lowestState.contractId,
@@ -533,10 +510,7 @@ function advanceContractSyncState(
         lowestState.cursor = nextCursor;
       }
     } else {
-      context.logger.info({
-        service: "historicalRuntime",
-        msg: `Sync complete for ${lowestState.contractId}`,
-      });
+      yield* Effect.logInfo(`Sync complete for ${lowestState.contractId}`);
       yield* syncStore.upsertSyncProgress(
         {
           contractId: lowestState.contractId,
@@ -577,13 +551,10 @@ function processEventsUpTo(
     }
 
     const toLabel = toBlockHeight === Number.MAX_SAFE_INTEGER ? "latest" : String(toBlockHeight);
-    context.logger.info({
-      service: "historicalRuntime",
-      msg: `Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`,
-      count: rows.length,
-    });
 
-    const batchClock = startClock();
+    yield* Effect.logInfo(`Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`).pipe(
+      Effect.annotateLogs({ count: rows.length }),
+    );
 
     for (const row of rows) {
       const filter = filterMap.get(row.contractId);
@@ -626,14 +597,10 @@ function processEventsUpTo(
       { db: context.db },
     );
 
-    const batchDuration = batchClock();
-    context.logger.info({
-      service: "historicalRuntime",
-      msg: `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
-      block: Number(lastRow.blockHeight),
-      duration: batchDuration,
-    });
-  });
+    yield* Effect.logInfo(
+      `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
+    ).pipe(Effect.annotateLogs({ block: Number(lastRow.blockHeight) }));
+  }).pipe(Effect.withLogSpan("processEventsUpTo"));
 }
 
 export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
@@ -657,7 +624,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
           return;
         }
 
-        const resolvedFilters = yield* validateAndResolveFilters(filters, context);
+        const resolvedFilters = yield* validateAndResolveFilters(filters);
 
         yield* migrate(context.db).pipe(
           Effect.mapError((cause) =>
@@ -667,12 +634,9 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
           ),
         );
 
-        const runClock = startClock();
-        context.logger.info({
-          service: "historicalRuntime",
-          msg: "Starting historical indexing",
-          contracts: resolvedFilters.map((filter) => filter.contractId),
-        });
+        yield* Effect.logInfo("Starting historical indexing").pipe(
+          Effect.annotateLogs({ contracts: resolvedFilters.map((filter) => filter.contractId) }),
+        );
 
         const filterMap = new Map(resolvedFilters.map((filter) => [filter.contractId, filter]));
         const handlers: Record<string, EventHandler | undefined> = {};
@@ -684,7 +648,6 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         const client = yield* StacksClient;
 
         const indexing = createIndexing({
-          logger: context.logger,
           db: context.db,
           handlers,
         });
@@ -725,12 +688,9 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
 
             const { results: events, next_cursor: nextCursor } = logsResponse;
             const currentHeight = parseLogsCursor(lowestState.cursor).blockHeight;
-            context.logger.info({
-              service: "historicalRuntime",
-              msg: `Syncing ${lowestState.contractId}`,
-              block: currentHeight,
-              events: events.length,
-            });
+            yield* Effect.logInfo(`Syncing ${lowestState.contractId}`).pipe(
+              Effect.annotateLogs({ block: currentHeight, events: events.length }),
+            );
 
             // Batch fetch transactions (deduplicated by tx_id) in chronological order
             const txIds = [
@@ -749,10 +709,9 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
 
             const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
             const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
-            context.logger.debug({
-              service: "historicalRuntime",
-              msg: `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
-            });
+            yield* Effect.logDebug(
+              `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
+            );
 
             const transactions = yield* fetchMissingTransactions(
               context,
@@ -833,13 +792,11 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         // Run syncer and indexer concurrently with structured interruption
         yield* Effect.all([syncer, indexer], { concurrency: 2 });
 
-        const runDuration = runClock();
-        context.logger.info({
-          service: "historicalRuntime",
-          msg: "Historical indexing complete",
-          duration: runDuration,
-        });
-      });
+        yield* Effect.logInfo("Historical indexing complete");
+      }).pipe(
+        Effect.annotateLogs({ service: "historicalRuntime" }),
+        Effect.withLogSpan("historicalIndexing"),
+      );
 
       const runnable = effect.pipe(
         Effect.provide(

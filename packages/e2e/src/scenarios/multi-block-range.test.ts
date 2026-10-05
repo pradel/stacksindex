@@ -1,4 +1,3 @@
-import { createLogger } from "stacksindex";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { assertBenchmarkSnapshot, registerScenarioBenchmark } from "../benchmark.ts";
@@ -22,7 +21,6 @@ const recorder = createScenarioRecorder("multi-block-range.json");
 
 describe("e2E: Multi-block bounded range scenario", () => {
   const database = createScenarioDatabase();
-  const logger = createLogger({ level: 0 });
 
   beforeAll(async () => {
     vi.stubGlobal(
@@ -50,7 +48,6 @@ describe("e2E: Multi-block bounded range scenario", () => {
   test("syncs and indexes events across multiple blocks within startBlock and endBlock", async () => {
     const { tracer, events } = await runScenario({
       db: database.db,
-      logger,
       contracts: [
         { contractId: SATOSHIBLES_CONTRACT, startBlock: START_BLOCK, endBlock: END_BLOCK },
       ],

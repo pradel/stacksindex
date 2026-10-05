@@ -2,14 +2,13 @@
 // oxlint-disable vitest/prefer-called-once, vitest/no-conditional-expect, vitest/no-conditional-in-test
 
 import type { ClarityAbi } from "clarity-abitype";
-import { Effect } from "effect";
+import { Effect, References } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import type { IndexerDb } from "../database/index.ts";
 import { StacksClient, type StacksClientService } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
-import { createLogger } from "../logger/index.ts";
 import { blocksTable } from "../sync-store/schema.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createIndexing } from "./index.ts";
@@ -83,7 +82,6 @@ describe("indexing engine", () => {
     };
 
     const indexing = createIndexing({
-      logger: createLogger({ level: 0 }),
       db: mockDb,
       handlers,
     });
@@ -91,7 +89,12 @@ describe("indexing engine", () => {
     const event = createMockEvent();
     const stacksClient = makeStacksClient();
     await Effect.runPromise(
-      indexing.executeEvent(event).pipe(Effect.provideService(StacksClient, stacksClient)),
+      indexing
+        .executeEvent(event)
+        .pipe(
+          Effect.provideService(StacksClient, stacksClient),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
     );
 
     expect(handler).toHaveBeenCalledTimes(1);
@@ -110,8 +113,6 @@ describe("indexing engine", () => {
     const callReadFunction = vi
       .fn()
       .mockReturnValue(Effect.succeed({ okay: true, result: "0x01" }));
-
-    const logger = createLogger({ level: 0 });
 
     const handler = vi.fn().mockImplementation(async (_event, ctx: HandlerContext) => {
       // Call without explicit tip - should inject event.block_height
@@ -150,7 +151,6 @@ describe("indexing engine", () => {
     };
 
     const indexing = createIndexing({
-      logger,
       db: mockDb,
       handlers,
     });
@@ -158,7 +158,12 @@ describe("indexing engine", () => {
     const event = createMockEvent({ block_height: 54321 });
     const stacksClient = makeStacksClient({ callReadFunction });
     await Effect.runPromise(
-      indexing.executeEvent(event).pipe(Effect.provideService(StacksClient, stacksClient)),
+      indexing
+        .executeEvent(event)
+        .pipe(
+          Effect.provideService(StacksClient, stacksClient),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
     );
 
     expect(handler).toHaveBeenCalledTimes(1);
@@ -191,8 +196,6 @@ describe("indexing engine", () => {
       }),
     );
 
-    const logger = createLogger({ level: 0 });
-
     let handlerResult: unknown;
 
     const handler = vi.fn().mockImplementation(async (_event, ctx: HandlerContext) => {
@@ -211,7 +214,6 @@ describe("indexing engine", () => {
     };
 
     const indexing = createIndexing({
-      logger,
       db: mockDb,
       handlers,
     });
@@ -219,7 +221,12 @@ describe("indexing engine", () => {
     const event = createMockEvent({ block_height: 77777 });
     const stacksClient = makeStacksClient({ callReadFunction });
     await Effect.runPromise(
-      indexing.executeEvent(event).pipe(Effect.provideService(StacksClient, stacksClient)),
+      indexing
+        .executeEvent(event)
+        .pipe(
+          Effect.provideService(StacksClient, stacksClient),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
     );
 
     expect(handler).toHaveBeenCalledTimes(1);
@@ -236,7 +243,6 @@ describe("indexing engine", () => {
     const handlers: Handlers = {};
 
     const indexing = createIndexing({
-      logger: createLogger({ level: 0 }),
       db: mockDb,
       handlers,
     });
@@ -244,7 +250,12 @@ describe("indexing engine", () => {
     const event = createMockEvent();
     const stacksClient = makeStacksClient();
     await Effect.runPromise(
-      indexing.executeEvent(event).pipe(Effect.provideService(StacksClient, stacksClient)),
+      indexing
+        .executeEvent(event)
+        .pipe(
+          Effect.provideService(StacksClient, stacksClient),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
     );
   });
 
@@ -257,7 +268,6 @@ describe("indexing engine", () => {
     };
 
     const indexing = createIndexing({
-      logger: createLogger({ level: 0 }),
       db: mockDb,
       handlers,
     });
@@ -266,7 +276,12 @@ describe("indexing engine", () => {
     const stacksClient = makeStacksClient();
 
     const result = await Effect.runPromiseExit(
-      indexing.executeEvent(event).pipe(Effect.provideService(StacksClient, stacksClient)),
+      indexing
+        .executeEvent(event)
+        .pipe(
+          Effect.provideService(StacksClient, stacksClient),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
     );
 
     expect(result).toBeTaggedError(
@@ -309,7 +324,6 @@ describe("transactional event handlers", () => {
       .mockImplementation((_event: HandlerEvent, context: HandlerContext) => insertBlock(context));
 
     const indexing = createIndexing({
-      logger: createLogger({ level: 0 }),
       db: testDb.db,
       handlers: { "SP123.token": handler },
     });
@@ -318,7 +332,10 @@ describe("transactional event handlers", () => {
     await Effect.runPromise(
       indexing
         .executeEvent(createMockEvent())
-        .pipe(Effect.provideService(StacksClient, stacksClient)),
+        .pipe(
+          Effect.provideService(StacksClient, stacksClient),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
     );
 
     await expect(testDb.db.select().from(blocksTable)).resolves.toHaveLength(1);
@@ -334,7 +351,6 @@ describe("transactional event handlers", () => {
       );
 
     const indexing = createIndexing({
-      logger: createLogger({ level: 0 }),
       db: testDb.db,
       handlers: { "SP123.token": handler },
     });
@@ -344,7 +360,10 @@ describe("transactional event handlers", () => {
     const result = await Effect.runPromiseExit(
       indexing
         .executeEvent(createMockEvent())
-        .pipe(Effect.provideService(StacksClient, stacksClient)),
+        .pipe(
+          Effect.provideService(StacksClient, stacksClient),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
     );
 
     expect(result).toBeTaggedError(

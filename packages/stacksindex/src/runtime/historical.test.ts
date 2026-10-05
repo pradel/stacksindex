@@ -7,7 +7,7 @@
 import { URL } from "node:url";
 
 import { sql } from "drizzle-orm";
-import { Effect, Exit, Match, Predicate, type Schema } from "effect";
+import { Effect, Exit, Match, Predicate, References, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createDatabase } from "../database/index.ts";
@@ -17,7 +17,6 @@ import {
   SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
-import { createLogger } from "../logger/index.ts";
 import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
@@ -29,6 +28,15 @@ import {
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createHistoricalRuntime } from "./historical.ts";
+
+const makeRuntime = (input: Parameters<typeof createHistoricalRuntime>[0]) => {
+  const runtime = createHistoricalRuntime(input);
+
+  return {
+    run: (filters: Parameters<typeof runtime.run>[0]) =>
+      runtime.run(filters).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
+  };
+};
 
 interface Dictionary<TValue> {
   [key: string]: TValue;
@@ -101,10 +109,6 @@ const mockFetch = vi.fn(async (rawUrl: FetchInput, init?: any) => {
     headers: { "content-type": "application/json", ...res.headers },
   });
 });
-
-const context = {
-  logger: createLogger({ level: 0 }),
-};
 
 const noopHandler = () => Promise.resolve();
 
@@ -435,7 +439,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
@@ -773,7 +777,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const result = await runtime.run([
       { contractId: contractA, handler: noopHandler },
@@ -921,7 +925,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
@@ -1008,7 +1012,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
@@ -1135,7 +1139,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
 
     await expectStatusError(result, {
@@ -1175,7 +1179,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
@@ -1367,7 +1371,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
@@ -1698,8 +1702,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
     });
 
@@ -1876,8 +1879,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
     });
 
@@ -1969,8 +1971,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
     });
 
@@ -2134,8 +2135,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
     });
 
@@ -2195,8 +2195,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
       api: {
         baseUrl: customBaseUrl,
@@ -2397,8 +2396,7 @@ describe("historical runtime with handlers", () => {
       },
     );
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
       api: {
         baseUrl: customBaseUrl,
@@ -2467,8 +2465,7 @@ describe("historical runtime with handlers", () => {
 
     const indexerDb = await createDatabase({ kind: "pglite" });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: indexerDb.db,
     });
 
@@ -2640,7 +2637,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100 }]);
 
     expect(result).toBeUndefined();
@@ -2897,7 +2894,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
     expect(result).toBeUndefined();
@@ -2982,7 +2979,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, endBlock: 100 }]);
 
     expect(result).toBeUndefined();
@@ -3192,7 +3189,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
     expect(result).toBeUndefined();
@@ -3208,7 +3205,7 @@ describe("historical runtime with handlers", () => {
 
   test("rejects invalid startBlock (negative or non-integer)", async () => {
     const contractId = "SP123.token";
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const negativeResult = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, startBlock: -1 }]),
@@ -3235,7 +3232,7 @@ describe("historical runtime with handlers", () => {
 
   test("rejects invalid endBlock (negative or non-integer)", async () => {
     const contractId = "SP123.token";
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const negativeResult = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, endBlock: -5 }]),
@@ -3262,7 +3259,7 @@ describe("historical runtime with handlers", () => {
 
   test("rejects when startBlock is greater than endBlock", async () => {
     const contractId = "SP123.token";
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const result = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, startBlock: 200, endBlock: 100 }]),
@@ -3452,7 +3449,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const result = await runtime.run([
       { contractId, handler, startBlock: 100, endBlock: "latest" },
@@ -3486,7 +3483,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const result = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, endBlock: "latest" }]),
@@ -3515,7 +3512,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected network request: ${rawUrl}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
     expect(result).toBeUndefined();
@@ -3695,7 +3692,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 200 }]);
 
     expect(result).toBeUndefined();
@@ -3881,7 +3878,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
     expect(result).toBeUndefined();
@@ -3981,7 +3978,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
     expect(result).toBeUndefined();
@@ -4217,7 +4214,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 100 }]);
 
     expect(result).toBeUndefined();
@@ -4504,7 +4501,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 100 }]);
 
     expect(result).toBeUndefined();
@@ -4543,9 +4540,9 @@ describe("historical runtime with handlers", () => {
     ];
 
     invalidNetworks.forEach((network) => {
-      expect(() =>
-        createHistoricalRuntime({ logger: context.logger, db: testDb.db, network }),
-      ).toThrow(`Invalid chainId: ${network}. Expected a safe integer.`);
+      expect(() => makeRuntime({ db: testDb.db, network })).toThrow(
+        `Invalid chainId: ${network}. Expected a safe integer.`,
+      );
     });
   });
 
@@ -4674,8 +4671,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
       network: customChainId,
     });
@@ -4737,8 +4733,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
       network: "testnet",
     });
@@ -4791,8 +4786,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
       network: "testnet",
       api: { baseUrl: "https://custom.example" },
@@ -4956,7 +4950,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
     expect(result).toBeUndefined();
@@ -5084,7 +5078,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
     expect(result).toBeTaggedError(new TransactionBatchError({ missingIds: ["tx-2"] }));
@@ -5202,7 +5196,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
     await expectStatusError(result, {
@@ -5246,7 +5240,7 @@ describe("historical runtime with handlers", () => {
     // Force the next sync-store read to fail.
     await testDb.db.execute(sql`drop table "sync_progress"`);
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
 
     expect(result).toBeTaggedError(new SyncStoreError({ operation: "getSyncProgress" }));

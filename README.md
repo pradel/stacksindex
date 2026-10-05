@@ -33,15 +33,9 @@ _(or via `npm install` / `yarn add` / `bun add`)_
 ## Quickstart
 
 ```ts
-import {
-  createDatabase,
-  createHistoricalRuntimePromise,
-  createLogger,
-  decodeHex,
-} from "stacksindex";
+import { createDatabase, createHistoricalRuntimePromise, decodeHex } from "stacksindex";
 
-// 1. Setup logger and internal indexer database (stores sync checkpoints and cache)
-const logger = createLogger({ level: 2 });
+// 1. Setup internal indexer database (stores sync checkpoints and cache)
 const indexerDatabase = await createDatabase({
   kind: "pglite",
   directory: "./indexer.db",
@@ -49,7 +43,6 @@ const indexerDatabase = await createDatabase({
 
 // 2. Initialize runtime
 const runtime = createHistoricalRuntimePromise({
-  logger,
   db: indexerDatabase.db,
   network: "mainnet",
   api: {
@@ -68,8 +61,7 @@ try {
         // Decode Clarity event data
         const data = decodeHex(event.contract_log.value.hex);
 
-        logger.info({
-          msg: "Received event",
+        console.info("Received event", {
           block: event.block_height,
           txId: event.tx_id,
           data,
@@ -81,7 +73,7 @@ try {
     },
   ]);
 } catch (error) {
-  logger.error({ msg: "Historical sync failed", error });
+  console.error("Historical sync failed", error);
 }
 ```
 
@@ -117,7 +109,6 @@ const handler = async (event, { client }) => {
 | Option        | Type                               | Default           | Description                                                                                                                                      |
 | ------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `db`          | `IndexerDb`                        | _Required_        | Drizzle database instance for sync storage and checkpoints.                                                                                      |
-| `logger`      | `Logger`                           | _Required_        | Logger instance from `createLogger({ level })`.                                                                                                  |
 | `network`     | `"mainnet" \| "testnet" \| number` | `"mainnet"`       | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                                 |
 | `api.baseUrl` | `string`                           | _Network default_ | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the network default. |
 | `api.apiKey`  | `string`                           | `undefined`       | Optional Hiro API key.                                                                                                                           |
