@@ -3,13 +3,15 @@
 
 import type { ClarityAbi } from "clarity-abitype";
 import { Effect } from "effect";
-import { describe, expect, test, vi } from "vite-plus/test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import type { IndexerDb } from "../database/index.ts";
 import { datasourceStacksApi } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
 import { createLogger } from "../logger/index.ts";
+import { blocksTable } from "../sync-store/schema.ts";
+import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createIndexing } from "./index.ts";
 
 // SAFETY: The test double implements only `transaction`, the sole IndexerDb member createIndexing reads.
@@ -266,5 +268,73 @@ describe("indexing engine", () => {
     expect(result).toBeTaggedError(
       new HandlerExecutionError({ contractId: "SP123.token", cause: error }),
     );
+  });
+});
+
+describe("transactional event handlers", () => {
+  // oxlint-disable-next-line init-declarations
+  let testDb: TestDatabase;
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase();
+  });
+
+  beforeEach(async () => {
+    await testDb.cleanup();
+  });
+
+  afterAll(async () => {
+    await testDb.close();
+  });
+
+  const insertBlock = (context: HandlerContext) =>
+    context.db
+      .insert(blocksTable)
+      .values({
+        chainId: 1n,
+        height: 100n,
+        hash: "0x0000000000000000000000000000000000000000000000000000000000000001",
+        blockTime: 1000n,
+        tenureHeight: 1n,
+      })
+      .pipe(Effect.asVoid);
+
+  test("commits handler writes together with the event", async () => {
+    const handler = vi
+      .fn()
+      .mockImplementation((_event: HandlerEvent, context: HandlerContext) => insertBlock(context));
+
+    const indexing = createIndexing({
+      logger: createLogger({ level: 0 }),
+      db: testDb.db,
+      handlers: { "SP123.token": handler },
+    });
+
+    await Effect.runPromise(indexing.executeEvent(createMockEvent()));
+
+    await expect(testDb.db.select().from(blocksTable)).resolves.toHaveLength(1);
+  });
+
+  test("rolls back handler writes when the handler throws", async () => {
+    const error = new Error("Handler failed");
+
+    const handler = vi
+      .fn()
+      .mockImplementation((_event: HandlerEvent, context: HandlerContext) =>
+        insertBlock(context).pipe(Effect.andThen(Effect.fail(error))),
+      );
+
+    const indexing = createIndexing({
+      logger: createLogger({ level: 0 }),
+      db: testDb.db,
+      handlers: { "SP123.token": handler },
+    });
+
+    const result = await Effect.runPromiseExit(indexing.executeEvent(createMockEvent()));
+
+    expect(result).toBeTaggedError(
+      new HandlerExecutionError({ contractId: "SP123.token", cause: error }),
+    );
+    await expect(testDb.db.select().from(blocksTable)).resolves.toHaveLength(0);
   });
 });
