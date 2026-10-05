@@ -6,12 +6,13 @@
 // oxlint-disable vitest/prefer-called-once
 import { URL } from "node:url";
 
+import { sql } from "drizzle-orm";
 import { Effect, Exit, Match, Predicate, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { createDatabase } from "../database/index.ts";
 import { StacksApiResponseError, StacksApiUnexpectedError } from "../datasources/api/errors.ts";
-import { FilterValidationError, HandlerExecutionError } from "../lib/errors.ts";
+import { FilterValidationError, HandlerExecutionError, SyncStoreError } from "../lib/errors.ts";
 import { createLogger } from "../logger/index.ts";
 import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -5217,5 +5218,44 @@ describe("historical runtime with handlers", () => {
       }),
     );
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  test("returns SyncStoreError when a sync store operation fails", async () => {
+    const contractId = "SP123.token";
+
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            contract_id: contractId,
+            block: { height: 100 },
+            tx_id: "tx-deploy",
+          }),
+        };
+      }
+
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            limit: 50,
+            total: 0,
+            cursor: { next: null, previous: null, current: "" },
+            results: [],
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    // Force the next sync-store read to fail.
+    await testDb.db.execute(sql`drop table "sync_progress"`);
+
+    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
+
+    expect(result).toBeTaggedError(new SyncStoreError({ operation: "getSyncProgress" }));
   });
 });
