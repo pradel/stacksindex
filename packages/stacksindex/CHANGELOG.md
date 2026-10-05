@@ -1,5 +1,16 @@
 # stacksindex
 
+## 0.0.6
+
+### Patch Changes
+
+- [#46](https://github.com/pradel/stacksindex/pull/46) [`10ea79e`](https://github.com/pradel/stacksindex/commit/10ea79e3dbb5bd28718d787184df3933204f593c) Thanks [@pradel](https://github.com/pradel)! - Migrate to Effect v4 and Drizzle ORM 1.0.
+
+  - Replace `better-result` with Effect services, tagged errors, and schemas.
+  - Upgrade to `drizzle-orm`/`drizzle-kit` 1.0 with the `@effect/sql` adapters and the new migration folder format.
+  - Add `SyncStoreError`, run event handlers in a database transaction, and use `fetch` for Stacks API requests.
+  - Support both Effect and Promise consumption (`toThenable`, `createHistoricalRuntimePromise`).
+
 ## 0.0.5
 
 ### Patch Changes
