@@ -164,6 +164,40 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
+const DEFAULT_RETRY_AFTER_SECONDS = 1;
+
+const MAX_RETRY_AFTER_SECONDS = 300;
+
+/**
+ * Parses a `Retry-After` header, which may be seconds or an HTTP date.
+ * Falls back to one second when missing, invalid, or already past.
+ */
+function parseRetryAfter(header: string | undefined, now: number = Date.now()): number {
+  const value = header?.trim();
+
+  if (!value) {
+    return DEFAULT_RETRY_AFTER_SECONDS;
+  }
+
+  const seconds = Number(value);
+
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds, MAX_RETRY_AFTER_SECONDS);
+  }
+
+  const date = Date.parse(value);
+
+  if (!Number.isNaN(date)) {
+    const secondsUntilRetry = Math.ceil((date - now) / 1000);
+
+    if (secondsUntilRetry > 0) {
+      return Math.min(secondsUntilRetry, MAX_RETRY_AFTER_SECONDS);
+    }
+  }
+
+  return DEFAULT_RETRY_AFTER_SECONDS;
+}
+
 export const datasourceStacksApi = {
   _request<ResponseT, QueryT extends Record<string, unknown> | undefined>(
     context: DatasourceStacksApiContext,
@@ -217,7 +251,7 @@ export const datasourceStacksApi = {
       );
 
       if (res.status === 429) {
-        const retryAfter = Number(res.headers["retry-after"] ?? 1);
+        const retryAfter = parseRetryAfter(res.headers["retry-after"]);
 
         return yield* new StacksApiRateLimitError({ path, retryAfter });
       }

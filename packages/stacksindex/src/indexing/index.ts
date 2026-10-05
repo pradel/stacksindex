@@ -127,6 +127,11 @@ export const createIndexing = (context: IndexingContext) => ({
         }),
       ),
       Effect.catchCause((cause) => {
+        if (Cause.hasInterruptsOnly(cause)) {
+          // SAFETY: An interrupt-only cause contains no typed failures, so re-raising it preserves interruption semantics.
+          return Effect.failCause(cause as Cause.Cause<never>);
+        }
+
         const err = Cause.squash(cause);
         const error = err instanceof Error ? err : new Error(String(err));
         const duration = handlerClock();

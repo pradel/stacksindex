@@ -13,7 +13,7 @@ import { chunkArray } from "../lib/array.ts";
 import {
   FilterValidationError,
   type HandlerExecutionError,
-  type SyncStoreError,
+  SyncStoreError,
 } from "../lib/errors.ts";
 import { resolveNetwork, type NetworkOption, type ResolvedNetwork } from "../lib/network.ts";
 import { startClock } from "../lib/timer.ts";
@@ -501,7 +501,7 @@ function advanceContractSyncState(
   currentHeight: number,
   nextCursor: string | null,
   context: ResolvedHistoricalRuntimeContext,
-): Effect.Effect<void, unknown> {
+): Effect.Effect<void, SyncStoreError> {
   return Effect.gen(function* () {
     lowestState.syncedBlockHeight = currentHeight - 1;
 
@@ -662,7 +662,13 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
 
         const resolvedFilters = yield* validateAndResolveFilters(filters, context);
 
-        yield* migrate(context.db);
+        yield* migrate(context.db).pipe(
+          Effect.mapError((cause) =>
+            cause instanceof SyncStoreError
+              ? cause
+              : new SyncStoreError({ operation: "migrate", cause }),
+          ),
+        );
 
         const runClock = startClock();
         context.logger.info({
@@ -784,13 +790,21 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
               })
               .filter((item) => item.blockHeight > 0);
 
-            yield* context.db.transaction((tx) =>
-              Effect.all([
-                syncStore.insertBlocks({ blocks, chainId }, { db: tx }),
-                syncStore.insertTransactions({ transactions, chainId }, { db: tx }),
-                syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }, { db: tx }),
-              ]),
-            );
+            yield* context.db
+              .transaction((tx) =>
+                Effect.all([
+                  syncStore.insertBlocks({ blocks, chainId }, { db: tx }),
+                  syncStore.insertTransactions({ transactions, chainId }, { db: tx }),
+                  syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }, { db: tx }),
+                ]),
+              )
+              .pipe(
+                Effect.mapError((cause) =>
+                  cause instanceof SyncStoreError
+                    ? cause
+                    : new SyncStoreError({ operation: "insertBatch", cause }),
+                ),
+              );
 
             yield* advanceContractSyncState(lowestState, currentHeight, nextCursor, context);
 
@@ -831,7 +845,7 @@ export const createHistoricalRuntime = (input: HistoricalRuntimeContext) => {
         });
       });
 
-      // SAFETY: toThenable attaches a `then` accessor at runtime, so the returned value satisfies PromiseLike.
+      // SAFETY: toThenable attaches a `then` accessor at runtime; the effect's error channel is already the documented union.
       return toThenable(effect) as Effect.Effect<
         void,
         StacksApiError | HandlerExecutionError | FilterValidationError | SyncStoreError

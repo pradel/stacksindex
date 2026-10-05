@@ -256,6 +256,68 @@ describe("aPI DataSource", () => {
 
       vi.useRealTimers();
     });
+
+    test("retries on 429 using an HTTP-date Retry-After", async () => {
+      vi.useFakeTimers();
+      const retryAt = new Date(Date.now() + 2000).toUTCString();
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({ error: "Rate limited" }, 429, { "retry-after": retryAt }),
+        )
+        .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
+
+      const promise = Effect.runPromise(datasourceStacksApi.getTransaction(context, "0xabc123"));
+
+      await vi.advanceTimersByTimeAsync(2000);
+
+      const result = await promise;
+
+      expect(result).toStrictEqual({ hash: "0xabc123", block_height: 123_456 });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
+    });
+
+    test("falls back to one second for an invalid Retry-After", async () => {
+      vi.useFakeTimers();
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "not-a-date" }),
+        )
+        .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
+
+      const promise = Effect.runPromise(datasourceStacksApi.getTransaction(context, "0xabc123"));
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      const result = await promise;
+
+      expect(result).toStrictEqual({ hash: "0xabc123", block_height: 123_456 });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
+    });
+
+    test("falls back to one second for a past HTTP-date Retry-After", async () => {
+      vi.useFakeTimers();
+      const retryAt = new Date(Date.now() - 60_000).toUTCString();
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({ error: "Rate limited" }, 429, { "retry-after": retryAt }),
+        )
+        .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
+
+      const promise = Effect.runPromise(datasourceStacksApi.getTransaction(context, "0xabc123"));
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      const result = await promise;
+
+      expect(result).toStrictEqual({ hash: "0xabc123", block_height: 123_456 });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      vi.useRealTimers();
+    });
   });
 
   describe("getBlock", () => {
