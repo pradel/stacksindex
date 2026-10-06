@@ -192,14 +192,38 @@ function indexBatch(
 }
 
 /**
+ * Reads the chain tip height once per run, when a finality window is
+ * configured. Falls back to `undefined` (and logs a warning) when the status
+ * request or its payload is unavailable, so finality lags rather than failing
+ * the run.
+ */
+function readChainTipHeight(): Effect.Effect<number | undefined, never, StacksClient> {
+  return Effect.gen(function* () {
+    const client = yield* StacksClient;
+    const status = yield* client.getStatus();
+
+    return status.chain_tip?.block_height;
+  }).pipe(
+    Effect.tapError((error) =>
+      Effect.logWarning("Failed to read the chain tip; finality may lag behind").pipe(
+        Effect.annotateLogs({ phase: "fetch", error: String(error) }),
+      ),
+    ),
+    Effect.orElseSucceed(() => undefined),
+  );
+}
+
+/**
  * Indexes every stored event with height `> checkpoint` and `<= toBlockHeight`.
  * Events are split into block-aligned batches so each transaction stays
  * bounded and every checkpoint refers to a fully processed block.
  *
  * The finalized marker advances to the newest committed block that is at least
- * `finality` blocks behind the confirmation height: the safe height when there
- * is one, or the newest stored event-bearing block on the final
- * `MAX_SAFE_INTEGER` pass. It never refers to data that is not yet committed.
+ * `finality` blocks behind the confirmation height. The confirmation height is
+ * the chain tip when it was read for the run, capped by the safe height during
+ * incremental steps; without a tip it falls back to the newest stored
+ * event-bearing block on the final `MAX_SAFE_INTEGER` pass. It never refers to
+ * data that is not yet committed.
  */
 function indexEventsUpTo(
   toBlockHeight: number,
@@ -207,6 +231,7 @@ function indexEventsUpTo(
   chainId: number,
   eventsByContract: Map<string, number>,
   finality: number,
+  chainTipHeight: number | undefined,
 ): Effect.Effect<
   void,
   HandlerExecutionError | SyncStoreError | DatabaseError,
@@ -220,6 +245,11 @@ function indexEventsUpTo(
       return;
     }
 
+    const confirmationHeight =
+      toBlockHeight === Number.MAX_SAFE_INTEGER
+        ? chainTipHeight
+        : Math.min(toBlockHeight, chainTipHeight ?? toBlockHeight);
+
     const rows = yield* syncStore.getEvents({
       chainId,
       fromBlockHeight: fromBlockHeight + 1,
@@ -229,14 +259,13 @@ function indexEventsUpTo(
     if (rows.length === 0) {
       // No new events, but the existing checkpoint block can still become
       // Final now that the chain has advanced. Confirm it when it is at least
-      // `finality` blocks behind the safe height. The final `MAX_SAFE_INTEGER`
-      // Pass has no safe height and is never treated as a confirmation point.
-      if (checkpoint !== null && toBlockHeight !== Number.MAX_SAFE_INTEGER) {
+      // `finality` blocks behind the confirmation height.
+      if (checkpoint !== null && confirmationHeight !== undefined) {
         const checkpointHeight = Number(checkpoint.blockHeight);
         const checkpointFinalizedHeight = Number(checkpoint.finalizedBlockHeight);
 
         if (
-          checkpointHeight <= toBlockHeight - finality &&
+          checkpointHeight <= confirmationHeight - finality &&
           checkpointHeight > checkpointFinalizedHeight
         ) {
           yield* syncStore.upsertCheckpoint({
@@ -265,11 +294,7 @@ function indexEventsUpTo(
     );
 
     const rangeEndHeight = Number(rows[rows.length - 1].blockHeight);
-
-    const confirmationHeight =
-      toBlockHeight === Number.MAX_SAFE_INTEGER ? rangeEndHeight : toBlockHeight;
-
-    const finalityThreshold = confirmationHeight - finality;
+    const finalityThreshold = (confirmationHeight ?? rangeEndHeight) - finality;
 
     let finalizedBlockHeight = checkpoint ? Number(checkpoint.finalizedBlockHeight) : 0;
     let finalizedBlockTime = checkpoint ? Number(checkpoint.finalizedBlockTime) : 0;
@@ -417,6 +442,11 @@ function runHistorical(
       ).pipe(Effect.annotateLogs({ ...rewind }));
     }
 
+    // Finality is measured against the chain tip when a finality window is
+    // Configured. Reading it once per run keeps the final pass accurate even
+    // When no events were stored near the tip.
+    const chainTipHeight = config.finality > 0 ? yield* readChainTipHeight() : undefined;
+
     yield* Effect.logInfo("Starting historical indexing").pipe(
       Effect.annotateLogs({ contracts: resolvedFilters.map((filter) => filter.contractId) }),
     );
@@ -440,7 +470,14 @@ function runHistorical(
     let completedContracts: readonly ContractSyncSummary[] = [];
 
     const indexSafeHeight = (safeBlockHeight: number) =>
-      indexEventsUpTo(safeBlockHeight, filterMap, chainId, eventsByContract, config.finality);
+      indexEventsUpTo(
+        safeBlockHeight,
+        filterMap,
+        chainId,
+        eventsByContract,
+        config.finality,
+        chainTipHeight,
+      );
 
     yield* Effect.gen(function* consumeSyncEvents() {
       yield* sync.historical(syncFilters).pipe(

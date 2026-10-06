@@ -2229,6 +2229,16 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     await seedCompleteContract(testDb, contractId, [100, 200, 300]);
 
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+
+      if (url.endsWith("/extended")) {
+        return { statusCode: 200, body: mockBody({ chain_tip: { block_height: 300 } }) };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
     const runtime = makeRuntime({ db: testDb.db, finality: 50 });
     const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: 300 }]);
 
@@ -2244,6 +2254,16 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     await seedCompleteContract(testDb, contractId, [100]);
 
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+
+      if (url.endsWith("/extended")) {
+        return { statusCode: 200, body: mockBody({ chain_tip: { block_height: 100 } }) };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
     const runtime = makeRuntime({ db: testDb.db, finality: 500 });
     const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
 
@@ -2252,6 +2272,26 @@ describe("historical runtime with handlers", () => {
     const checkpoint = await testDb.db.select().from(checkpointsTable);
     expect(Number(checkpoint[0].blockHeight)).toBe(100);
     expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(0);
+  });
+
+  test("finalizes up to the chain tip when no recent events were indexed", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100]);
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+
+      if (url.endsWith("/extended")) {
+        return { statusCode: 200, body: mockBody({ chain_tip: { block_height: 1_000 } }) };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = makeRuntime({ db: testDb.db, finality: 10 });
+    const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
+
+    expect(result.finalizedBlockHeight).toBe(100);
   });
 
   test("finalizes the prior checkpoint across separate safe heights", async () => {
@@ -2286,6 +2326,10 @@ describe("historical runtime with handlers", () => {
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
+
+      if (url.endsWith("/extended")) {
+        return { statusCode: 200, body: mockBody({ chain_tip: { block_height: 400 } }) };
+      }
 
       if (url.includes("/extended/v3/transactions/batch")) {
         const results = parseBatchIds(url)
