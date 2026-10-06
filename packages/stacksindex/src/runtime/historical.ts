@@ -182,8 +182,9 @@ function indexBatch(
  * bounded and every checkpoint refers to a fully processed block.
  *
  * The finalized marker advances to the newest committed block that is at least
- * `finality` blocks behind the end of the indexed range, so it never refers to
- * data that is not yet committed.
+ * `finality` blocks behind the confirmation height: the safe height when there
+ * is one, or the newest stored event-bearing block on the final
+ * `MAX_SAFE_INTEGER` pass. It never refers to data that is not yet committed.
  */
 function indexEventsUpTo(
   toBlockHeight: number,
@@ -211,6 +212,28 @@ function indexEventsUpTo(
     });
 
     if (rows.length === 0) {
+      // No new events, but the existing checkpoint block can still become
+      // Final now that the chain has advanced. Confirm it when it is at least
+      // `finality` blocks behind the safe height. The final `MAX_SAFE_INTEGER`
+      // Pass has no safe height and is never treated as a confirmation point.
+      if (checkpoint !== null && toBlockHeight !== Number.MAX_SAFE_INTEGER) {
+        const checkpointHeight = Number(checkpoint.blockHeight);
+        const checkpointFinalizedHeight = Number(checkpoint.finalizedBlockHeight);
+
+        if (
+          checkpointHeight <= toBlockHeight - finality &&
+          checkpointHeight > checkpointFinalizedHeight
+        ) {
+          yield* syncStore.upsertCheckpoint({
+            chainId,
+            blockHeight: checkpointHeight,
+            blockTime: Number(checkpoint.blockTime),
+            finalizedBlockHeight: checkpointHeight,
+            finalizedBlockTime: Number(checkpoint.blockTime),
+          });
+        }
+      }
+
       return;
     }
 
@@ -222,10 +245,25 @@ function indexEventsUpTo(
     );
 
     const rangeEndHeight = Number(rows[rows.length - 1].blockHeight);
-    const finalityThreshold = rangeEndHeight - finality;
+
+    const confirmationHeight =
+      toBlockHeight === Number.MAX_SAFE_INTEGER ? rangeEndHeight : toBlockHeight;
+
+    const finalityThreshold = confirmationHeight - finality;
 
     let finalizedBlockHeight = checkpoint ? Number(checkpoint.finalizedBlockHeight) : 0;
     let finalizedBlockTime = checkpoint ? Number(checkpoint.finalizedBlockTime) : 0;
+
+    // The checkpoint block is not part of `rows` (they start above it), but it
+    // May already be deep enough to finalize.
+    if (checkpoint !== null) {
+      const checkpointHeight = Number(checkpoint.blockHeight);
+
+      if (checkpointHeight <= finalityThreshold && checkpointHeight > finalizedBlockHeight) {
+        finalizedBlockHeight = checkpointHeight;
+        finalizedBlockTime = Number(checkpoint.blockTime);
+      }
+    }
 
     for (const batch of batches) {
       const finalizableRow = batch.findLast((row) => Number(row.blockHeight) <= finalityThreshold);

@@ -2234,6 +2234,89 @@ describe("historical runtime with handlers", () => {
     expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(0);
   });
 
+  test("finalizes the prior checkpoint across separate safe heights", async () => {
+    const contractId = "SP123.token";
+
+    const txById: Dictionary<Schema.Json> = {
+      "tx-100": standardTx("tx-100", 100, "block-100"),
+      "tx-200": standardTx("tx-200", 200, "block-200"),
+      "tx-300": standardTx("tx-300", 300, "block-300"),
+      "tx-400": standardTx("tx-400", 400, "block-400"),
+    };
+
+    const logsPage = (txId: string, nextCursor: string | null) => ({
+      results: [
+        {
+          tx_id: txId,
+          event_index: 0,
+          event_type: "smart_contract_log",
+          contract_log: {
+            contract_id: contractId,
+            topic: "print",
+            value: { hex: "0x01", repr: "(ok true)" },
+          },
+        },
+      ],
+      limit: 100,
+      offset: 0,
+      total: 1,
+      next_cursor: nextCursor,
+      prev_cursor: null,
+    });
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+
+      if (url.includes("/extended/v3/transactions/batch")) {
+        const results = parseBatchIds(url)
+          .map((id) => txById[id])
+          .filter(Boolean);
+
+        return { statusCode: 200, body: mockBody({ results }) };
+      }
+
+      if (url.includes("cursor=100:0:0:0")) {
+        return { statusCode: 200, body: mockBody(logsPage("tx-100", "200:0:0:0")) };
+      }
+
+      if (url.includes("cursor=200:0:0:0")) {
+        return { statusCode: 200, body: mockBody(logsPage("tx-200", "300:0:0:0")) };
+      }
+
+      if (url.includes("cursor=300:0:0:0")) {
+        return { statusCode: 200, body: mockBody(logsPage("tx-300", "400:0:0:0")) };
+      }
+
+      if (url.includes("cursor=400:0:0:0")) {
+        return { statusCode: 200, body: mockBody(logsPage("tx-400", null)) };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+        isComplete: false,
+      }),
+    );
+
+    // Safe heights 199 and 299 index blocks 100 and 200. With a 150-block
+    // Finality window the checkpoint is written with no finalized marker, then
+    // The prior checkpoint becomes final once the safe height advances past it.
+    const runtime = makeRuntime({ db: testDb.db, finality: 150 });
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+
+    expect(result.finalizedBlockHeight).toBe(200);
+
+    const checkpoint = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpoint[0].blockHeight)).toBe(400);
+    expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(200);
+  });
+
   test("rejects invalid finality", async () => {
     const invalidFinalities = [-1, 1.5, Number.NaN];
 

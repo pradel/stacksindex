@@ -184,10 +184,11 @@ Handler writes are **not** rolled back when a range is replayed. Write idempoten
 
 ### RunResult
 
-| Property          | Type                  | Description                                                     |
-| ----------------- | --------------------- | --------------------------------------------------------------- |
-| `eventsProcessed` | `number`              | Total events passed to handlers during the run.                 |
-| `contracts`       | `ContractRunResult[]` | Per-contract outcome: `status`, `lastBlockHeight`, event count. |
+| Property               | Type                  | Description                                                                   |
+| ---------------------- | --------------------- | ----------------------------------------------------------------------------- |
+| `eventsProcessed`      | `number`              | Total events passed to handlers during the run.                               |
+| `contracts`            | `ContractRunResult[]` | Per-contract outcome: `status`, `lastBlockHeight`, event count.               |
+| `finalizedBlockHeight` | `number \| undefined` | Highest finalized block after the run; `undefined` when no checkpoint exists. |
 
 `status` is `"completed"` when the contract was synced during the run and `"up-to-date"` when it was already fully synced.
 
