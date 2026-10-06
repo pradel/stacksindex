@@ -1,6 +1,6 @@
-import { Context, Effect, Layer, Queue } from "effect";
+import { Context, Effect, Layer, Queue, type LogLevel } from "effect";
 
-import { IndexerDatabase, migrate } from "../database/index.ts";
+import { type DatabaseConfig, IndexerDatabase, migrate } from "../database/index.ts";
 import {
   type StacksApiError,
   StacksClient,
@@ -17,6 +17,7 @@ import {
 } from "../lib/errors.ts";
 import { resolveNetwork, type NetworkOption, type ResolvedNetwork } from "../lib/network.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
+import { loggerLayer } from "../logger/index.ts";
 import { getContractEventsFirstCursor, parseLogsCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 
@@ -48,6 +49,36 @@ export interface HistoricalRuntimeOptions {
     baseUrl?: string;
     apiKey?: string;
   };
+}
+
+export interface HistoricalRuntimeWithDatabaseOptions extends HistoricalRuntimeOptions {
+  /** Database used for sync storage and checkpoints. */
+  database: DatabaseConfig;
+  /** Minimum log level for the pretty console logger. Defaults to `"Info"`. */
+  logLevel?: LogLevel.LogLevel;
+}
+
+/**
+ * Outcome of a single contract sync within a `run`.
+ *
+ * - `"completed"`: the contract was synced during this run.
+ * - `"up-to-date"`: the contract was already fully synced and nothing was fetched.
+ */
+export interface ContractRunResult {
+  contractId: string;
+  status: "completed" | "up-to-date";
+  startBlock?: number;
+  endBlock?: number;
+  /** Highest block height fully processed for this contract. */
+  lastBlockHeight?: number;
+  /** Number of events passed to the contract handler during this run. */
+  eventsProcessed: number;
+}
+
+export interface RunResult {
+  contracts: ContractRunResult[];
+  /** Total number of events passed to handlers during this run. */
+  eventsProcessed: number;
 }
 
 interface ResolvedHistoricalRuntimeConfig {
@@ -516,6 +547,7 @@ function processEventsUpTo(
   toBlockHeight: number,
   filterMap: Map<string, ResolvedFilter>,
   config: ResolvedHistoricalRuntimeConfig,
+  eventsByContract: Map<string, number>,
 ): Effect.Effect<
   void,
   StacksApiError | HandlerExecutionError | SyncStoreError,
@@ -575,6 +607,7 @@ function processEventsUpTo(
         };
 
         yield* indexing.executeEvent(event);
+        eventsByContract.set(row.contractId, (eventsByContract.get(row.contractId) ?? 0) + 1);
       }
     }
 
@@ -599,7 +632,9 @@ export type HistoricalRuntimeError =
   | TransactionBatchError;
 
 export interface HistoricalRuntimeService {
-  readonly run: (filters: Filter[]) => Effect.Effect<void, HistoricalRuntimeError, IndexerDatabase>;
+  readonly run: (
+    filters: Filter[],
+  ) => Effect.Effect<RunResult, HistoricalRuntimeError, IndexerDatabase>;
 }
 
 export class HistoricalRuntime extends Context.Service<
@@ -623,17 +658,30 @@ export class HistoricalRuntime extends Context.Service<
       Layer.provide(StacksClient.layer({ baseUrl: config.api.baseUrl, apiKey: config.api.apiKey })),
     );
   };
+
+  /**
+   * Batteries-included layer: provides `HistoricalRuntime`, `IndexerDatabase`
+   * and the pretty console logger from a single config.
+   */
+  static readonly layerWithDatabase = (
+    options: HistoricalRuntimeWithDatabaseOptions,
+  ): Layer.Layer<HistoricalRuntime | IndexerDatabase, unknown> =>
+    Layer.mergeAll(
+      HistoricalRuntime.layer({ network: options.network, api: options.api }),
+      IndexerDatabase.layer(options.database),
+      loggerLayer({ level: options.logLevel }),
+    );
 }
 
 function runHistorical(
   filters: Filter[],
   config: ResolvedHistoricalRuntimeConfig,
-): Effect.Effect<void, HistoricalRuntimeError, StacksClient | IndexerDatabase> {
+): Effect.Effect<RunResult, HistoricalRuntimeError, StacksClient | IndexerDatabase> {
   const { chainId } = config;
 
   const effect = Effect.gen(function* run() {
     if (filters.length === 0) {
-      return;
+      return { contracts: [], eventsProcessed: 0 };
     }
 
     const resolvedFilters = yield* validateAndResolveFilters(filters);
@@ -660,6 +708,12 @@ function runHistorical(
     const client = yield* StacksClient;
 
     const states = yield* initializeContractStates(resolvedFilters, config);
+
+    const completedAtStart = new Set(
+      states.filter((state) => state.done).map((state) => state.contractId),
+    );
+
+    const eventsByContract = new Map<string, number>();
 
     // Coordination queue between Syncer fiber and Indexer fiber
     // Queue transmits safe block heights to process (null signals completion)
@@ -783,7 +837,7 @@ function runHistorical(
           break;
         }
 
-        yield* processEventsUpTo(nextHeight, filterMap, config);
+        yield* processEventsUpTo(nextHeight, filterMap, config, eventsByContract);
       }
     });
 
@@ -793,6 +847,24 @@ function runHistorical(
     );
 
     yield* Effect.logInfo("Historical indexing complete");
+
+    let eventsProcessed = 0;
+
+    const contracts: ContractRunResult[] = states.map((state) => {
+      const contractEvents = eventsByContract.get(state.contractId) ?? 0;
+      eventsProcessed += contractEvents;
+
+      return {
+        contractId: state.contractId,
+        status: completedAtStart.has(state.contractId) ? "up-to-date" : "completed",
+        startBlock: state.startBlock,
+        endBlock: state.endBlock,
+        lastBlockHeight: state.syncedBlockHeight,
+        eventsProcessed: contractEvents,
+      };
+    });
+
+    return { contracts, eventsProcessed };
   }).pipe(
     Effect.annotateLogs({ service: "historicalRuntime" }),
     Effect.withLogSpan("historicalIndexing"),

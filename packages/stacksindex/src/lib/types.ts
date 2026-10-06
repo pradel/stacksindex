@@ -3,9 +3,9 @@
 import type { ClarityAbi } from "clarity-abitype";
 import type { Effect, Schema } from "effect";
 
+import type { ClarityJsonValue } from "../codec/index.ts";
 import type { IndexerDb } from "../database/index.ts";
 import type {
-  CallReadResponse,
   ContractFunctionArgs,
   ContractFunctionName,
   SmartContractLogEvent,
@@ -39,7 +39,7 @@ export interface IndexingClient {
 
   callReadOnly(
     options: UntypedCallReadOnlyFunctionParameters,
-  ): Effect.Effect<CallReadResponse, StacksApiError>;
+  ): Effect.Effect<ClarityJsonValue, StacksApiError>;
 }
 
 // oxlint-disable-next-line typescript/no-explicit-any

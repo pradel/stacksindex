@@ -10,8 +10,6 @@ import { sql } from "drizzle-orm";
 import { Effect, Exit, Match, Predicate, References, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { createDatabase } from "../compat/promise.ts";
-import { toThenable } from "../compat/thenable.ts";
 import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import {
   FilterValidationError,
@@ -19,6 +17,8 @@ import {
   SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
+import { createHistoricalRuntime } from "../promise/index.ts";
+import { toThenable } from "../promise/thenable.ts";
 import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
@@ -39,7 +39,8 @@ const makeRuntime = (input: { db: IndexerDb } & HistoricalRuntimeOptions) => {
       toThenable(
         Effect.gen(function* () {
           const runtime = yield* HistoricalRuntime;
-          yield* runtime.run(filters);
+
+          return yield* runtime.run(filters);
         }).pipe(
           Effect.provide(layer),
           Effect.provideService(IndexerDatabase, input.db),
@@ -453,7 +454,7 @@ describe("historical runtime", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
 
     // Verify blocks stored
     const blocks = await testDb.db.select().from(blocksTable);
@@ -795,7 +796,7 @@ describe("historical runtime", () => {
       { contractId: contractB, handler: noopHandler },
     ]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
 
     // Verify fair scheduling by checking the order of getContractLogs calls
     const logsCalls = mockRequest.mock.calls.filter((call: any) =>
@@ -943,7 +944,7 @@ describe("historical runtime", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
 
     // Should not have called getPrincipalTransactions (first cursor discovery)
     const addressTxCalls = mockRequest.mock.calls.filter((call: any) =>
@@ -1034,7 +1035,7 @@ describe("historical runtime", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
 
     // Verify no getTransaction or getBlock calls were made
     const txCalls = mockRequest.mock.calls.filter((call: any) =>
@@ -1201,7 +1202,7 @@ describe("historical runtime", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
 
     // Nothing should be stored
     const blocks = await testDb.db.select().from(blocksTable);
@@ -1393,7 +1394,7 @@ describe("historical runtime", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
 
     const storedEvents = await testDb.db.select().from(eventsTable);
     expect(storedEvents).toHaveLength(1);
@@ -1730,7 +1731,7 @@ describe("historical runtime with handlers", () => {
       { contractId: contractB, handler: handlerB },
     ]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
 
     // Both handlers should be called
     expect(handlerA).toHaveBeenCalledTimes(1);
@@ -1904,7 +1905,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).toHaveBeenCalledTimes(1);
 
     // Verify checkpoint was updated
@@ -1997,7 +1998,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     // Handler should NOT be called because the event is at block 100 which is already checkpointed
     expect(handler).not.toHaveBeenCalled();
   });
@@ -2224,7 +2225,7 @@ describe("historical runtime with handlers", () => {
     });
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(mockRequest).toHaveBeenCalledTimes(2);
   });
 
@@ -2430,22 +2431,20 @@ describe("historical runtime with handlers", () => {
         handler: (_event, { client }) =>
           Effect.gen(function* () {
             handlerCalled = true;
-            const [contractAddress, contractName] = contractId.split(".");
 
             const readResult = yield* client.callReadOnly({
-              contractAddress,
-              contractName,
+              contractId,
               functionName: "get-total-supply",
             });
 
-            if (readResult.okay) {
+            if (readResult === 1000n) {
               callReadOnlySuccess = true;
             }
           }),
       },
     ]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handlerCalled).toBe(true);
     expect(callReadOnlySuccess).toBe(true);
     expect(callReadOnlyUrl).toBe(
@@ -2454,7 +2453,7 @@ describe("historical runtime with handlers", () => {
     expect(callReadOnlyApiKey).toBe(customApiKey);
   });
 
-  test("initializes runtime with database created from createDatabase and cleans up on close", async () => {
+  test("creates a promise runtime, runs sync and cleans up on close", async () => {
     const contractId = "SP123.token";
 
     mockRequest.mockImplementation((url: string) => {
@@ -2484,16 +2483,13 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const indexerDb = await createDatabase({ kind: "pglite" });
+    const runtime = await createHistoricalRuntime({ database: { kind: "pglite" } });
 
-    const runtime = makeRuntime({
-      db: indexerDb.db,
-    });
+    const result = await runtime.run({ contractId, handler: () => undefined });
+    expect(result.contracts).toHaveLength(1);
+    expect(result.contracts[0]?.contractId).toBe(contractId);
 
-    const result = await runtime.run([{ contractId, handler: noopHandler }]);
-    expect(result).toBeUndefined();
-
-    await indexerDb.close();
+    await runtime.close();
   });
 
   test("filters events and starts synchronization at startBlock", async () => {
@@ -2661,7 +2657,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100 }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([100]);
   });
@@ -2918,7 +2914,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).toHaveBeenCalledTimes(2);
     expect(handledHeights).toStrictEqual([100, 150]);
   });
@@ -3003,7 +2999,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, endBlock: 100 }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -3213,7 +3209,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).toHaveBeenCalledTimes(1);
 
     // Block-200 should not have been fetched
@@ -3476,7 +3472,7 @@ describe("historical runtime with handlers", () => {
       { contractId, handler, startBlock: 100, endBlock: "latest" },
     ]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([100]);
   });
@@ -3535,7 +3531,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(mockRequest).not.toHaveBeenCalled();
     expect(handler).not.toHaveBeenCalled();
   });
@@ -3714,7 +3710,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 200 }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([150]);
 
@@ -3899,7 +3895,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([150]);
 
@@ -3998,7 +3994,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([100]);
 
@@ -4234,7 +4230,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 100 }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     // Should have processed all 3 events belonging to block 100
     expect(handler).toHaveBeenCalledTimes(3);
     expect(handledEvents).toStrictEqual([
@@ -4521,7 +4517,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 100 }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     // Should have processed all 3 events across the multiple pages in block 100
     expect(handler).toHaveBeenCalledTimes(3);
     expect(handledEvents).toStrictEqual([
@@ -4695,7 +4691,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).toHaveBeenCalledTimes(1);
 
     const progress = await testDb.run(
@@ -4753,7 +4749,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(requestedUrls.length).toBeGreaterThan(0);
 
     for (const requestedUrl of requestedUrls) {
@@ -4806,7 +4802,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(requestedUrls.length).toBeGreaterThan(0);
 
     for (const requestedUrl of requestedUrls) {
@@ -4964,7 +4960,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
     expect(handler).toHaveBeenCalledTimes(2);
 
     const batchCalls = mockRequest.mock.calls.filter((call: any) =>

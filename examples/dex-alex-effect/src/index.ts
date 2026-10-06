@@ -2,7 +2,7 @@ import fs from "node:fs";
 import process from "node:process";
 
 import { Cause, Effect, Exit, Fiber } from "effect";
-import { HistoricalRuntime, IndexerDatabase, loggerLayer, makeDatabase } from "stacksindex";
+import { HistoricalRuntime, loggerLayer, makeDatabase } from "stacksindex/effect";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 
@@ -32,9 +32,14 @@ const program = Effect.gen(function* () {
 
 const fiber = Effect.runFork(
   Effect.scoped(program).pipe(
-    Effect.provide(HistoricalRuntime.layer({ network: "mainnet", api: { apiKey } })),
-    Effect.provide(IndexerDatabase.layer({ kind: "pglite", directory: "./data/indexer.db" })),
-    Effect.provide(loggerLayer({ level: "Info" })),
+    Effect.provide(
+      HistoricalRuntime.layerWithDatabase({
+        database: { kind: "pglite", directory: "./data/indexer.db" },
+        network: "mainnet",
+        api: { apiKey },
+        logLevel: "Info",
+      }),
+    ),
   ),
 );
 

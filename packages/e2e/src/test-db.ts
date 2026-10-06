@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { createDatabase, type IndexerDb } from "stacksindex";
+import { createHistoricalRuntime, type IndexerDb } from "stacksindex";
 
 export interface TestDatabase {
   db: IndexerDb;
@@ -8,21 +8,21 @@ export interface TestDatabase {
 }
 
 export async function createTestDatabase(): Promise<TestDatabase> {
-  const dbResult = await createDatabase({ kind: "pglite" });
+  const runtime = await createHistoricalRuntime({ database: { kind: "pglite" } });
 
-  await dbResult.migrate();
+  await runtime.migrate();
 
   return {
-    db: dbResult.db,
+    db: runtime.db,
 
     async cleanup() {
-      await dbResult.db.execute(
+      await runtime.db.execute(
         sql`truncate table "transactions", "blocks", "sync_progress", "events", "checkpoints" cascade`,
       );
     },
 
     async close() {
-      await dbResult.close();
+      await runtime.close();
     },
   };
 }

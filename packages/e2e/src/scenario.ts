@@ -1,6 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { Effect } from "effect";
-import { HistoricalRuntime, IndexerDatabase, loggerLayer, type Filter } from "stacksindex";
+import { HistoricalRuntime, IndexerDatabase, loggerLayer, type Filter } from "stacksindex/effect";
 import { expect } from "vite-plus/test";
 
 import { createTestDatabase, type TestDatabase } from "./test-db.ts";

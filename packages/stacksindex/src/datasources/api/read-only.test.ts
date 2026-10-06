@@ -117,8 +117,7 @@ describe("readOnly", () => {
     const result = await Effect.runPromise(
       readOnly(mockCallRead, {
         abi: sampleTokenAbi,
-        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-        contractName: "test-token",
+        contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
         functionName: "get-name",
       }),
     );
@@ -147,8 +146,7 @@ describe("readOnly", () => {
     const result = await Effect.runPromise(
       readOnly(mockCallRead, {
         abi: sampleTokenAbi,
-        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-        contractName: "test-token",
+        contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
         functionName: "get-decimals",
         senderAddress: "SP12345SENDER",
         tip: 100500,
@@ -179,8 +177,7 @@ describe("readOnly", () => {
     const result = await Effect.runPromise(
       readOnly(mockCallRead, {
         abi: sampleTokenAbi,
-        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-        contractName: "test-token",
+        contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
         functionName: "get-balance",
         functionArgs: ["SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
       }),
@@ -207,8 +204,7 @@ describe("readOnly", () => {
     const result = await Effect.runPromise(
       readOnly(mockCallRead, {
         abi: sampleTokenAbi,
-        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-        contractName: "test-token",
+        contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
         functionName: "get-pool-details",
         functionArgs: [
           1n,
@@ -231,8 +227,7 @@ describe("readOnly", () => {
 
     const invalidParams: TypedCallReadOnlyFunctionParameters = {
       abi: sampleTokenAbi,
-      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-      contractName: "test-token",
+      contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
       functionName: "transfer",
       functionArgs: [100n, "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9"],
     };
@@ -251,8 +246,7 @@ describe("readOnly", () => {
 
     const invalidParams: TypedCallReadOnlyFunctionParameters = {
       abi: sampleTokenAbi,
-      contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-      contractName: "test-token",
+      contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
       functionName: "get-balance",
       functionArgs: [],
     };
@@ -277,8 +271,7 @@ describe("readOnly", () => {
     const exit = await Effect.runPromiseExit(
       readOnly(mockCallRead, {
         abi: sampleTokenAbi,
-        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-        contractName: "test-token",
+        contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
         functionName: "get-name",
       }),
     );
@@ -303,8 +296,7 @@ describe("readOnly", () => {
     const exit = await Effect.runPromiseExit(
       readOnly(mockCallRead, {
         abi: sampleTokenAbi,
-        contractAddress: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
-        contractName: "test-token",
+        contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
         functionName: "get-name",
       }),
     );

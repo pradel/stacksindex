@@ -298,15 +298,20 @@ HandlerContext {
 }
 ```
 
-The core handler contract is Effect-only. The promise adapter (`createHistoricalRuntimePromise`) bridges promise handlers and exposes the same context with `client.callReadOnly` returning a `PromiseLike`, plus a `logger` bound to the configured Effect logger.
+The core handler contract is Effect-only. The promise entrypoint (`stacksindex`) is an adapter that exposes the same context with `client.callReadOnly` returning a `Promise`, plus a `logger` bound to the configured Effect logger. The Effect entrypoint (`stacksindex/effect`) exposes the raw services, layers, and clients.
+
+### Entrypoints
+
+- `stacksindex` — promise-native facade: `createHistoricalRuntime({ database, network, api, logLevel })` owns the database and runtime lifecycle and returns `{ db, migrate, run, close, [Symbol.asyncDispose] }`. `run` returns a `RunResult` summary.
+- `stacksindex/effect` — Effect-native surface: `HistoricalRuntime` (+ `layer` and `layerWithDatabase`), `IndexerDatabase`, `Indexing`, `StacksClient`, `readOnly`, `makeDatabase`, `migrate`, and `loggerLayer`.
 
 ### Services
 
 The runtime is composed from Effect services and layers:
 
 - `IndexerDatabase` — the Drizzle database; `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service.
-- `HistoricalRuntime` — `HistoricalRuntime.layer({ network, api })` builds the Stacks API client and `run(filters)` requires `IndexerDatabase`.
-- `Indexing` — `Indexing.layer({ handlers })` executes user handlers inside `IndexerDatabase.transaction`.
+- `HistoricalRuntime` — `HistoricalRuntime.layer({ network, api })` builds the Stacks API client and `run(filters)` requires `IndexerDatabase`. `HistoricalRuntime.layerWithDatabase({ database, network, api, logLevel })` provides the runtime, database, and logger in one layer.
+- `Indexing` — `Indexing.layer({ handlers })` executes user handlers inside `IndexerDatabase.transaction` (internal).
 - `loggerLayer({ level })` — installs Effect's pretty console logger and minimum log level.
 
 ### Checkpoint

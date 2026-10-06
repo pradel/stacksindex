@@ -1,6 +1,11 @@
 import { eq } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
-import { decodeHex, type EventHandler, type IndexerDb, type IndexingClient } from "stacksindex";
+import {
+  decodeHex,
+  type EventHandler,
+  type IndexerDb,
+  type IndexingClient,
+} from "stacksindex/effect";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
 import { poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
@@ -87,23 +92,19 @@ export const insertTokenIfNotExists = ({
       return existingCheck[0];
     }
 
-    const [contractAddress, contractName] = tokenAddress.split(".");
-
-    if (!contractAddress || !contractName) {
+    if (!tokenAddress.includes(".")) {
       return yield* Effect.fail(new Error(`Invalid tokenAddress: ${tokenAddress}`));
     }
 
     const decimalsRes = yield* client.callReadOnly({
       abi: sip010Abi,
-      contractAddress,
-      contractName,
+      contractId: tokenAddress,
       functionName: "get-decimals",
     });
 
     const symbolRes = yield* client.callReadOnly({
       abi: sip010Abi,
-      contractAddress,
-      contractName,
+      contractId: tokenAddress,
       functionName: "get-symbol",
     });
 
@@ -150,16 +151,13 @@ export const syncPoolTokens = ({
   poolToken,
 }: SyncPoolTokensParams) =>
   Effect.gen(function* () {
-    const [contractAddress, contractName] = poolContract.split(".");
-
-    if (!contractAddress || !contractName) {
+    if (!poolContract.includes(".")) {
       return yield* Effect.fail(new Error(`Invalid poolContract: ${poolContract}`));
     }
 
     const poolId = yield* client.callReadOnly({
       abi: fixedWeightPoolAbi,
-      contractAddress,
-      contractName,
+      contractId: poolContract,
       functionName: "get-pool-count",
     });
 
@@ -171,8 +169,7 @@ export const syncPoolTokens = ({
 
     const contractsResult = yield* client.callReadOnly({
       abi: fixedWeightPoolAbi,
-      contractAddress,
-      contractName,
+      contractId: poolContract,
       functionName: "get-pool-contracts",
       functionArgs: [poolId],
     });
