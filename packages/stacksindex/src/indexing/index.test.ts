@@ -5,7 +5,7 @@ import type { ClarityAbi } from "clarity-abitype";
 import { Effect, References } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import type { IndexerDb } from "../database/index.ts";
+import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import type { StacksClientService } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
@@ -30,10 +30,9 @@ const makeStacksClient = (overrides: Partial<StacksClientService> = {}): StacksC
   ...overrides,
 });
 
-// SAFETY: The test double implements only `transaction`, the sole IndexerDb member createIndexing reads.
-const mockDb = {
-  transaction: <T>(cb: (db: IndexerDb) => T): T => cb(mockDb),
-} as IndexerDb;
+// SAFETY: Tests in the "indexing engine" suite never call database methods, so an empty
+// Object satisfies the service type they provide as `IndexerDatabase`.
+const mockDb = {} as IndexerDb;
 
 const testAbi = {
   functions: [
@@ -73,6 +72,20 @@ const createMockEvent = (overrides: Partial<HandlerEvent> = {}): HandlerEvent =>
   ...overrides,
 });
 
+const runBatch = (
+  indexing: ReturnType<typeof createIndexing>,
+  events: HandlerEvent[],
+  db: IndexerDb,
+) =>
+  Effect.runPromise(
+    indexing
+      .executeBatch(events)
+      .pipe(
+        Effect.provideService(IndexerDatabase, db),
+        Effect.provideService(References.MinimumLogLevel, "None"),
+      ),
+  );
+
 describe("indexing engine", () => {
   test("calls matching handler with event and context containing db and client", async () => {
     const handler = vi.fn().mockReturnValue(Effect.void);
@@ -81,12 +94,10 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const indexing = createIndexing({ handlers, client: makeStacksClient(), db: mockDb });
+    const indexing = createIndexing({ handlers, client: makeStacksClient() });
 
     const event = createMockEvent();
-    await Effect.runPromise(
-      indexing.executeEvent(event).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
-    );
+    await runBatch(indexing, [event], mockDb);
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith(
@@ -138,11 +149,9 @@ describe("indexing engine", () => {
 
     const event = createMockEvent({ block_height: 54321 });
     const stacksClient = makeStacksClient({ callReadFunction });
-    const indexing = createIndexing({ handlers, client: stacksClient, db: mockDb });
+    const indexing = createIndexing({ handlers, client: stacksClient });
 
-    await Effect.runPromise(
-      indexing.executeEvent(event).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
-    );
+    await runBatch(indexing, [event], mockDb);
 
     expect(handler).toHaveBeenCalledTimes(1);
 
@@ -192,11 +201,9 @@ describe("indexing engine", () => {
 
     const event = createMockEvent({ block_height: 77777 });
     const stacksClient = makeStacksClient({ callReadFunction });
-    const indexing = createIndexing({ handlers, client: stacksClient, db: mockDb });
+    const indexing = createIndexing({ handlers, client: stacksClient });
 
-    await Effect.runPromise(
-      indexing.executeEvent(event).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
-    );
+    await runBatch(indexing, [event], mockDb);
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handlerResult).toStrictEqual({ ok: 42n });
@@ -212,11 +219,9 @@ describe("indexing engine", () => {
     const handlers: Handlers = {};
 
     const event = createMockEvent();
-    const indexing = createIndexing({ handlers, client: makeStacksClient(), db: mockDb });
+    const indexing = createIndexing({ handlers, client: makeStacksClient() });
 
-    await Effect.runPromise(
-      indexing.executeEvent(event).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
-    );
+    await runBatch(indexing, [event], mockDb);
   });
 
   test("returns err when handler throws", async () => {
@@ -228,10 +233,15 @@ describe("indexing engine", () => {
     };
 
     const event = createMockEvent();
-    const indexing = createIndexing({ handlers, client: makeStacksClient(), db: mockDb });
+    const indexing = createIndexing({ handlers, client: makeStacksClient() });
 
     const result = await Effect.runPromiseExit(
-      indexing.executeEvent(event).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
+      indexing
+        .executeBatch([event])
+        .pipe(
+          Effect.provideService(IndexerDatabase, mockDb),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
     );
 
     expect(result).toBeTaggedError(
@@ -268,6 +278,17 @@ describe("transactional event handlers", () => {
       })
       .pipe(Effect.asVoid);
 
+  const runBatchInTransaction = (
+    indexing: ReturnType<typeof createIndexing>,
+    events: HandlerEvent[],
+  ) =>
+    Effect.runPromise(
+      IndexerDatabase.transaction(() => indexing.executeBatch(events)).pipe(
+        Effect.provideService(IndexerDatabase, testDb.db),
+        Effect.provideService(References.MinimumLogLevel, "None"),
+      ),
+    );
+
   test("commits handler writes together with the event", async () => {
     const handler = vi
       .fn()
@@ -276,14 +297,9 @@ describe("transactional event handlers", () => {
     const indexing = createIndexing({
       handlers: { "SP123.token": handler },
       client: makeStacksClient(),
-      db: testDb.db,
     });
 
-    await Effect.runPromise(
-      indexing
-        .executeEvent(createMockEvent())
-        .pipe(Effect.provideService(References.MinimumLogLevel, "None")),
-    );
+    await runBatchInTransaction(indexing, [createMockEvent()]);
 
     await expect(testDb.db.select().from(blocksTable)).resolves.toHaveLength(1);
   });
@@ -300,13 +316,13 @@ describe("transactional event handlers", () => {
     const indexing = createIndexing({
       handlers: { "SP123.token": handler },
       client: makeStacksClient(),
-      db: testDb.db,
     });
 
     const result = await Effect.runPromiseExit(
-      indexing
-        .executeEvent(createMockEvent())
-        .pipe(Effect.provideService(References.MinimumLogLevel, "None")),
+      IndexerDatabase.transaction(() => indexing.executeBatch([createMockEvent()])).pipe(
+        Effect.provideService(IndexerDatabase, testDb.db),
+        Effect.provideService(References.MinimumLogLevel, "None"),
+      ),
     );
 
     expect(result).toBeTaggedError(

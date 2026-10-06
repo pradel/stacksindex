@@ -20,7 +20,6 @@ import {
 } from "../lib/errors.ts";
 import { createHistoricalRuntime } from "../promise/index.ts";
 import { toThenable } from "../promise/thenable.ts";
-import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
   blocksTable,
@@ -28,6 +27,7 @@ import {
   eventsTable,
   transactionsTable,
 } from "../sync-store/schema.ts";
+import { parseLogsCursor, parseTransactionCursor } from "../sync/cursor.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { HistoricalRuntime, type Filter, type HistoricalRuntimeOptions } from "./historical.ts";
