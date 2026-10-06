@@ -290,6 +290,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.1(@vitest/browser@5.0.1)(vitest@5.0.1)
+      effect:
+        specifier: 4.0.0
+        version: 4.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -323,9 +326,6 @@ importers:
       clarity-abitype:
         specifier: 0.7.1
         version: 0.7.1(@stacks/network@7.6.0)(@stacks/transactions@7.6.0)(typescript@7.0.2)
-      consola:
-        specifier: 3.4.2
-        version: 3.4.2
       drizzle-orm:
         specifier: 1.0.0-rc.5-5935859
         version: 1.0.0-rc.5-5935859(@effect/sql-pg@4.0.0(effect@4.0.0))(@effect/sql-pglite@4.0.0(effect@4.0.0))(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.0)(pg@8.23.0)(zod@4.6.1)
@@ -1728,10 +1728,6 @@ packages:
         optional: true
       typescript:
         optional: true
-
-  consola@3.4.2:
-    resolution: {integrity: sha512-5IKcdX0nnYavi6G7TtOhwkYzyjfJlatbjMjuLSfE2kYT5pMDOilZ4OvMhi637CcDICTmz3wARPoyhqyX1Y+XvA==}
-    engines: {node: ^14.18.0 || >=16.10.0}
 
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
@@ -3414,8 +3410,6 @@ snapshots:
       '@stacks/network': 7.6.0
       '@stacks/transactions': 7.6.0
       typescript: 7.0.2
-
-  consola@3.4.2: {}
 
   convert-source-map@2.0.0: {}
 

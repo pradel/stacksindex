@@ -4,8 +4,8 @@ import path from "node:path";
 import { Effect } from "effect";
 import { afterAll, describe, expect, test } from "vite-plus/test";
 
+import { createDatabase } from "../compat/promise.ts";
 import { blocksTable, eventsTable } from "../sync-store/schema.ts";
-import { createDatabase } from "./index.ts";
 
 describe("database", () => {
   const tempDirs: string[] = [];

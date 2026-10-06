@@ -6,8 +6,6 @@ import {
   type StacksApiError,
   type TransactionEventsResponse,
 } from "../datasources/api/index.ts";
-import { startClock } from "../lib/timer.ts";
-import type { Logger } from "../logger/index.ts";
 
 export interface LogsCursor {
   blockHeight: number;
@@ -170,19 +168,14 @@ function checkTransactionForMatchingEvent(
  * 5. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
  */
 export const getContractEventsFirstCursor = (
-  logger: Logger,
   contractId: string,
   options?: { startBlock?: number },
 ): Effect.Effect<string | null, StacksApiError, StacksClient> =>
   Effect.gen(function* getContractEventsFirstCursor() {
     const client = yield* StacksClient;
-    const stopClock = startClock();
     const ADDRESS_TX_LIMIT = 50;
 
-    logger.info({
-      service: "getContractEventsFirstCursor",
-      msg: `Looking for deployment of ${contractId}`,
-    });
+    yield* Effect.logInfo(`Looking for deployment of ${contractId}`);
 
     const contract = yield* client.getContract(contractId);
     const deploymentBlockHeight = contract.block.height;
@@ -192,12 +185,9 @@ export const getContractEventsFirstCursor = (
         ? deploymentBlockHeight
         : Math.max(deploymentBlockHeight, options.startBlock);
 
-    logger.info({
-      service: "getContractEventsFirstCursor",
-      msg: `Looking for first event of ${contractId} starting at block ${initialBlockHeight}`,
-      deploymentBlockHeight,
-      initialBlockHeight,
-    });
+    yield* Effect.logInfo(
+      `Looking for first event of ${contractId} starting at block ${initialBlockHeight}`,
+    ).pipe(Effect.annotateLogs({ deploymentBlockHeight, initialBlockHeight }));
 
     let currentCursor: string | null = buildTransactionCursor({
       blockHeight: initialBlockHeight,
@@ -206,11 +196,9 @@ export const getContractEventsFirstCursor = (
     });
 
     while (currentCursor) {
-      logger.debug({
-        service: "getContractEventsFirstCursor",
-        msg: `Scanning page for ${contractId}`,
-        cursor: currentCursor,
-      });
+      yield* Effect.logDebug(`Scanning page for ${contractId}`).pipe(
+        Effect.annotateLogs({ cursor: currentCursor }),
+      );
 
       const page: PrincipalTransactionsResponse = yield* client.getPrincipalTransactions(
         contractId,
@@ -241,13 +229,10 @@ export const getContractEventsFirstCursor = (
 
           if (cursorResult) {
             const firstCursor = buildLogsCursor(cursorResult);
-            const duration = stopClock();
-            logger.info({
-              service: "getContractEventsFirstCursor",
-              msg: `Found first cursor for ${contractId} at block ${cursorResult.blockHeight}`,
-              block: cursorResult.blockHeight,
-              duration,
-            });
+
+            yield* Effect.logInfo(
+              `Found first cursor for ${contractId} at block ${cursorResult.blockHeight}`,
+            ).pipe(Effect.annotateLogs({ block: cursorResult.blockHeight }));
 
             return firstCursor;
           }
@@ -258,12 +243,10 @@ export const getContractEventsFirstCursor = (
       currentCursor = cursor.previous;
     }
 
-    const duration = stopClock();
-    logger.info({
-      service: "getContractEventsFirstCursor",
-      msg: `No events found for ${contractId}`,
-      duration,
-    });
+    yield* Effect.logInfo(`No events found for ${contractId}`);
 
     return null;
-  });
+  }).pipe(
+    Effect.annotateLogs({ service: "getContractEventsFirstCursor" }),
+    Effect.withLogSpan("getContractEventsFirstCursor"),
+  );

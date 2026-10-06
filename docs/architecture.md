@@ -288,14 +288,26 @@ HandlerEvent {
 Context passed to handler execution:
 
 ```typescript
-HandlerContext<TSchema> {
-    db: NodePgDatabase<TSchema> | PgliteDatabase<TSchema>   // Database instance
+HandlerContext {
+    db: IndexerDb                 // Transaction-scoped database handle
     client: {
-        callReadOnly: (options) => Promise<Result<...>>
+        callReadOnly: (options) => Effect<Result<...>>
         // Supports typed calls (with abi) and untyped calls (with raw args), automatically pinned to tip: event.block_height
     }
+    decode: (schema, repr) => Effect<...>
 }
 ```
+
+The core handler contract is Effect-only. The promise adapter (`createHistoricalRuntimePromise`) bridges promise handlers and exposes the same context with `client.callReadOnly` returning a `PromiseLike`, plus a `logger` bound to the configured Effect logger.
+
+### Services
+
+The runtime is composed from Effect services and layers:
+
+- `IndexerDatabase` — the Drizzle database; `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service.
+- `HistoricalRuntime` — `HistoricalRuntime.layer({ network, api })` builds the Stacks API client and `run(filters)` requires `IndexerDatabase`.
+- `Indexing` — `Indexing.layer({ handlers })` executes user handlers inside `IndexerDatabase.transaction`.
+- `loggerLayer({ level })` — installs Effect's pretty console logger and minimum log level.
 
 ### Checkpoint
 

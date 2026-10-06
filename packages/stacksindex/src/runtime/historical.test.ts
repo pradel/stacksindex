@@ -7,17 +7,18 @@
 import { URL } from "node:url";
 
 import { sql } from "drizzle-orm";
-import { Effect, Exit, Match, Predicate, type Schema } from "effect";
+import { Effect, Exit, Match, Predicate, References, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { createDatabase } from "../database/index.ts";
+import { createDatabase } from "../compat/promise.ts";
+import { toThenable } from "../compat/thenable.ts";
+import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import {
   FilterValidationError,
   HandlerExecutionError,
   SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
-import { createLogger } from "../logger/index.ts";
 import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
@@ -28,7 +29,25 @@ import {
 } from "../sync-store/schema.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
-import { createHistoricalRuntime } from "./historical.ts";
+import { HistoricalRuntime, type Filter, type HistoricalRuntimeOptions } from "./historical.ts";
+
+const makeRuntime = (input: { db: IndexerDb } & HistoricalRuntimeOptions) => {
+  const layer = HistoricalRuntime.layer({ network: input.network, api: input.api });
+
+  return {
+    run: (filters: Filter[]) =>
+      toThenable(
+        Effect.gen(function* () {
+          const runtime = yield* HistoricalRuntime;
+          yield* runtime.run(filters);
+        }).pipe(
+          Effect.provide(layer),
+          Effect.provideService(IndexerDatabase, input.db),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
+      ),
+  };
+};
 
 interface Dictionary<TValue> {
   [key: string]: TValue;
@@ -102,11 +121,7 @@ const mockFetch = vi.fn(async (rawUrl: FetchInput, init?: any) => {
   });
 });
 
-const context = {
-  logger: createLogger({ level: 0 }),
-};
-
-const noopHandler = () => Promise.resolve();
+const noopHandler = () => Effect.void;
 
 const mockBody = <T>(data: T) => ({
   json: () => Promise.resolve(data),
@@ -435,7 +450,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
@@ -451,7 +466,7 @@ describe("historical runtime", () => {
     expect(transactions).toHaveLength(2);
 
     // Verify sync progress
-    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
 
     if (progress === null) {
       throw new Error("Expected progress to be defined");
@@ -773,7 +788,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const result = await runtime.run([
       { contractId: contractA, handler: noopHandler },
@@ -810,9 +825,13 @@ describe("historical runtime", () => {
     const contractId = "SP123.token";
 
     // Pre-seed sync progress
-    await syncStore.upsertSyncProgress(
-      { contractId, chainId: 1, cursor: "100:0:0:0", lastBlockHeight: 100 },
-      { db: testDb.db },
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+      }),
     );
 
     const txByIdResume: Dictionary<Schema.Json> = {
@@ -921,7 +940,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
@@ -942,9 +961,13 @@ describe("historical runtime", () => {
     const contractId = "SP123.token";
 
     // Pre-seed sync progress, transaction, and block
-    await syncStore.upsertSyncProgress(
-      { contractId, chainId: 1, cursor: "100:0:0:0", lastBlockHeight: 100 },
-      { db: testDb.db },
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+      }),
     );
     await testDb.db.insert(transactionsTable).values({
       chainId: 1n,
@@ -1008,7 +1031,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
@@ -1135,7 +1158,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
 
     await expectStatusError(result, {
@@ -1175,7 +1198,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
@@ -1367,7 +1390,7 @@ describe("historical runtime", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result).toBeUndefined();
@@ -1442,8 +1465,8 @@ describe("historical runtime with handlers", () => {
   test("calls handlers in global chronological order across contracts", async () => {
     const contractA = "SP123.token-a";
     const contractB = "SP456.token-b";
-    const handlerA = vi.fn().mockResolvedValue(undefined);
-    const handlerB = vi.fn().mockResolvedValue(undefined);
+    const handlerA = vi.fn().mockReturnValue(Effect.void);
+    const handlerB = vi.fn().mockReturnValue(Effect.void);
 
     const makeTxData = ({
       txId,
@@ -1698,8 +1721,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
     });
 
@@ -1725,7 +1747,7 @@ describe("historical runtime with handlers", () => {
 
   test("updates checkpoint after processing events", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn().mockResolvedValue(undefined);
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -1876,8 +1898,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
     });
 
@@ -1895,17 +1916,18 @@ describe("historical runtime with handlers", () => {
 
   test("does not re-process events below checkpoint on restart", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn().mockResolvedValue(undefined);
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     // Pre-seed checkpoint so block 100 is already processed
-    await syncStore.upsertCheckpoint(
-      { chainId: 1, blockHeight: 100, blockTime: 1000 },
-      { db: testDb.db },
-    );
+    await testDb.run(syncStore.upsertCheckpoint({ chainId: 1, blockHeight: 100, blockTime: 1000 }));
     // Pre-seed sync progress so it skips first cursor discovery
-    await syncStore.upsertSyncProgress(
-      { contractId, chainId: 1, cursor: "100:0:0:0", lastBlockHeight: 100 },
-      { db: testDb.db },
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+      }),
     );
     // Pre-seed block, transaction, and event
     await testDb.db.insert(blocksTable).values({
@@ -1969,8 +1991,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
     });
 
@@ -1983,7 +2004,7 @@ describe("historical runtime with handlers", () => {
 
   test("returns error when handler throws", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn().mockRejectedValue(new Error("Handler failed"));
+    const handler = vi.fn().mockReturnValue(Effect.fail(new Error("Handler failed")));
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -2134,8 +2155,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
     });
 
@@ -2195,8 +2215,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
       api: {
         baseUrl: customBaseUrl,
@@ -2397,8 +2416,7 @@ describe("historical runtime with handlers", () => {
       },
     );
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
       api: {
         baseUrl: customBaseUrl,
@@ -2409,20 +2427,21 @@ describe("historical runtime with handlers", () => {
     const result = await runtime.run([
       {
         contractId,
-        handler: async (_event, { client }) => {
-          handlerCalled = true;
-          const [contractAddress, contractName] = contractId.split(".");
+        handler: (_event, { client }) =>
+          Effect.gen(function* () {
+            handlerCalled = true;
+            const [contractAddress, contractName] = contractId.split(".");
 
-          const readResult = await client.callReadOnly({
-            contractAddress,
-            contractName,
-            functionName: "get-total-supply",
-          });
+            const readResult = yield* client.callReadOnly({
+              contractAddress,
+              contractName,
+              functionName: "get-total-supply",
+            });
 
-          if (readResult.okay) {
-            callReadOnlySuccess = true;
-          }
-        },
+            if (readResult.okay) {
+              callReadOnlySuccess = true;
+            }
+          }),
       },
     ]);
 
@@ -2467,8 +2486,7 @@ describe("historical runtime with handlers", () => {
 
     const indexerDb = await createDatabase({ kind: "pglite" });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: indexerDb.db,
     });
 
@@ -2485,7 +2503,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -2640,7 +2658,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100 }]);
 
     expect(result).toBeUndefined();
@@ -2655,7 +2673,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -2897,7 +2915,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
     expect(result).toBeUndefined();
@@ -2907,7 +2925,7 @@ describe("historical runtime with handlers", () => {
 
   test("skips contract synchronization when initial event exceeds endBlock", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn();
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -2982,7 +3000,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, endBlock: 100 }]);
 
     expect(result).toBeUndefined();
@@ -2991,7 +3009,7 @@ describe("historical runtime with handlers", () => {
 
   test("does not collect transactions or fetch blocks for transactions exceeding maxBlockHeight", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn().mockResolvedValue(undefined);
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -3192,7 +3210,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
     expect(result).toBeUndefined();
@@ -3208,7 +3226,7 @@ describe("historical runtime with handlers", () => {
 
   test("rejects invalid startBlock (negative or non-integer)", async () => {
     const contractId = "SP123.token";
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const negativeResult = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, startBlock: -1 }]),
@@ -3235,7 +3253,7 @@ describe("historical runtime with handlers", () => {
 
   test("rejects invalid endBlock (negative or non-integer)", async () => {
     const contractId = "SP123.token";
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const negativeResult = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, endBlock: -5 }]),
@@ -3262,7 +3280,7 @@ describe("historical runtime with handlers", () => {
 
   test("rejects when startBlock is greater than endBlock", async () => {
     const contractId = "SP123.token";
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const result = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, startBlock: 200, endBlock: 100 }]),
@@ -3283,7 +3301,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -3452,7 +3470,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const result = await runtime.run([
       { contractId, handler, startBlock: 100, endBlock: "latest" },
@@ -3486,7 +3504,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
 
     const result = await Effect.runPromiseExit(
       runtime.run([{ contractId, handler: noopHandler, endBlock: "latest" }]),
@@ -3497,25 +3515,24 @@ describe("historical runtime with handlers", () => {
 
   test("skips sync and network requests when contract is already marked complete for endBlock", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn().mockResolvedValue(undefined);
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     // Pre-populate sync progress as complete up to block 150
-    await syncStore.upsertSyncProgress(
-      {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
         contractId,
         chainId: 1,
         cursor: null,
         lastBlockHeight: 150,
         isComplete: true,
-      },
-      { db: testDb.db },
+      }),
     );
 
     mockRequest.mockImplementation((rawUrl: string) => {
       throw new Error(`Unexpected network request: ${rawUrl}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
     expect(result).toBeUndefined();
@@ -3530,19 +3547,18 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     // Contract was completed up to block 100 in previous run
-    await syncStore.upsertSyncProgress(
-      {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
         contractId,
         chainId: 1,
         cursor: null,
         lastBlockHeight: 100,
         isComplete: true,
-      },
-      { db: testDb.db },
+      }),
     );
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -3695,14 +3711,14 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 200 }]);
 
     expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([150]);
 
-    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: true,
@@ -3717,19 +3733,18 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     // Contract was synced up to block 100 in an earlier unbounded run (isComplete: false, cursor: null)
-    await syncStore.upsertSyncProgress(
-      {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
         contractId,
         chainId: 1,
         cursor: null,
         lastBlockHeight: 100,
         isComplete: false,
-      },
-      { db: testDb.db },
+      }),
     );
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -3881,14 +3896,14 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
     expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([150]);
 
-    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: false,
@@ -3903,7 +3918,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     // Pre-insert block and transaction into DB
@@ -3928,15 +3943,14 @@ describe("historical runtime with handlers", () => {
     });
 
     // Pre-seed sync progress with cursor pointing to block 100
-    await syncStore.upsertSyncProgress(
-      {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
         contractId,
         chainId: 1,
         cursor: "100:0:0:0",
         lastBlockHeight: 100,
         isComplete: false,
-      },
-      { db: testDb.db },
+      }),
     );
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -3981,7 +3995,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
     expect(result).toBeUndefined();
@@ -4001,7 +4015,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { tx_id: string; block_height: number }) => {
       handledEvents.push({ txId: event.tx_id, blockHeight: event.block_height });
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     const makeTx = (txId: string, blockHeight: number, txIndex: number) => ({
@@ -4217,7 +4231,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 100 }]);
 
     expect(result).toBeUndefined();
@@ -4237,7 +4251,7 @@ describe("historical runtime with handlers", () => {
     expect(page3Calls).toHaveLength(0);
 
     // Sync progress should be marked complete for endBlock 100
-    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: true,
@@ -4252,7 +4266,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { tx_id: string; block_height: number }) => {
       handledEvents.push({ txId: event.tx_id, blockHeight: event.block_height });
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     const makeTx = (txId: string, blockHeight: number, txIndex: number) => ({
@@ -4504,7 +4518,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 100 }]);
 
     expect(result).toBeUndefined();
@@ -4524,7 +4538,7 @@ describe("historical runtime with handlers", () => {
     expect(page5Calls).toHaveLength(0);
 
     // Sync progress should be marked complete for endBlock 100
-    const progress = await syncStore.getSyncProgress({ contractId, chainId: 1 }, { db: testDb.db });
+    const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: true,
@@ -4543,16 +4557,16 @@ describe("historical runtime with handlers", () => {
     ];
 
     invalidNetworks.forEach((network) => {
-      expect(() =>
-        createHistoricalRuntime({ logger: context.logger, db: testDb.db, network }),
-      ).toThrow(`Invalid chainId: ${network}. Expected a safe integer.`);
+      expect(() => makeRuntime({ db: testDb.db, network })).toThrow(
+        `Invalid chainId: ${network}. Expected a safe integer.`,
+      );
     });
   });
 
   test("supports custom network in context", async () => {
     const contractId = "SP123.custom-chain";
     const customChainId = 2147483648;
-    const handler = vi.fn();
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -4674,8 +4688,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
       network: customChainId,
     });
@@ -4685,24 +4698,20 @@ describe("historical runtime with handlers", () => {
     expect(result).toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(1);
 
-    const progress = await syncStore.getSyncProgress(
-      { contractId, chainId: customChainId },
-      { db: testDb.db },
+    const progress = await testDb.run(
+      syncStore.getSyncProgress({ contractId, chainId: customChainId }),
     );
 
     expect(progress).not.toBeNull();
     expect(progress?.chainId).toBe(BigInt(customChainId));
 
-    const checkpoint = await syncStore.getCheckpoint({ chainId: customChainId }, { db: testDb.db });
+    const checkpoint = await testDb.run(syncStore.getCheckpoint({ chainId: customChainId }));
     expect(checkpoint).not.toBeNull();
     expect(checkpoint?.chainId).toBe(BigInt(customChainId));
     expect(checkpoint?.blockHeight).toBe(50n);
 
     // Verify chainId: 1 has no records
-    const defaultProgress = await syncStore.getSyncProgress(
-      { contractId, chainId: 1 },
-      { db: testDb.db },
-    );
+    const defaultProgress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
 
     expect(defaultProgress).toBeNull();
   });
@@ -4737,8 +4746,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
       network: "testnet",
     });
@@ -4752,9 +4760,8 @@ describe("historical runtime with handlers", () => {
       expect(new URL(requestedUrl).origin).toBe("https://api.testnet.hiro.so");
     }
 
-    const progress = await syncStore.getSyncProgress(
-      { contractId, chainId: 2_147_483_648 },
-      { db: testDb.db },
+    const progress = await testDb.run(
+      syncStore.getSyncProgress({ contractId, chainId: 2_147_483_648 }),
     );
 
     expect(progress).not.toBeNull();
@@ -4791,8 +4798,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({
-      logger: context.logger,
+    const runtime = makeRuntime({
       db: testDb.db,
       network: "testnet",
       api: { baseUrl: "https://custom.example" },
@@ -4807,9 +4813,8 @@ describe("historical runtime with handlers", () => {
       expect(new URL(requestedUrl).origin).toBe("https://custom.example");
     }
 
-    const progress = await syncStore.getSyncProgress(
-      { contractId, chainId: 2_147_483_648 },
-      { db: testDb.db },
+    const progress = await testDb.run(
+      syncStore.getSyncProgress({ contractId, chainId: 2_147_483_648 }),
     );
 
     expect(progress).not.toBeNull();
@@ -4817,7 +4822,7 @@ describe("historical runtime with handlers", () => {
 
   test("fetches multiple transactions via batch endpoint in a single request", async () => {
     const contractId = "SP123.batch";
-    const handler = vi.fn();
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     const makeTx = (txId: string, height: number, hash: string) => ({
       tx_id: txId,
@@ -4956,7 +4961,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
     expect(result).toBeUndefined();
@@ -4984,7 +4989,7 @@ describe("historical runtime with handlers", () => {
 
   test("returns error when batch omits a transaction", async () => {
     const contractId = "SP123.batch-missing";
-    const handler = vi.fn();
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     const tx1 = {
       tx_id: "tx-1",
@@ -5084,7 +5089,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
     expect(result).toBeTaggedError(new TransactionBatchError({ missingIds: ["tx-2"] }));
@@ -5093,7 +5098,7 @@ describe("historical runtime with handlers", () => {
 
   test("returns error when batch request fails", async () => {
     const contractId = "SP123.batch-error";
-    const handler = vi.fn();
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -5202,7 +5207,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler }]));
 
     await expectStatusError(result, {
@@ -5246,7 +5251,7 @@ describe("historical runtime with handlers", () => {
     // Force the next sync-store read to fail.
     await testDb.db.execute(sql`drop table "sync_progress"`);
 
-    const runtime = createHistoricalRuntime({ logger: context.logger, db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
 
     expect(result).toBeTaggedError(new SyncStoreError({ operation: "getSyncProgress" }));

@@ -1,22 +1,39 @@
-export { createLogger } from "./logger/index.ts";
+export { loggerLayer } from "./logger/index.ts";
 
-export type { Logger } from "./logger/index.ts";
+export type { LoggerLayerOptions } from "./logger/index.ts";
+
+export { getMigrationsFolder, IndexerDatabase, makeDatabase, migrate } from "./database/index.ts";
+
+export type { DatabaseConfig, IndexerDb } from "./database/index.ts";
+
+export { HistoricalRuntime } from "./runtime/historical.ts";
 
 export {
   createDatabase,
-  getMigrationsFolder,
-  IndexerDatabase,
-  makeDatabase,
-  migrate,
-} from "./database/index.ts";
+  createHistoricalRuntime as createHistoricalRuntimePromise,
+} from "./compat/promise.ts";
 
-export type { DatabaseConfig, DatabaseResult, IndexerDb } from "./database/index.ts";
+export type {
+  DatabaseResult,
+  PromiseEventHandler,
+  PromiseFilter,
+  PromiseHandlerContext,
+  PromiseHistoricalRuntime,
+  PromiseHistoricalRuntimeOptions,
+  PromiseIndexingClient,
+  PromiseLogger,
+} from "./compat/promise.ts";
 
-export { createHistoricalRuntime } from "./runtime/historical.ts";
+export type {
+  Filter,
+  HistoricalRuntimeError,
+  HistoricalRuntimeOptions,
+  HistoricalRuntimeService,
+} from "./runtime/historical.ts";
 
-export { createHistoricalRuntime as createHistoricalRuntimePromise } from "./compat/promise.ts";
+export { Indexing } from "./indexing/index.ts";
 
-export type { Filter, HistoricalRuntimeContext } from "./runtime/historical.ts";
+export type { IndexingService } from "./indexing/index.ts";
 
 export {
   MAINNET_API_BASE_URL,

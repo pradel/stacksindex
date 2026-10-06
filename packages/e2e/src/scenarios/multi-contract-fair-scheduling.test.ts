@@ -1,4 +1,3 @@
-import { createLogger } from "stacksindex";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { assertBenchmarkSnapshot, registerScenarioBenchmark } from "../benchmark.ts";
@@ -24,7 +23,6 @@ const recorder = createScenarioRecorder("multi-contract-fair-scheduling.json");
 
 describe("e2E: Multi-contract fair scheduling scenario", () => {
   const database = createScenarioDatabase();
-  const logger = createLogger({ level: 0 });
 
   beforeAll(async () => {
     vi.stubGlobal(
@@ -52,7 +50,6 @@ describe("e2E: Multi-contract fair scheduling scenario", () => {
   test("delivers globally ordered events across contracts sharing overlapping block ranges", async () => {
     const { tracer, events } = await runScenario({
       db: database.db,
-      logger,
       contracts: [
         { contractId: SATOSHIBLES_CONTRACT, startBlock: START_BLOCK, endBlock: END_BLOCK },
         { contractId: BRIDGE_CONTRACT, startBlock: START_BLOCK, endBlock: END_BLOCK },

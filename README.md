@@ -33,15 +33,9 @@ _(or via `npm install` / `yarn add` / `bun add`)_
 ## Quickstart
 
 ```ts
-import {
-  createDatabase,
-  createHistoricalRuntimePromise,
-  createLogger,
-  decodeHex,
-} from "stacksindex";
+import { createDatabase, createHistoricalRuntimePromise, decodeHex } from "stacksindex";
 
-// 1. Setup logger and internal indexer database (stores sync checkpoints and cache)
-const logger = createLogger({ level: 2 });
+// 1. Setup internal indexer database (stores sync checkpoints and cache)
 const indexerDatabase = await createDatabase({
   kind: "pglite",
   directory: "./indexer.db",
@@ -49,7 +43,6 @@ const indexerDatabase = await createDatabase({
 
 // 2. Initialize runtime
 const runtime = createHistoricalRuntimePromise({
-  logger,
   db: indexerDatabase.db,
   network: "mainnet",
   api: {
@@ -64,15 +57,13 @@ try {
       contractId: "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
       startBlock: 47784, // optional: start indexing from this block height
       endBlock: "latest", // optional: stop at a specific height or 'latest'
-      async handler(event, context) {
+      async handler(event, { logger }) {
         // Decode Clarity event data
         const data = decodeHex(event.contract_log.value.hex);
 
-        logger.info({
-          msg: "Received event",
+        logger.info("Received event", {
           block: event.block_height,
           txId: event.tx_id,
-          data,
         });
 
         // Write to your application database tables:
@@ -81,9 +72,46 @@ try {
     },
   ]);
 } catch (error) {
-  logger.error({ msg: "Historical sync failed", error });
+  console.error("Historical sync failed", error);
 }
 ```
+
+---
+
+## Effect API
+
+The same indexer can be composed entirely with Effect services and layers:
+
+```ts
+import { Effect } from "effect";
+import { HistoricalRuntime, IndexerDatabase, loggerLayer } from "stacksindex";
+
+const apiKey = process.env.HIRO_API_KEY;
+
+const program = Effect.gen(function* () {
+  const runtime = yield* HistoricalRuntime;
+
+  yield* runtime.run([
+    {
+      contractId: "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+      handler: (event) =>
+        Effect.logInfo("Received event").pipe(
+          Effect.annotateLogs({ block: event.block_height, txId: event.tx_id }),
+        ),
+    },
+  ]);
+});
+
+await Effect.runPromise(
+  program.pipe(
+    Effect.provide(HistoricalRuntime.layer({ network: "mainnet", api: { apiKey } })),
+    Effect.provide(IndexerDatabase.layer({ kind: "pglite", directory: "./indexer.db" })),
+    Effect.provide(loggerLayer({ level: "Info" })),
+  ),
+);
+```
+
+`HistoricalRuntime.layer` builds the Stacks API client from the network configuration, `run` requires the `IndexerDatabase` service, and `loggerLayer` installs Effect's pretty console logger with the given minimum level.
 
 ---
 
@@ -112,24 +140,24 @@ const handler = async (event, { client }) => {
 
 ## Configuration Reference
 
-### `createHistoricalRuntime(context)`
+### `createHistoricalRuntimePromise(context)`
 
 | Option        | Type                               | Default           | Description                                                                                                                                      |
 | ------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `db`          | `IndexerDb`                        | _Required_        | Drizzle database instance for sync storage and checkpoints.                                                                                      |
-| `logger`      | `Logger`                           | _Required_        | Logger instance from `createLogger({ level })`.                                                                                                  |
 | `network`     | `"mainnet" \| "testnet" \| number` | `"mainnet"`       | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                                 |
 | `api.baseUrl` | `string`                           | _Network default_ | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the network default. |
 | `api.apiKey`  | `string`                           | `undefined`       | Optional Hiro API key.                                                                                                                           |
+| `level`       | `LogLevel`                         | `"Info"`          | Minimum log level for the pretty console logger.                                                                                                 |
 
 ### Filter
 
-| Property     | Type                 | Default                 | Description                                                      |
-| ------------ | -------------------- | ----------------------- | ---------------------------------------------------------------- |
-| `contractId` | `string`             | _Required_              | Fully qualified contract identifier (e.g. `SP...contract-name`). |
-| `handler`    | `EventHandler`       | _Required_              | Async function called for every matching smart contract event.   |
-| `startBlock` | `number`             | `deployment block`      | Start indexing from this block height.                           |
-| `endBlock`   | `number \| "latest"` | _All available history_ | Block height to stop at, or `"latest"`.                          |
+| Property     | Type                  | Default                 | Description                                                      |
+| ------------ | --------------------- | ----------------------- | ---------------------------------------------------------------- |
+| `contractId` | `string`              | _Required_              | Fully qualified contract identifier (e.g. `SP...contract-name`). |
+| `handler`    | `PromiseEventHandler` | _Required_              | Async function called for every matching smart contract event.   |
+| `startBlock` | `number`              | `deployment block`      | Start indexing from this block height.                           |
+| `endBlock`   | `number \| "latest"`  | _All available history_ | Block height to stop at, or `"latest"`.                          |
 
 ---
 

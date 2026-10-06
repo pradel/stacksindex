@@ -4,13 +4,12 @@
 // oxlint-disable typescript/no-explicit-any
 // oxlint-disable jest/no-conditional-in-test
 // oxlint-disable vitest/no-conditional-in-test
-import { Effect, Layer, Match } from "effect";
+import { Effect, Layer, Match, References } from "effect";
 import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { RateLimiter } from "effect/persistence";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { StacksClient } from "../datasources/api/index.ts";
-import { createLogger } from "../logger/index.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import {
   buildLogsCursor,
@@ -76,10 +75,6 @@ const mockHandler = vi.fn(async (request: HttpClientRequest.HttpClientRequest) =
   });
 });
 
-const context = {
-  logger: createLogger({ level: 0 }),
-};
-
 const httpClient = HttpClient.make((request) =>
   Effect.tryPromise({
     try: async () => HttpClientResponse.fromWeb(request, await mockHandler(request)),
@@ -103,10 +98,20 @@ const stacksClientLayer = Layer.effect(
 );
 
 const runRequest = <A, E>(effect: Effect.Effect<A, E, StacksClient>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(stacksClientLayer)));
+  Effect.runPromise(
+    effect.pipe(
+      Effect.provide(stacksClientLayer),
+      Effect.provideService(References.MinimumLogLevel, "None"),
+    ),
+  );
 
 const runRequestExit = <A, E>(effect: Effect.Effect<A, E, StacksClient>) =>
-  Effect.runPromiseExit(effect.pipe(Effect.provide(stacksClientLayer)));
+  Effect.runPromiseExit(
+    effect.pipe(
+      Effect.provide(stacksClientLayer),
+      Effect.provideService(References.MinimumLogLevel, "None"),
+    ),
+  );
 
 const contractId = "SP123.token";
 
@@ -131,7 +136,7 @@ describe("contract events first cursor", () => {
       headers: { "content-type": "application/json" },
     });
 
-    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequestExit(getContractEventsFirstCursor(contractId));
 
     await expectStatusError(result, {
       status: 404,
@@ -168,7 +173,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequest(getContractEventsFirstCursor(contractId));
 
     expect(result).toBeNull();
   });
@@ -242,7 +247,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequest(getContractEventsFirstCursor(contractId));
 
     expect(result).toBe("100:0:5:2");
   });
@@ -350,7 +355,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequest(getContractEventsFirstCursor(contractId));
 
     expect(result).toBe("200:0:1:1");
   });
@@ -414,7 +419,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequest(getContractEventsFirstCursor(contractId));
 
     expect(result).toBeNull();
   });
@@ -515,7 +520,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequest(getContractEventsFirstCursor(contractId));
 
     expect(result).toBe("2:0:0:0");
   });
@@ -545,7 +550,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequestExit(getContractEventsFirstCursor(contractId));
 
     await expectStatusError(result, {
       status: 400,
@@ -591,7 +596,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequestExit(getContractEventsFirstCursor(contractId));
 
     await expectStatusError(result, {
       status: 400,
@@ -670,7 +675,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequestExit(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequestExit(getContractEventsFirstCursor(contractId));
 
     await expectStatusError(result, {
       status: 400,
@@ -754,7 +759,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequest(getContractEventsFirstCursor(contractId));
 
     expect(result).toBe("132191:2147483647:6:0");
   });
@@ -834,7 +839,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(context.logger, contractId));
+    const result = await runRequest(getContractEventsFirstCursor(contractId));
 
     expect(result).toBe("147279:14:161:3");
   });
@@ -907,9 +912,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(
-      getContractEventsFirstCursor(context.logger, contractId, { startBlock: 150 }),
-    );
+    const result = await runRequest(getContractEventsFirstCursor(contractId, { startBlock: 150 }));
 
     expect(result).toBe("150:0:0:0");
   });
@@ -982,9 +985,7 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(
-      getContractEventsFirstCursor(context.logger, contractId, { startBlock: 50 }),
-    );
+    const result = await runRequest(getContractEventsFirstCursor(contractId, { startBlock: 50 }));
 
     expect(result).toBe("100:0:0:0");
   });

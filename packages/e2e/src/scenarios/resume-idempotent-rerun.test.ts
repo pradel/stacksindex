@@ -1,4 +1,3 @@
-import { createLogger } from "stacksindex";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { assertBenchmarkSnapshot, registerScenarioBenchmark } from "../benchmark.ts";
@@ -24,7 +23,6 @@ const recorder = createScenarioRecorder("multi-block-range.json");
 
 describe("e2E: Resume with idempotent re-run scenario", () => {
   const database = createScenarioDatabase();
-  const logger = createLogger({ level: 0 });
 
   beforeAll(async () => {
     vi.stubGlobal(
@@ -55,7 +53,7 @@ describe("e2E: Resume with idempotent re-run scenario", () => {
     ];
 
     // First run backfills 7 events across blocks 47784 and 47786.
-    const first = await runScenario({ db: database.db, logger, contracts });
+    const first = await runScenario({ db: database.db, contracts });
     expect(first.events).toHaveLength(7);
     first.tracer.assertChronologicalOrder();
 
@@ -69,7 +67,7 @@ describe("e2E: Resume with idempotent re-run scenario", () => {
     // Second run on the same database resumes from saved progress: the
     // Contract is already complete, the checkpoint already covers endBlock,
     // So no handler is invoked.
-    const second = await runScenario({ db: database.db, logger, contracts });
+    const second = await runScenario({ db: database.db, contracts });
     expect(second.events).toHaveLength(0);
 
     // Sync state is untouched by the no-op run.

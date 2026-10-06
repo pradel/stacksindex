@@ -1,12 +1,6 @@
 import { eq } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
-import {
-  decodeHex,
-  type EventHandler,
-  type IndexerDb,
-  type IndexingClient,
-  type Logger,
-} from "stacksindex";
+import { decodeHex, type EventHandler, type IndexerDb, type IndexingClient } from "stacksindex";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
 import { poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
@@ -72,7 +66,6 @@ export type PoolLogData = typeof PoolLog.Type;
 export interface InsertTokenIfNotExistsParams {
   client: IndexingClient;
   db: AppDatabase;
-  logger: Logger;
   chainId: bigint;
   tokenAddress: string;
 }
@@ -80,7 +73,6 @@ export interface InsertTokenIfNotExistsParams {
 export const insertTokenIfNotExists = ({
   client,
   db,
-  logger,
   chainId,
   tokenAddress,
 }: InsertTokenIfNotExistsParams) =>
@@ -135,7 +127,9 @@ export const insertTokenIfNotExists = ({
 
     yield* db.insert(tokenTable).values(token).onConflictDoNothing();
 
-    logger.info({ msg: "Discovered token", token: tokenAddress, symbol, decimals });
+    yield* Effect.logInfo("Discovered token").pipe(
+      Effect.annotateLogs({ token: tokenAddress, symbol, decimals }),
+    );
 
     return token;
   });
@@ -143,7 +137,6 @@ export const insertTokenIfNotExists = ({
 export interface SyncPoolTokensParams {
   client: IndexingClient;
   db: AppDatabase;
-  logger: Logger;
   chainId: bigint;
   poolContract: string;
   poolToken: string;
@@ -152,7 +145,6 @@ export interface SyncPoolTokensParams {
 export const syncPoolTokens = ({
   client,
   db,
-  logger,
   chainId,
   poolContract,
   poolToken,
@@ -199,7 +191,6 @@ export const syncPoolTokens = ({
     yield* insertTokenIfNotExists({
       client,
       db,
-      logger,
       chainId,
       tokenAddress: tokenX,
     });
@@ -207,7 +198,6 @@ export const syncPoolTokens = ({
     yield* insertTokenIfNotExists({
       client,
       db,
-      logger,
       chainId,
       tokenAddress: tokenY,
     });
@@ -260,14 +250,12 @@ const upsertPoolBalances = ({
 
 export interface CreatePoolHandlerOptions {
   db: AppDatabase;
-  logger: Logger;
   chainId?: bigint;
   poolContract?: string;
 }
 
 export function createPoolHandler({
   db,
-  logger,
   chainId = CHAIN_ID,
   poolContract = POOL_CONTRACT,
 }: CreatePoolHandlerOptions): EventHandler {
@@ -316,13 +304,14 @@ export function createPoolHandler({
         yield* syncPoolTokens({
           client,
           db,
-          logger,
           chainId,
           poolContract,
           poolToken: data["pool-token"],
         });
 
-        logger.debug({ msg: "Pool created", pool: data["pool-token"] });
+        yield* Effect.logDebug("Pool created").pipe(
+          Effect.annotateLogs({ pool: data["pool-token"] }),
+        );
       } else if (log.action === "swap-x-for-y" || log.action === "swap-y-for-x") {
         const { data } = log;
 
@@ -361,14 +350,15 @@ export function createPoolHandler({
           })
           .onConflictDoNothing();
 
-        logger.debug({
-          msg: "Swap created",
-          pool: data["pool-token"],
-          action: log.action,
-          amountIn,
-          amountOut,
-          txId: event.tx_id,
-        });
+        yield* Effect.logDebug("Swap created").pipe(
+          Effect.annotateLogs({
+            pool: data["pool-token"],
+            action: log.action,
+            amountIn,
+            amountOut,
+            txId: event.tx_id,
+          }),
+        );
 
         yield* upsertPoolBalances({
           db,
@@ -385,7 +375,6 @@ export function createPoolHandler({
           yield* syncPoolTokens({
             client,
             db,
-            logger,
             chainId,
             poolContract,
             poolToken: data["pool-token"],

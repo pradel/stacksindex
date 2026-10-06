@@ -1,124 +1,85 @@
-import { Cause, Effect } from "effect";
+import { Cause, Context, Effect, Layer } from "effect";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
-import { toThenable, type IndexerDb } from "../database/index.ts";
+import { IndexerDatabase } from "../database/index.ts";
 import { readOnly, StacksClient } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
-import { startClock } from "../lib/timer.ts";
 import type { HandlerContext, HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
-import type { Logger } from "../logger/index.ts";
 
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    "then" in value &&
-    typeof value.then === "function"
-  );
+export interface IndexingService {
+  readonly executeEvent: (
+    event: HandlerEvent,
+  ) => Effect.Effect<void, HandlerExecutionError, StacksClient | IndexerDatabase>;
 }
 
-export interface IndexingContext {
-  logger: Logger;
-  db: IndexerDb;
-  handlers: Handlers;
-}
-
-export const createIndexing = (context: IndexingContext) => ({
-  executeEvent(event: HandlerEvent): Effect.Effect<void, HandlerExecutionError, StacksClient> {
-    const endClock = startClock();
-    const handler = context.handlers[event.contract_log.contract_id];
+export const createIndexing = (handlers: Handlers): IndexingService => ({
+  executeEvent(event: HandlerEvent) {
+    const handler = handlers[event.contract_log.contract_id];
 
     if (handler === undefined) {
-      const duration = endClock();
-      context.logger.debug({
-        msg: "No handler found for event",
-        contractId: event.contract_log.contract_id,
-        eventType: event.event_type,
-        blockHeight: event.block_height,
-        txIndex: event.tx_index,
-        duration,
-      });
-
-      return Effect.void;
+      return Effect.logDebug("No handler found for event").pipe(
+        Effect.annotateLogs({
+          contractId: event.contract_log.contract_id,
+          eventType: event.event_type,
+          blockHeight: event.block_height,
+          txIndex: event.tx_index,
+        }),
+      );
     }
 
-    const handlerClock = startClock();
+    return IndexerDatabase.transaction((tx) =>
+      Effect.gen(function* executeEvent() {
+        const stacksClient = yield* StacksClient;
 
-    // SAFETY: Drizzle's Effect transaction forwards the generator's success and error channels, which is the contract this assertion needs.
-    return (
-      context.db.transaction((tx) =>
-        Effect.gen(function* executeEvent() {
-          const stacksClient = yield* StacksClient;
+        // SAFETY: The runtime dispatch below mirrors both overloads: an `abi` field selects the typed read path.
+        const client: IndexingClient = {
+          // oxlint-disable-next-line typescript/no-explicit-any
+          callReadOnly: ((options: any) => {
+            if ("abi" in options) {
+              return readOnly(stacksClient.callReadFunction, {
+                ...options,
+                tip: options.tip ?? event.block_height,
+              });
+            }
 
-          // SAFETY: The runtime dispatch below mirrors both overloads: an `abi` field selects the typed read path.
-          const client: IndexingClient = {
-            // oxlint-disable-next-line typescript/no-explicit-any
-            callReadOnly: ((options: any) => {
-              if ("abi" in options) {
-                return toThenable(
-                  readOnly(stacksClient.callReadFunction, {
-                    ...options,
-                    tip: options.tip ?? event.block_height,
-                  }),
-                );
-              }
+            const contractId = `${options.contractAddress}.${options.contractName}`;
 
-              const contractId = `${options.contractAddress}.${options.contractName}`;
-
-              return toThenable(
-                stacksClient.callReadFunction(contractId, options.functionName, {
-                  args: options.args,
-                  sender: options.senderAddress,
-                  tip: options.tip ?? event.block_height,
-                }),
-              );
-            }) as IndexingClient["callReadOnly"],
-          };
-
-          // SAFETY: Schemas decoded here are pure, so the decode effect has no remaining requirements and its error channel widens to `unknown`.
-          const handlerContext: HandlerContext = {
-            db: tx,
-            client,
-            decode: (schema, hex) =>
-              decodeClarityWithSchema(schema)(hex) as Effect.Effect<
-                (typeof schema)["Type"],
-                unknown
-              >,
-          };
-
-          let result: unknown;
-
-          try {
-            result = handler(event, handlerContext);
-          } catch (err) {
-            return yield* Effect.fail(err);
-          }
-
-          if (Effect.isEffect(result)) {
-            yield* result;
-          } else if (isThenable(result)) {
-            yield* Effect.tryPromise({
-              try: () => Promise.resolve(result),
-              catch: (err) => err,
+            return stacksClient.callReadFunction(contractId, options.functionName, {
+              args: options.args,
+              sender: options.senderAddress,
+              tip: options.tip ?? event.block_height,
             });
-          }
-        }),
-      ) as Effect.Effect<void, unknown>
+          }) as IndexingClient["callReadOnly"],
+        };
+
+        // SAFETY: Schemas decoded here are pure, so the decode effect has no remaining requirements and its error channel widens to `unknown`.
+        const handlerContext: HandlerContext = {
+          db: tx,
+          client,
+          decode: (schema, hex) =>
+            decodeClarityWithSchema(schema)(hex) as Effect.Effect<(typeof schema)["Type"], unknown>,
+        };
+
+        const result = yield* Effect.try({
+          try: () => handler(event, handlerContext),
+          catch: (err) => err,
+        });
+
+        yield* result;
+      }),
     ).pipe(
       Effect.asVoid,
       Effect.tap(() =>
-        Effect.sync(() => {
-          const duration = handlerClock();
-          context.logger.debug({
-            msg: "Executed event handler",
+        Effect.logDebug("Executed event handler").pipe(
+          Effect.annotateLogs({
             contractId: event.contract_log.contract_id,
             eventType: event.event_type,
             blockHeight: event.block_height,
             txIndex: event.tx_index,
-            duration,
-          });
-        }),
+          }),
+        ),
       ),
+      Effect.withLogSpan("executeEvent"),
       Effect.catchCause((cause) => {
         if (Cause.hasInterruptsOnly(cause)) {
           // SAFETY: An interrupt-only cause contains no typed failures, so re-raising it preserves interruption semantics.
@@ -126,27 +87,33 @@ export const createIndexing = (context: IndexingContext) => ({
         }
 
         const err = Cause.squash(cause);
-        const error = err instanceof Error ? err : new Error(String(err));
-        const duration = handlerClock();
 
-        context.logger.error({
-          msg: "Error executing event handler",
-          contractId: event.contract_log.contract_id,
-          eventType: event.event_type,
-          blockHeight: event.block_height,
-          txId: event.tx_id,
-          txIndex: event.tx_index,
-          duration,
-          error,
+        return Effect.gen(function* () {
+          yield* Effect.logError(cause).pipe(
+            Effect.annotateLogs({
+              contractId: event.contract_log.contract_id,
+              eventType: event.event_type,
+              blockHeight: event.block_height,
+              txId: event.tx_id,
+              txIndex: event.tx_index,
+            }),
+          );
+
+          return yield* Effect.fail(
+            new HandlerExecutionError({
+              contractId: event.contract_log.contract_id,
+              cause: err,
+            }),
+          );
         });
-
-        return Effect.fail(
-          new HandlerExecutionError({
-            contractId: event.contract_log.contract_id,
-            cause: err,
-          }),
-        );
       }),
     );
   },
 });
+
+export class Indexing extends Context.Service<Indexing, IndexingService>()(
+  "stacksindex/indexing/Indexing",
+) {
+  static readonly layer = (options: { handlers: Handlers }): Layer.Layer<Indexing> =>
+    Layer.succeed(Indexing, createIndexing(options.handlers));
+}
