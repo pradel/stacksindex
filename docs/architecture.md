@@ -323,17 +323,35 @@ Checkpoint {
     chainId: bigint                  // Chain ID
     blockHeight: bigint              // Last fully processed block height
     blockTime: bigint
+    finalizedBlockHeight: bigint     // Highest block that is final
+    finalizedBlockTime: bigint
 }
 ```
+
+`finalizedBlockHeight` trails `blockHeight` by the configured `finality`
+(confirmations). Blocks above it are provisional and may be reorged.
 
 ## Crash Recovery
 
 On startup, the indexer:
 
 1. Reads the `checkpoints` table to find the last processed block
-2. Reads `sync_progress` to find the last cursor and status for each contract
-3. Resumes syncing from the saved cursor (or resolves the next cursor via discovery if unindexed events remain)
-4. Resumes indexing from the checkpoint block
+2. Discards any cached data above `finalizedBlockHeight` and resets the
+   `sync_progress` cursors for contracts that were ahead of it (see Reorgs)
+3. Reads `sync_progress` to find the last cursor and status for each contract
+4. Resumes syncing from the saved cursor (or resolves the next cursor via discovery if unindexed events remain)
+5. Resumes indexing from the checkpoint block
+
+### Reorgs
+
+Blocks above `checkpoints.finalizedBlockHeight` are provisional. On startup
+the runtime deletes every cached block, transaction, and event above the
+finalized height so the range is refetched from the canonical chain and
+replayed through handlers.
+
+Handler writes are not rolled back when a range is replayed, so handlers must
+be idempotent: upsert by primary key, or delete-then-insert, so re-executing an
+event produces the same final state.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
