@@ -18,6 +18,7 @@ import {
   SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
+import type { HandlerContext, HandlerEvent } from "../lib/types.ts";
 import { createHistoricalRuntime } from "../promise/index.ts";
 import { toThenable } from "../promise/thenable.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -173,6 +174,38 @@ const standardTxById: Dictionary<Schema.Json> = {
   "tx-100-3": standardTx("tx-100-3", 100, "block-100", 30),
   "tx-150-1": standardTx("tx-150-1", 150, "block-150", 50),
 };
+
+const handledEventBlockHeight = (event: HandlerEvent) =>
+  BigInt(100_000 + event.event_index + (event.block_height === 200 ? 10_000 : 0));
+
+const handledEventBlock = (event: HandlerEvent, context: HandlerContext) =>
+  context.db
+    .insert(blocksTable)
+    .values({
+      chainId: 1n,
+      height: handledEventBlockHeight(event),
+      hash: `handled-${event.block_height}-${event.event_index}`,
+      blockTime: 0n,
+      tenureHeight: 0n,
+    })
+    .pipe(Effect.asVoid);
+
+const failOnBlock200 = (event: HandlerEvent, context: HandlerContext) =>
+  event.block_height === 200
+    ? Effect.fail(new Error("Handler failed"))
+    : handledEventBlock(event, context);
+
+const storedEventRow = (txId: string, blockHeight: number, eventIndex: number) => ({
+  chainId: 1n,
+  contractId: "SP123.token",
+  txId,
+  eventIndex,
+  eventType: "smart_contract_log",
+  topic: "print",
+  valueHex: "0x01",
+  valueRepr: "(ok true)",
+  blockHeight: BigInt(blockHeight),
+});
 
 describe("historical runtime", () => {
   // oxlint-disable-next-line init-declarations
@@ -2007,6 +2040,99 @@ describe("historical runtime with handlers", () => {
     expect(result).toBeDefined();
     // Handler should NOT be called because the event is at block 100 which is already checkpointed
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  test("commits block-aligned batches and resumes from the last committed batch", async () => {
+    const contractId = "SP123.token";
+
+    // Block 100 holds 1000 events (the maximum batch size) and block 200 holds
+    // 500, so indexing splits into one batch per block.
+    await testDb.db.insert(blocksTable).values([
+      { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
+      { chainId: 1n, height: 200n, hash: "block-200", blockTime: 2000n, tenureHeight: 200n },
+    ]);
+    await testDb.db.insert(transactionsTable).values([
+      {
+        chainId: 1n,
+        txId: "tx-100",
+        blockHeight: 100n,
+        blockHash: "block-100",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+      },
+      {
+        chainId: 1n,
+        txId: "tx-200",
+        blockHeight: 200n,
+        blockHash: "block-200",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+      },
+    ]);
+    await testDb.db
+      .insert(eventsTable)
+      .values([
+        ...Array.from({ length: 1000 }, (_, eventIndex) =>
+          storedEventRow("tx-100", 100, eventIndex),
+        ),
+        ...Array.from({ length: 500 }, (_, eventIndex) =>
+          storedEventRow("tx-200", 200, eventIndex),
+        ),
+      ]);
+
+    // Mark the contract complete so the run makes no Stacks API requests.
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: null,
+        lastBlockHeight: 200,
+        isComplete: true,
+      }),
+    );
+
+    const runtime = makeRuntime({ db: testDb.db });
+    const failingHandler = vi.fn(failOnBlock200);
+
+    const failure = await Effect.runPromiseExit(
+      runtime.run([{ contractId, handler: failingHandler, endBlock: 200 }]),
+    );
+
+    expect(failure).toBeTaggedError(
+      new HandlerExecutionError({ contractId, cause: new Error("Handler failed") }),
+    );
+    // 1000 events from block 100 plus the first event of block 200.
+    expect(failingHandler).toHaveBeenCalledTimes(1001);
+
+    const handledAfterFailure = (await testDb.db.select().from(blocksTable)).filter(
+      (row) => Number(row.height) >= 100_000,
+    );
+
+    expect(handledAfterFailure).toHaveLength(1000);
+    const checkpointAfterFailure = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpointAfterFailure[0].blockHeight)).toBe(100);
+
+    const succeedingHandler = vi.fn(handledEventBlock);
+    const result = await runtime.run([{ contractId, handler: succeedingHandler, endBlock: 200 }]);
+
+    expect(result.eventsProcessed).toBe(500);
+    expect(succeedingHandler).toHaveBeenCalledTimes(500);
+
+    const handledAfterResume = (await testDb.db.select().from(blocksTable)).filter(
+      (row) => Number(row.height) >= 100_000,
+    );
+
+    expect(handledAfterResume).toHaveLength(1500);
+    const checkpointAfterResume = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpointAfterResume[0].blockHeight)).toBe(200);
   });
 
   test("returns error when handler throws", async () => {

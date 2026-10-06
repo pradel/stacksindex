@@ -21,7 +21,7 @@ import {
 } from "../lib/network.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import { loggerLayer } from "../logger/index.ts";
-import { storedEventToHandlerEvent } from "../sync-store/decode.ts";
+import { type StoredEvent, storedEventToHandlerEvent } from "../sync-store/decode.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
   type ContractSyncSummary,
@@ -29,6 +29,7 @@ import {
   type SyncFilter,
   type SyncService,
 } from "../sync/index.ts";
+import { chunkEventsByBlock } from "./batches.ts";
 import { type Filter, type ResolvedFilter, validateAndResolveFilters } from "./filters.ts";
 
 export type { Filter } from "./filters.ts";
@@ -113,11 +114,11 @@ function resolveRuntimeConfig(
 }
 
 /**
- * Indexes every stored event with height `> checkpoint` and `<= toBlockHeight`
- * in a single transaction together with the new checkpoint.
+ * Indexes one block-aligned batch of stored events together with the new
+ * checkpoint, in a single transaction.
  */
-function indexEventsUpTo(
-  toBlockHeight: number,
+function indexBatch(
+  batch: StoredEvent[],
   filterMap: Map<string, ResolvedFilter>,
   chainId: number,
   eventsByContract: Map<string, number>,
@@ -129,32 +130,9 @@ function indexEventsUpTo(
   return IndexerDatabase.transaction(() =>
     Effect.gen(function* () {
       const indexing = yield* Indexing;
-      const checkpoint = yield* syncStore.getCheckpoint({ chainId });
-      const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
-
-      if (fromBlockHeight >= toBlockHeight) {
-        return;
-      }
-
-      const rows = yield* syncStore.getEvents({
-        chainId,
-        fromBlockHeight: fromBlockHeight + 1,
-        toBlockHeight,
-      });
-
-      if (rows.length === 0) {
-        return;
-      }
-
-      const toLabel = toBlockHeight === Number.MAX_SAFE_INTEGER ? "latest" : String(toBlockHeight);
-
-      yield* Effect.logInfo(`Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`).pipe(
-        Effect.annotateLogs({ count: rows.length }),
-      );
-
       const events: HandlerEvent[] = [];
 
-      for (const row of rows) {
+      for (const row of batch) {
         const filter = filterMap.get(row.contractId);
         const rowBlockHeight = Number(row.blockHeight);
 
@@ -171,18 +149,65 @@ function indexEventsUpTo(
 
       yield* indexing.executeBatch(events);
 
-      const lastRow = rows[rows.length - 1];
+      const lastRow = batch[batch.length - 1];
       yield* syncStore.upsertCheckpoint({
         chainId,
         blockHeight: Number(lastRow.blockHeight),
         blockTime: Number(lastRow.blockTime),
       });
-
-      yield* Effect.logInfo(
-        `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
-      ).pipe(Effect.annotateLogs({ block: Number(lastRow.blockHeight) }));
     }),
   );
+}
+
+/**
+ * Indexes every stored event with height `> checkpoint` and `<= toBlockHeight`.
+ * Events are split into block-aligned batches so each transaction stays
+ * bounded and every checkpoint refers to a fully processed block.
+ */
+function indexEventsUpTo(
+  toBlockHeight: number,
+  filterMap: Map<string, ResolvedFilter>,
+  chainId: number,
+  eventsByContract: Map<string, number>,
+): Effect.Effect<
+  void,
+  HandlerExecutionError | SyncStoreError | DatabaseError,
+  Indexing | IndexerDatabase
+> {
+  return Effect.gen(function* () {
+    const checkpoint = yield* syncStore.getCheckpoint({ chainId });
+    const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
+
+    if (fromBlockHeight >= toBlockHeight) {
+      return;
+    }
+
+    const rows = yield* syncStore.getEvents({
+      chainId,
+      fromBlockHeight: fromBlockHeight + 1,
+      toBlockHeight,
+    });
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    const batches = chunkEventsByBlock(rows);
+    const toLabel = toBlockHeight === Number.MAX_SAFE_INTEGER ? "latest" : String(toBlockHeight);
+
+    yield* Effect.logInfo(`Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`).pipe(
+      Effect.annotateLogs({ count: rows.length, batches: batches.length }),
+    );
+
+    for (const batch of batches) {
+      yield* indexBatch(batch, filterMap, chainId, eventsByContract);
+    }
+
+    const lastRow = rows[rows.length - 1];
+    yield* Effect.logInfo(
+      `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
+    ).pipe(Effect.annotateLogs({ block: Number(lastRow.blockHeight) }));
+  });
 }
 
 export type HistoricalRuntimeError =
