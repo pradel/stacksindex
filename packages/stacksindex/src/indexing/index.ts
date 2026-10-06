@@ -1,18 +1,26 @@
 import { Cause, Context, Effect, Layer } from "effect";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
-import { IndexerDatabase } from "../database/index.ts";
-import { readOnly, StacksClient } from "../datasources/api/index.ts";
+import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
+import { readOnly, StacksClient, type StacksClientService } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
 
 export interface IndexingService {
-  readonly executeEvent: (
-    event: HandlerEvent,
-  ) => Effect.Effect<void, HandlerExecutionError, StacksClient | IndexerDatabase>;
+  readonly executeEvent: (event: HandlerEvent) => Effect.Effect<void, HandlerExecutionError>;
 }
 
-export const createIndexing = (handlers: Handlers): IndexingService => ({
+export interface IndexingOptions {
+  handlers: Handlers;
+  client: StacksClientService;
+  db: IndexerDb;
+}
+
+export const createIndexing = ({
+  handlers,
+  client: stacksClient,
+  db,
+}: IndexingOptions): IndexingService => ({
   executeEvent(event: HandlerEvent) {
     const handler = handlers[event.contract_log.contract_id];
 
@@ -29,8 +37,6 @@ export const createIndexing = (handlers: Handlers): IndexingService => ({
 
     return IndexerDatabase.transaction((tx) =>
       Effect.gen(function* executeEvent() {
-        const stacksClient = yield* StacksClient;
-
         // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event height unless overridden.
         const client: IndexingClient = {
           // oxlint-disable-next-line typescript/no-explicit-any
@@ -57,6 +63,7 @@ export const createIndexing = (handlers: Handlers): IndexingService => ({
         yield* result;
       }),
     ).pipe(
+      Effect.provideService(IndexerDatabase, db),
       Effect.asVoid,
       Effect.tap(() =>
         Effect.logDebug("Executed event handler").pipe(
@@ -103,6 +110,16 @@ export const createIndexing = (handlers: Handlers): IndexingService => ({
 export class Indexing extends Context.Service<Indexing, IndexingService>()(
   "stacksindex/indexing/Indexing",
 ) {
-  static readonly layer = (options: { handlers: Handlers }): Layer.Layer<Indexing> =>
-    Layer.succeed(Indexing, createIndexing(options.handlers));
+  static readonly layer = (options: {
+    handlers: Handlers;
+  }): Layer.Layer<Indexing, never, StacksClient | IndexerDatabase> =>
+    Layer.effect(
+      Indexing,
+      Effect.gen(function* () {
+        const client = yield* StacksClient;
+        const db = yield* IndexerDatabase;
+
+        return Indexing.of(createIndexing({ handlers: options.handlers, client, db }));
+      }),
+    );
 }
