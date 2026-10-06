@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Queue, type LogLevel } from "effect";
+import { Context, Effect, Layer, Predicate, Queue, Schema, type LogLevel } from "effect";
 
 import { type DatabaseConfig, IndexerDatabase, migrate } from "../database/index.ts";
 import {
@@ -10,15 +10,25 @@ import {
 import { Indexing } from "../indexing/index.ts";
 import { chunkArray } from "../lib/array.ts";
 import {
+  ConfigurationError,
+  type DatabaseError,
   FilterValidationError,
   type HandlerExecutionError,
-  SyncStoreError,
+  type InvalidCursorError,
+  type MigrationError,
+  type SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
-import { resolveNetwork, type NetworkOption, type ResolvedNetwork } from "../lib/network.ts";
-import type { EventHandler, HandlerEvent } from "../lib/types.ts";
+import {
+  NetworkOptionSchema,
+  resolveNetwork,
+  type NetworkOption,
+  type ResolvedNetwork,
+} from "../lib/network.ts";
+import type { EventHandler } from "../lib/types.ts";
 import { loggerLayer } from "../logger/index.ts";
 import { getContractEventsFirstCursor, parseLogsCursor } from "../sync-historical/index.ts";
+import { storedEventToHandlerEvent } from "../sync-store/decode.ts";
 import { syncStore } from "../sync-store/index.ts";
 
 /**
@@ -87,20 +97,37 @@ interface ResolvedHistoricalRuntimeConfig {
   network: ResolvedNetwork;
 }
 
-function resolveRuntimeConfig(options?: HistoricalRuntimeOptions): ResolvedHistoricalRuntimeConfig {
-  const network = resolveNetwork(options?.network);
-  const baseUrl = options?.api?.baseUrl ?? network.baseUrl;
-  const api: ResolvedHistoricalRuntimeConfig["api"] = { baseUrl };
+const HistoricalRuntimeOptionsSchema = Schema.Struct({
+  network: Schema.optional(NetworkOptionSchema),
+  api: Schema.optional(
+    Schema.Struct({
+      baseUrl: Schema.optional(Schema.String),
+      apiKey: Schema.optional(Schema.String),
+    }),
+  ),
+});
 
-  if (options?.api?.apiKey !== undefined) {
-    api.apiKey = options.api.apiKey;
-  }
+function resolveRuntimeConfig(
+  options?: HistoricalRuntimeOptions,
+): Effect.Effect<ResolvedHistoricalRuntimeConfig, ConfigurationError> {
+  return Schema.decodeUnknownEffect(HistoricalRuntimeOptionsSchema)(options ?? {}).pipe(
+    Effect.mapError((error) => new ConfigurationError({ message: error.message })),
+    Effect.map((decoded) => {
+      const network = resolveNetwork(decoded.network);
+      const baseUrl = decoded.api?.baseUrl ?? network.baseUrl;
+      const api: ResolvedHistoricalRuntimeConfig["api"] = { baseUrl };
 
-  return {
-    network,
-    chainId: network.chainId,
-    api,
-  };
+      if (decoded.api?.apiKey !== undefined) {
+        api.apiKey = decoded.api.apiKey;
+      }
+
+      return {
+        network,
+        chainId: network.chainId,
+        api,
+      };
+    }),
+  );
 }
 
 interface ContractSyncState {
@@ -132,36 +159,45 @@ function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
   return minHeight;
 }
 
+const EventHandlerSchema = Schema.declare<EventHandler>((input): input is EventHandler =>
+  Predicate.isFunction(input),
+);
+
+const FilterSchema = Schema.Struct({
+  contractId: Schema.String,
+  handler: EventHandlerSchema,
+  startBlock: Schema.optional(Schema.Natural),
+  endBlock: Schema.optional(Schema.Union([Schema.Natural, Schema.Literal("latest")])),
+}).check(
+  Schema.makeFilter((filter) => {
+    if (
+      filter.startBlock !== undefined &&
+      Predicate.isNumber(filter.endBlock) &&
+      filter.startBlock > filter.endBlock
+    ) {
+      return `Start block (${filter.startBlock}) is after end block (${filter.endBlock}) for contract '${filter.contractId}'.`;
+    }
+
+    return undefined;
+  }),
+);
+
+const decodeFilters = Schema.decodeUnknownEffect(Schema.Array(FilterSchema));
+
 function validateAndResolveFilters(
   filters: Filter[],
 ): Effect.Effect<ResolvedFilter[], StacksApiError | FilterValidationError, StacksClient> {
   return Effect.gen(function* () {
     const client = yield* StacksClient;
 
-    for (const filter of filters) {
-      if (filter.startBlock !== undefined) {
-        if (!Number.isInteger(filter.startBlock) || filter.startBlock < 0) {
-          return yield* Effect.fail(
-            new FilterValidationError({
-              message: `Validation failed: Invalid startBlock for '${filter.contractId}'. Got ${filter.startBlock}, expected a non-negative integer.`,
-            }),
-          );
-        }
-      }
-
-      if (filter.endBlock !== undefined && filter.endBlock !== "latest") {
-        if (!Number.isInteger(filter.endBlock) || filter.endBlock < 0) {
-          return yield* Effect.fail(
-            new FilterValidationError({
-              message: `Validation failed: Invalid endBlock for '${filter.contractId}'. Got ${filter.endBlock}, expected a non-negative integer or "latest".`,
-            }),
-          );
-        }
-      }
-    }
+    const decodedFilters = yield* decodeFilters(filters).pipe(
+      Effect.mapError(
+        (error) => new FilterValidationError({ message: `Validation failed: ${error.message}` }),
+      ),
+    );
 
     let latestBlockHeight: number | undefined = undefined;
-    const hasLatestTag = filters.some((filter) => filter.endBlock === "latest");
+    const hasLatestTag = decodedFilters.some((filter) => filter.endBlock === "latest");
 
     if (hasLatestTag) {
       const status = yield* client.getStatus();
@@ -184,7 +220,7 @@ function validateAndResolveFilters(
 
     const resolvedFilters: ResolvedFilter[] = [];
 
-    for (const filter of filters) {
+    for (const filter of decodedFilters) {
       const resolvedEndBlock = filter.endBlock === "latest" ? latestBlockHeight : filter.endBlock;
 
       if (
@@ -216,7 +252,7 @@ function initContractFromScratch(
   config: ResolvedHistoricalRuntimeConfig,
 ): Effect.Effect<
   ContractSyncState,
-  StacksApiError | SyncStoreError,
+  StacksApiError | InvalidCursorError | SyncStoreError,
   StacksClient | IndexerDatabase
 > {
   return Effect.gen(function* () {
@@ -244,7 +280,7 @@ function initContractFromScratch(
       };
     }
 
-    const cursorHeight = parseLogsCursor(cursor).blockHeight;
+    const cursorHeight = (yield* parseLogsCursor(cursor)).blockHeight;
 
     if (filter.endBlock !== undefined && cursorHeight > filter.endBlock) {
       yield* Effect.logInfo(
@@ -286,7 +322,7 @@ function initContractFromSaved(
   config: ResolvedHistoricalRuntimeConfig,
 ): Effect.Effect<
   ContractSyncState,
-  StacksApiError | SyncStoreError,
+  StacksApiError | InvalidCursorError | SyncStoreError,
   StacksClient | IndexerDatabase
 > {
   return Effect.gen(function* () {
@@ -360,7 +396,7 @@ function initContractFromSaved(
       };
     }
 
-    const cursorHeight = parseLogsCursor(cursor).blockHeight;
+    const cursorHeight = (yield* parseLogsCursor(cursor)).blockHeight;
 
     if (filter.endBlock !== undefined && cursorHeight > filter.endBlock) {
       yield* Effect.logInfo(
@@ -399,7 +435,7 @@ function initializeContractStates(
   config: ResolvedHistoricalRuntimeConfig,
 ): Effect.Effect<
   ContractSyncState[],
-  StacksApiError | SyncStoreError,
+  StacksApiError | InvalidCursorError | SyncStoreError,
   StacksClient | IndexerDatabase
 > {
   return Effect.gen(function* () {
@@ -500,12 +536,12 @@ function advanceContractSyncState(
   currentHeight: number,
   nextCursor: string | null,
   config: ResolvedHistoricalRuntimeConfig,
-): Effect.Effect<void, SyncStoreError, IndexerDatabase> {
+): Effect.Effect<void, InvalidCursorError | SyncStoreError, IndexerDatabase> {
   return Effect.gen(function* () {
     lowestState.syncedBlockHeight = currentHeight - 1;
 
     if (nextCursor) {
-      const lastBlockHeight = parseLogsCursor(nextCursor).blockHeight;
+      const lastBlockHeight = (yield* parseLogsCursor(nextCursor)).blockHeight;
       const { endBlock } = lowestState;
       const isPastEndBlock = endBlock !== undefined && currentHeight > endBlock;
 
@@ -586,27 +622,7 @@ function processEventsUpTo(
       const isAfterEnd = filter?.endBlock !== undefined && rowBlockHeight > filter.endBlock;
 
       if (!isBeforeStart && !isAfterEnd) {
-        // SAFETY: eventsTable only stores smart_contract_log events, so the persisted eventType is that literal.
-        const event: HandlerEvent = {
-          event_index: row.eventIndex,
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          event_type: row.eventType as "smart_contract_log",
-          tx_id: row.txId,
-          contract_log: {
-            contract_id: row.contractId,
-            topic: row.topic ?? "",
-            value: {
-              hex: row.valueHex,
-              repr: row.valueRepr,
-            },
-          },
-          block_height: rowBlockHeight,
-          block_time: Number(row.blockTime),
-          tx_index: row.txIndex,
-          sender_address: row.senderAddress,
-        };
-
-        yield* indexing.executeEvent(event);
+        yield* indexing.executeEvent(storedEventToHandlerEvent(row));
         eventsByContract.set(row.contractId, (eventsByContract.get(row.contractId) ?? 0) + 1);
       }
     }
@@ -629,7 +645,10 @@ export type HistoricalRuntimeError =
   | HandlerExecutionError
   | FilterValidationError
   | SyncStoreError
-  | TransactionBatchError;
+  | TransactionBatchError
+  | DatabaseError
+  | MigrationError
+  | InvalidCursorError;
 
 export interface HistoricalRuntimeService {
   readonly run: (
@@ -641,23 +660,30 @@ export class HistoricalRuntime extends Context.Service<
   HistoricalRuntime,
   HistoricalRuntimeService
 >()("stacksindex/runtime/HistoricalRuntime") {
-  static readonly layer = (options?: HistoricalRuntimeOptions): Layer.Layer<HistoricalRuntime> => {
-    const config = resolveRuntimeConfig(options);
+  static readonly layer = (
+    options?: HistoricalRuntimeOptions,
+  ): Layer.Layer<HistoricalRuntime, ConfigurationError> =>
+    Layer.unwrap(
+      resolveRuntimeConfig(options).pipe(
+        Effect.map((config) =>
+          Layer.effect(
+            HistoricalRuntime,
+            Effect.gen(function* () {
+              const client = yield* StacksClient;
 
-    return Layer.effect(
-      HistoricalRuntime,
-      Effect.gen(function* () {
-        const client = yield* StacksClient;
-
-        return HistoricalRuntime.of({
-          run: (filters) =>
-            runHistorical(filters, config).pipe(Effect.provideService(StacksClient, client)),
-        });
-      }),
-    ).pipe(
-      Layer.provide(StacksClient.layer({ baseUrl: config.api.baseUrl, apiKey: config.api.apiKey })),
+              return HistoricalRuntime.of({
+                run: (filters) =>
+                  runHistorical(filters, config).pipe(Effect.provideService(StacksClient, client)),
+              });
+            }),
+          ).pipe(
+            Layer.provide(
+              StacksClient.layer({ baseUrl: config.api.baseUrl, apiKey: config.api.apiKey }),
+            ),
+          ),
+        ),
+      ),
     );
-  };
 
   /**
    * Batteries-included layer: provides `HistoricalRuntime`, `IndexerDatabase`
@@ -665,7 +691,7 @@ export class HistoricalRuntime extends Context.Service<
    */
   static readonly layerWithDatabase = (
     options: HistoricalRuntimeWithDatabaseOptions,
-  ): Layer.Layer<HistoricalRuntime | IndexerDatabase, unknown> =>
+  ): Layer.Layer<HistoricalRuntime | IndexerDatabase, ConfigurationError | DatabaseError> =>
     Layer.mergeAll(
       HistoricalRuntime.layer({ network: options.network, api: options.api }),
       IndexerDatabase.layer(options.database),
@@ -686,13 +712,7 @@ function runHistorical(
 
     const resolvedFilters = yield* validateAndResolveFilters(filters);
 
-    yield* migrate().pipe(
-      Effect.mapError((cause) =>
-        cause instanceof SyncStoreError
-          ? cause
-          : new SyncStoreError({ operation: "migrate", cause }),
-      ),
-    );
+    yield* migrate();
 
     yield* Effect.logInfo("Starting historical indexing").pipe(
       Effect.annotateLogs({ contracts: resolvedFilters.map((filter) => filter.contractId) }),
@@ -728,7 +748,7 @@ function runHistorical(
 
         for (const state of states) {
           if (!state.done && state.cursor !== null) {
-            const height = parseLogsCursor(state.cursor).blockHeight;
+            const height = (yield* parseLogsCursor(state.cursor)).blockHeight;
 
             if (height < lowestHeight) {
               lowestHeight = height;
@@ -748,7 +768,7 @@ function runHistorical(
         });
 
         const { results: events, next_cursor: nextCursor } = logsResponse;
-        const currentHeight = parseLogsCursor(lowestState.cursor).blockHeight;
+        const currentHeight = (yield* parseLogsCursor(lowestState.cursor)).blockHeight;
         yield* Effect.logInfo(`Syncing ${lowestState.contractId}`).pipe(
           Effect.annotateLogs({ block: currentHeight, events: events.length }),
         );
@@ -805,12 +825,6 @@ function runHistorical(
             syncStore.insertTransactions({ transactions, chainId }),
             syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }),
           ]),
-        ).pipe(
-          Effect.mapError((cause) =>
-            cause instanceof SyncStoreError
-              ? cause
-              : new SyncStoreError({ operation: "insertBatch", cause }),
-          ),
         );
 
         yield* advanceContractSyncState(lowestState, currentHeight, nextCursor, config);

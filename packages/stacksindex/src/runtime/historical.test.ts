@@ -14,6 +14,7 @@ import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import {
   FilterValidationError,
   HandlerExecutionError,
+  InvalidCursorError,
   SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
@@ -1409,8 +1410,8 @@ describe("historical runtime", () => {
 });
 
 describe("cursor parser helpers", () => {
-  test("parses valid logs cursor", () => {
-    const result = parseLogsCursor("100:0:5:2");
+  test("parses valid logs cursor", async () => {
+    const result = await Effect.runPromise(parseLogsCursor("100:0:5:2"));
     expect(result).toStrictEqual({
       blockHeight: 100,
       microblockSequence: 0,
@@ -1419,14 +1420,18 @@ describe("cursor parser helpers", () => {
     });
   });
 
-  test("throws on invalid logs cursor format", () => {
-    expect(() => parseLogsCursor("invalid")).toThrow("Invalid logs cursor format: invalid");
-    expect(() => parseLogsCursor("100:0:5:2:1")).toThrow("Invalid logs cursor format: 100:0:5:2:1");
-    expect(() => parseLogsCursor("100:0:5")).toThrow("Invalid logs cursor format: 100:0:5");
+  test("fails on invalid logs cursor format", async () => {
+    for (const cursor of ["invalid", "100:0:5:2:1", "100:0:5"]) {
+      const error = await Effect.runPromise(parseLogsCursor(cursor).pipe(Effect.flip));
+
+      expect(error).toBeInstanceOf(InvalidCursorError);
+      expect(error.format).toBe("logs");
+      expect(error.cursor).toBe(cursor);
+    }
   });
 
-  test("parses valid transaction cursor", () => {
-    const result = parseTransactionCursor("100:0:5");
+  test("parses valid transaction cursor", async () => {
+    const result = await Effect.runPromise(parseTransactionCursor("100:0:5"));
     expect(result).toStrictEqual({
       blockHeight: 100,
       microblockSequence: 0,
@@ -1434,13 +1439,14 @@ describe("cursor parser helpers", () => {
     });
   });
 
-  test("throws on invalid transaction cursor format", () => {
-    expect(() => parseTransactionCursor("invalid")).toThrow(
-      "Invalid transaction cursor format: invalid",
-    );
-    expect(() => parseTransactionCursor("100:0:5:2")).toThrow(
-      "Invalid transaction cursor format: 100:0:5:2",
-    );
+  test("fails on invalid transaction cursor format", async () => {
+    for (const cursor of ["invalid", "100:0:5:2"]) {
+      const error = await Effect.runPromise(parseTransactionCursor(cursor).pipe(Effect.flip));
+
+      expect(error).toBeInstanceOf(InvalidCursorError);
+      expect(error.format).toBe("transaction");
+      expect(error.cursor).toBe(cursor);
+    }
   });
 });
 
@@ -3231,7 +3237,7 @@ describe("historical runtime with handlers", () => {
     expect(negativeResult).toBeTaggedError(
       new FilterValidationError({
         message:
-          "Validation failed: Invalid startBlock for 'SP123.token'. Got -1, expected a non-negative integer.",
+          'Validation failed: Expected a value greater than or equal to 0\n  at [0]["startBlock"]',
       }),
     );
 
@@ -3241,8 +3247,7 @@ describe("historical runtime with handlers", () => {
 
     expect(floatResult).toBeTaggedError(
       new FilterValidationError({
-        message:
-          "Validation failed: Invalid startBlock for 'SP123.token'. Got 1.5, expected a non-negative integer.",
+        message: 'Validation failed: Expected an integer\n  at [0]["startBlock"]',
       }),
     );
   });
@@ -3258,7 +3263,7 @@ describe("historical runtime with handlers", () => {
     expect(negativeResult).toBeTaggedError(
       new FilterValidationError({
         message:
-          "Validation failed: Invalid endBlock for 'SP123.token'. Got -5, expected a non-negative integer or \"latest\".",
+          'Validation failed: Expected a value greater than or equal to 0\n  at [0]["endBlock"]',
       }),
     );
 
@@ -3268,8 +3273,7 @@ describe("historical runtime with handlers", () => {
 
     expect(floatResult).toBeTaggedError(
       new FilterValidationError({
-        message:
-          "Validation failed: Invalid endBlock for 'SP123.token'. Got 100.2, expected a non-negative integer or \"latest\".",
+        message: 'Validation failed: Expected an integer\n  at [0]["endBlock"]',
       }),
     );
   });
@@ -3285,7 +3289,7 @@ describe("historical runtime with handlers", () => {
     expect(result).toBeTaggedError(
       new FilterValidationError({
         message:
-          "Validation failed: Start block (200) is after end block (100) for contract 'SP123.token'.",
+          "Validation failed: Start block (200) is after end block (100) for contract 'SP123.token'.\n  at [0]",
       }),
     );
   });
@@ -4542,7 +4546,7 @@ describe("historical runtime with handlers", () => {
     });
   });
 
-  test("rejects invalid custom networks", () => {
+  test("rejects invalid custom networks", async () => {
     const invalidNetworks = [
       1.5,
       Number.NaN,
@@ -4552,11 +4556,15 @@ describe("historical runtime with handlers", () => {
       Number.MIN_SAFE_INTEGER - 1,
     ];
 
-    invalidNetworks.forEach((network) => {
-      expect(() => makeRuntime({ db: testDb.db, network })).toThrow(
-        `Invalid chainId: ${network}. Expected a safe integer.`,
+    for (const network of invalidNetworks) {
+      const runtime = makeRuntime({ db: testDb.db, network });
+
+      const error = await Effect.runPromise(
+        runtime.run([{ contractId: "SP123.token", handler: noopHandler }]).pipe(Effect.flip),
       );
-    });
+
+      expect(Predicate.isTagged(error, "ConfigurationError")).toBe(true);
+    }
   });
 
   test("supports custom network in context", async () => {

@@ -992,7 +992,7 @@ describe("contract events first cursor", () => {
 });
 
 describe("cursor utilities", () => {
-  test("builds and parses logs cursor", () => {
+  test("builds and parses logs cursor", async () => {
     const cursor = buildLogsCursor({
       blockHeight: 123,
       microblockSequence: 0,
@@ -1002,7 +1002,7 @@ describe("cursor utilities", () => {
 
     expect(cursor).toBe("123:0:4:2");
 
-    const parsed = parseLogsCursor("123:0:4:2");
+    const parsed = await Effect.runPromise(parseLogsCursor("123:0:4:2"));
     expect(parsed).toStrictEqual({
       blockHeight: 123,
       microblockSequence: 0,
@@ -1011,7 +1011,7 @@ describe("cursor utilities", () => {
     });
   });
 
-  test("builds and parses transaction cursor", () => {
+  test("builds and parses transaction cursor", async () => {
     const cursor = buildTransactionCursor({
       blockHeight: 123,
       microblockSequence: 0,
@@ -1020,7 +1020,7 @@ describe("cursor utilities", () => {
 
     expect(cursor).toBe("123:0:4");
 
-    const parsed = parseTransactionCursor("123:0:4");
+    const parsed = await Effect.runPromise(parseTransactionCursor("123:0:4"));
     expect(parsed).toStrictEqual({
       blockHeight: 123,
       microblockSequence: 0,

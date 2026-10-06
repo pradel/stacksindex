@@ -40,8 +40,12 @@ export type {
 } from "clarity-abitype";
 
 export {
+  ConfigurationError,
+  DatabaseError,
   FilterValidationError,
   HandlerExecutionError,
+  InvalidCursorError,
+  MigrationError,
   SyncStoreError,
   TransactionBatchError,
 } from "./lib/errors.ts";

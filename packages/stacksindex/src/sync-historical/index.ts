@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema, SchemaGetter } from "effect";
 
 import {
   type PrincipalTransactionsResponse,
@@ -6,6 +6,7 @@ import {
   type StacksApiError,
   type TransactionEventsResponse,
 } from "../datasources/api/index.ts";
+import { InvalidCursorError } from "../lib/errors.ts";
 
 export interface LogsCursor {
   blockHeight: number;
@@ -21,20 +22,50 @@ export const buildLogsCursor = ({
   eventIndex,
 }: LogsCursor): string => `${blockHeight}:${microblockSequence}:${txIndex}:${eventIndex}`;
 
-export const parseLogsCursor = (cursor: string): LogsCursor => {
-  const parts = cursor.split(":");
+const LogsCursorSchema = Schema.TemplateLiteralParser([
+  Schema.Natural,
+  ":",
+  Schema.Natural,
+  ":",
+  Schema.Natural,
+  ":",
+  Schema.Natural,
+]).pipe(
+  Schema.decodeTo(
+    Schema.Struct({
+      blockHeight: Schema.Natural,
+      microblockSequence: Schema.Natural,
+      txIndex: Schema.Natural,
+      eventIndex: Schema.Natural,
+    }),
+    {
+      decode: SchemaGetter.transform((parts) => ({
+        blockHeight: parts[0],
+        microblockSequence: parts[2],
+        txIndex: parts[4],
+        eventIndex: parts[6],
+      })),
+      encode: SchemaGetter.transform((cursor) => [
+        cursor.blockHeight,
+        ":",
+        cursor.microblockSequence,
+        ":",
+        cursor.txIndex,
+        ":",
+        cursor.eventIndex,
+      ]),
+    },
+  ),
+);
 
-  if (parts.length !== 4) {
-    throw new Error(`Invalid logs cursor format: ${cursor}`);
-  }
+const decodeLogsCursor = Schema.decodeUnknownEffect(LogsCursorSchema);
 
-  return {
-    blockHeight: Number(parts[0]),
-    microblockSequence: Number(parts[1]),
-    txIndex: Number(parts[2]),
-    eventIndex: Number(parts[3]),
-  };
-};
+export const parseLogsCursor = (cursor: string): Effect.Effect<LogsCursor, InvalidCursorError> =>
+  decodeLogsCursor(cursor).pipe(
+    Effect.mapError(
+      (error) => new InvalidCursorError({ format: "logs", cursor, message: error.message }),
+    ),
+  );
 
 export interface TransactionCursor {
   blockHeight: number;
@@ -48,19 +79,46 @@ export const buildTransactionCursor = ({
   txIndex,
 }: TransactionCursor): string => `${blockHeight}:${microblockSequence}:${txIndex}`;
 
-export const parseTransactionCursor = (cursor: string): TransactionCursor => {
-  const parts = cursor.split(":");
+const TransactionCursorSchema = Schema.TemplateLiteralParser([
+  Schema.Natural,
+  ":",
+  Schema.Natural,
+  ":",
+  Schema.Natural,
+]).pipe(
+  Schema.decodeTo(
+    Schema.Struct({
+      blockHeight: Schema.Natural,
+      microblockSequence: Schema.Natural,
+      txIndex: Schema.Natural,
+    }),
+    {
+      decode: SchemaGetter.transform((parts) => ({
+        blockHeight: parts[0],
+        microblockSequence: parts[2],
+        txIndex: parts[4],
+      })),
+      encode: SchemaGetter.transform((cursor) => [
+        cursor.blockHeight,
+        ":",
+        cursor.microblockSequence,
+        ":",
+        cursor.txIndex,
+      ]),
+    },
+  ),
+);
 
-  if (parts.length !== 3) {
-    throw new Error(`Invalid transaction cursor format: ${cursor}`);
-  }
+const decodeTransactionCursor = Schema.decodeUnknownEffect(TransactionCursorSchema);
 
-  return {
-    blockHeight: Number(parts[0]),
-    microblockSequence: Number(parts[1]),
-    txIndex: Number(parts[2]),
-  };
-};
+export const parseTransactionCursor = (
+  cursor: string,
+): Effect.Effect<TransactionCursor, InvalidCursorError> =>
+  decodeTransactionCursor(cursor).pipe(
+    Effect.mapError(
+      (error) => new InvalidCursorError({ format: "transaction", cursor, message: error.message }),
+    ),
+  );
 
 function findFirstMatchingContractEvent(
   txId: string,
