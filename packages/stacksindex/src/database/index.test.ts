@@ -1,10 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { Effect } from "effect";
 import { afterAll, describe, expect, test } from "vite-plus/test";
 
-import { createDatabase } from "../compat/promise.ts";
+import { createHistoricalRuntime } from "../compat/promise.ts";
 import { blocksTable, eventsTable } from "../sync-store/schema.ts";
 
 describe("database", () => {
@@ -21,35 +20,46 @@ describe("database", () => {
   });
 
   test("creates in-memory pglite database and applies migrations via migrate()", async () => {
-    const database = await createDatabase({ kind: "pglite" });
+    const runtime = await createHistoricalRuntime({ database: { kind: "pglite" } });
 
-    await database.migrate();
+    await runtime.migrate();
 
-    // Verify tables exist and queries work
-    const blocks = await Effect.runPromise(database.db.select().from(blocksTable));
+    // Verify tables exist and queries work through the promise facade
+    const blocks = await runtime.db.select().from(blocksTable);
     expect(blocks).toStrictEqual([]);
 
-    const events = await Effect.runPromise(database.db.select().from(eventsTable));
+    const events = await runtime.db.select().from(eventsTable);
     expect(events).toStrictEqual([]);
 
-    await database.close();
+    await runtime.close();
   });
 
   test("creates pglite database with directory and applies migrations", async () => {
     const tempDir = path.resolve(import.meta.dirname, `../../test-data-${Date.now()}`);
     tempDirs.push(tempDir);
 
-    const database = await createDatabase({
-      kind: "pglite",
-      directory: tempDir,
+    const runtime = await createHistoricalRuntime({
+      database: {
+        kind: "pglite",
+        directory: tempDir,
+      },
     });
 
-    await database.migrate();
+    await runtime.migrate();
 
-    const blocks = await Effect.runPromise(database.db.select().from(blocksTable));
+    const blocks = await runtime.db.select().from(blocksTable);
     expect(blocks).toStrictEqual([]);
 
-    await database.close();
+    await runtime.close();
     expect(fs.existsSync(tempDir)).toBe(true);
+  });
+
+  test("close is idempotent and further calls reject after closing", async () => {
+    const runtime = await createHistoricalRuntime({ database: { kind: "pglite" } });
+
+    await runtime.close();
+    await runtime.close();
+
+    await expect(runtime.migrate()).rejects.toThrow("HistoricalRuntime is closed");
   });
 });

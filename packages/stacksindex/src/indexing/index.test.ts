@@ -110,14 +110,15 @@ describe("indexing engine", () => {
   test("client.callReadOnly injects event block_height as tip", async () => {
     const callReadFunction = vi
       .fn()
-      .mockReturnValue(Effect.succeed({ okay: true, result: "0x01" }));
+      .mockReturnValue(
+        Effect.succeed({ okay: true, result: "0x0100000000000000000000000000000001" }),
+      );
 
     const handler = vi.fn().mockImplementation((_event, ctx: HandlerContext) =>
       Effect.gen(function* () {
         // Call without explicit tip - should inject event.block_height
         yield* ctx.client.callReadOnly({
-          contractAddress: "SP123",
-          contractName: "contract",
+          contractId: "SP123.contract",
           functionName: "get-something",
           args: ["0x01"],
           senderAddress: "ST123",
@@ -125,16 +126,14 @@ describe("indexing engine", () => {
 
         // Call with explicit options.tip - should use explicit tip
         yield* ctx.client.callReadOnly({
-          contractAddress: "SP123",
-          contractName: "contract",
+          contractId: "SP123.contract",
           functionName: "get-something",
           tip: 99999,
         });
 
         // Call without options tip - should default tip to event.block_height
         yield* ctx.client.callReadOnly({
-          contractAddress: "SP123",
-          contractName: "contract",
+          contractId: "SP123.contract",
           functionName: "get-something",
         });
       }),
@@ -167,14 +166,14 @@ describe("indexing engine", () => {
     });
 
     expect(callReadFunction).toHaveBeenNthCalledWith(2, "SP123.contract", "get-something", {
-      args: undefined,
-      sender: undefined,
+      args: [],
+      sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
       tip: 99999,
     });
 
     expect(callReadFunction).toHaveBeenNthCalledWith(3, "SP123.contract", "get-something", {
-      args: undefined,
-      sender: undefined,
+      args: [],
+      sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
       tip: 54321,
     });
   });
@@ -194,8 +193,7 @@ describe("indexing engine", () => {
       Effect.gen(function* () {
         handlerResult = yield* ctx.client.callReadOnly({
           abi: testAbi,
-          contractAddress: "SP123",
-          contractName: "contract",
+          contractId: "SP123.contract",
           functionName: "get-decimals",
         });
       }),

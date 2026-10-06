@@ -1,11 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
-import {
-  decodeHex,
-  type PromiseEventHandler,
-  type PromiseIndexingClient,
-  type PromiseLogger,
-} from "stacksindex";
+import { decodeHex, type EventHandler, type IndexingClient, type Logger } from "stacksindex";
 import { z } from "zod";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
@@ -103,8 +98,8 @@ export const poolLogSchema = z.union([
 export type PoolLog = z.infer<typeof poolLogSchema>;
 
 export interface InsertTokenIfNotExistsParams {
-  client: PromiseIndexingClient;
-  logger: PromiseLogger;
+  client: IndexingClient;
+  logger: Logger;
   db: AppDatabase;
   chainId: bigint;
   tokenAddress: string;
@@ -127,23 +122,19 @@ export async function insertTokenIfNotExists({
     return existingCheck[0];
   }
 
-  const [contractAddress, contractName] = tokenAddress.split(".");
-
-  if (!contractAddress || !contractName) {
+  if (!tokenAddress.includes(".")) {
     throw new Error(`Invalid tokenAddress: ${tokenAddress}`);
   }
 
   const decimalsRes = await client.callReadOnly({
     abi: sip010Abi,
-    contractAddress,
-    contractName,
+    contractId: tokenAddress,
     functionName: "get-decimals",
   });
 
   const symbolRes = await client.callReadOnly({
     abi: sip010Abi,
-    contractAddress,
-    contractName,
+    contractId: tokenAddress,
     functionName: "get-symbol",
   });
 
@@ -171,8 +162,8 @@ export async function insertTokenIfNotExists({
 }
 
 export interface SyncPoolTokensParams {
-  client: PromiseIndexingClient;
-  logger: PromiseLogger;
+  client: IndexingClient;
+  logger: Logger;
   db: AppDatabase;
   chainId: bigint;
   poolContract: string;
@@ -187,16 +178,13 @@ export async function syncPoolTokens({
   poolContract,
   poolToken,
 }: SyncPoolTokensParams): Promise<void> {
-  const [contractAddress, contractName] = poolContract.split(".");
-
-  if (!contractAddress || !contractName) {
+  if (!poolContract.includes(".")) {
     throw new Error(`Invalid poolContract: ${poolContract}`);
   }
 
   const poolId = await client.callReadOnly({
     abi: fixedWeightPoolAbi,
-    contractAddress,
-    contractName,
+    contractId: poolContract,
     functionName: "get-pool-count",
   });
 
@@ -206,8 +194,7 @@ export async function syncPoolTokens({
 
   const contractsResult = await client.callReadOnly({
     abi: fixedWeightPoolAbi,
-    contractAddress,
-    contractName,
+    contractId: poolContract,
     functionName: "get-pool-contracts",
     functionArgs: [poolId],
   });
@@ -293,7 +280,7 @@ export function createPoolHandler({
   db,
   chainId = CHAIN_ID,
   poolContract = POOL_CONTRACT,
-}: CreatePoolHandlerOptions): PromiseEventHandler {
+}: CreatePoolHandlerOptions): EventHandler {
   return async (event, { client, logger }) => {
     const decoded = decodeHex(event.contract_log.value.hex);
     const parsed = poolLogSchema.safeParse(decoded);

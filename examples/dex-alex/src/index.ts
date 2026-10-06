@@ -4,7 +4,7 @@ import process from "node:process";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { createDatabase, createHistoricalRuntimePromise } from "stacksindex";
+import { createHistoricalRuntime, type HistoricalRuntime } from "stacksindex";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 
@@ -20,10 +20,7 @@ const appDb = drizzle({ client: appClient });
 
 await migrate(appDb, { migrationsFolder: "./drizzle" });
 
-const indexerDatabase = await createDatabase({
-  kind: "pglite",
-  directory: "./data/indexer.db",
-});
+let runtime: HistoricalRuntime | undefined;
 
 let isShuttingDown = false;
 
@@ -41,7 +38,7 @@ async function shutdown(code: number) {
   }
 
   try {
-    await indexerDatabase.close();
+    await runtime?.close();
   } catch {
     // Ignore error on close
   }
@@ -59,19 +56,18 @@ process.on("SIGTERM", () => {
   void shutdown(0);
 });
 
-const runtime = createHistoricalRuntimePromise({
-  db: indexerDatabase.db,
-  network: "mainnet",
-  api: { apiKey },
-});
-
 try {
-  await runtime.run([
-    {
-      contractId: POOL_CONTRACT,
-      handler: createPoolHandler({ db: appDb }),
-    },
-  ]);
+  runtime = await createHistoricalRuntime({
+    database: { kind: "pglite", directory: "./data/indexer.db" },
+    network: "mainnet",
+    api: { apiKey },
+  });
+
+  await runtime.run({
+    contractId: POOL_CONTRACT,
+    handler: createPoolHandler({ db: appDb }),
+  });
+
   await shutdown(0);
 } catch (err) {
   const error = err instanceof Error ? err : new Error(String(err));

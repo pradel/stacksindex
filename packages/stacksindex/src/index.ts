@@ -1,61 +1,31 @@
-export { loggerLayer } from "./logger/index.ts";
+// Promise-native entrypoint (`stacksindex`).
 
-export type { LoggerLayerOptions } from "./logger/index.ts";
-
-export { getMigrationsFolder, IndexerDatabase, makeDatabase, migrate } from "./database/index.ts";
-
-export type { DatabaseConfig, IndexerDb } from "./database/index.ts";
-
-export { HistoricalRuntime } from "./runtime/historical.ts";
-
-export {
-  createDatabase,
-  createHistoricalRuntime as createHistoricalRuntimePromise,
-} from "./compat/promise.ts";
+export { createHistoricalRuntime } from "./compat/promise.ts";
 
 export type {
-  DatabaseResult,
-  PromiseEventHandler,
-  PromiseFilter,
-  PromiseHandlerContext,
-  PromiseHistoricalRuntime,
-  PromiseHistoricalRuntimeOptions,
-  PromiseIndexingClient,
-  PromiseLogger,
-} from "./compat/promise.ts";
-
-export type {
+  EventHandler,
   Filter,
-  HistoricalRuntimeError,
+  HandlerContext,
+  HistoricalRuntime,
   HistoricalRuntimeOptions,
-  HistoricalRuntimeService,
-} from "./runtime/historical.ts";
+  IndexingClient,
+  LogAnnotations,
+  Logger,
+  LogLevel,
+  LogValue,
+} from "./compat/promise.ts";
 
-export { Indexing } from "./indexing/index.ts";
+export type { ContractRunResult, RunResult } from "./runtime/historical.ts";
 
-export type { IndexingService } from "./indexing/index.ts";
+export { type DatabaseConfig, type IndexerDb } from "./database/index.ts";
 
-export {
-  MAINNET_API_BASE_URL,
-  MAINNET_CHAIN_ID,
-  TESTNET_API_BASE_URL,
-  TESTNET_CHAIN_ID,
-  resolveNetwork,
-} from "./lib/network.ts";
-
-export type { NetworkName, NetworkOption, ResolvedNetwork } from "./lib/network.ts";
-
-export { readOnly, StacksClient } from "./datasources/api/index.ts";
+export { ReadOnlyCallError } from "./datasources/api/index.ts";
 
 export type {
-  CallReadFunction,
-  CallReadResponse,
   ContractFunctionArgs,
   ContractFunctionName,
   ContractFunctionReturnType,
-  StacksClientConfig,
-  StacksClientService,
-  StacksHttpError,
+  StacksApiError,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,
   UntypedCallReadOnlyFunctionParameters,
@@ -76,25 +46,24 @@ export {
   TransactionBatchError,
 } from "./lib/errors.ts";
 
-export { ReadOnlyCallError } from "./datasources/api/index.ts";
+export {
+  MAINNET_API_BASE_URL,
+  MAINNET_CHAIN_ID,
+  TESTNET_API_BASE_URL,
+  TESTNET_CHAIN_ID,
+  resolveNetwork,
+} from "./lib/network.ts";
 
-export type { StacksApiError } from "./datasources/api/index.ts";
+export type { NetworkName, NetworkOption, ResolvedNetwork } from "./lib/network.ts";
 
 export {
   ClarityTypeID,
   cvToJSON,
   decodeClarityValue,
-  decodeClarityWithSchema,
   decodeHex,
   encodeUint,
 } from "./codec/index.ts";
 
 export type { ClarityJsonValue, ClarityValue } from "./codec/index.ts";
 
-export type {
-  EventHandler,
-  HandlerContext,
-  HandlerEvent,
-  Handlers,
-  IndexingClient,
-} from "./lib/types.ts";
+export type { HandlerEvent } from "./lib/types.ts";

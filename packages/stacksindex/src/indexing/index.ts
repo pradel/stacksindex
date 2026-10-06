@@ -31,25 +31,14 @@ export const createIndexing = (handlers: Handlers): IndexingService => ({
       Effect.gen(function* executeEvent() {
         const stacksClient = yield* StacksClient;
 
-        // SAFETY: The runtime dispatch below mirrors both overloads: an `abi` field selects the typed read path.
+        // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event height unless overridden.
         const client: IndexingClient = {
           // oxlint-disable-next-line typescript/no-explicit-any
-          callReadOnly: ((options: any) => {
-            if ("abi" in options) {
-              return readOnly(stacksClient.callReadFunction, {
-                ...options,
-                tip: options.tip ?? event.block_height,
-              });
-            }
-
-            const contractId = `${options.contractAddress}.${options.contractName}`;
-
-            return stacksClient.callReadFunction(contractId, options.functionName, {
-              args: options.args,
-              sender: options.senderAddress,
+          callReadOnly: ((options: any) =>
+            readOnly(stacksClient.callReadFunction, {
+              ...options,
               tip: options.tip ?? event.block_height,
-            });
-          }) as IndexingClient["callReadOnly"],
+            })) as IndexingClient["callReadOnly"],
         };
 
         // SAFETY: Schemas decoded here are pure, so the decode effect has no remaining requirements and its error channel widens to `unknown`.

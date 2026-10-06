@@ -1,25 +1,27 @@
 // oxlint-disable typescript/method-signature-style
-import type { ClarityAbi, ContractFunctionArgs, ContractFunctionName } from "clarity-abitype";
-import { Context, Effect, Exit, Layer, Scope, type LogLevel, type Schema } from "effect";
+import type { ClarityAbi } from "clarity-abitype";
+import { Context, Effect, Exit, Layer, Scope, type LogLevel as EffectLogLevel } from "effect";
 
+import type { ClarityJsonValue } from "../codec/index.ts";
 import {
+  type DatabaseConfig,
   IndexerDatabase,
   migrate,
-  type DatabaseConfig,
   type IndexerDb,
 } from "../database/index.ts";
 import type {
-  CallReadResponse,
+  ContractFunctionArgs,
+  ContractFunctionName,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,
   UntypedCallReadOnlyFunctionParameters,
 } from "../datasources/api/index.ts";
-import type { EventHandler, HandlerEvent } from "../lib/types.ts";
+import type { NetworkOption } from "../lib/network.ts";
+import type { EventHandler as EffectEventHandler, HandlerEvent } from "../lib/types.ts";
 import { loggerLayer } from "../logger/index.ts";
 import {
-  HistoricalRuntime,
-  type Filter,
-  type HistoricalRuntimeOptions,
+  HistoricalRuntime as HistoricalRuntimeService,
+  type RunResult,
 } from "../runtime/historical.ts";
 import { toThenable } from "./thenable.ts";
 
@@ -37,90 +39,91 @@ declare module "drizzle-orm/pg-core/effect/select" {
   > extends PromiseLike<TResult> {}
 }
 
-export interface DatabaseResult {
-  db: IndexerDb;
-  migrate: (options?: { migrationsFolder?: string }) => Promise<void>;
-  close: () => Promise<void>;
+export type LogValue = string | number | boolean | bigint | null | undefined;
+
+export type LogAnnotations = Readonly<Record<string, LogValue>>;
+
+/** Console logger installed by the promise runtime. */
+export interface Logger {
+  info: (message: string, annotations?: LogAnnotations) => void;
+  warn: (message: string, annotations?: LogAnnotations) => void;
+  error: (message: string, annotations?: LogAnnotations) => void;
+  debug: (message: string, annotations?: LogAnnotations) => void;
+  trace: (message: string, annotations?: LogAnnotations) => void;
 }
 
-export async function createDatabase(config: DatabaseConfig): Promise<DatabaseResult> {
-  const scope = await Effect.runPromise(Scope.make());
-
-  const context = await Effect.runPromise(
-    Layer.build(IndexerDatabase.layer(config)).pipe(Scope.provide(scope)),
-  );
-
-  const db = Context.get(context, IndexerDatabase);
-
-  return {
-    db: toThenable(db),
-    migrate: async (options?: { migrationsFolder?: string }) => {
-      await Effect.runPromise(migrate(options).pipe(Effect.provideService(IndexerDatabase, db)));
-    },
-    close: async () => {
-      await Effect.runPromise(Scope.close(scope, Exit.void));
-    },
-  };
-}
-
-export interface PromiseIndexingClient {
+export interface IndexingClient {
   callReadOnly<
     const TAbi extends ClarityAbi | readonly unknown[],
     TFunctionName extends ContractFunctionName<TAbi, "read_only">,
     const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
   >(
     options: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
-  ): PromiseLike<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>>;
+  ): Promise<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>>;
 
-  callReadOnly(options: UntypedCallReadOnlyFunctionParameters): PromiseLike<CallReadResponse>;
+  callReadOnly(options: UntypedCallReadOnlyFunctionParameters): Promise<ClarityJsonValue>;
 }
 
-export type PromiseLogValue = string | number | boolean | bigint | null | undefined;
-
-export type PromiseLogAnnotations = Readonly<Record<string, PromiseLogValue>>;
-
-export interface PromiseLogger {
-  info: (message: string, annotations?: PromiseLogAnnotations) => void;
-  warn: (message: string, annotations?: PromiseLogAnnotations) => void;
-  error: (message: string, annotations?: PromiseLogAnnotations) => void;
-  debug: (message: string, annotations?: PromiseLogAnnotations) => void;
-  trace: (message: string, annotations?: PromiseLogAnnotations) => void;
-}
-
-export interface PromiseHandlerContext {
+export interface HandlerContext {
+  /** Transactional indexer database handle for the event being processed. */
   db: IndexerDb;
-  client: PromiseIndexingClient;
-  decode: <A>(schema: Schema.Schema<A>, repr: string) => Promise<A>;
-  logger: PromiseLogger;
+  /** Read-only contract client pinned to the event's block height. */
+  client: IndexingClient;
+  /** Console logger configured with the runtime's log level. */
+  logger: Logger;
 }
 
-export type PromiseEventHandler = (
-  event: HandlerEvent,
-  context: PromiseHandlerContext,
-) => Promise<void> | void;
+export type EventHandler = (event: HandlerEvent, context: HandlerContext) => Promise<void> | void;
 
-export interface PromiseFilter {
+export interface Filter {
+  /** Fully qualified contract identifier (e.g. `SP...contract-name`). */
   contractId: string;
-  handler: PromiseEventHandler;
+  /** Async function called for every matching smart contract event. */
+  handler: EventHandler;
+  /** Start indexing from this block height. Defaults to the deployment block. */
   startBlock?: number;
+  /** Stop at this block height, or `"latest"` for the current chain tip. */
   endBlock?: number | "latest";
 }
 
-export interface PromiseHistoricalRuntimeOptions extends HistoricalRuntimeOptions {
-  db: IndexerDb;
-  level?: LogLevel.LogLevel;
+export type LogLevel = EffectLogLevel.LogLevel;
+
+export interface HistoricalRuntimeOptions {
+  /** Database used for sync storage and checkpoints. */
+  database: DatabaseConfig;
+  /** Which chain to index. Defaults to `"mainnet"`. */
+  network?: NetworkOption;
+  api?: {
+    /** Overrides the network's default API endpoint. */
+    baseUrl?: string;
+    apiKey?: string;
+  };
+  /** Minimum log level for the console logger. Defaults to `"Info"`. */
+  logLevel?: LogLevel;
 }
 
-export interface PromiseHistoricalRuntime {
-  run: (filters: PromiseFilter[]) => Promise<void>;
+/**
+ * Promise-native historical indexer. Owns the indexer database and the
+ * Stacks API runtime; call `close()` (or use `await using`) when done.
+ */
+export interface HistoricalRuntime {
+  /** Indexer database handle, useful to inspect sync progress and cached data. */
+  readonly db: IndexerDb;
+  /** Run pending migrations on the indexer database. */
+  migrate: (options?: { migrationsFolder?: string }) => Promise<void>;
+  /** Historical sync for one or more contracts. */
+  run: (filters: Filter | Filter[]) => Promise<RunResult>;
+  /** Release the database and runtime resources. Safe to call multiple times. */
+  close: () => Promise<void>;
+  [Symbol.asyncDispose]: () => Promise<void>;
 }
 
-const makePromiseLogger = (layer: Layer.Layer<never>): PromiseLogger => {
+const makeLogger = (layer: Layer.Layer<never>): Logger => {
   const log = (effect: Effect.Effect<void>): void => {
     Effect.runSync(effect.pipe(Effect.provide(layer)));
   };
 
-  const annotate = (annotations?: PromiseLogAnnotations) => Effect.annotateLogs(annotations ?? {});
+  const annotate = (annotations?: LogAnnotations) => Effect.annotateLogs(annotations ?? {});
 
   return {
     info: (message, annotations) => log(Effect.logInfo(message).pipe(annotate(annotations))),
@@ -132,11 +135,11 @@ const makePromiseLogger = (layer: Layer.Layer<never>): PromiseLogger => {
 };
 
 const toEffectHandler =
-  (handler: PromiseEventHandler, logger: PromiseLogger): EventHandler =>
+  (handler: EventHandler, logger: Logger): EffectEventHandler =>
   (event, context) => {
     const thenableClient: unknown = toThenable(context.client);
-    // SAFETY: The adapter wraps the Effect client with toThenable, so every method returns a thenable at run time.
-    const client = thenableClient as PromiseIndexingClient;
+    // SAFETY: toThenable wraps the Effect client so every method returns a thenable at run time.
+    const client = thenableClient as IndexingClient;
 
     return Effect.tryPromise({
       try: () =>
@@ -144,7 +147,6 @@ const toEffectHandler =
           handler(event, {
             db: toThenable(context.db),
             client,
-            decode: (schema, repr) => Effect.runPromise(context.decode(schema, repr)),
             logger,
           }),
         ),
@@ -152,32 +154,73 @@ const toEffectHandler =
     });
   };
 
-export function createHistoricalRuntime(
-  input: PromiseHistoricalRuntimeOptions,
-): PromiseHistoricalRuntime {
-  const { db, level, ...options } = input;
-  const layer = loggerLayer({ level });
-  const logger = makePromiseLogger(layer);
+/**
+ * Creates a promise-native historical indexer from a database and network
+ * configuration. The runtime is ready once the returned promise resolves.
+ */
+export async function createHistoricalRuntime(
+  options: HistoricalRuntimeOptions,
+): Promise<HistoricalRuntime> {
+  const logger = makeLogger(loggerLayer({ level: options.logLevel }));
+  const scope = await Effect.runPromise(Scope.make());
+
+  const context = await Effect.runPromise(
+    Scope.provide(
+      Layer.build(
+        HistoricalRuntimeService.layerWithDatabase({
+          database: options.database,
+          network: options.network,
+          api: options.api,
+          logLevel: options.logLevel,
+        }),
+      ),
+      scope,
+    ).pipe(Effect.onError(() => Scope.close(scope, Exit.void))),
+  );
+
+  const runtime = Context.get(context, HistoricalRuntimeService);
+  const db = toThenable(Context.get(context, IndexerDatabase));
+  let closed = false;
+
+  const close = async (): Promise<void> => {
+    if (closed) {
+      return;
+    }
+
+    closed = true;
+    await Effect.runPromise(Scope.close(scope, Exit.void));
+  };
+
+  const ensureOpen = (): void => {
+    if (closed) {
+      throw new Error("HistoricalRuntime is closed. Create a new runtime to run more syncs.");
+    }
+  };
 
   return {
-    run: (filters: PromiseFilter[]): Promise<void> =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          const runtime = yield* HistoricalRuntime;
+    db,
+    migrate: async (migrateOptions) => {
+      ensureOpen();
+      await Effect.runPromise(migrate(migrateOptions).pipe(Effect.provide(context)));
+    },
+    run: async (filters) => {
+      ensureOpen();
+      const normalized = Array.isArray(filters) ? filters : [filters];
 
-          yield* runtime.run(
-            filters.map((filter): Filter => ({
+      return Effect.runPromise(
+        runtime
+          .run(
+            normalized.map((filter) => ({
               contractId: filter.contractId,
               handler: toEffectHandler(filter.handler, logger),
               startBlock: filter.startBlock,
               endBlock: filter.endBlock,
             })),
-          );
-        }).pipe(
-          Effect.provide(HistoricalRuntime.layer(options)),
-          Effect.provideService(IndexerDatabase, db),
-          Effect.provide(layer),
-        ),
-      ),
+          )
+          .pipe(Effect.provide(context)),
+      );
+    },
+    close,
+    [Symbol.asyncDispose]: close,
   };
 }

@@ -20,6 +20,7 @@
   "types": "./dist/index.d.mts",
   "exports": {
     ".": "./dist/index.mjs",
+    "./effect": "./dist/effect.mjs",
     "./package.json": "./package.json"
   },
   "publishConfig": {
