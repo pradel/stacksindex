@@ -1,27 +1,37 @@
 import { Cause, Context, Effect, Layer } from "effect";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
-import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
+import { type IndexerDb, IndexerDatabase } from "../database/index.ts";
 import { readOnly, StacksClient, type StacksClientService } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
 
 export interface IndexingService {
-  readonly executeEvent: (event: HandlerEvent) => Effect.Effect<void, HandlerExecutionError>;
+  /**
+   * Executes the handler for every event in `events` using the ambient
+   * `IndexerDatabase`. The caller owns the transaction, so a batch of handler
+   * writes and its checkpoint can be committed atomically.
+   *
+   * Returns the number of events passed to handlers.
+   */
+  readonly executeBatch: (
+    events: readonly HandlerEvent[],
+  ) => Effect.Effect<number, HandlerExecutionError, IndexerDatabase>;
 }
 
 export interface IndexingOptions {
   handlers: Handlers;
   client: StacksClientService;
-  db: IndexerDb;
 }
 
 export const createIndexing = ({
   handlers,
   client: stacksClient,
-  db,
-}: IndexingOptions): IndexingService => ({
-  executeEvent(event: HandlerEvent) {
+}: IndexingOptions): IndexingService => {
+  const executeEvent = (
+    event: HandlerEvent,
+    db: IndexerDb,
+  ): Effect.Effect<void, HandlerExecutionError> => {
     const handler = handlers[event.contract_log.contract_id];
 
     if (handler === undefined) {
@@ -32,38 +42,36 @@ export const createIndexing = ({
           blockHeight: event.block_height,
           txIndex: event.tx_index,
         }),
+        Effect.asVoid,
       );
     }
 
-    return IndexerDatabase.transaction((tx) =>
-      Effect.gen(function* executeEvent() {
-        // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event height unless overridden.
-        const client: IndexingClient = {
-          // oxlint-disable-next-line typescript/no-explicit-any
-          callReadOnly: ((options: any) =>
-            readOnly(stacksClient.callReadFunction, {
-              ...options,
-              tip: options.tip ?? event.block_height,
-            })) as IndexingClient["callReadOnly"],
-        };
+    return Effect.gen(function* executeEvent() {
+      // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event height unless overridden.
+      const client: IndexingClient = {
+        // oxlint-disable-next-line typescript/no-explicit-any
+        callReadOnly: ((options: any) =>
+          readOnly(stacksClient.callReadFunction, {
+            ...options,
+            tip: options.tip ?? event.block_height,
+          })) as IndexingClient["callReadOnly"],
+      };
 
-        // SAFETY: Schemas decoded here are pure, so the decode effect has no remaining requirements and its error channel widens to `unknown`.
-        const handlerContext: HandlerContext = {
-          db: tx,
-          client,
-          decode: (schema, hex) =>
-            decodeClarityWithSchema(schema)(hex) as Effect.Effect<(typeof schema)["Type"], unknown>,
-        };
+      // SAFETY: Schemas decoded here are pure, so the decode effect has no remaining requirements and its error channel widens to `unknown`.
+      const handlerContext: HandlerContext = {
+        db,
+        client,
+        decode: (schema, hex) =>
+          decodeClarityWithSchema(schema)(hex) as Effect.Effect<(typeof schema)["Type"], unknown>,
+      };
 
-        const result = yield* Effect.try({
-          try: () => handler(event, handlerContext),
-          catch: (err) => err,
-        });
+      const result = yield* Effect.try({
+        try: () => handler(event, handlerContext),
+        catch: (err) => err,
+      });
 
-        yield* result;
-      }),
-    ).pipe(
-      Effect.provideService(IndexerDatabase, db),
+      yield* result;
+    }).pipe(
       Effect.asVoid,
       Effect.tap(() =>
         Effect.logDebug("Executed event handler").pipe(
@@ -104,22 +112,35 @@ export const createIndexing = ({
         });
       }),
     );
-  },
-});
+  };
+
+  return {
+    executeBatch(events) {
+      return Effect.gen(function* () {
+        const db = yield* IndexerDatabase;
+
+        for (const event of events) {
+          yield* executeEvent(event, db);
+        }
+
+        return events.length;
+      });
+    },
+  };
+};
 
 export class Indexing extends Context.Service<Indexing, IndexingService>()(
   "stacksindex/indexing/Indexing",
 ) {
   static readonly layer = (options: {
     handlers: Handlers;
-  }): Layer.Layer<Indexing, never, StacksClient | IndexerDatabase> =>
+  }): Layer.Layer<Indexing, never, StacksClient> =>
     Layer.effect(
       Indexing,
       Effect.gen(function* () {
         const client = yield* StacksClient;
-        const db = yield* IndexerDatabase;
 
-        return Indexing.of(createIndexing({ handlers: options.handlers, client, db }));
+        return Indexing.of(createIndexing({ handlers: options.handlers, client }));
       }),
     );
 }

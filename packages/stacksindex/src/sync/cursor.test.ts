@@ -17,7 +17,7 @@ import {
   getContractEventsFirstCursor,
   parseLogsCursor,
   parseTransactionCursor,
-} from "./index.ts";
+} from "./cursor.ts";
 
 const mockRequest = vi.fn();
 
