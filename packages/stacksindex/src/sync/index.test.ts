@@ -1,6 +1,6 @@
 // oxlint-disable typescript/no-unsafe-assignment
 
-import { Effect, References, Stream } from "effect";
+import { Effect, Fiber, References, Stream } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
 import type { StacksClientService } from "../datasources/api/index.ts";
@@ -64,6 +64,11 @@ const transactionForId = (txId: string) => {
   return transaction("tx-1", 100, "block-1");
 };
 
+const notUsed = () => Effect.die("StacksClient method not used in this test");
+
+/** Always returns the same page so an unbounded producer would loop forever. */
+const repeatingPage = logPage("tx-1", "200:0:0:0");
+
 describe("sync historical", () => {
   // oxlint-disable-next-line init-declarations
   let testDb: TestDatabase;
@@ -81,8 +86,6 @@ describe("sync historical", () => {
   });
 
   test("streams started, safe and completed while persisting fetched data", async () => {
-    const notUsed = () => Effect.die("StacksClient method not used in this test");
-
     const client: StacksClientService = {
       getStatus: notUsed,
       getBlock: notUsed,
@@ -143,5 +146,58 @@ describe("sync historical", () => {
     );
 
     expect(progress).toMatchObject({ cursor: null, lastBlockHeight: 200n, isComplete: false });
+  });
+
+  test("bounds fetching while the consumer is busy", async () => {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId: CONTRACT_ID,
+        chainId: CHAIN_ID,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+        isComplete: false,
+      }),
+    );
+
+    let pageCalls = 0;
+
+    const client: StacksClientService = {
+      getStatus: notUsed,
+      getBlock: notUsed,
+      getBlockTransactions: notUsed,
+      getTransaction: notUsed,
+      getV1Transaction: notUsed,
+      getTransactionsBatch: (txIds: string[]) =>
+        // SAFETY: The mock returns fixtures shaped like the batch endpoint response; `never` satisfies the expected success type.
+        Effect.succeed({ results: txIds.map(transactionForId) } as never),
+      getTransactionEvents: notUsed,
+      getPrincipalTransactions: notUsed,
+      getContract: notUsed,
+      getContractLogs: () => {
+        pageCalls += 1;
+
+        // SAFETY: The mock returns a fixture shaped like the logs endpoint response; `never` satisfies the expected success type.
+        return Effect.succeed(repeatingPage as never);
+      },
+      callReadFunction: notUsed,
+    };
+
+    const sync = createSync({ chainId: CHAIN_ID, client, database: testDb.db });
+
+    // The consumer blocks on the first event, so the producer should only be
+    // Able to run ahead by the queue capacity.
+    const fiber = Effect.runFork(
+      sync.historical([{ contractId: CONTRACT_ID }]).pipe(
+        Stream.runForEach(() => Effect.sleep("10 seconds")),
+        Effect.provideService(References.MinimumLogLevel, "None"),
+      ),
+    );
+
+    await Effect.runPromise(Effect.sleep("100 millis"));
+    const callsWhileBlocked = pageCalls;
+    await Effect.runPromise(Fiber.interrupt(fiber));
+
+    expect(callsWhileBlocked).toBeGreaterThanOrEqual(1);
+    expect(callsWhileBlocked).toBeLessThanOrEqual(3);
   });
 });

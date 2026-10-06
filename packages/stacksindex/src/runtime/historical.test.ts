@@ -7,7 +7,7 @@
 import { URL } from "node:url";
 
 import { sql } from "drizzle-orm";
-import { Effect, Exit, Match, Predicate, References, type Schema } from "effect";
+import { Deferred, Effect, Exit, Fiber, Match, Predicate, References, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
@@ -198,6 +198,15 @@ const failOnBlock200 = (event: HandlerEvent, context: HandlerContext) =>
   event.block_height === 200
     ? Effect.fail(new Error("Handler failed"))
     : handledEventBlock(event, context);
+
+const blockOnBlock200Handler =
+  (started: Deferred.Deferred<"started">) => (event: HandlerEvent, context: HandlerContext) => {
+    if (event.block_height === 200) {
+      return Deferred.succeed(started, "started").pipe(Effect.andThen(Effect.never));
+    }
+
+    return handledEventBlock(event, context);
+  };
 
 const storedEventRow = (txId: string, blockHeight: number, eventIndex: number) => ({
   chainId: 1n,
@@ -2403,6 +2412,93 @@ describe("historical runtime with handlers", () => {
     expect(Number(checkpoint[0].blockHeight)).toBe(200);
     expect(Number(checkpoint[0].blockTime)).toBe(2000);
     expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(200);
+  });
+
+  test("interrupting mid-batch keeps the last committed checkpoint", async () => {
+    const contractId = "SP123.token";
+
+    // Block 100 holds 1000 events and block 200 holds 1, so indexing runs as
+    // Two batches: [block 100], then [block 200].
+    await testDb.db.insert(blocksTable).values([
+      { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
+      { chainId: 1n, height: 200n, hash: "block-200", blockTime: 2000n, tenureHeight: 200n },
+    ]);
+    await testDb.db.insert(transactionsTable).values([
+      {
+        chainId: 1n,
+        txId: "tx-100",
+        blockHeight: 100n,
+        blockHash: "block-100",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+      },
+      {
+        chainId: 1n,
+        txId: "tx-200",
+        blockHeight: 200n,
+        blockHash: "block-200",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+      },
+    ]);
+    await testDb.db
+      .insert(eventsTable)
+      .values([
+        ...Array.from({ length: 1000 }, (_, eventIndex) =>
+          storedEventRow("tx-100", 100, eventIndex),
+        ),
+        storedEventRow("tx-200", 200, 0),
+      ]);
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: null,
+        lastBlockHeight: 200,
+        isComplete: true,
+      }),
+    );
+
+    const started = Effect.runSync(Deferred.make<"started">());
+    const runtime = makeRuntime({ db: testDb.db });
+
+    const fiber = Effect.runFork(
+      runtime.run([{ contractId, handler: blockOnBlock200Handler(started), endBlock: 200 }]),
+    );
+
+    await Effect.runPromise(Deferred.await(started));
+    await Effect.runPromise(Fiber.interrupt(fiber));
+
+    // Batch [block 100] committed; the interrupted batch [block 200] rolled back.
+    const checkpointAfterInterrupt = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpointAfterInterrupt[0].blockHeight)).toBe(100);
+
+    const handledAfterInterrupt = (await testDb.db.select().from(blocksTable)).filter(
+      (row) => Number(row.height) >= 100_000,
+    );
+
+    expect(handledAfterInterrupt).toHaveLength(1000);
+
+    const result = await runtime.run([{ contractId, handler: handledEventBlock, endBlock: 200 }]);
+
+    expect(result.finalizedBlockHeight).toBe(200);
+
+    const handledAfterResume = (await testDb.db.select().from(blocksTable)).filter(
+      (row) => Number(row.height) >= 100_000,
+    );
+
+    expect(handledAfterResume).toHaveLength(1001);
+
+    const checkpointAfterResume = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpointAfterResume[0].blockHeight)).toBe(200);
   });
 
   test("returns error when handler throws", async () => {
