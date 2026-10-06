@@ -1,12 +1,8 @@
 import { sql } from "drizzle-orm";
 import { Context, Effect, Exit, Layer, Scope } from "effect";
 
-import {
-  IndexerDatabase,
-  migrate as migrateDatabase,
-  toThenable,
-  type IndexerDb,
-} from "../database/index.ts";
+import { toThenable } from "../compat/thenable.ts";
+import { IndexerDatabase, migrate as migrateDatabase, type IndexerDb } from "../database/index.ts";
 
 export interface TestDatabase {
   db: IndexerDb;

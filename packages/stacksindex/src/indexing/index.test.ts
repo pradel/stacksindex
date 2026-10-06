@@ -75,7 +75,7 @@ const createMockEvent = (overrides: Partial<HandlerEvent> = {}): HandlerEvent =>
 
 describe("indexing engine", () => {
   test("calls matching handler with event and context containing db and client", async () => {
-    const handler = vi.fn().mockResolvedValue(undefined);
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     const handlers: Handlers = {
       "SP123.token": handler,
@@ -112,37 +112,33 @@ describe("indexing engine", () => {
       .fn()
       .mockReturnValue(Effect.succeed({ okay: true, result: "0x01" }));
 
-    const handler = vi.fn().mockImplementation(async (_event, ctx: HandlerContext) => {
-      // Call without explicit tip - should inject event.block_height
-      await Effect.runPromise(
-        ctx.client.callReadOnly({
+    const handler = vi.fn().mockImplementation((_event, ctx: HandlerContext) =>
+      Effect.gen(function* () {
+        // Call without explicit tip - should inject event.block_height
+        yield* ctx.client.callReadOnly({
           contractAddress: "SP123",
           contractName: "contract",
           functionName: "get-something",
           args: ["0x01"],
           senderAddress: "ST123",
-        }),
-      );
+        });
 
-      // Call with explicit options.tip - should use explicit tip
-      await Effect.runPromise(
-        ctx.client.callReadOnly({
+        // Call with explicit options.tip - should use explicit tip
+        yield* ctx.client.callReadOnly({
           contractAddress: "SP123",
           contractName: "contract",
           functionName: "get-something",
           tip: 99999,
-        }),
-      );
+        });
 
-      // Call without options tip - should default tip to event.block_height
-      await Effect.runPromise(
-        ctx.client.callReadOnly({
+        // Call without options tip - should default tip to event.block_height
+        yield* ctx.client.callReadOnly({
           contractAddress: "SP123",
           contractName: "contract",
           functionName: "get-something",
-        }),
-      );
-    });
+        });
+      }),
+    );
 
     const handlers: Handlers = {
       "SP123.token": handler,
@@ -194,16 +190,16 @@ describe("indexing engine", () => {
 
     let handlerResult: unknown;
 
-    const handler = vi.fn().mockImplementation(async (_event, ctx: HandlerContext) => {
-      handlerResult = await Effect.runPromise(
-        ctx.client.callReadOnly({
+    const handler = vi.fn().mockImplementation((_event, ctx: HandlerContext) =>
+      Effect.gen(function* () {
+        handlerResult = yield* ctx.client.callReadOnly({
           abi: testAbi,
           contractAddress: "SP123",
           contractName: "contract",
           functionName: "get-decimals",
-        }),
-      );
-    });
+        });
+      }),
+    );
 
     const handlers: Handlers = {
       "SP123.token": handler,
@@ -253,7 +249,7 @@ describe("indexing engine", () => {
 
   test("returns err when handler throws", async () => {
     const error = new Error("Handler failed");
-    const handler = vi.fn().mockRejectedValue(error);
+    const handler = vi.fn().mockReturnValue(Effect.fail(error));
 
     const handlers: Handlers = {
       "SP123.token": handler,

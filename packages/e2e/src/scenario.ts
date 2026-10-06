@@ -73,11 +73,10 @@ export async function runScenario(options: {
     contractId: contract.contractId,
     startBlock: contract.startBlock,
     endBlock: contract.endBlock,
-    handler: (event) => {
-      tracer.record(contract.contractId, event);
-
-      return Promise.resolve();
-    },
+    handler: (event) =>
+      Effect.sync(() => {
+        tracer.record(contract.contractId, event);
+      }),
   }));
 
   await Effect.runPromise(

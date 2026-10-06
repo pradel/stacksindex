@@ -1,7 +1,7 @@
 import { Cause, Context, Effect, Layer } from "effect";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
-import { IndexerDatabase, toThenable } from "../database/index.ts";
+import { IndexerDatabase } from "../database/index.ts";
 import { readOnly, StacksClient } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
@@ -36,23 +36,19 @@ export const createIndexing = (handlers: Handlers): IndexingService => ({
           // oxlint-disable-next-line typescript/no-explicit-any
           callReadOnly: ((options: any) => {
             if ("abi" in options) {
-              return toThenable(
-                readOnly(stacksClient.callReadFunction, {
-                  ...options,
-                  tip: options.tip ?? event.block_height,
-                }),
-              );
+              return readOnly(stacksClient.callReadFunction, {
+                ...options,
+                tip: options.tip ?? event.block_height,
+              });
             }
 
             const contractId = `${options.contractAddress}.${options.contractName}`;
 
-            return toThenable(
-              stacksClient.callReadFunction(contractId, options.functionName, {
-                args: options.args,
-                sender: options.senderAddress,
-                tip: options.tip ?? event.block_height,
-              }),
-            );
+            return stacksClient.callReadFunction(contractId, options.functionName, {
+              args: options.args,
+              sender: options.senderAddress,
+              tip: options.tip ?? event.block_height,
+            });
           }) as IndexingClient["callReadOnly"],
         };
 
@@ -64,22 +60,12 @@ export const createIndexing = (handlers: Handlers): IndexingService => ({
             decodeClarityWithSchema(schema)(hex) as Effect.Effect<(typeof schema)["Type"], unknown>,
         };
 
-        let result: Effect.Effect<void, any> | Promise<void>;
+        const result = yield* Effect.try({
+          try: () => handler(event, handlerContext),
+          catch: (err) => err,
+        });
 
-        try {
-          result = handler(event, handlerContext);
-        } catch (err) {
-          return yield* Effect.fail(err);
-        }
-
-        if (Effect.isEffect(result)) {
-          yield* result;
-        } else {
-          yield* Effect.tryPromise({
-            try: () => Promise.resolve(result),
-            catch: (err) => err,
-          });
-        }
+        yield* result;
       }),
     ).pipe(
       Effect.asVoid,

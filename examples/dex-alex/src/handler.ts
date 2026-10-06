@@ -1,6 +1,11 @@
 import { eq } from "drizzle-orm";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
-import { decodeHex, type EventHandler, type IndexingClient } from "stacksindex";
+import {
+  decodeHex,
+  type PromiseEventHandler,
+  type PromiseIndexingClient,
+  type PromiseLogger,
+} from "stacksindex";
 import { z } from "zod";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
@@ -98,7 +103,8 @@ export const poolLogSchema = z.union([
 export type PoolLog = z.infer<typeof poolLogSchema>;
 
 export interface InsertTokenIfNotExistsParams {
-  client: IndexingClient;
+  client: PromiseIndexingClient;
+  logger: PromiseLogger;
   db: AppDatabase;
   chainId: bigint;
   tokenAddress: string;
@@ -106,6 +112,7 @@ export interface InsertTokenIfNotExistsParams {
 
 export async function insertTokenIfNotExists({
   client,
+  logger,
   db,
   chainId,
   tokenAddress,
@@ -158,14 +165,14 @@ export async function insertTokenIfNotExists({
 
   await db.insert(tokenTable).values(token).onConflictDoNothing();
 
-  // oxlint-disable-next-line no-console
-  console.info("Discovered token", { token: tokenAddress, symbol, decimals });
+  logger.info("Discovered token", { token: tokenAddress, symbol, decimals });
 
   return token;
 }
 
 export interface SyncPoolTokensParams {
-  client: IndexingClient;
+  client: PromiseIndexingClient;
+  logger: PromiseLogger;
   db: AppDatabase;
   chainId: bigint;
   poolContract: string;
@@ -174,6 +181,7 @@ export interface SyncPoolTokensParams {
 
 export async function syncPoolTokens({
   client,
+  logger,
   db,
   chainId,
   poolContract,
@@ -215,6 +223,7 @@ export async function syncPoolTokens({
 
   await insertTokenIfNotExists({
     client,
+    logger,
     db,
     chainId,
     tokenAddress: tokenX,
@@ -222,6 +231,7 @@ export async function syncPoolTokens({
 
   await insertTokenIfNotExists({
     client,
+    logger,
     db,
     chainId,
     tokenAddress: tokenY,
@@ -283,8 +293,8 @@ export function createPoolHandler({
   db,
   chainId = CHAIN_ID,
   poolContract = POOL_CONTRACT,
-}: CreatePoolHandlerOptions): EventHandler {
-  return async (event, { client }) => {
+}: CreatePoolHandlerOptions): PromiseEventHandler {
+  return async (event, { client, logger }) => {
     const decoded = decodeHex(event.contract_log.value.hex);
     const parsed = poolLogSchema.safeParse(decoded);
 
@@ -319,10 +329,16 @@ export function createPoolHandler({
           },
         });
 
-      await syncPoolTokens({ client, db, chainId, poolContract, poolToken: log.poolToken });
+      await syncPoolTokens({
+        client,
+        logger,
+        db,
+        chainId,
+        poolContract,
+        poolToken: log.poolToken,
+      });
 
-      // oxlint-disable-next-line no-console
-      console.debug("Pool created", { pool: log.poolToken });
+      logger.debug("Pool created", { pool: log.poolToken });
     } else if (log.action === "swap-x-for-y" || log.action === "swap-y-for-x") {
       const [pool] = await db
         .select()
@@ -359,8 +375,7 @@ export function createPoolHandler({
         })
         .onConflictDoNothing();
 
-      // oxlint-disable-next-line no-console
-      console.debug("Swap created", {
+      logger.debug("Swap created", {
         pool: log.poolToken,
         action: log.action,
         amountIn,
@@ -382,6 +397,7 @@ export function createPoolHandler({
       if (pool && (!pool.tokenX || !pool.tokenY)) {
         await syncPoolTokens({
           client,
+          logger,
           db,
           chainId,
           poolContract,

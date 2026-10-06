@@ -35,12 +35,11 @@ export interface IndexingClient {
     const TArgs extends ContractFunctionArgs<TAbi, "read_only", TFunctionName>,
   >(
     options: TypedCallReadOnlyFunctionParameters<TAbi, TFunctionName, TArgs>,
-  ): Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError> &
-    PromiseLike<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>>;
+  ): Effect.Effect<TypedCallReadOnlyFunctionReturnType<TAbi, TFunctionName>, StacksApiError>;
 
   callReadOnly(
     options: UntypedCallReadOnlyFunctionParameters,
-  ): Effect.Effect<CallReadResponse, StacksApiError> & PromiseLike<CallReadResponse>;
+  ): Effect.Effect<CallReadResponse, StacksApiError>;
 }
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -53,6 +52,6 @@ export interface HandlerContext<_TSchema extends Record<string, unknown> = any> 
 export type EventHandler = (
   event: HandlerEvent,
   context: HandlerContext,
-) => Effect.Effect<void, any> | Promise<void>;
+) => Effect.Effect<void, any>;
 
 export type Handlers = Record<string, EventHandler | undefined>;

@@ -14,25 +14,11 @@ import {
   type EffectPgDatabase as PgEffectPgDatabase,
   makeWithDefaults as makePgWithDefaults,
 } from "drizzle-orm/effect-postgres";
-import { Context, Effect, Exit, Layer, Predicate, Redacted, Scope } from "effect";
+import { Context, Effect, Layer, Redacted, type Scope } from "effect";
 
 export type IndexerDb<TRelations extends AnyRelations = AnyRelations> =
   | PgliteEffectPgDatabase<TRelations>
   | PgEffectPgDatabase<TRelations>;
-
-declare module "drizzle-orm/pg-core/effect/select" {
-  interface PgEffectSelectBase<
-    TTableName,
-    TSelection,
-    TSelectMode,
-    TNullabilityMap,
-    TDynamic,
-    TExcludedMethods,
-    TResult,
-    TSelectedFields,
-    TEffectHKT,
-  > extends PromiseLike<TResult> {}
-}
 
 export type DatabaseConfig =
   | {
@@ -43,12 +29,6 @@ export type DatabaseConfig =
       kind: "postgres";
       connectionString: string;
     };
-
-export interface DatabaseResult {
-  db: IndexerDb;
-  migrate: (options?: { migrationsFolder?: string }) => Promise<void>;
-  close: () => Promise<void>;
-}
 
 export function getMigrationsFolder(): string {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -143,51 +123,6 @@ export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>
     });
 }
 
-function isProxyable<T>(target: T): target is T & object {
-  return Boolean(target) && (typeof target === "object" || typeof target === "function");
-}
-
-type PromiseThenParameters = Parameters<Promise<unknown>["then"]>;
-
-/**
- * Wraps an Effect so it can also be awaited as a Promise.
- */
-export function toThenable<A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> & PromiseLike<A>;
-
-export function toThenable<T>(target: T): T;
-
-export function toThenable<T>(target: T): T {
-  if (!isProxyable(target)) {
-    return target;
-  }
-
-  return new Proxy(target, {
-    get(t, prop, receiver) {
-      if (prop === "then" && Effect.isEffect(t)) {
-        // SAFETY: Effects reachable through toThenable are self-contained, so they carry no remaining requirements at run time.
-        const runnable = t as Effect.Effect<unknown, unknown>;
-
-        return (resolve: PromiseThenParameters[0], reject: PromiseThenParameters[1]) =>
-          Effect.runPromise(runnable).then(resolve, reject);
-      }
-
-      // SAFETY: The Proxy get trap receives the property key being read from the target `t`.
-      const orig = t[prop as keyof typeof t];
-
-      if (Predicate.isFunction(orig)) {
-        // oxlint-disable-next-line typescript/no-explicit-any
-        return function get(this: any, ...args: any[]) {
-          const res = orig.apply(this === receiver ? t : this, args);
-
-          return toThenable(res);
-        };
-      }
-
-      return orig;
-    },
-  });
-}
-
 export function makeDatabase(config: DatabaseConfig): Effect.Effect<
   {
     db: IndexerDb;
@@ -202,13 +137,12 @@ export function makeDatabase(config: DatabaseConfig): Effect.Effect<
         PgliteClient.layer(config.directory ? { dataDir: config.directory } : {}),
       );
 
-      const rawDb = yield* makePgliteWithDefaults().pipe(Effect.provide(clientContext));
-      const db = toThenable(rawDb);
+      const db = yield* makePgliteWithDefaults().pipe(Effect.provide(clientContext));
 
       return {
         db,
         migrate: (options?: { migrationsFolder?: string }) =>
-          migrate(options).pipe(Effect.provideService(IndexerDatabase, rawDb)),
+          migrate(options).pipe(Effect.provideService(IndexerDatabase, db)),
       };
     }
 
@@ -218,31 +152,12 @@ export function makeDatabase(config: DatabaseConfig): Effect.Effect<
       }),
     );
 
-    const rawDb = yield* makePgWithDefaults().pipe(Effect.provide(clientContext));
-    const db = toThenable(rawDb);
+    const db = yield* makePgWithDefaults().pipe(Effect.provide(clientContext));
 
     return {
       db,
       migrate: (options?: { migrationsFolder?: string }) =>
-        migrate(options).pipe(Effect.provideService(IndexerDatabase, rawDb)),
+        migrate(options).pipe(Effect.provideService(IndexerDatabase, db)),
     };
   });
-}
-
-export async function createDatabase(config: DatabaseConfig): Promise<DatabaseResult> {
-  const scope = await Effect.runPromise(Scope.make());
-
-  const { db, migrate: runMigrate } = await Effect.runPromise(
-    makeDatabase(config).pipe(Scope.provide(scope)),
-  );
-
-  return {
-    db,
-    migrate: async (options?: { migrationsFolder?: string }) => {
-      await Effect.runPromise(runMigrate(options));
-    },
-    close: async () => {
-      await Effect.runPromise(Scope.close(scope, Exit.void));
-    },
-  };
 }

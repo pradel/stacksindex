@@ -10,7 +10,9 @@ import { sql } from "drizzle-orm";
 import { Effect, Exit, Match, Predicate, References, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { createDatabase, IndexerDatabase, toThenable, type IndexerDb } from "../database/index.ts";
+import { createDatabase } from "../compat/promise.ts";
+import { toThenable } from "../compat/thenable.ts";
+import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import {
   FilterValidationError,
   HandlerExecutionError,
@@ -119,7 +121,7 @@ const mockFetch = vi.fn(async (rawUrl: FetchInput, init?: any) => {
   });
 });
 
-const noopHandler = () => Promise.resolve();
+const noopHandler = () => Effect.void;
 
 const mockBody = <T>(data: T) => ({
   json: () => Promise.resolve(data),
@@ -1463,8 +1465,8 @@ describe("historical runtime with handlers", () => {
   test("calls handlers in global chronological order across contracts", async () => {
     const contractA = "SP123.token-a";
     const contractB = "SP456.token-b";
-    const handlerA = vi.fn().mockResolvedValue(undefined);
-    const handlerB = vi.fn().mockResolvedValue(undefined);
+    const handlerA = vi.fn().mockReturnValue(Effect.void);
+    const handlerB = vi.fn().mockReturnValue(Effect.void);
 
     const makeTxData = ({
       txId,
@@ -1745,7 +1747,7 @@ describe("historical runtime with handlers", () => {
 
   test("updates checkpoint after processing events", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn().mockResolvedValue(undefined);
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -1914,7 +1916,7 @@ describe("historical runtime with handlers", () => {
 
   test("does not re-process events below checkpoint on restart", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn().mockResolvedValue(undefined);
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     // Pre-seed checkpoint so block 100 is already processed
     await testDb.run(syncStore.upsertCheckpoint({ chainId: 1, blockHeight: 100, blockTime: 1000 }));
@@ -2002,7 +2004,7 @@ describe("historical runtime with handlers", () => {
 
   test("returns error when handler throws", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn().mockRejectedValue(new Error("Handler failed"));
+    const handler = vi.fn().mockReturnValue(Effect.fail(new Error("Handler failed")));
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -2425,20 +2427,21 @@ describe("historical runtime with handlers", () => {
     const result = await runtime.run([
       {
         contractId,
-        handler: async (_event, { client }) => {
-          handlerCalled = true;
-          const [contractAddress, contractName] = contractId.split(".");
+        handler: (_event, { client }) =>
+          Effect.gen(function* () {
+            handlerCalled = true;
+            const [contractAddress, contractName] = contractId.split(".");
 
-          const readResult = await client.callReadOnly({
-            contractAddress,
-            contractName,
-            functionName: "get-total-supply",
-          });
+            const readResult = yield* client.callReadOnly({
+              contractAddress,
+              contractName,
+              functionName: "get-total-supply",
+            });
 
-          if (readResult.okay) {
-            callReadOnlySuccess = true;
-          }
-        },
+            if (readResult.okay) {
+              callReadOnlySuccess = true;
+            }
+          }),
       },
     ]);
 
@@ -2500,7 +2503,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -2670,7 +2673,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -2922,7 +2925,7 @@ describe("historical runtime with handlers", () => {
 
   test("skips contract synchronization when initial event exceeds endBlock", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn();
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -3006,7 +3009,7 @@ describe("historical runtime with handlers", () => {
 
   test("does not collect transactions or fetch blocks for transactions exceeding maxBlockHeight", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn().mockResolvedValue(undefined);
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -3298,7 +3301,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     mockRequest.mockImplementation((rawUrl: string) => {
@@ -3512,7 +3515,7 @@ describe("historical runtime with handlers", () => {
 
   test("skips sync and network requests when contract is already marked complete for endBlock", async () => {
     const contractId = "SP123.token";
-    const handler = vi.fn().mockResolvedValue(undefined);
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     // Pre-populate sync progress as complete up to block 150
     await testDb.run(
@@ -3544,7 +3547,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     // Contract was completed up to block 100 in previous run
@@ -3730,7 +3733,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     // Contract was synced up to block 100 in an earlier unbounded run (isComplete: false, cursor: null)
@@ -3915,7 +3918,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
       handledHeights.push(event.block_height);
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     // Pre-insert block and transaction into DB
@@ -4012,7 +4015,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { tx_id: string; block_height: number }) => {
       handledEvents.push({ txId: event.tx_id, blockHeight: event.block_height });
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     const makeTx = (txId: string, blockHeight: number, txIndex: number) => ({
@@ -4263,7 +4266,7 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockImplementation((event: { tx_id: string; block_height: number }) => {
       handledEvents.push({ txId: event.tx_id, blockHeight: event.block_height });
 
-      return Promise.resolve();
+      return Effect.void;
     });
 
     const makeTx = (txId: string, blockHeight: number, txIndex: number) => ({
@@ -4563,7 +4566,7 @@ describe("historical runtime with handlers", () => {
   test("supports custom network in context", async () => {
     const contractId = "SP123.custom-chain";
     const customChainId = 2147483648;
-    const handler = vi.fn();
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
@@ -4819,7 +4822,7 @@ describe("historical runtime with handlers", () => {
 
   test("fetches multiple transactions via batch endpoint in a single request", async () => {
     const contractId = "SP123.batch";
-    const handler = vi.fn();
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     const makeTx = (txId: string, height: number, hash: string) => ({
       tx_id: txId,
@@ -4986,7 +4989,7 @@ describe("historical runtime with handlers", () => {
 
   test("returns error when batch omits a transaction", async () => {
     const contractId = "SP123.batch-missing";
-    const handler = vi.fn();
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     const tx1 = {
       tx_id: "tx-1",
@@ -5095,7 +5098,7 @@ describe("historical runtime with handlers", () => {
 
   test("returns error when batch request fails", async () => {
     const contractId = "SP123.batch-error";
-    const handler = vi.fn();
+    const handler = vi.fn().mockReturnValue(Effect.void);
 
     mockRequest.mockImplementation((rawUrl: string) => {
       const url = decodeURIComponent(rawUrl);
