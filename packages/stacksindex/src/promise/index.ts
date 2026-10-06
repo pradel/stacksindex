@@ -97,6 +97,11 @@ export interface HistoricalRuntimeOptions {
     baseUrl?: string;
     apiKey?: string;
   };
+  /**
+   * Number of blocks kept unfinalized behind the indexed height. Defaults to
+   * `0` (everything indexed is immediately finalized).
+   */
+  finality?: number;
   /** Minimum log level for the console logger. Defaults to `"Info"`. */
   logLevel?: LogLevel;
 }
@@ -165,6 +170,7 @@ export async function createHistoricalRuntime(
       database: options.database,
       network: options.network,
       api: options.api,
+      finality: options.finality,
       logLevel: options.logLevel,
     }),
   );

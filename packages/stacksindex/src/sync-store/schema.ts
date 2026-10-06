@@ -85,6 +85,8 @@ export const checkpointsTable = pgTable(
     chainId: table.bigint({ mode: "bigint" }).notNull(),
     blockHeight: table.bigint({ mode: "bigint" }).notNull(),
     blockTime: table.bigint({ mode: "bigint" }).notNull(),
+    finalizedBlockHeight: table.bigint({ mode: "bigint" }).notNull().default(0n),
+    finalizedBlockTime: table.bigint({ mode: "bigint" }).notNull().default(0n),
   }),
   (table) => [
     primaryKey({

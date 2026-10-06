@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lte } from "drizzle-orm";
 import { Effect } from "effect";
 
 import { IndexerDatabase } from "../database/index.ts";
@@ -327,10 +327,14 @@ export const syncStore = {
     chainId,
     blockHeight,
     blockTime,
+    finalizedBlockHeight,
+    finalizedBlockTime,
   }: {
     chainId: number;
     blockHeight: number;
     blockTime: number;
+    finalizedBlockHeight: number;
+    finalizedBlockTime: number;
   }): Effect.Effect<void, SyncStoreError, IndexerDatabase> =>
     Effect.gen(function* () {
       const db = yield* IndexerDatabase;
@@ -341,12 +345,16 @@ export const syncStore = {
           chainId: BigInt(chainId),
           blockHeight: BigInt(blockHeight),
           blockTime: BigInt(blockTime),
+          finalizedBlockHeight: BigInt(finalizedBlockHeight),
+          finalizedBlockTime: BigInt(finalizedBlockTime),
         })
         .onConflictDoUpdate({
           target: [checkpointsTable.chainId],
           set: {
             blockHeight: BigInt(blockHeight),
             blockTime: BigInt(blockTime),
+            finalizedBlockHeight: BigInt(finalizedBlockHeight),
+            finalizedBlockTime: BigInt(finalizedBlockTime),
           },
         })
         .pipe(
@@ -356,4 +364,103 @@ export const syncStore = {
           ),
         );
     }),
+
+  /**
+   * Discards all sync data above the checkpoint's finalized height and resets
+   * the affected `sync_progress` rows so the data is refetched.
+   *
+   * The unfinalized window is provisional: after a restart it can belong to an
+   * orphaned fork, so the runtime replays it from the finalized height.
+   * Handler writes are not rolled back, so handlers must be idempotent.
+   *
+   * Returns the discarded range, or `null` when there is no unfinalized data.
+   */
+  rewindToFinalized: ({
+    chainId,
+  }: {
+    chainId: number;
+  }): Effect.Effect<
+    { fromBlockHeight: number; toBlockHeight: number } | null,
+    SyncStoreError,
+    IndexerDatabase
+  > =>
+    IndexerDatabase.transaction(() =>
+      Effect.gen(function* () {
+        const db = yield* IndexerDatabase;
+
+        const rows = yield* db
+          .select()
+          .from(checkpointsTable)
+          .where(eq(checkpointsTable.chainId, BigInt(chainId)))
+          .limit(1);
+
+        const checkpoint = rows[0] ?? null;
+
+        if (checkpoint === null) {
+          return null;
+        }
+
+        const fromBlockHeight = Number(checkpoint.blockHeight);
+        const toBlockHeight = Number(checkpoint.finalizedBlockHeight);
+
+        if (toBlockHeight >= fromBlockHeight) {
+          return null;
+        }
+
+        yield* db
+          .delete(eventsTable)
+          .where(
+            and(
+              eq(eventsTable.chainId, BigInt(chainId)),
+              gt(eventsTable.blockHeight, checkpoint.finalizedBlockHeight),
+            ),
+          );
+
+        yield* db
+          .delete(transactionsTable)
+          .where(
+            and(
+              eq(transactionsTable.chainId, BigInt(chainId)),
+              gt(transactionsTable.blockHeight, checkpoint.finalizedBlockHeight),
+            ),
+          );
+
+        yield* db
+          .delete(blocksTable)
+          .where(
+            and(
+              eq(blocksTable.chainId, BigInt(chainId)),
+              gt(blocksTable.height, checkpoint.finalizedBlockHeight),
+            ),
+          );
+
+        yield* db
+          .update(syncProgressTable)
+          .set({
+            cursor: null,
+            lastBlockHeight: checkpoint.finalizedBlockHeight,
+            isComplete: false,
+          })
+          .where(
+            and(
+              eq(syncProgressTable.chainId, BigInt(chainId)),
+              gt(syncProgressTable.lastBlockHeight, checkpoint.finalizedBlockHeight),
+            ),
+          );
+
+        yield* db
+          .update(checkpointsTable)
+          .set({
+            blockHeight: checkpoint.finalizedBlockHeight,
+            blockTime: checkpoint.finalizedBlockTime,
+          })
+          .where(eq(checkpointsTable.chainId, BigInt(chainId)));
+
+        return { fromBlockHeight, toBlockHeight };
+      }),
+    ).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "rewindToFinalized", cause }),
+      ),
+    ),
 };

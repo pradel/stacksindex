@@ -7,7 +7,17 @@
 import { URL } from "node:url";
 
 import { sql } from "drizzle-orm";
-import { Effect, Exit, Match, Predicate, References, type Schema } from "effect";
+import {
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Match,
+  Metric,
+  Predicate,
+  References,
+  type Schema,
+} from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
@@ -18,6 +28,8 @@ import {
   SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
+import { indexBatchDuration } from "../lib/metrics.ts";
+import type { HandlerContext, HandlerEvent } from "../lib/types.ts";
 import { createHistoricalRuntime } from "../promise/index.ts";
 import { toThenable } from "../promise/thenable.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -33,7 +45,11 @@ import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { HistoricalRuntime, type Filter, type HistoricalRuntimeOptions } from "./historical.ts";
 
 const makeRuntime = (input: { db: IndexerDb } & HistoricalRuntimeOptions) => {
-  const layer = HistoricalRuntime.layer({ network: input.network, api: input.api });
+  const layer = HistoricalRuntime.layer({
+    network: input.network,
+    api: input.api,
+    finality: input.finality,
+  });
 
   return {
     run: (filters: Filter[]) =>
@@ -172,6 +188,90 @@ const standardTxById: Dictionary<Schema.Json> = {
   "tx-100-2": standardTx("tx-100-2", 100, "block-100", 20),
   "tx-100-3": standardTx("tx-100-3", 100, "block-100", 30),
   "tx-150-1": standardTx("tx-150-1", 150, "block-150", 50),
+};
+
+const handledEventBlockHeight = (event: HandlerEvent) =>
+  BigInt(100_000 + event.event_index + (event.block_height === 200 ? 10_000 : 0));
+
+const handledEventBlock = (event: HandlerEvent, context: HandlerContext) =>
+  context.db
+    .insert(blocksTable)
+    .values({
+      chainId: 1n,
+      height: handledEventBlockHeight(event),
+      hash: `handled-${event.block_height}-${event.event_index}`,
+      blockTime: 0n,
+      tenureHeight: 0n,
+    })
+    .pipe(Effect.asVoid);
+
+const failOnBlock200 = (event: HandlerEvent, context: HandlerContext) =>
+  event.block_height === 200
+    ? Effect.fail(new Error("Handler failed"))
+    : handledEventBlock(event, context);
+
+const blockOnBlock200Handler =
+  (started: Deferred.Deferred<"started">) => (event: HandlerEvent, context: HandlerContext) => {
+    if (event.block_height === 200) {
+      return Deferred.succeed(started, "started").pipe(Effect.andThen(Effect.never));
+    }
+
+    return handledEventBlock(event, context);
+  };
+
+const storedEventRow = (txId: string, blockHeight: number, eventIndex: number) => ({
+  chainId: 1n,
+  contractId: "SP123.token",
+  txId,
+  eventIndex,
+  eventType: "smart_contract_log",
+  topic: "print",
+  valueHex: "0x01",
+  valueRepr: "(ok true)",
+  blockHeight: BigInt(blockHeight),
+});
+
+/** Seeds blocks, transactions, events and a completed sync_progress row. */
+const seedCompleteContract = async (
+  testDb: TestDatabase,
+  contractId: string,
+  blockHeights: number[],
+) => {
+  await testDb.db.insert(blocksTable).values(
+    blockHeights.map((height) => ({
+      chainId: 1n,
+      height: BigInt(height),
+      hash: `block-${height}`,
+      blockTime: BigInt(height * 10),
+      tenureHeight: BigInt(height),
+    })),
+  );
+  await testDb.db.insert(transactionsTable).values(
+    blockHeights.map((height) => ({
+      chainId: 1n,
+      txId: `tx-${height}`,
+      blockHeight: BigInt(height),
+      blockHash: `block-${height}`,
+      txIndex: 0,
+      txType: "contract_call",
+      senderAddress: "SP sender",
+      feeRate: 1000n,
+      nonce: 0n,
+      txStatus: "success",
+    })),
+  );
+  await testDb.db
+    .insert(eventsTable)
+    .values(blockHeights.map((height) => storedEventRow(`tx-${height}`, height, 0)));
+  await testDb.run(
+    syncStore.upsertSyncProgress({
+      contractId,
+      chainId: 1,
+      cursor: null,
+      lastBlockHeight: Math.max(...blockHeights),
+      isComplete: true,
+    }),
+  );
 };
 
 describe("historical runtime", () => {
@@ -1926,7 +2026,15 @@ describe("historical runtime with handlers", () => {
     const handler = vi.fn().mockReturnValue(Effect.void);
 
     // Pre-seed checkpoint so block 100 is already processed
-    await testDb.run(syncStore.upsertCheckpoint({ chainId: 1, blockHeight: 100, blockTime: 1000 }));
+    await testDb.run(
+      syncStore.upsertCheckpoint({
+        chainId: 1,
+        blockHeight: 100,
+        blockTime: 1000,
+        finalizedBlockHeight: 100,
+        finalizedBlockTime: 1000,
+      }),
+    );
     // Pre-seed sync progress so it skips first cursor discovery
     await testDb.run(
       syncStore.upsertSyncProgress({
@@ -2007,6 +2115,467 @@ describe("historical runtime with handlers", () => {
     expect(result).toBeDefined();
     // Handler should NOT be called because the event is at block 100 which is already checkpointed
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  test("commits block-aligned batches and resumes from the last committed batch", async () => {
+    const contractId = "SP123.token";
+
+    // Block 100 holds 1000 events (the maximum batch size) and block 200 holds
+    // 500, so indexing splits into one batch per block.
+    await testDb.db.insert(blocksTable).values([
+      { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
+      { chainId: 1n, height: 200n, hash: "block-200", blockTime: 2000n, tenureHeight: 200n },
+    ]);
+    await testDb.db.insert(transactionsTable).values([
+      {
+        chainId: 1n,
+        txId: "tx-100",
+        blockHeight: 100n,
+        blockHash: "block-100",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+      },
+      {
+        chainId: 1n,
+        txId: "tx-200",
+        blockHeight: 200n,
+        blockHash: "block-200",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+      },
+    ]);
+    await testDb.db
+      .insert(eventsTable)
+      .values([
+        ...Array.from({ length: 1000 }, (_, eventIndex) =>
+          storedEventRow("tx-100", 100, eventIndex),
+        ),
+        ...Array.from({ length: 500 }, (_, eventIndex) =>
+          storedEventRow("tx-200", 200, eventIndex),
+        ),
+      ]);
+
+    // Mark the contract complete so the run makes no Stacks API requests.
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: null,
+        lastBlockHeight: 200,
+        isComplete: true,
+      }),
+    );
+
+    const runtime = makeRuntime({ db: testDb.db });
+    const failingHandler = vi.fn(failOnBlock200);
+
+    const failure = await Effect.runPromiseExit(
+      runtime.run([{ contractId, handler: failingHandler, endBlock: 200 }]),
+    );
+
+    expect(failure).toBeTaggedError(
+      new HandlerExecutionError({ contractId, cause: new Error("Handler failed") }),
+    );
+    // 1000 events from block 100 plus the first event of block 200.
+    expect(failingHandler).toHaveBeenCalledTimes(1001);
+
+    const handledAfterFailure = (await testDb.db.select().from(blocksTable)).filter(
+      (row) => Number(row.height) >= 100_000,
+    );
+
+    expect(handledAfterFailure).toHaveLength(1000);
+    const checkpointAfterFailure = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpointAfterFailure[0].blockHeight)).toBe(100);
+
+    const succeedingHandler = vi.fn(handledEventBlock);
+    const result = await runtime.run([{ contractId, handler: succeedingHandler, endBlock: 200 }]);
+
+    expect(result.eventsProcessed).toBe(500);
+    expect(succeedingHandler).toHaveBeenCalledTimes(500);
+
+    const handledAfterResume = (await testDb.db.select().from(blocksTable)).filter(
+      (row) => Number(row.height) >= 100_000,
+    );
+
+    expect(handledAfterResume).toHaveLength(1500);
+    const checkpointAfterResume = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpointAfterResume[0].blockHeight)).toBe(200);
+  });
+
+  test("finalizes the indexed height by default", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100]);
+
+    const runtime = makeRuntime({ db: testDb.db });
+    const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
+
+    expect(result.finalizedBlockHeight).toBe(100);
+
+    const checkpoint = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpoint[0].blockHeight)).toBe(100);
+    expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(100);
+    expect(Number(checkpoint[0].finalizedBlockTime)).toBe(1000);
+  });
+
+  test("keeps the trailing finality window unfinalized", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100, 200, 300]);
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+
+      if (url.endsWith("/extended")) {
+        return { statusCode: 200, body: mockBody({ chain_tip: { block_height: 300 } }) };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = makeRuntime({ db: testDb.db, finality: 50 });
+    const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: 300 }]);
+
+    expect(result.finalizedBlockHeight).toBe(200);
+
+    const checkpoint = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpoint[0].blockHeight)).toBe(300);
+    expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(200);
+    expect(Number(checkpoint[0].finalizedBlockTime)).toBe(2000);
+  });
+
+  test("leaves nothing finalized when finality exceeds the indexed range", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100]);
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+
+      if (url.endsWith("/extended")) {
+        return { statusCode: 200, body: mockBody({ chain_tip: { block_height: 100 } }) };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = makeRuntime({ db: testDb.db, finality: 500 });
+    const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
+
+    expect(result.finalizedBlockHeight).toBe(0);
+
+    const checkpoint = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpoint[0].blockHeight)).toBe(100);
+    expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(0);
+  });
+
+  test("finalizes up to the chain tip when no recent events were indexed", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100]);
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+
+      if (url.endsWith("/extended")) {
+        return { statusCode: 200, body: mockBody({ chain_tip: { block_height: 1_000 } }) };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = makeRuntime({ db: testDb.db, finality: 10 });
+    const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
+
+    expect(result.finalizedBlockHeight).toBe(100);
+  });
+
+  test("finalizes the prior checkpoint across separate safe heights", async () => {
+    const contractId = "SP123.token";
+
+    const txById: Dictionary<Schema.Json> = {
+      "tx-100": standardTx("tx-100", 100, "block-100"),
+      "tx-200": standardTx("tx-200", 200, "block-200"),
+      "tx-300": standardTx("tx-300", 300, "block-300"),
+      "tx-400": standardTx("tx-400", 400, "block-400"),
+    };
+
+    const logsPage = (txId: string, nextCursor: string | null) => ({
+      results: [
+        {
+          tx_id: txId,
+          event_index: 0,
+          event_type: "smart_contract_log",
+          contract_log: {
+            contract_id: contractId,
+            topic: "print",
+            value: { hex: "0x01", repr: "(ok true)" },
+          },
+        },
+      ],
+      limit: 100,
+      offset: 0,
+      total: 1,
+      next_cursor: nextCursor,
+      prev_cursor: null,
+    });
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+
+      if (url.endsWith("/extended")) {
+        return { statusCode: 200, body: mockBody({ chain_tip: { block_height: 400 } }) };
+      }
+
+      if (url.includes("/extended/v3/transactions/batch")) {
+        const results = parseBatchIds(url)
+          .map((id) => txById[id])
+          .filter(Boolean);
+
+        return { statusCode: 200, body: mockBody({ results }) };
+      }
+
+      if (url.includes("cursor=100:0:0:0")) {
+        return { statusCode: 200, body: mockBody(logsPage("tx-100", "200:0:0:0")) };
+      }
+
+      if (url.includes("cursor=200:0:0:0")) {
+        return { statusCode: 200, body: mockBody(logsPage("tx-200", "300:0:0:0")) };
+      }
+
+      if (url.includes("cursor=300:0:0:0")) {
+        return { statusCode: 200, body: mockBody(logsPage("tx-300", "400:0:0:0")) };
+      }
+
+      if (url.includes("cursor=400:0:0:0")) {
+        return { statusCode: 200, body: mockBody(logsPage("tx-400", null)) };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+        isComplete: false,
+      }),
+    );
+
+    // Safe heights 199 and 299 index blocks 100 and 200. With a 150-block
+    // Finality window the checkpoint is written with no finalized marker, then
+    // The prior checkpoint becomes final once the safe height advances past it.
+    const runtime = makeRuntime({ db: testDb.db, finality: 150 });
+    const result = await runtime.run([{ contractId, handler: noopHandler }]);
+
+    expect(result.finalizedBlockHeight).toBe(200);
+    expect(result.contracts[0].pagesFetched).toBe(4);
+    expect(result.contracts[0].transactionsFetched).toBe(4);
+
+    const checkpoint = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpoint[0].blockHeight)).toBe(400);
+    expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(200);
+  });
+
+  test("rejects invalid finality", async () => {
+    const invalidFinalities = [-1, 1.5, Number.NaN];
+
+    for (const finality of invalidFinalities) {
+      const runtime = makeRuntime({ db: testDb.db, finality });
+
+      const error = await Effect.runPromise(
+        runtime.run([{ contractId: "SP123.token", handler: noopHandler }]).pipe(Effect.flip),
+      );
+
+      expect(Predicate.isTagged(error, "ConfigurationError")).toBe(true);
+    }
+  });
+
+  test("discards unfinalized data on startup", async () => {
+    const contractId = "SP123.token";
+
+    await testDb.db.insert(blocksTable).values([
+      { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
+      { chainId: 1n, height: 300n, hash: "block-300", blockTime: 3000n, tenureHeight: 300n },
+    ]);
+    await testDb.db.insert(transactionsTable).values([
+      {
+        chainId: 1n,
+        txId: "tx-100",
+        blockHeight: 100n,
+        blockHash: "block-100",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+      },
+      {
+        chainId: 1n,
+        txId: "tx-300",
+        blockHeight: 300n,
+        blockHash: "block-300",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+      },
+    ]);
+    await testDb.db
+      .insert(eventsTable)
+      .values([storedEventRow("tx-100", 100, 0), storedEventRow("tx-300", 300, 0)]);
+
+    // Block 300 is indexed but not finalized; block 200 is the finalized floor.
+    await testDb.run(
+      syncStore.upsertCheckpoint({
+        chainId: 1,
+        blockHeight: 300,
+        blockTime: 3000,
+        finalizedBlockHeight: 200,
+        finalizedBlockTime: 2000,
+      }),
+    );
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: null,
+        lastBlockHeight: 100,
+        isComplete: true,
+      }),
+    );
+
+    const runtime = makeRuntime({ db: testDb.db });
+    const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
+
+    expect(result.finalizedBlockHeight).toBe(200);
+
+    const events = await testDb.db.select().from(eventsTable);
+    expect(events.map((row) => Number(row.blockHeight))).toStrictEqual([100]);
+
+    const blocks = await testDb.db.select().from(blocksTable);
+    expect(blocks.map((row) => Number(row.height))).toStrictEqual([100]);
+
+    const checkpoint = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpoint[0].blockHeight)).toBe(200);
+    expect(Number(checkpoint[0].blockTime)).toBe(2000);
+    expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(200);
+  });
+
+  test("records indexing metrics", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100]);
+
+    const runtime = makeRuntime({ db: testDb.db });
+
+    const histogram = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
+
+        return yield* Metric.value(indexBatchDuration);
+      }).pipe(
+        Effect.provideService(Metric.MetricRegistry, new Map()),
+        Effect.provideService(References.MinimumLogLevel, "None"),
+      ),
+    );
+
+    expect(histogram.count).toBeGreaterThan(0);
+  });
+
+  test("interrupting mid-batch keeps the last committed checkpoint", async () => {
+    const contractId = "SP123.token";
+
+    // Block 100 holds 1000 events and block 200 holds 1, so indexing runs as
+    // Two batches: [block 100], then [block 200].
+    await testDb.db.insert(blocksTable).values([
+      { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
+      { chainId: 1n, height: 200n, hash: "block-200", blockTime: 2000n, tenureHeight: 200n },
+    ]);
+    await testDb.db.insert(transactionsTable).values([
+      {
+        chainId: 1n,
+        txId: "tx-100",
+        blockHeight: 100n,
+        blockHash: "block-100",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+      },
+      {
+        chainId: 1n,
+        txId: "tx-200",
+        blockHeight: 200n,
+        blockHash: "block-200",
+        txIndex: 0,
+        txType: "contract_call",
+        senderAddress: "SP sender",
+        feeRate: 1000n,
+        nonce: 0n,
+        txStatus: "success",
+      },
+    ]);
+    await testDb.db
+      .insert(eventsTable)
+      .values([
+        ...Array.from({ length: 1000 }, (_, eventIndex) =>
+          storedEventRow("tx-100", 100, eventIndex),
+        ),
+        storedEventRow("tx-200", 200, 0),
+      ]);
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: null,
+        lastBlockHeight: 200,
+        isComplete: true,
+      }),
+    );
+
+    const started = Effect.runSync(Deferred.make<"started">());
+    const runtime = makeRuntime({ db: testDb.db });
+
+    const fiber = Effect.runFork(
+      runtime.run([{ contractId, handler: blockOnBlock200Handler(started), endBlock: 200 }]),
+    );
+
+    await Effect.runPromise(Deferred.await(started));
+    await Effect.runPromise(Fiber.interrupt(fiber));
+
+    // Batch [block 100] committed; the interrupted batch [block 200] rolled back.
+    const checkpointAfterInterrupt = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpointAfterInterrupt[0].blockHeight)).toBe(100);
+
+    const handledAfterInterrupt = (await testDb.db.select().from(blocksTable)).filter(
+      (row) => Number(row.height) >= 100_000,
+    );
+
+    expect(handledAfterInterrupt).toHaveLength(1000);
+
+    const result = await runtime.run([{ contractId, handler: handledEventBlock, endBlock: 200 }]);
+
+    expect(result.finalizedBlockHeight).toBe(200);
+
+    const handledAfterResume = (await testDb.db.select().from(blocksTable)).filter(
+      (row) => Number(row.height) >= 100_000,
+    );
+
+    expect(handledAfterResume).toHaveLength(1001);
+
+    const checkpointAfterResume = await testDb.db.select().from(checkpointsTable);
+    expect(Number(checkpointAfterResume[0].blockHeight)).toBe(200);
   });
 
   test("returns error when handler throws", async () => {

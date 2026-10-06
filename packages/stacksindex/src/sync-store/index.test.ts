@@ -606,6 +606,8 @@ describe("syncStore", () => {
         chainId: 1n,
         blockHeight: 100n,
         blockTime: 1000n,
+        finalizedBlockHeight: 90n,
+        finalizedBlockTime: 900n,
       });
 
       const result = await testDb.run(syncStore.getCheckpoint({ chainId: 1 }));
@@ -613,6 +615,8 @@ describe("syncStore", () => {
         chainId: 1n,
         blockHeight: 100n,
         blockTime: 1000n,
+        finalizedBlockHeight: 90n,
+        finalizedBlockTime: 900n,
       });
     });
   });
@@ -620,7 +624,13 @@ describe("syncStore", () => {
   describe("upsertCheckpoint", () => {
     test("inserts new checkpoint", async () => {
       await testDb.run(
-        syncStore.upsertCheckpoint({ chainId: 1, blockHeight: 100, blockTime: 1000 }),
+        syncStore.upsertCheckpoint({
+          chainId: 1,
+          blockHeight: 100,
+          blockTime: 1000,
+          finalizedBlockHeight: 90,
+          finalizedBlockTime: 900,
+        }),
       );
 
       const result = await testDb.db.select().from(checkpointsTable);
@@ -629,6 +639,8 @@ describe("syncStore", () => {
           chainId: 1n,
           blockHeight: 100n,
           blockTime: 1000n,
+          finalizedBlockHeight: 90n,
+          finalizedBlockTime: 900n,
         },
       ]);
     });
@@ -638,10 +650,18 @@ describe("syncStore", () => {
         chainId: 1n,
         blockHeight: 100n,
         blockTime: 1000n,
+        finalizedBlockHeight: 90n,
+        finalizedBlockTime: 900n,
       });
 
       await testDb.run(
-        syncStore.upsertCheckpoint({ chainId: 1, blockHeight: 200, blockTime: 2000 }),
+        syncStore.upsertCheckpoint({
+          chainId: 1,
+          blockHeight: 200,
+          blockTime: 2000,
+          finalizedBlockHeight: 190,
+          finalizedBlockTime: 1900,
+        }),
       );
 
       const result = await testDb.db.select().from(checkpointsTable);
@@ -650,6 +670,155 @@ describe("syncStore", () => {
           chainId: 1n,
           blockHeight: 200n,
           blockTime: 2000n,
+          finalizedBlockHeight: 190n,
+          finalizedBlockTime: 1900n,
+        },
+      ]);
+    });
+  });
+
+  describe("rewindToFinalized", () => {
+    test("returns null when no checkpoint exists", async () => {
+      const result = await testDb.run(syncStore.rewindToFinalized({ chainId: 1 }));
+
+      expect(result).toBeNull();
+    });
+
+    test("returns null when nothing is unfinalized", async () => {
+      await testDb.db.insert(checkpointsTable).values({
+        chainId: 1n,
+        blockHeight: 200n,
+        blockTime: 2000n,
+        finalizedBlockHeight: 200n,
+        finalizedBlockTime: 2000n,
+      });
+
+      const result = await testDb.run(syncStore.rewindToFinalized({ chainId: 1 }));
+
+      expect(result).toBeNull();
+    });
+
+    test("discards data above the finalized height and resets affected progress", async () => {
+      await testDb.db.insert(blocksTable).values([
+        { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
+        { chainId: 1n, height: 200n, hash: "block-200", blockTime: 2000n, tenureHeight: 200n },
+        { chainId: 1n, height: 300n, hash: "block-300", blockTime: 3000n, tenureHeight: 300n },
+      ]);
+      await testDb.db.insert(transactionsTable).values([
+        {
+          chainId: 1n,
+          txId: "tx-100",
+          blockHeight: 100n,
+          blockHash: "block-100",
+          txIndex: 0,
+          txType: "contract_call",
+          senderAddress: "SP sender",
+          feeRate: 1n,
+          nonce: 0n,
+          txStatus: "success",
+        },
+        {
+          chainId: 1n,
+          txId: "tx-300",
+          blockHeight: 300n,
+          blockHash: "block-300",
+          txIndex: 0,
+          txType: "contract_call",
+          senderAddress: "SP sender",
+          feeRate: 1n,
+          nonce: 0n,
+          txStatus: "success",
+        },
+      ]);
+
+      const logEvent = (txId: string) =>
+        ({
+          tx_id: txId,
+          event_index: 0,
+          event_type: "smart_contract_log" as const,
+          contract_log: {
+            contract_id: "SP123.token",
+            topic: "print",
+            value: { hex: "0x01", repr: "(ok true)" },
+          },
+        }) satisfies SmartContractLogEvent;
+
+      await testDb.run(
+        syncStore.insertEvents({
+          events: [
+            { event: logEvent("tx-100"), blockHeight: 100 },
+            { event: logEvent("tx-300"), blockHeight: 300 },
+          ],
+          chainId: 1,
+        }),
+      );
+
+      await testDb.db.insert(syncProgressTable).values([
+        {
+          chainId: 1n,
+          contractId: "SP123.token",
+          cursor: "300:0:0:0",
+          lastBlockHeight: 300n,
+          isComplete: false,
+        },
+        {
+          chainId: 1n,
+          contractId: "SP456.token",
+          cursor: "150:0:0:0",
+          lastBlockHeight: 150n,
+          isComplete: false,
+        },
+      ]);
+
+      await testDb.db.insert(checkpointsTable).values({
+        chainId: 1n,
+        blockHeight: 300n,
+        blockTime: 3000n,
+        finalizedBlockHeight: 200n,
+        finalizedBlockTime: 2000n,
+      });
+
+      const result = await testDb.run(syncStore.rewindToFinalized({ chainId: 1 }));
+
+      expect(result).toStrictEqual({ fromBlockHeight: 300, toBlockHeight: 200 });
+
+      const blocks = await testDb.db.select().from(blocksTable);
+      expect(blocks.map((row) => Number(row.height))).toStrictEqual([100, 200]);
+
+      const transactions = await testDb.db.select().from(transactionsTable);
+      expect(transactions.map((row) => row.txId)).toStrictEqual(["tx-100"]);
+
+      const events = await testDb.db.select().from(eventsTable);
+      expect(events.map((row) => row.txId)).toStrictEqual(["tx-100"]);
+
+      const checkpoint = await testDb.db.select().from(checkpointsTable);
+      expect(checkpoint).toStrictEqual([
+        {
+          chainId: 1n,
+          blockHeight: 200n,
+          blockTime: 2000n,
+          finalizedBlockHeight: 200n,
+          finalizedBlockTime: 2000n,
+        },
+      ]);
+
+      const progress = await testDb.db.select().from(syncProgressTable);
+      expect(
+        progress.sort((left, right) => left.contractId.localeCompare(right.contractId)),
+      ).toStrictEqual([
+        {
+          chainId: 1n,
+          contractId: "SP123.token",
+          cursor: null,
+          lastBlockHeight: 200n,
+          isComplete: false,
+        },
+        {
+          chainId: 1n,
+          contractId: "SP456.token",
+          cursor: "150:0:0:0",
+          lastBlockHeight: 150n,
+          isComplete: false,
         },
       ]);
     });

@@ -1,4 +1,14 @@
-import { Context, Effect, Layer, Match, Schema, Stream, type LogLevel } from "effect";
+import {
+  Context,
+  Duration,
+  Effect,
+  Layer,
+  Match,
+  Metric,
+  Schema,
+  Stream,
+  type LogLevel,
+} from "effect";
 
 import { type DatabaseConfig, IndexerDatabase, migrate } from "../database/index.ts";
 import { type StacksApiError, StacksClient } from "../datasources/api/index.ts";
@@ -13,6 +23,7 @@ import {
   type SyncStoreError,
   type TransactionBatchError,
 } from "../lib/errors.ts";
+import { indexBatchDuration } from "../lib/metrics.ts";
 import {
   NetworkOptionSchema,
   resolveNetwork,
@@ -21,7 +32,7 @@ import {
 } from "../lib/network.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import { loggerLayer } from "../logger/index.ts";
-import { storedEventToHandlerEvent } from "../sync-store/decode.ts";
+import { type StoredEvent, storedEventToHandlerEvent } from "../sync-store/decode.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
   type ContractSyncSummary,
@@ -29,6 +40,7 @@ import {
   type SyncFilter,
   type SyncService,
 } from "../sync/index.ts";
+import { chunkEventsByBlock } from "./batches.ts";
 import { type Filter, type ResolvedFilter, validateAndResolveFilters } from "./filters.ts";
 
 export type { Filter } from "./filters.ts";
@@ -41,6 +53,11 @@ export interface HistoricalRuntimeOptions {
     baseUrl?: string;
     apiKey?: string;
   };
+  /**
+   * Number of blocks kept unfinalized behind the indexed height. Defaults to
+   * `0` (everything indexed is immediately finalized).
+   */
+  finality?: number;
 }
 
 export interface HistoricalRuntimeWithDatabaseOptions extends HistoricalRuntimeOptions {
@@ -65,18 +82,28 @@ export interface ContractRunResult {
   lastBlockHeight?: number;
   /** Number of events passed to the contract handler during this run. */
   eventsProcessed: number;
+  /** Number of contract-log pages fetched for this contract during the run. */
+  pagesFetched?: number;
+  /** Number of transactions fetched for this contract during the run. */
+  transactionsFetched?: number;
 }
 
 export interface RunResult {
   contracts: ContractRunResult[];
   /** Total number of events passed to handlers during this run. */
   eventsProcessed: number;
+  /**
+   * Highest block height considered final after this run. `undefined` when no
+   * checkpoint exists yet.
+   */
+  finalizedBlockHeight?: number;
 }
 
 interface ResolvedHistoricalRuntimeConfig {
   chainId: number;
   api: { baseUrl: string; apiKey?: string };
   network: ResolvedNetwork;
+  finality: number;
 }
 
 const HistoricalRuntimeOptionsSchema = Schema.Struct({
@@ -87,6 +114,7 @@ const HistoricalRuntimeOptionsSchema = Schema.Struct({
       apiKey: Schema.optional(Schema.String),
     }),
   ),
+  finality: Schema.optional(Schema.Natural),
 });
 
 function resolveRuntimeConfig(
@@ -107,20 +135,23 @@ function resolveRuntimeConfig(
         network,
         chainId: network.chainId,
         api,
+        finality: decoded.finality ?? 0,
       };
     }),
   );
 }
 
 /**
- * Indexes every stored event with height `> checkpoint` and `<= toBlockHeight`
- * in a single transaction together with the new checkpoint.
+ * Indexes one block-aligned batch of stored events together with the new
+ * checkpoint, in a single transaction.
  */
-function indexEventsUpTo(
-  toBlockHeight: number,
+function indexBatch(
+  batch: StoredEvent[],
   filterMap: Map<string, ResolvedFilter>,
   chainId: number,
   eventsByContract: Map<string, number>,
+  finalizedBlockHeight: number,
+  finalizedBlockTime: number,
 ): Effect.Effect<
   void,
   HandlerExecutionError | SyncStoreError | DatabaseError,
@@ -129,32 +160,9 @@ function indexEventsUpTo(
   return IndexerDatabase.transaction(() =>
     Effect.gen(function* () {
       const indexing = yield* Indexing;
-      const checkpoint = yield* syncStore.getCheckpoint({ chainId });
-      const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
-
-      if (fromBlockHeight >= toBlockHeight) {
-        return;
-      }
-
-      const rows = yield* syncStore.getEvents({
-        chainId,
-        fromBlockHeight: fromBlockHeight + 1,
-        toBlockHeight,
-      });
-
-      if (rows.length === 0) {
-        return;
-      }
-
-      const toLabel = toBlockHeight === Number.MAX_SAFE_INTEGER ? "latest" : String(toBlockHeight);
-
-      yield* Effect.logInfo(`Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`).pipe(
-        Effect.annotateLogs({ count: rows.length }),
-      );
-
       const events: HandlerEvent[] = [];
 
-      for (const row of rows) {
+      for (const row of batch) {
         const filter = filterMap.get(row.contractId);
         const rowBlockHeight = Number(row.blockHeight);
 
@@ -171,18 +179,174 @@ function indexEventsUpTo(
 
       yield* indexing.executeBatch(events);
 
-      const lastRow = rows[rows.length - 1];
+      const lastRow = batch[batch.length - 1];
       yield* syncStore.upsertCheckpoint({
         chainId,
         blockHeight: Number(lastRow.blockHeight),
         blockTime: Number(lastRow.blockTime),
+        finalizedBlockHeight,
+        finalizedBlockTime,
       });
-
-      yield* Effect.logInfo(
-        `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
-      ).pipe(Effect.annotateLogs({ block: Number(lastRow.blockHeight) }));
     }),
   );
+}
+
+/**
+ * Reads the chain tip height once per run, when a finality window is
+ * configured. Falls back to `undefined` (and logs a warning) when the status
+ * request or its payload is unavailable, so finality lags rather than failing
+ * the run.
+ */
+function readChainTipHeight(): Effect.Effect<number | undefined, never, StacksClient> {
+  return Effect.gen(function* () {
+    const client = yield* StacksClient;
+    const status = yield* client.getStatus();
+
+    return status.chain_tip?.block_height;
+  }).pipe(
+    Effect.tapError((error) =>
+      Effect.logWarning("Failed to read the chain tip; finality may lag behind").pipe(
+        Effect.annotateLogs({ phase: "fetch", error: String(error) }),
+      ),
+    ),
+    Effect.orElseSucceed(() => undefined),
+  );
+}
+
+/**
+ * Indexes every stored event with height `> checkpoint` and `<= toBlockHeight`.
+ * Events are split into block-aligned batches so each transaction stays
+ * bounded and every checkpoint refers to a fully processed block.
+ *
+ * The finalized marker advances to the newest committed block that is at least
+ * `finality` blocks behind the confirmation height. The confirmation height is
+ * the chain tip when it was read for the run, capped by the safe height during
+ * incremental steps; without a tip it falls back to the newest stored
+ * event-bearing block on the final `MAX_SAFE_INTEGER` pass. It never refers to
+ * data that is not yet committed.
+ */
+function indexEventsUpTo(
+  toBlockHeight: number,
+  filterMap: Map<string, ResolvedFilter>,
+  chainId: number,
+  eventsByContract: Map<string, number>,
+  finality: number,
+  chainTipHeight: number | undefined,
+): Effect.Effect<
+  void,
+  HandlerExecutionError | SyncStoreError | DatabaseError,
+  Indexing | IndexerDatabase
+> {
+  return Effect.gen(function* () {
+    const checkpoint = yield* syncStore.getCheckpoint({ chainId });
+    const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
+
+    if (fromBlockHeight >= toBlockHeight) {
+      return;
+    }
+
+    const confirmationHeight =
+      toBlockHeight === Number.MAX_SAFE_INTEGER
+        ? chainTipHeight
+        : Math.min(toBlockHeight, chainTipHeight ?? toBlockHeight);
+
+    const rows = yield* syncStore.getEvents({
+      chainId,
+      fromBlockHeight: fromBlockHeight + 1,
+      toBlockHeight,
+    });
+
+    if (rows.length === 0) {
+      // No new events, but the existing checkpoint block can still become
+      // Final now that the chain has advanced. Confirm it when it is at least
+      // `finality` blocks behind the confirmation height.
+      if (checkpoint !== null && confirmationHeight !== undefined) {
+        const checkpointHeight = Number(checkpoint.blockHeight);
+        const checkpointFinalizedHeight = Number(checkpoint.finalizedBlockHeight);
+
+        if (
+          checkpointHeight <= confirmationHeight - finality &&
+          checkpointHeight > checkpointFinalizedHeight
+        ) {
+          yield* syncStore.upsertCheckpoint({
+            chainId,
+            blockHeight: checkpointHeight,
+            blockTime: Number(checkpoint.blockTime),
+            finalizedBlockHeight: checkpointHeight,
+            finalizedBlockTime: Number(checkpoint.blockTime),
+          });
+        }
+      }
+
+      return;
+    }
+
+    const batches = chunkEventsByBlock(rows);
+    const toLabel = toBlockHeight === Number.MAX_SAFE_INTEGER ? "latest" : String(toBlockHeight);
+
+    yield* Effect.logInfo(`Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`).pipe(
+      Effect.annotateLogs({
+        phase: "index",
+        count: rows.length,
+        batches: batches.length,
+        finality,
+      }),
+    );
+
+    const rangeEndHeight = Number(rows[rows.length - 1].blockHeight);
+    const finalityThreshold = (confirmationHeight ?? rangeEndHeight) - finality;
+
+    let finalizedBlockHeight = checkpoint ? Number(checkpoint.finalizedBlockHeight) : 0;
+    let finalizedBlockTime = checkpoint ? Number(checkpoint.finalizedBlockTime) : 0;
+
+    // The checkpoint block is not part of `rows` (they start above it), but it
+    // May already be deep enough to finalize.
+    if (checkpoint !== null) {
+      const checkpointHeight = Number(checkpoint.blockHeight);
+
+      if (checkpointHeight <= finalityThreshold && checkpointHeight > finalizedBlockHeight) {
+        finalizedBlockHeight = checkpointHeight;
+        finalizedBlockTime = Number(checkpoint.blockTime);
+      }
+    }
+
+    for (const batch of batches) {
+      const finalizableRow = batch.findLast((row) => Number(row.blockHeight) <= finalityThreshold);
+
+      if (
+        finalizableRow !== undefined &&
+        Number(finalizableRow.blockHeight) > finalizedBlockHeight
+      ) {
+        finalizedBlockHeight = Number(finalizableRow.blockHeight);
+        finalizedBlockTime = Number(finalizableRow.blockTime);
+      }
+
+      const [duration] = yield* Effect.timed(
+        indexBatch(
+          batch,
+          filterMap,
+          chainId,
+          eventsByContract,
+          finalizedBlockHeight,
+          finalizedBlockTime,
+        ),
+      );
+
+      yield* Metric.update(indexBatchDuration, Duration.toMillis(duration));
+    }
+
+    const lastRow = rows[rows.length - 1];
+    yield* Effect.logInfo(
+      `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
+    ).pipe(
+      Effect.annotateLogs({
+        phase: "checkpoint",
+        block: Number(lastRow.blockHeight),
+        finalizedBlockHeight,
+        finalizedBlockTime,
+      }),
+    );
+  });
 }
 
 export type HistoricalRuntimeError =
@@ -242,9 +406,11 @@ export class HistoricalRuntime extends Context.Service<
     options: HistoricalRuntimeWithDatabaseOptions,
   ): Layer.Layer<HistoricalRuntime | IndexerDatabase, ConfigurationError | DatabaseError> =>
     Layer.mergeAll(
-      HistoricalRuntime.layer({ network: options.network, api: options.api }).pipe(
-        Layer.provideMerge(IndexerDatabase.layer(options.database)),
-      ),
+      HistoricalRuntime.layer({
+        network: options.network,
+        api: options.api,
+        finality: options.finality,
+      }).pipe(Layer.provideMerge(IndexerDatabase.layer(options.database))),
       loggerLayer({ level: options.logLevel }),
     );
 }
@@ -264,6 +430,22 @@ function runHistorical(
     const resolvedFilters = yield* validateAndResolveFilters(filters);
 
     yield* migrate();
+
+    // Unfinalized data is provisional across restarts: it may belong to a fork
+    // That was orphaned while the process was down. Discard it and let the
+    // Normal sync/index pass refetch and replay the canonical chain.
+    const rewind = yield* syncStore.rewindToFinalized({ chainId });
+
+    if (rewind !== null) {
+      yield* Effect.logWarning(
+        `Discarded unfinalized data from block ${rewind.fromBlockHeight}; refetching from block ${rewind.toBlockHeight + 1}`,
+      ).pipe(Effect.annotateLogs({ ...rewind }));
+    }
+
+    // Finality is measured against the chain tip when a finality window is
+    // Configured. Reading it once per run keeps the final pass accurate even
+    // When no events were stored near the tip.
+    const chainTipHeight = config.finality > 0 ? yield* readChainTipHeight() : undefined;
 
     yield* Effect.logInfo("Starting historical indexing").pipe(
       Effect.annotateLogs({ contracts: resolvedFilters.map((filter) => filter.contractId) }),
@@ -288,7 +470,14 @@ function runHistorical(
     let completedContracts: readonly ContractSyncSummary[] = [];
 
     const indexSafeHeight = (safeBlockHeight: number) =>
-      indexEventsUpTo(safeBlockHeight, filterMap, chainId, eventsByContract);
+      indexEventsUpTo(
+        safeBlockHeight,
+        filterMap,
+        chainId,
+        eventsByContract,
+        config.finality,
+        chainTipHeight,
+      );
 
     yield* Effect.gen(function* consumeSyncEvents() {
       yield* sync.historical(syncFilters).pipe(
@@ -331,10 +520,20 @@ function runHistorical(
         endBlock: contract.endBlock,
         lastBlockHeight: contract.lastBlockHeight,
         eventsProcessed: contractEvents,
+        pagesFetched: contract.pagesFetched,
+        transactionsFetched: contract.transactionsFetched,
       };
     });
 
-    return { contracts, eventsProcessed };
+    const finalCheckpoint = yield* syncStore.getCheckpoint({ chainId });
+
+    return {
+      contracts,
+      eventsProcessed,
+      finalizedBlockHeight: finalCheckpoint
+        ? Number(finalCheckpoint.finalizedBlockHeight)
+        : undefined,
+    };
   }).pipe(
     Effect.annotateLogs({ service: "historicalRuntime" }),
     Effect.withLogSpan("historicalIndexing"),

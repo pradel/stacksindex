@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Layer, Queue, Stream } from "effect";
+import { Cause, Context, Effect, Layer, Metric, Queue, Stream } from "effect";
 
 import { type IndexerDb, IndexerDatabase } from "../database/index.ts";
 import {
@@ -15,6 +15,7 @@ import {
   type SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
+import { syncErrors, syncEvents, syncPages } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { getContractEventsFirstCursor, parseLogsCursor } from "./cursor.ts";
 
@@ -53,6 +54,8 @@ export interface ContractSyncSummary {
   readonly startBlock?: number;
   readonly endBlock?: number;
   readonly lastBlockHeight?: number;
+  readonly pagesFetched: number;
+  readonly transactionsFetched: number;
 }
 
 /**
@@ -81,6 +84,8 @@ interface ContractSyncState {
   contractId: string;
   cursor: string | null;
   syncedBlockHeight?: number;
+  pagesFetched?: number;
+  transactionsFetched?: number;
   done: boolean;
   doneAtStart: boolean;
   startBlock?: number;
@@ -114,6 +119,8 @@ function toContractSyncSummary(state: ContractSyncState): ContractSyncSummary {
     startBlock: state.startBlock,
     endBlock: state.endBlock,
     lastBlockHeight: state.syncedBlockHeight,
+    pagesFetched: state.pagesFetched ?? 0,
+    transactionsFetched: state.transactionsFetched ?? 0,
   };
 }
 
@@ -468,126 +475,156 @@ export const createSync = ({
   database: IndexerDb;
 }): SyncService => ({
   historical: (filters) =>
-    Stream.callback<SyncEvent, SyncError>((queue) =>
-      Effect.gen(function* () {
-        const states = yield* initializeContractStates(filters, chainId);
+    Stream.callback<SyncEvent, SyncError>(
+      (queue) =>
+        Effect.gen(function* () {
+          const states = yield* initializeContractStates(filters, chainId);
 
-        yield* Queue.offer(queue, {
-          type: "started",
-          contracts: states.map(toContractSyncSummary),
-        });
+          yield* Queue.offer(queue, {
+            type: "started",
+            contracts: states.map(toContractSyncSummary),
+          });
 
-        // Fair scheduling: always fetch the contract with the lowest cursor
-        // Block height first so a single busy contract cannot starve others.
-        while (states.some((state) => !state.done)) {
-          let lowestState: ContractSyncState | null = null;
-          let lowestHeight = Number.MAX_SAFE_INTEGER;
+          // Fair scheduling: always fetch the contract with the lowest cursor
+          // Block height first so a single busy contract cannot starve others.
+          while (states.some((state) => !state.done)) {
+            let lowestState: ContractSyncState | null = null;
+            let lowestHeight = Number.MAX_SAFE_INTEGER;
 
-          for (const state of states) {
-            if (!state.done && state.cursor !== null) {
-              const height = (yield* parseLogsCursor(state.cursor)).blockHeight;
+            for (const state of states) {
+              if (!state.done && state.cursor !== null) {
+                const height = (yield* parseLogsCursor(state.cursor)).blockHeight;
 
-              if (height < lowestHeight) {
-                lowestHeight = height;
-                lowestState = state;
+                if (height < lowestHeight) {
+                  lowestHeight = height;
+                  lowestState = state;
+                }
               }
+            }
+
+            // All contracts done
+            if (!lowestState || lowestState.cursor === null) {
+              break;
+            }
+
+            // Fetch one page of events
+            const logsResponse = yield* client.getContractLogs(lowestState.contractId, {
+              cursor: lowestState.cursor,
+            });
+
+            yield* Metric.update(syncPages, 1);
+            lowestState.pagesFetched = (lowestState.pagesFetched ?? 0) + 1;
+
+            const { results: events, next_cursor: nextCursor } = logsResponse;
+            const currentHeight = (yield* parseLogsCursor(lowestState.cursor)).blockHeight;
+            yield* Effect.logInfo(`Syncing ${lowestState.contractId}`).pipe(
+              Effect.annotateLogs({
+                phase: "fetch",
+                block: currentHeight,
+                events: events.length,
+              }),
+            );
+
+            // Batch fetch transactions (deduplicated by tx_id) in chronological order
+            const txIds = [
+              ...new Set(
+                events
+                  .slice()
+                  .reverse()
+                  .map((event) => event.tx_id),
+              ),
+            ];
+
+            const existingTxs = yield* syncStore.getExistingTransactions({ txIds, chainId });
+
+            const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
+            const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
+            yield* Effect.logDebug(
+              `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
+            ).pipe(Effect.annotateLogs({ phase: "fetch" }));
+
+            const transactions = yield* fetchMissingTransactions(
+              missingTxIds,
+              lowestState.endBlock,
+            );
+
+            lowestState.transactionsFetched =
+              (lowestState.transactionsFetched ?? 0) + transactions.length;
+
+            const blocks = extractBlocksFromTransactions(transactions);
+
+            // Store blocks, transactions, and events
+            const smartContractLogs = events.filter(
+              // oxlint-disable-next-line typescript/no-unnecessary-condition
+              (event) => event.event_type === "smart_contract_log",
+            );
+
+            const txBlockHeights = new Map<string, number>();
+
+            for (const existingTx of existingTxs) {
+              txBlockHeights.set(existingTx.txId, Number(existingTx.blockHeight));
+            }
+
+            for (const transaction of transactions) {
+              txBlockHeights.set(transaction.tx_id, transaction.block.height);
+            }
+
+            const eventsWithBlockHeight = smartContractLogs
+              .map((event) => {
+                const blockHeight = txBlockHeights.get(event.tx_id) ?? 0;
+
+                return { event, blockHeight };
+              })
+              .filter((item) => item.blockHeight > 0);
+
+            yield* IndexerDatabase.transaction(() =>
+              Effect.all([
+                syncStore.insertBlocks({ blocks, chainId }),
+                syncStore.insertTransactions({ transactions, chainId }),
+                syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }),
+              ]),
+            );
+
+            yield* Metric.update(syncEvents, eventsWithBlockHeight.length);
+            yield* Effect.logDebug("Stored page").pipe(
+              Effect.annotateLogs({
+                phase: "store",
+                contractId: lowestState.contractId,
+                events: eventsWithBlockHeight.length,
+                transactions: transactions.length,
+              }),
+            );
+
+            yield* advanceContractSyncState(lowestState, currentHeight, nextCursor, chainId);
+
+            // Incremental indexing: notify indexer fiber of current safe block height
+            const safeHeight = getSafeBlockHeight(states);
+
+            if (safeHeight !== undefined) {
+              yield* Queue.offer(queue, { type: "safe", safeBlockHeight: safeHeight });
             }
           }
 
-          // All contracts done
-          if (!lowestState || lowestState.cursor === null) {
-            break;
-          }
-
-          // Fetch one page of events
-          const logsResponse = yield* client.getContractLogs(lowestState.contractId, {
-            cursor: lowestState.cursor,
+          yield* Queue.offer(queue, {
+            type: "completed",
+            contracts: states.map(toContractSyncSummary),
           });
-
-          const { results: events, next_cursor: nextCursor } = logsResponse;
-          const currentHeight = (yield* parseLogsCursor(lowestState.cursor)).blockHeight;
-          yield* Effect.logInfo(`Syncing ${lowestState.contractId}`).pipe(
-            Effect.annotateLogs({ block: currentHeight, events: events.length }),
-          );
-
-          // Batch fetch transactions (deduplicated by tx_id) in chronological order
-          const txIds = [
-            ...new Set(
-              events
-                .slice()
-                .reverse()
-                .map((event) => event.tx_id),
-            ),
-          ];
-
-          const existingTxs = yield* syncStore.getExistingTransactions({ txIds, chainId });
-
-          const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
-          const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
-          yield* Effect.logDebug(
-            `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
-          );
-
-          const transactions = yield* fetchMissingTransactions(missingTxIds, lowestState.endBlock);
-
-          const blocks = extractBlocksFromTransactions(transactions);
-
-          // Store blocks, transactions, and events
-          const smartContractLogs = events.filter(
-            // oxlint-disable-next-line typescript/no-unnecessary-condition
-            (event) => event.event_type === "smart_contract_log",
-          );
-
-          const txBlockHeights = new Map<string, number>();
-
-          for (const existingTx of existingTxs) {
-            txBlockHeights.set(existingTx.txId, Number(existingTx.blockHeight));
-          }
-
-          for (const transaction of transactions) {
-            txBlockHeights.set(transaction.tx_id, transaction.block.height);
-          }
-
-          const eventsWithBlockHeight = smartContractLogs
-            .map((event) => {
-              const blockHeight = txBlockHeights.get(event.tx_id) ?? 0;
-
-              return { event, blockHeight };
-            })
-            .filter((item) => item.blockHeight > 0);
-
-          yield* IndexerDatabase.transaction(() =>
-            Effect.all([
-              syncStore.insertBlocks({ blocks, chainId }),
-              syncStore.insertTransactions({ transactions, chainId }),
-              syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }),
-            ]),
-          );
-
-          yield* advanceContractSyncState(lowestState, currentHeight, nextCursor, chainId);
-
-          // Incremental indexing: notify indexer fiber of current safe block height
-          const safeHeight = getSafeBlockHeight(states);
-
-          if (safeHeight !== undefined) {
-            yield* Queue.offer(queue, { type: "safe", safeBlockHeight: safeHeight });
-          }
-        }
-
-        yield* Queue.offer(queue, {
-          type: "completed",
-          contracts: states.map(toContractSyncSummary),
-        });
-      }).pipe(
-        Effect.provideService(IndexerDatabase, database),
-        Effect.provideService(StacksClient, StacksClient.of(client)),
-        Effect.catchCause((cause) =>
-          Cause.hasInterruptsOnly(cause)
-            ? Effect.failCause(cause)
-            : Queue.failCause(queue, cause).pipe(Effect.asVoid),
+        }).pipe(
+          Effect.provideService(IndexerDatabase, database),
+          Effect.provideService(StacksClient, StacksClient.of(client)),
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.failCause(cause)
+              : Metric.update(syncErrors, 1).pipe(
+                  Effect.andThen(Queue.failCause(queue, cause)),
+                  Effect.asVoid,
+                ),
+          ),
+          Effect.ensuring(Queue.end(queue).pipe(Effect.asVoid)),
         ),
-        Effect.ensuring(Queue.end(queue).pipe(Effect.asVoid)),
-      ),
+      // Bound the producer so a slow consumer (handler work, DB contention)
+      // Throttles fetching instead of buffering the whole backfill in memory.
+      { bufferSize: 1, strategy: "suspend" },
     ),
 });
 

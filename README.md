@@ -21,7 +21,7 @@ Two entrypoints ship with the package:
 - **Embedded or External Database**: First-class support for embedded [PGlite](https://pglite.electric-sql.com/) (zero configuration) or production PostgreSQL via [Drizzle ORM](https://orm.drizzle.team/).
 - **Time-Travel Read-Only Calls**: Query contract state (`client.callReadOnly`) automatically pinned to the exact block height of the event being processed.
 - **Clarity Codec Built-in**: Easily decode raw Clarity hex values to plain JavaScript objects (`decodeHex`, `cvToJSON`).
-- **Crash Recovery**: Checkpointing and resume progress stored directly in the database so sync resumes where it left off.
+- **Crash Recovery**: Checkpointing and resume progress stored directly in the database so sync resumes where it left off. Unfinalized data is replayed after a restart, so reorgs are handled automatically.
 
 ---
 
@@ -142,6 +142,14 @@ Clarity-level failures (`okay: false`) reject with `ReadOnlyCallError`.
 
 ---
 
+## Crash Recovery & Reorgs
+
+Checkpoints and per-contract sync progress live in the indexer database, so `run` resumes where it left off.
+
+Set `finality` to keep the trailing `N` blocks unfinalized. On every run, the runtime discards cached data above `checkpoints.finalizedBlockHeight` before syncing, because those blocks may have been orphaned while the process was down. The canonical chain is refetched and replayed through your handlers automatically.
+
+Handler writes are **not** rolled back when a range is replayed. Write idempotent handlers (upsert by primary key, or delete-then-insert) so re-executing an event produces the same final state.
+
 ## Configuration Reference
 
 ### `createHistoricalRuntime(options)`
@@ -150,6 +158,7 @@ Clarity-level failures (`okay: false`) reject with `ReadOnlyCallError`.
 | ------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `database`    | `DatabaseConfig`                   | _Required_        | Indexer storage. `{ kind: "pglite", directory? }` or `{ kind: "postgres", connectionString }`.                                                   |
 | `network`     | `"mainnet" \| "testnet" \| number` | `"mainnet"`       | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                                 |
+| `finality`    | `number`                           | `0`               | Number of trailing blocks kept unfinalized and replayed after a restart.                                                                         |
 | `api.baseUrl` | `string`                           | _Network default_ | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the network default. |
 | `api.apiKey`  | `string`                           | `undefined`       | Optional Hiro API key.                                                                                                                           |
 | `logLevel`    | `LogLevel`                         | `"Info"`          | Minimum log level for the console logger.                                                                                                        |
@@ -175,10 +184,11 @@ Clarity-level failures (`okay: false`) reject with `ReadOnlyCallError`.
 
 ### RunResult
 
-| Property          | Type                  | Description                                                     |
-| ----------------- | --------------------- | --------------------------------------------------------------- |
-| `eventsProcessed` | `number`              | Total events passed to handlers during the run.                 |
-| `contracts`       | `ContractRunResult[]` | Per-contract outcome: `status`, `lastBlockHeight`, event count. |
+| Property               | Type                  | Description                                                                   |
+| ---------------------- | --------------------- | ----------------------------------------------------------------------------- |
+| `eventsProcessed`      | `number`              | Total events passed to handlers during the run.                               |
+| `contracts`            | `ContractRunResult[]` | Per-contract outcome: `status`, `lastBlockHeight`, event count.               |
+| `finalizedBlockHeight` | `number \| undefined` | Highest finalized block after the run; `undefined` when no checkpoint exists. |
 
 `status` is `"completed"` when the contract was synced during the run and `"up-to-date"` when it was already fully synced.
 
