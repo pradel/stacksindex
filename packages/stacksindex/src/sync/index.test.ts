@@ -1,9 +1,10 @@
 // oxlint-disable typescript/no-unsafe-assignment
 
-import { Effect, Fiber, References, Stream } from "effect";
+import { Effect, Fiber, Metric, References, Stream } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
 import type { StacksClientService } from "../datasources/api/index.ts";
+import { syncErrors, syncEvents, syncPages } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createSync } from "./index.ts";
@@ -69,6 +70,24 @@ const notUsed = () => Effect.die("StacksClient method not used in this test");
 /** Always returns the same page so an unbounded producer would loop forever. */
 const repeatingPage = logPage("tx-1", "200:0:0:0");
 
+const makeSyncClient = (): StacksClientService => ({
+  getStatus: notUsed,
+  getBlock: notUsed,
+  getBlockTransactions: notUsed,
+  getTransaction: notUsed,
+  getV1Transaction: notUsed,
+  getTransactionsBatch: (txIds: string[]) =>
+    // SAFETY: The mock returns fixtures shaped like the batch endpoint response; `never` satisfies the expected success type.
+    Effect.succeed({ results: txIds.map(transactionForId) } as never),
+  getTransactionEvents: notUsed,
+  getPrincipalTransactions: notUsed,
+  getContract: notUsed,
+  getContractLogs: (_contractId: string, options?: { cursor?: string }) =>
+    // SAFETY: The mock returns fixtures shaped like the logs endpoint response; `never` satisfies the expected success type.
+    Effect.succeed(pageForOptions(options) as never),
+  callReadFunction: notUsed,
+});
+
 describe("sync historical", () => {
   // oxlint-disable-next-line init-declarations
   let testDb: TestDatabase;
@@ -86,23 +105,7 @@ describe("sync historical", () => {
   });
 
   test("streams started, safe and completed while persisting fetched data", async () => {
-    const client: StacksClientService = {
-      getStatus: notUsed,
-      getBlock: notUsed,
-      getBlockTransactions: notUsed,
-      getTransaction: notUsed,
-      getV1Transaction: notUsed,
-      getTransactionsBatch: (txIds: string[]) =>
-        // SAFETY: The mock returns fixtures shaped like the batch endpoint response; `never` satisfies the expected success type.
-        Effect.succeed({ results: txIds.map(transactionForId) } as never),
-      getTransactionEvents: notUsed,
-      getPrincipalTransactions: notUsed,
-      getContract: notUsed,
-      getContractLogs: (_contractId: string, options?: { cursor?: string }) =>
-        // SAFETY: The mock returns fixtures shaped like the logs endpoint response; `never` satisfies the expected success type.
-        Effect.succeed(pageForOptions(options) as never),
-      callReadFunction: notUsed,
-    };
+    const client = makeSyncClient();
 
     // Seed progress so initialization resumes from a saved cursor instead of
     // Running first-cursor discovery.
@@ -199,5 +202,74 @@ describe("sync historical", () => {
 
     expect(callsWhileBlocked).toBeGreaterThanOrEqual(1);
     expect(callsWhileBlocked).toBeLessThanOrEqual(3);
+  });
+
+  test("records sync metrics", async () => {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId: CONTRACT_ID,
+        chainId: CHAIN_ID,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+        isComplete: false,
+      }),
+    );
+
+    const sync = createSync({ chainId: CHAIN_ID, client: makeSyncClient(), database: testDb.db });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* sync
+          .historical([{ contractId: CONTRACT_ID }])
+          .pipe(Stream.runCollect);
+
+        const pages = yield* Metric.value(syncPages);
+        const storedEvents = yield* Metric.value(syncEvents);
+
+        return { events, pages: pages.count, storedEvents: storedEvents.count };
+      }).pipe(
+        Effect.provideService(Metric.MetricRegistry, new Map()),
+        Effect.provideService(References.MinimumLogLevel, "None"),
+      ),
+    );
+
+    expect(result.pages).toBe(2);
+    expect(result.storedEvents).toBe(2);
+    expect(result.events[2]).toMatchObject({
+      type: "completed",
+      contracts: [{ contractId: CONTRACT_ID, pagesFetched: 2, transactionsFetched: 2 }],
+    });
+  });
+
+  test("records sync errors", async () => {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId: CONTRACT_ID,
+        chainId: CHAIN_ID,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+        isComplete: false,
+      }),
+    );
+
+    const client: StacksClientService = {
+      ...makeSyncClient(),
+      getContractLogs: () => Effect.die("fetch failed"),
+    };
+
+    const sync = createSync({ chainId: CHAIN_ID, client, database: testDb.db });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* sync.historical([{ contractId: CONTRACT_ID }]).pipe(Stream.runDrain, Effect.exit);
+
+        return yield* Metric.value(syncErrors);
+      }).pipe(
+        Effect.provideService(Metric.MetricRegistry, new Map()),
+        Effect.provideService(References.MinimumLogLevel, "None"),
+      ),
+    );
+
+    expect(result.count).toBe(1);
   });
 });

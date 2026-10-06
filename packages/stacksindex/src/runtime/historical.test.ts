@@ -7,7 +7,17 @@
 import { URL } from "node:url";
 
 import { sql } from "drizzle-orm";
-import { Deferred, Effect, Exit, Fiber, Match, Predicate, References, type Schema } from "effect";
+import {
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Match,
+  Metric,
+  Predicate,
+  References,
+  type Schema,
+} from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
@@ -18,6 +28,7 @@ import {
   SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
+import { indexBatchDuration } from "../lib/metrics.ts";
 import type { HandlerContext, HandlerEvent } from "../lib/types.ts";
 import { createHistoricalRuntime } from "../promise/index.ts";
 import { toThenable } from "../promise/thenable.ts";
@@ -2320,6 +2331,8 @@ describe("historical runtime with handlers", () => {
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.finalizedBlockHeight).toBe(200);
+    expect(result.contracts[0].pagesFetched).toBe(4);
+    expect(result.contracts[0].transactionsFetched).toBe(4);
 
     const checkpoint = await testDb.db.select().from(checkpointsTable);
     expect(Number(checkpoint[0].blockHeight)).toBe(400);
@@ -2412,6 +2425,26 @@ describe("historical runtime with handlers", () => {
     expect(Number(checkpoint[0].blockHeight)).toBe(200);
     expect(Number(checkpoint[0].blockTime)).toBe(2000);
     expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(200);
+  });
+
+  test("records indexing metrics", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100]);
+
+    const runtime = makeRuntime({ db: testDb.db });
+
+    const histogram = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
+
+        return yield* Metric.value(indexBatchDuration);
+      }).pipe(
+        Effect.provideService(Metric.MetricRegistry, new Map()),
+        Effect.provideService(References.MinimumLogLevel, "None"),
+      ),
+    );
+
+    expect(histogram.count).toBeGreaterThan(0);
   });
 
   test("interrupting mid-batch keeps the last committed checkpoint", async () => {

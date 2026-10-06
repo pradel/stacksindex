@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Layer, Queue, Stream } from "effect";
+import { Cause, Context, Effect, Layer, Metric, Queue, Stream } from "effect";
 
 import { type IndexerDb, IndexerDatabase } from "../database/index.ts";
 import {
@@ -15,6 +15,7 @@ import {
   type SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
+import { syncErrors, syncEvents, syncPages } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { getContractEventsFirstCursor, parseLogsCursor } from "./cursor.ts";
 
@@ -53,6 +54,8 @@ export interface ContractSyncSummary {
   readonly startBlock?: number;
   readonly endBlock?: number;
   readonly lastBlockHeight?: number;
+  readonly pagesFetched: number;
+  readonly transactionsFetched: number;
 }
 
 /**
@@ -81,6 +84,8 @@ interface ContractSyncState {
   contractId: string;
   cursor: string | null;
   syncedBlockHeight?: number;
+  pagesFetched?: number;
+  transactionsFetched?: number;
   done: boolean;
   doneAtStart: boolean;
   startBlock?: number;
@@ -114,6 +119,8 @@ function toContractSyncSummary(state: ContractSyncState): ContractSyncSummary {
     startBlock: state.startBlock,
     endBlock: state.endBlock,
     lastBlockHeight: state.syncedBlockHeight,
+    pagesFetched: state.pagesFetched ?? 0,
+    transactionsFetched: state.transactionsFetched ?? 0,
   };
 }
 
@@ -505,10 +512,17 @@ export const createSync = ({
               cursor: lowestState.cursor,
             });
 
+            yield* Metric.update(syncPages, 1);
+            lowestState.pagesFetched = (lowestState.pagesFetched ?? 0) + 1;
+
             const { results: events, next_cursor: nextCursor } = logsResponse;
             const currentHeight = (yield* parseLogsCursor(lowestState.cursor)).blockHeight;
             yield* Effect.logInfo(`Syncing ${lowestState.contractId}`).pipe(
-              Effect.annotateLogs({ block: currentHeight, events: events.length }),
+              Effect.annotateLogs({
+                phase: "fetch",
+                block: currentHeight,
+                events: events.length,
+              }),
             );
 
             // Batch fetch transactions (deduplicated by tx_id) in chronological order
@@ -527,12 +541,15 @@ export const createSync = ({
             const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
             yield* Effect.logDebug(
               `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
-            );
+            ).pipe(Effect.annotateLogs({ phase: "fetch" }));
 
             const transactions = yield* fetchMissingTransactions(
               missingTxIds,
               lowestState.endBlock,
             );
+
+            lowestState.transactionsFetched =
+              (lowestState.transactionsFetched ?? 0) + transactions.length;
 
             const blocks = extractBlocksFromTransactions(transactions);
 
@@ -568,6 +585,16 @@ export const createSync = ({
               ]),
             );
 
+            yield* Metric.update(syncEvents, eventsWithBlockHeight.length);
+            yield* Effect.logDebug("Stored page").pipe(
+              Effect.annotateLogs({
+                phase: "store",
+                contractId: lowestState.contractId,
+                events: eventsWithBlockHeight.length,
+                transactions: transactions.length,
+              }),
+            );
+
             yield* advanceContractSyncState(lowestState, currentHeight, nextCursor, chainId);
 
             // Incremental indexing: notify indexer fiber of current safe block height
@@ -588,7 +615,10 @@ export const createSync = ({
           Effect.catchCause((cause) =>
             Cause.hasInterruptsOnly(cause)
               ? Effect.failCause(cause)
-              : Queue.failCause(queue, cause).pipe(Effect.asVoid),
+              : Metric.update(syncErrors, 1).pipe(
+                  Effect.andThen(Queue.failCause(queue, cause)),
+                  Effect.asVoid,
+                ),
           ),
           Effect.ensuring(Queue.end(queue).pipe(Effect.asVoid)),
         ),

@@ -1,4 +1,14 @@
-import { Context, Effect, Layer, Match, Schema, Stream, type LogLevel } from "effect";
+import {
+  Context,
+  Duration,
+  Effect,
+  Layer,
+  Match,
+  Metric,
+  Schema,
+  Stream,
+  type LogLevel,
+} from "effect";
 
 import { type DatabaseConfig, IndexerDatabase, migrate } from "../database/index.ts";
 import { type StacksApiError, StacksClient } from "../datasources/api/index.ts";
@@ -13,6 +23,7 @@ import {
   type SyncStoreError,
   type TransactionBatchError,
 } from "../lib/errors.ts";
+import { indexBatchDuration } from "../lib/metrics.ts";
 import {
   NetworkOptionSchema,
   resolveNetwork,
@@ -71,6 +82,10 @@ export interface ContractRunResult {
   lastBlockHeight?: number;
   /** Number of events passed to the contract handler during this run. */
   eventsProcessed: number;
+  /** Number of contract-log pages fetched for this contract during the run. */
+  pagesFetched?: number;
+  /** Number of transactions fetched for this contract during the run. */
+  transactionsFetched?: number;
 }
 
 export interface RunResult {
@@ -241,7 +256,12 @@ function indexEventsUpTo(
     const toLabel = toBlockHeight === Number.MAX_SAFE_INTEGER ? "latest" : String(toBlockHeight);
 
     yield* Effect.logInfo(`Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`).pipe(
-      Effect.annotateLogs({ count: rows.length, batches: batches.length, finality }),
+      Effect.annotateLogs({
+        phase: "index",
+        count: rows.length,
+        batches: batches.length,
+        finality,
+      }),
     );
 
     const rangeEndHeight = Number(rows[rows.length - 1].blockHeight);
@@ -276,14 +296,18 @@ function indexEventsUpTo(
         finalizedBlockTime = Number(finalizableRow.blockTime);
       }
 
-      yield* indexBatch(
-        batch,
-        filterMap,
-        chainId,
-        eventsByContract,
-        finalizedBlockHeight,
-        finalizedBlockTime,
+      const [duration] = yield* Effect.timed(
+        indexBatch(
+          batch,
+          filterMap,
+          chainId,
+          eventsByContract,
+          finalizedBlockHeight,
+          finalizedBlockTime,
+        ),
       );
+
+      yield* Metric.update(indexBatchDuration, Duration.toMillis(duration));
     }
 
     const lastRow = rows[rows.length - 1];
@@ -291,6 +315,7 @@ function indexEventsUpTo(
       `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
     ).pipe(
       Effect.annotateLogs({
+        phase: "checkpoint",
         block: Number(lastRow.blockHeight),
         finalizedBlockHeight,
         finalizedBlockTime,
@@ -458,6 +483,8 @@ function runHistorical(
         endBlock: contract.endBlock,
         lastBlockHeight: contract.lastBlockHeight,
         eventsProcessed: contractEvents,
+        pagesFetched: contract.pagesFetched,
+        transactionsFetched: contract.transactionsFetched,
       };
     });
 

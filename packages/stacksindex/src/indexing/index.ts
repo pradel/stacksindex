@@ -37,6 +37,7 @@ export const createIndexing = ({
     if (handler === undefined) {
       return Effect.logDebug("No handler found for event").pipe(
         Effect.annotateLogs({
+          phase: "index",
           contractId: event.contract_log.contract_id,
           eventType: event.event_type,
           blockHeight: event.block_height,
@@ -76,6 +77,7 @@ export const createIndexing = ({
       Effect.tap(() =>
         Effect.logDebug("Executed event handler").pipe(
           Effect.annotateLogs({
+            phase: "index",
             contractId: event.contract_log.contract_id,
             eventType: event.event_type,
             blockHeight: event.block_height,
@@ -95,6 +97,7 @@ export const createIndexing = ({
         return Effect.gen(function* () {
           yield* Effect.logError(cause).pipe(
             Effect.annotateLogs({
+              phase: "index",
               contractId: event.contract_log.contract_id,
               eventType: event.event_type,
               blockHeight: event.block_height,
