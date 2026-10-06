@@ -5,8 +5,8 @@ import type { ClarityAbi } from "clarity-abitype";
 import { Effect, References } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
-import { StacksClient, type StacksClientService } from "../datasources/api/index.ts";
+import type { IndexerDb } from "../database/index.ts";
+import type { StacksClientService } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
 import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
 import { blocksTable } from "../sync-store/schema.ts";
@@ -81,18 +81,11 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const indexing = createIndexing(handlers);
+    const indexing = createIndexing({ handlers, client: makeStacksClient(), db: mockDb });
 
     const event = createMockEvent();
-    const stacksClient = makeStacksClient();
     await Effect.runPromise(
-      indexing
-        .executeEvent(event)
-        .pipe(
-          Effect.provideService(IndexerDatabase, mockDb),
-          Effect.provideService(StacksClient, stacksClient),
-          Effect.provideService(References.MinimumLogLevel, "None"),
-        ),
+      indexing.executeEvent(event).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
     );
 
     expect(handler).toHaveBeenCalledTimes(1);
@@ -143,18 +136,12 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const indexing = createIndexing(handlers);
-
     const event = createMockEvent({ block_height: 54321 });
     const stacksClient = makeStacksClient({ callReadFunction });
+    const indexing = createIndexing({ handlers, client: stacksClient, db: mockDb });
+
     await Effect.runPromise(
-      indexing
-        .executeEvent(event)
-        .pipe(
-          Effect.provideService(IndexerDatabase, mockDb),
-          Effect.provideService(StacksClient, stacksClient),
-          Effect.provideService(References.MinimumLogLevel, "None"),
-        ),
+      indexing.executeEvent(event).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
     );
 
     expect(handler).toHaveBeenCalledTimes(1);
@@ -203,18 +190,12 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const indexing = createIndexing(handlers);
-
     const event = createMockEvent({ block_height: 77777 });
     const stacksClient = makeStacksClient({ callReadFunction });
+    const indexing = createIndexing({ handlers, client: stacksClient, db: mockDb });
+
     await Effect.runPromise(
-      indexing
-        .executeEvent(event)
-        .pipe(
-          Effect.provideService(IndexerDatabase, mockDb),
-          Effect.provideService(StacksClient, stacksClient),
-          Effect.provideService(References.MinimumLogLevel, "None"),
-        ),
+      indexing.executeEvent(event).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
     );
 
     expect(handler).toHaveBeenCalledTimes(1);
@@ -230,18 +211,11 @@ describe("indexing engine", () => {
   test("returns ok when no handler matches contract", async () => {
     const handlers: Handlers = {};
 
-    const indexing = createIndexing(handlers);
-
     const event = createMockEvent();
-    const stacksClient = makeStacksClient();
+    const indexing = createIndexing({ handlers, client: makeStacksClient(), db: mockDb });
+
     await Effect.runPromise(
-      indexing
-        .executeEvent(event)
-        .pipe(
-          Effect.provideService(IndexerDatabase, mockDb),
-          Effect.provideService(StacksClient, stacksClient),
-          Effect.provideService(References.MinimumLogLevel, "None"),
-        ),
+      indexing.executeEvent(event).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
     );
   });
 
@@ -253,19 +227,11 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const indexing = createIndexing(handlers);
-
     const event = createMockEvent();
-    const stacksClient = makeStacksClient();
+    const indexing = createIndexing({ handlers, client: makeStacksClient(), db: mockDb });
 
     const result = await Effect.runPromiseExit(
-      indexing
-        .executeEvent(event)
-        .pipe(
-          Effect.provideService(IndexerDatabase, mockDb),
-          Effect.provideService(StacksClient, stacksClient),
-          Effect.provideService(References.MinimumLogLevel, "None"),
-        ),
+      indexing.executeEvent(event).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
     );
 
     expect(result).toBeTaggedError(
@@ -307,17 +273,16 @@ describe("transactional event handlers", () => {
       .fn()
       .mockImplementation((_event: HandlerEvent, context: HandlerContext) => insertBlock(context));
 
-    const indexing = createIndexing({ "SP123.token": handler });
+    const indexing = createIndexing({
+      handlers: { "SP123.token": handler },
+      client: makeStacksClient(),
+      db: testDb.db,
+    });
 
-    const stacksClient = makeStacksClient();
     await Effect.runPromise(
       indexing
         .executeEvent(createMockEvent())
-        .pipe(
-          Effect.provideService(IndexerDatabase, testDb.db),
-          Effect.provideService(StacksClient, stacksClient),
-          Effect.provideService(References.MinimumLogLevel, "None"),
-        ),
+        .pipe(Effect.provideService(References.MinimumLogLevel, "None")),
     );
 
     await expect(testDb.db.select().from(blocksTable)).resolves.toHaveLength(1);
@@ -332,18 +297,16 @@ describe("transactional event handlers", () => {
         insertBlock(context).pipe(Effect.andThen(Effect.fail(error))),
       );
 
-    const indexing = createIndexing({ "SP123.token": handler });
-
-    const stacksClient = makeStacksClient();
+    const indexing = createIndexing({
+      handlers: { "SP123.token": handler },
+      client: makeStacksClient(),
+      db: testDb.db,
+    });
 
     const result = await Effect.runPromiseExit(
       indexing
         .executeEvent(createMockEvent())
-        .pipe(
-          Effect.provideService(IndexerDatabase, testDb.db),
-          Effect.provideService(StacksClient, stacksClient),
-          Effect.provideService(References.MinimumLogLevel, "None"),
-        ),
+        .pipe(Effect.provideService(References.MinimumLogLevel, "None")),
     );
 
     expect(result).toBeTaggedError(

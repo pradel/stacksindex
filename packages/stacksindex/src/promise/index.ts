@@ -1,6 +1,6 @@
 // oxlint-disable typescript/method-signature-style
 import type { ClarityAbi } from "clarity-abitype";
-import { Context, Effect, Exit, Layer, Scope, type LogLevel as EffectLogLevel } from "effect";
+import { Context, Effect, ManagedRuntime, type LogLevel as EffectLogLevel } from "effect";
 
 import type { ClarityJsonValue } from "../codec/index.ts";
 import {
@@ -18,7 +18,6 @@ import type {
 } from "../datasources/api/index.ts";
 import type { NetworkOption } from "../lib/network.ts";
 import type { EventHandler as EffectEventHandler, HandlerEvent } from "../lib/types.ts";
-import { loggerLayer } from "../logger/index.ts";
 import {
   HistoricalRuntime as HistoricalRuntimeService,
   type RunResult,
@@ -118,9 +117,9 @@ export interface HistoricalRuntime {
   [Symbol.asyncDispose]: () => Promise<void>;
 }
 
-const makeLogger = (layer: Layer.Layer<never>): Logger => {
+const makeLogger = (runSync: (effect: Effect.Effect<void>) => void): Logger => {
   const log = (effect: Effect.Effect<void>): void => {
-    Effect.runSync(effect.pipe(Effect.provide(layer)));
+    runSync(effect);
   };
 
   const annotate = (annotations?: LogAnnotations) => Effect.annotateLogs(annotations ?? {});
@@ -161,25 +160,28 @@ const toEffectHandler =
 export async function createHistoricalRuntime(
   options: HistoricalRuntimeOptions,
 ): Promise<HistoricalRuntime> {
-  const logger = makeLogger(loggerLayer({ level: options.logLevel }));
-  const scope = await Effect.runPromise(Scope.make());
-
-  const context = await Effect.runPromise(
-    Scope.provide(
-      Layer.build(
-        HistoricalRuntimeService.layerWithDatabase({
-          database: options.database,
-          network: options.network,
-          api: options.api,
-          logLevel: options.logLevel,
-        }),
-      ),
-      scope,
-    ).pipe(Effect.onError(() => Scope.close(scope, Exit.void))),
+  const runtime = ManagedRuntime.make(
+    HistoricalRuntimeService.layerWithDatabase({
+      database: options.database,
+      network: options.network,
+      api: options.api,
+      logLevel: options.logLevel,
+    }),
   );
 
-  const runtime = Context.get(context, HistoricalRuntimeService);
+  // Build the layer eagerly so configuration and connection errors reject here.
+  let context: Awaited<ReturnType<typeof runtime.context>>;
+
+  try {
+    context = await runtime.context();
+  } catch (error) {
+    await runtime.dispose();
+    throw error;
+  }
+
+  const service = Context.get(context, HistoricalRuntimeService);
   const db = toThenable(Context.get(context, IndexerDatabase));
+  const logger = makeLogger((effect) => runtime.runSync(effect));
   let closed = false;
 
   const close = async (): Promise<void> => {
@@ -188,7 +190,7 @@ export async function createHistoricalRuntime(
     }
 
     closed = true;
-    await Effect.runPromise(Scope.close(scope, Exit.void));
+    await runtime.dispose();
   };
 
   const ensureOpen = (): void => {
@@ -201,23 +203,21 @@ export async function createHistoricalRuntime(
     db,
     migrate: async (migrateOptions) => {
       ensureOpen();
-      await Effect.runPromise(migrate(migrateOptions).pipe(Effect.provide(context)));
+      await runtime.runPromise(migrate(migrateOptions));
     },
     run: async (filters) => {
       ensureOpen();
       const normalized = Array.isArray(filters) ? filters : [filters];
 
-      return Effect.runPromise(
-        runtime
-          .run(
-            normalized.map((filter) => ({
-              contractId: filter.contractId,
-              handler: toEffectHandler(filter.handler, logger),
-              startBlock: filter.startBlock,
-              endBlock: filter.endBlock,
-            })),
-          )
-          .pipe(Effect.provide(context)),
+      return runtime.runPromise(
+        service.run(
+          normalized.map((filter) => ({
+            contractId: filter.contractId,
+            handler: toEffectHandler(filter.handler, logger),
+            startBlock: filter.startBlock,
+            endBlock: filter.endBlock,
+          })),
+        ),
       );
     },
     close,

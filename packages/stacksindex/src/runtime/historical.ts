@@ -651,9 +651,7 @@ export type HistoricalRuntimeError =
   | InvalidCursorError;
 
 export interface HistoricalRuntimeService {
-  readonly run: (
-    filters: Filter[],
-  ) => Effect.Effect<RunResult, HistoricalRuntimeError, IndexerDatabase>;
+  readonly run: (filters: Filter[]) => Effect.Effect<RunResult, HistoricalRuntimeError>;
 }
 
 export class HistoricalRuntime extends Context.Service<
@@ -662,7 +660,7 @@ export class HistoricalRuntime extends Context.Service<
 >()("stacksindex/runtime/HistoricalRuntime") {
   static readonly layer = (
     options?: HistoricalRuntimeOptions,
-  ): Layer.Layer<HistoricalRuntime, ConfigurationError> =>
+  ): Layer.Layer<HistoricalRuntime, ConfigurationError, IndexerDatabase> =>
     Layer.unwrap(
       resolveRuntimeConfig(options).pipe(
         Effect.map((config) =>
@@ -670,10 +668,14 @@ export class HistoricalRuntime extends Context.Service<
             HistoricalRuntime,
             Effect.gen(function* () {
               const client = yield* StacksClient;
+              const database = yield* IndexerDatabase;
 
               return HistoricalRuntime.of({
                 run: (filters) =>
-                  runHistorical(filters, config).pipe(Effect.provideService(StacksClient, client)),
+                  runHistorical(filters, config).pipe(
+                    Effect.provideService(StacksClient, client),
+                    Effect.provideService(IndexerDatabase, database),
+                  ),
               });
             }),
           ).pipe(
@@ -693,8 +695,9 @@ export class HistoricalRuntime extends Context.Service<
     options: HistoricalRuntimeWithDatabaseOptions,
   ): Layer.Layer<HistoricalRuntime | IndexerDatabase, ConfigurationError | DatabaseError> =>
     Layer.mergeAll(
-      HistoricalRuntime.layer({ network: options.network, api: options.api }),
-      IndexerDatabase.layer(options.database),
+      HistoricalRuntime.layer({ network: options.network, api: options.api }).pipe(
+        Layer.provideMerge(IndexerDatabase.layer(options.database)),
+      ),
       loggerLayer({ level: options.logLevel }),
     );
 }
