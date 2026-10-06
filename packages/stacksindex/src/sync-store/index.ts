@@ -8,6 +8,7 @@ import type {
   StorableTransaction,
 } from "../datasources/api/index.ts";
 import { SyncStoreError } from "../lib/errors.ts";
+import { decodeStoredEvents, type StoredEvent } from "./decode.ts";
 import { encodeBlock, encodeEvent, encodeTransaction } from "./encode.ts";
 import {
   blocksTable,
@@ -244,23 +245,7 @@ export const syncStore = {
     chainId: number;
     fromBlockHeight: number;
     toBlockHeight?: number;
-  }): Effect.Effect<
-    {
-      eventIndex: number;
-      eventType: string;
-      txId: string;
-      contractId: string;
-      topic: string | null;
-      valueHex: string;
-      valueRepr: string;
-      blockHeight: bigint;
-      blockTime: bigint;
-      txIndex: number;
-      senderAddress: string;
-    }[],
-    SyncStoreError,
-    IndexerDatabase
-  > =>
+  }): Effect.Effect<readonly StoredEvent[], SyncStoreError, IndexerDatabase> =>
     Effect.gen(function* () {
       const db = yield* IndexerDatabase;
 
@@ -274,7 +259,7 @@ export const syncStore = {
       }
 
       // SAFETY: context.db is a drizzle Effect database, so this join builder resolves to the events projection declared above.
-      return yield* db
+      const rows = yield* db
         .select({
           eventIndex: eventsTable.eventIndex,
           eventType: eventsTable.eventType,
@@ -310,6 +295,10 @@ export const syncStore = {
             (cause: unknown) => new SyncStoreError({ operation: "getEvents", cause }),
           ),
         );
+
+      return yield* decodeStoredEvents(rows).pipe(
+        Effect.mapError((cause) => new SyncStoreError({ operation: "getEvents", cause })),
+      );
     }),
 
   getCheckpoint: ({

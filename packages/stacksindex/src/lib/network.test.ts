@@ -42,7 +42,7 @@ describe("network", () => {
   test("rejects non-integer chain IDs", () => {
     for (const network of [1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => resolveNetwork(network)).toThrow(
-        `Invalid chainId: ${network}. Expected a safe integer.`,
+        `Invalid network: ${String(network)}. Expected "mainnet", "testnet", or a chain ID number.`,
       );
     }
   });

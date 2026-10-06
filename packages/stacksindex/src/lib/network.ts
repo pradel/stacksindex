@@ -1,3 +1,5 @@
+import { Option, Predicate, Schema } from "effect";
+
 export const MAINNET_CHAIN_ID = 1;
 
 export const TESTNET_CHAIN_ID = 2_147_483_648;
@@ -24,36 +26,39 @@ export interface ResolvedNetwork {
   baseUrl: string;
 }
 
-function assertValidChainId(chainId: number): void {
-  if (!Number.isSafeInteger(chainId)) {
-    throw new RangeError(`Invalid chainId: ${chainId}. Expected a safe integer.`);
-  }
-}
-
 /**
- * Runtime boundary check for JavaScript callers that bypass the `NetworkOption`
- * type. Kept as a type predicate so TypeScript narrows to a chain ID.
+ * Schema for a caller supplied network choice: a named network or a chain ID.
  */
-function isChainId(value: NetworkOption): value is number {
-  return typeof value === "number";
-}
+export const NetworkOptionSchema = Schema.Union([
+  Schema.Literals(["mainnet", "testnet"]),
+  Schema.Int,
+]);
 
-export function resolveNetwork(network?: NetworkOption): ResolvedNetwork {
-  if (network === undefined || network === "mainnet") {
-    return { chainId: MAINNET_CHAIN_ID, baseUrl: MAINNET_API_BASE_URL };
-  }
-
+function toResolvedNetwork(network: NetworkName | number): ResolvedNetwork {
   if (network === "testnet") {
     return { chainId: TESTNET_CHAIN_ID, baseUrl: TESTNET_API_BASE_URL };
   }
 
-  if (isChainId(network)) {
-    assertValidChainId(network);
-
+  if (Predicate.isNumber(network)) {
     return { chainId: network, baseUrl: MAINNET_API_BASE_URL };
   }
 
-  throw new RangeError(
-    `Invalid network: ${JSON.stringify(network)}. Expected "mainnet", "testnet", or a chain ID number.`,
-  );
+  return { chainId: MAINNET_CHAIN_ID, baseUrl: MAINNET_API_BASE_URL };
+}
+
+export function resolveNetwork(network?: NetworkOption): ResolvedNetwork {
+  const decoded = Schema.decodeUnknownOption(NetworkOptionSchema)(network ?? "mainnet");
+
+  if (Option.isNone(decoded)) {
+    const label =
+      network !== undefined && Predicate.isString(network)
+        ? JSON.stringify(network)
+        : String(network);
+
+    throw new RangeError(
+      `Invalid network: ${label}. Expected "mainnet", "testnet", or a chain ID number.`,
+    );
+  }
+
+  return toResolvedNetwork(decoded.value);
 }
