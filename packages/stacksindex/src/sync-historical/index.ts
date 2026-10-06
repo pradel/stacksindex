@@ -58,8 +58,10 @@ const LogsCursorSchema = Schema.TemplateLiteralParser([
   ),
 );
 
+const decodeLogsCursor = Schema.decodeUnknownEffect(LogsCursorSchema);
+
 export const parseLogsCursor = (cursor: string): Effect.Effect<LogsCursor, InvalidCursorError> =>
-  Schema.decodeUnknownEffect(LogsCursorSchema)(cursor).pipe(
+  decodeLogsCursor(cursor).pipe(
     Effect.mapError(
       (error) => new InvalidCursorError({ format: "logs", cursor, message: error.message }),
     ),
@@ -107,10 +109,12 @@ const TransactionCursorSchema = Schema.TemplateLiteralParser([
   ),
 );
 
+const decodeTransactionCursor = Schema.decodeUnknownEffect(TransactionCursorSchema);
+
 export const parseTransactionCursor = (
   cursor: string,
 ): Effect.Effect<TransactionCursor, InvalidCursorError> =>
-  Schema.decodeUnknownEffect(TransactionCursorSchema)(cursor).pipe(
+  decodeTransactionCursor(cursor).pipe(
     Effect.mapError(
       (error) => new InvalidCursorError({ format: "transaction", cursor, message: error.message }),
     ),
