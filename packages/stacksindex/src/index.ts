@@ -1,6 +1,6 @@
 // Promise-native entrypoint (`stacksindex`).
 
-export { createHistoricalRuntime } from "./compat/promise.ts";
+export { createHistoricalRuntime } from "./promise/index.ts";
 
 export type {
   EventHandler,
@@ -13,7 +13,7 @@ export type {
   Logger,
   LogLevel,
   LogValue,
-} from "./compat/promise.ts";
+} from "./promise/index.ts";
 
 export type { ContractRunResult, RunResult } from "./runtime/historical.ts";
 

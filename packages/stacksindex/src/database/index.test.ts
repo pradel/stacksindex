@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { afterAll, describe, expect, test } from "vite-plus/test";
 
-import { createHistoricalRuntime } from "../compat/promise.ts";
+import { createHistoricalRuntime } from "../promise/index.ts";
 import { blocksTable, eventsTable } from "../sync-store/schema.ts";
 
 describe("database", () => {

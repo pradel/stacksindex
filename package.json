@@ -5,14 +5,16 @@
   "description": "Monorepo for stacksindex",
   "type": "module",
   "scripts": {
-    "ready": "vp fmt && vp lint && vp run -r test && vp run -r build",
+    "ready": "vp fmt && vp lint && vp run readme:check && vp run -r test && vp run -r build",
     "repos:sync": "./scripts/sync-repos.sh",
+    "readme:sync": "./scripts/sync-readme.sh",
+    "readme:check": "./scripts/sync-readme.sh --check",
     "test": "vp run -r test",
     "build": "vp run -r build",
     "prepare": "vp config && effect-tsgo patch --typescript --oxlint",
     "changeset": "changeset",
     "version": "changeset version && vp check --fix",
-    "release": "vp run build && cp README.md ./packages/stacksindex && changeset publish"
+    "release": "vp run build && vp run readme:sync && changeset publish"
   },
   "devDependencies": {
     "@changesets/changelog-github": "1.0.1",

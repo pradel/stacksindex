@@ -10,8 +10,6 @@ import { sql } from "drizzle-orm";
 import { Effect, Exit, Match, Predicate, References, type Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { createHistoricalRuntime } from "../compat/promise.ts";
-import { toThenable } from "../compat/thenable.ts";
 import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import {
   FilterValidationError,
@@ -19,6 +17,8 @@ import {
   SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
+import { createHistoricalRuntime } from "../promise/index.ts";
+import { toThenable } from "../promise/thenable.ts";
 import { parseLogsCursor, parseTransactionCursor } from "../sync-historical/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
