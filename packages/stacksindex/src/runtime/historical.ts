@@ -1,10 +1,13 @@
 import {
+  Clock,
   Context,
   Duration,
   Effect,
   Layer,
   Match,
   Metric,
+  Ref,
+  Schedule,
   Schema,
   Stream,
   type LogLevel,
@@ -23,6 +26,7 @@ import {
   type SyncStoreError,
   type TransactionBatchError,
 } from "../lib/errors.ts";
+import { SLOW_OPERATION_MILLIS } from "../lib/logging.ts";
 import { indexBatchDuration } from "../lib/metrics.ts";
 import {
   NetworkOptionSchema,
@@ -42,6 +46,12 @@ import {
 } from "../sync/index.ts";
 import { chunkEventsByBlock } from "./batches.ts";
 import { type Filter, type ResolvedFilter, validateAndResolveFilters } from "./filters.ts";
+import {
+  createEtaEstimator,
+  logRunProgress,
+  PROGRESS_LOG_INTERVAL,
+  type ProgressTrackerState,
+} from "./progress.ts";
 
 export type { Filter } from "./filters.ts";
 
@@ -197,7 +207,9 @@ function indexBatch(
  * request or its payload is unavailable, so finality lags rather than failing
  * the run.
  */
-function readChainTipHeight(): Effect.Effect<number | undefined, never, StacksClient> {
+function readChainTipHeight(
+  chainId: number,
+): Effect.Effect<number | undefined, never, StacksClient> {
   return Effect.gen(function* () {
     const client = yield* StacksClient;
     const status = yield* client.getStatus();
@@ -206,11 +218,82 @@ function readChainTipHeight(): Effect.Effect<number | undefined, never, StacksCl
   }).pipe(
     Effect.tapError((error) =>
       Effect.logWarning("Failed to read the chain tip; finality may lag behind").pipe(
-        Effect.annotateLogs({ phase: "fetch", error: String(error) }),
+        Effect.annotateLogs({ chainId, phase: "fetch", error: String(error) }),
       ),
     ),
     Effect.orElseSucceed(() => undefined),
   );
+}
+
+/**
+ * Indexes block-aligned batches in order, advancing the finalized marker as
+ * batches become deep enough. Times every batch, records the histogram, and
+ * warns when one takes longer than expected.
+ */
+function indexBatches(options: {
+  batches: StoredEvent[][];
+  filterMap: Map<string, ResolvedFilter>;
+  chainId: number;
+  eventsByContract: Map<string, number>;
+  finalityThreshold: number;
+  finalizedBlockHeight: number;
+  finalizedBlockTime: number;
+}): Effect.Effect<
+  { finalizedBlockHeight: number; finalizedBlockTime: number; indexedDurationMs: number },
+  HandlerExecutionError | SyncStoreError | DatabaseError,
+  Indexing | IndexerDatabase
+> {
+  return Effect.gen(function* () {
+    let { finalizedBlockHeight } = options;
+    let { finalizedBlockTime } = options;
+    let indexedDurationMs = 0;
+
+    for (const batch of options.batches) {
+      const finalizableRow = batch.findLast(
+        (row) => Number(row.blockHeight) <= options.finalityThreshold,
+      );
+
+      if (
+        finalizableRow !== undefined &&
+        Number(finalizableRow.blockHeight) > finalizedBlockHeight
+      ) {
+        finalizedBlockHeight = Number(finalizableRow.blockHeight);
+        finalizedBlockTime = Number(finalizableRow.blockTime);
+      }
+
+      const [batchDuration] = yield* Effect.timed(
+        indexBatch(
+          batch,
+          options.filterMap,
+          options.chainId,
+          options.eventsByContract,
+          finalizedBlockHeight,
+          finalizedBlockTime,
+        ),
+      );
+
+      const batchDurationMs = Duration.toMillis(batchDuration);
+      indexedDurationMs += batchDurationMs;
+
+      yield* Metric.update(indexBatchDuration, batchDurationMs);
+
+      const lastBatchRow = batch[batch.length - 1];
+
+      if (batchDurationMs > SLOW_OPERATION_MILLIS && lastBatchRow !== undefined) {
+        yield* Effect.logWarning("Indexing events is taking longer than expected").pipe(
+          Effect.annotateLogs({
+            chainId: options.chainId,
+            phase: "index",
+            block: Number(lastBatchRow.blockHeight),
+            events: batch.length,
+            durationMs: batchDurationMs,
+          }),
+        );
+      }
+    }
+
+    return { finalizedBlockHeight, finalizedBlockTime, indexedDurationMs };
+  });
 }
 
 /**
@@ -284,9 +367,11 @@ function indexEventsUpTo(
     const batches = chunkEventsByBlock(rows);
     const toLabel = toBlockHeight === Number.MAX_SAFE_INTEGER ? "latest" : String(toBlockHeight);
 
-    yield* Effect.logInfo(`Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`).pipe(
+    yield* Effect.logDebug(`Indexing events from block ${fromBlockHeight + 1} to ${toLabel}`).pipe(
       Effect.annotateLogs({
+        chainId,
         phase: "index",
+        blockRange: [fromBlockHeight + 1, toLabel],
         count: rows.length,
         batches: batches.length,
         finality,
@@ -310,38 +395,33 @@ function indexEventsUpTo(
       }
     }
 
-    for (const batch of batches) {
-      const finalizableRow = batch.findLast((row) => Number(row.blockHeight) <= finalityThreshold);
+    const {
+      finalizedBlockHeight: nextFinalizedBlockHeight,
+      finalizedBlockTime: nextFinalizedBlockTime,
+      indexedDurationMs,
+    } = yield* indexBatches({
+      batches,
+      filterMap,
+      chainId,
+      eventsByContract,
+      finalityThreshold,
+      finalizedBlockHeight,
+      finalizedBlockTime,
+    });
 
-      if (
-        finalizableRow !== undefined &&
-        Number(finalizableRow.blockHeight) > finalizedBlockHeight
-      ) {
-        finalizedBlockHeight = Number(finalizableRow.blockHeight);
-        finalizedBlockTime = Number(finalizableRow.blockTime);
-      }
-
-      const [duration] = yield* Effect.timed(
-        indexBatch(
-          batch,
-          filterMap,
-          chainId,
-          eventsByContract,
-          finalizedBlockHeight,
-          finalizedBlockTime,
-        ),
-      );
-
-      yield* Metric.update(indexBatchDuration, Duration.toMillis(duration));
-    }
+    finalizedBlockHeight = nextFinalizedBlockHeight;
+    finalizedBlockTime = nextFinalizedBlockTime;
 
     const lastRow = rows[rows.length - 1];
-    yield* Effect.logInfo(
+    yield* Effect.logDebug(
       `Indexed ${rows.length} events up to block ${Number(lastRow.blockHeight)}`,
     ).pipe(
       Effect.annotateLogs({
+        chainId,
         phase: "checkpoint",
         block: Number(lastRow.blockHeight),
+        events: rows.length,
+        durationMs: indexedDurationMs,
         finalizedBlockHeight,
         finalizedBlockTime,
       }),
@@ -358,6 +438,84 @@ export type HistoricalRuntimeError =
   | DatabaseError
   | MigrationError
   | InvalidCursorError;
+
+/**
+ * Logs the run summary: one `info` line with run totals and block range, then
+ * one `debug` line per contract. Unknown bounds are annotated as `null` rather
+ * than omitted so the shape is stable.
+ */
+function logRunSummary(options: {
+  chainId: number;
+  contracts: readonly ContractRunResult[];
+  eventsProcessed: number;
+  finalizedBlockHeight: number | undefined;
+  durationMs: number;
+}): Effect.Effect<void> {
+  return Effect.gen(function* () {
+    let pagesFetched = 0;
+    let transactionsFetched = 0;
+    let upToDate = 0;
+    let fromBlock: number | undefined = undefined;
+    let toBlock: number | undefined = undefined;
+
+    for (const contract of options.contracts) {
+      pagesFetched += contract.pagesFetched ?? 0;
+      transactionsFetched += contract.transactionsFetched ?? 0;
+
+      if (contract.status === "up-to-date") {
+        upToDate += 1;
+      }
+
+      const lower = contract.startBlock ?? contract.lastBlockHeight;
+      const upper = contract.endBlock ?? contract.lastBlockHeight;
+
+      if (lower !== undefined) {
+        fromBlock = fromBlock === undefined ? lower : Math.min(fromBlock, lower);
+      }
+
+      if (upper !== undefined) {
+        toBlock = toBlock === undefined ? upper : Math.max(toBlock, upper);
+      }
+
+      yield* Effect.logDebug(`Completed contract ${contract.contractId}`).pipe(
+        Effect.annotateLogs({
+          chainId: options.chainId,
+          contractId: contract.contractId,
+          phase: "run",
+          status: contract.status,
+          startBlock: contract.startBlock ?? null,
+          endBlock: contract.endBlock ?? null,
+          lastBlockHeight: contract.lastBlockHeight ?? null,
+          eventsProcessed: contract.eventsProcessed,
+          pagesFetched: contract.pagesFetched ?? 0,
+          transactionsFetched: contract.transactionsFetched ?? 0,
+        }),
+      );
+    }
+
+    yield* Effect.logInfo("Historical indexing complete").pipe(
+      Effect.annotateLogs({
+        chainId: options.chainId,
+        phase: "run",
+        durationMs: options.durationMs,
+        contracts: options.contracts.length,
+        upToDate,
+        eventsProcessed: options.eventsProcessed,
+        pagesFetched,
+        transactionsFetched,
+        fromBlock: fromBlock ?? null,
+        toBlock: toBlock ?? null,
+        finalizedBlockHeight: options.finalizedBlockHeight ?? null,
+      }),
+    );
+
+    if (options.contracts.length === 0) {
+      yield* Effect.logWarning("Historical indexing completed with no contracts").pipe(
+        Effect.annotateLogs({ chainId: options.chainId, phase: "run" }),
+      );
+    }
+  });
+}
 
 export interface HistoricalRuntimeService {
   readonly run: (filters: Filter[]) => Effect.Effect<RunResult, HistoricalRuntimeError>;
@@ -427,6 +585,8 @@ function runHistorical(
       return { contracts: [], eventsProcessed: 0 };
     }
 
+    const startedAtMillis = yield* Clock.currentTimeMillis;
+
     const resolvedFilters = yield* validateAndResolveFilters(filters);
 
     yield* migrate();
@@ -439,16 +599,25 @@ function runHistorical(
     if (rewind !== null) {
       yield* Effect.logWarning(
         `Discarded unfinalized data from block ${rewind.fromBlockHeight}; refetching from block ${rewind.toBlockHeight + 1}`,
-      ).pipe(Effect.annotateLogs({ ...rewind }));
+      ).pipe(Effect.annotateLogs({ chainId, phase: "init", ...rewind }));
     }
 
     // Finality is measured against the chain tip when a finality window is
-    // Configured. Reading it once per run keeps the final pass accurate even
-    // When no events were stored near the tip.
-    const chainTipHeight = config.finality > 0 ? yield* readChainTipHeight() : undefined;
+    // Configured. The tip is also the progress target for open-ended filters,
+    // So it is read whenever either needs it. Reading it once per run keeps the
+    // Final pass accurate even when no events were stored near the tip.
+    const needsChainTip =
+      config.finality > 0 || resolvedFilters.some((filter) => filter.endBlock === undefined);
+
+    const chainTipHeight = needsChainTip ? yield* readChainTipHeight(chainId) : undefined;
 
     yield* Effect.logInfo("Starting historical indexing").pipe(
-      Effect.annotateLogs({ contracts: resolvedFilters.map((filter) => filter.contractId) }),
+      Effect.annotateLogs({
+        chainId,
+        phase: "run",
+        contracts: resolvedFilters.map((filter) => filter.contractId),
+        finality: config.finality,
+      }),
     );
 
     const filterMap = new Map(resolvedFilters.map((filter) => [filter.contractId, filter]));
@@ -479,32 +648,59 @@ function runHistorical(
         chainTipHeight,
       );
 
-    yield* Effect.gen(function* consumeSyncEvents() {
-      yield* sync.historical(syncFilters).pipe(
-        Stream.runForEach((event) =>
-          Match.value(event).pipe(
-            Match.when({ type: "started" }, (started) =>
-              Effect.sync(() => {
-                startedContracts = started.contracts;
-              }),
+    const progressState = yield* Ref.make<ProgressTrackerState>({ contracts: [] });
+
+    const logProgress = logRunProgress({
+      chainId,
+      state: progressState,
+      tipBlockHeight: chainTipHeight,
+      estimator: createEtaEstimator(),
+    });
+
+    yield* Effect.scoped(
+      Effect.gen(function* consumeSyncEvents() {
+        // Aggregate progress at info while per-page detail stays at debug. The
+        // Fiber stops when the run scope closes, i.e. when the stream ends.
+        yield* Effect.forkScoped(
+          Effect.repeat(logProgress, Schedule.spaced(PROGRESS_LOG_INTERVAL)),
+        );
+
+        yield* sync.historical(syncFilters).pipe(
+          Stream.runForEach((event) =>
+            Match.value(event).pipe(
+              Match.when({ type: "started" }, (started) =>
+                Effect.gen(function* () {
+                  startedContracts = started.contracts;
+                  yield* Ref.set(progressState, { contracts: started.contracts });
+                  // First progress line: the already-synced fraction.
+                  yield* logProgress;
+                }),
+              ),
+              Match.when({ type: "safe" }, (safe) =>
+                Effect.gen(function* () {
+                  yield* Ref.set(progressState, {
+                    contracts: safe.contracts,
+                    safeBlockHeight: safe.safeBlockHeight,
+                  });
+                  yield* indexSafeHeight(safe.safeBlockHeight);
+                }),
+              ),
+              Match.when({ type: "completed" }, (completed) =>
+                Effect.gen(function* () {
+                  completedContracts = completed.contracts;
+                  yield* Ref.set(progressState, { contracts: completed.contracts });
+                }),
+              ),
+              Match.exhaustive,
             ),
-            Match.when({ type: "safe" }, (safe) => indexSafeHeight(safe.safeBlockHeight)),
-            Match.when({ type: "completed" }, (completed) =>
-              Effect.sync(() => {
-                completedContracts = completed.contracts;
-              }),
-            ),
-            Match.exhaustive,
           ),
-        ),
-      );
+        );
 
-      // Final pass: index any remaining stored events (e.g. events from a
-      // Contract that finished after the last safe height was emitted).
-      yield* indexSafeHeight(Number.MAX_SAFE_INTEGER);
-    }).pipe(Effect.provide(Indexing.layer({ handlers })));
-
-    yield* Effect.logInfo("Historical indexing complete");
+        // Final pass: index any remaining stored events (e.g. events from a
+        // Contract that finished after the last safe height was emitted).
+        yield* indexSafeHeight(Number.MAX_SAFE_INTEGER);
+      }).pipe(Effect.provide(Indexing.layer({ handlers }))),
+    );
 
     const finalContracts = completedContracts.length > 0 ? completedContracts : startedContracts;
     let eventsProcessed = 0;
@@ -527,13 +723,21 @@ function runHistorical(
 
     const finalCheckpoint = yield* syncStore.getCheckpoint({ chainId });
 
-    return {
+    const finalizedBlockHeight = finalCheckpoint
+      ? Number(finalCheckpoint.finalizedBlockHeight)
+      : undefined;
+
+    const completedAtMillis = yield* Clock.currentTimeMillis;
+
+    yield* logRunSummary({
+      chainId,
       contracts,
       eventsProcessed,
-      finalizedBlockHeight: finalCheckpoint
-        ? Number(finalCheckpoint.finalizedBlockHeight)
-        : undefined,
-    };
+      finalizedBlockHeight,
+      durationMs: completedAtMillis - startedAtMillis,
+    });
+
+    return { contracts, eventsProcessed, finalizedBlockHeight };
   }).pipe(
     Effect.annotateLogs({ service: "historicalRuntime" }),
     Effect.withLogSpan("historicalIndexing"),

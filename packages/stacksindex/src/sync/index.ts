@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Layer, Metric, Queue, Stream } from "effect";
+import { Cause, Context, Duration, Effect, Layer, Metric, Queue, Stream } from "effect";
 
 import { type IndexerDb, IndexerDatabase } from "../database/index.ts";
 import {
@@ -15,6 +15,7 @@ import {
   type SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
+import { SLOW_OPERATION_MILLIS } from "../lib/logging.ts";
 import { syncErrors, syncEvents, syncPages } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { getContractEventsFirstCursor, parseLogsCursor } from "./cursor.ts";
@@ -54,8 +55,12 @@ export interface ContractSyncSummary {
   readonly startBlock?: number;
   readonly endBlock?: number;
   readonly lastBlockHeight?: number;
+  /** Height at which this run began syncing (cursor discovery or saved progress). */
+  readonly initialBlockHeight?: number;
   readonly pagesFetched: number;
   readonly transactionsFetched: number;
+  /** Smart contract log events stored by this run. */
+  readonly eventsStored: number;
 }
 
 /**
@@ -69,7 +74,11 @@ export interface ContractSyncSummary {
  */
 export type SyncEvent =
   | { readonly type: "started"; readonly contracts: readonly ContractSyncSummary[] }
-  | { readonly type: "safe"; readonly safeBlockHeight: number }
+  | {
+      readonly type: "safe";
+      readonly safeBlockHeight: number;
+      readonly contracts: readonly ContractSyncSummary[];
+    }
   | { readonly type: "completed"; readonly contracts: readonly ContractSyncSummary[] };
 
 export interface SyncService {
@@ -84,8 +93,10 @@ interface ContractSyncState {
   contractId: string;
   cursor: string | null;
   syncedBlockHeight?: number;
+  initialBlockHeight?: number;
   pagesFetched?: number;
   transactionsFetched?: number;
+  eventsStored?: number;
   done: boolean;
   doneAtStart: boolean;
   startBlock?: number;
@@ -119,8 +130,10 @@ function toContractSyncSummary(state: ContractSyncState): ContractSyncSummary {
     startBlock: state.startBlock,
     endBlock: state.endBlock,
     lastBlockHeight: state.syncedBlockHeight,
+    initialBlockHeight: state.initialBlockHeight,
     pagesFetched: state.pagesFetched ?? 0,
     transactionsFetched: state.transactionsFetched ?? 0,
+    eventsStored: state.eventsStored ?? 0,
   };
 }
 
@@ -138,7 +151,13 @@ function initContractFromScratch(
     });
 
     if (!cursor) {
-      yield* Effect.logInfo(`No events found for ${filter.contractId}, skipping`);
+      yield* Effect.logInfo(`No events found for ${filter.contractId}, skipping`).pipe(
+        Effect.annotateLogs({
+          chainId,
+          contractId: filter.contractId,
+          phase: "init",
+        }),
+      );
       yield* syncStore.upsertSyncProgress({
         contractId: filter.contractId,
         chainId,
@@ -151,6 +170,7 @@ function initContractFromScratch(
         contractId: filter.contractId,
         cursor: null,
         syncedBlockHeight: filter.endBlock ?? 0,
+        initialBlockHeight: filter.endBlock ?? 0,
         done: true,
         doneAtStart: true,
         startBlock: filter.startBlock,
@@ -163,6 +183,13 @@ function initContractFromScratch(
     if (filter.endBlock !== undefined && cursorHeight > filter.endBlock) {
       yield* Effect.logInfo(
         `First event for ${filter.contractId} at block ${cursorHeight} exceeds endBlock ${filter.endBlock}, skipping`,
+      ).pipe(
+        Effect.annotateLogs({
+          chainId,
+          contractId: filter.contractId,
+          phase: "init",
+          block: cursorHeight,
+        }),
       );
       yield* syncStore.upsertSyncProgress({
         contractId: filter.contractId,
@@ -176,6 +203,7 @@ function initContractFromScratch(
         contractId: filter.contractId,
         cursor: null,
         syncedBlockHeight: filter.endBlock,
+        initialBlockHeight: filter.endBlock,
         done: true,
         doneAtStart: true,
         startBlock: filter.startBlock,
@@ -183,11 +211,20 @@ function initContractFromScratch(
       };
     }
 
-    yield* Effect.logInfo(`Starting sync for ${filter.contractId} from block ${cursorHeight}`);
+    yield* Effect.logInfo(`Starting sync for ${filter.contractId} from block ${cursorHeight}`).pipe(
+      Effect.annotateLogs({
+        chainId,
+        contractId: filter.contractId,
+        phase: "init",
+        block: cursorHeight,
+      }),
+    );
 
     return {
       contractId: filter.contractId,
       cursor,
+      syncedBlockHeight: Math.max(cursorHeight - 1, 0),
+      initialBlockHeight: cursorHeight,
       done: false,
       doneAtStart: false,
       startBlock: filter.startBlock,
@@ -214,12 +251,20 @@ function initContractFromSaved(
     if (isAlreadyComplete) {
       yield* Effect.logInfo(
         `Sync already completed for ${filter.contractId} (synced up to block ${savedHeight}), skipping`,
+      ).pipe(
+        Effect.annotateLogs({
+          chainId,
+          contractId: filter.contractId,
+          phase: "init",
+          block: savedHeight,
+        }),
       );
 
       return {
         contractId: filter.contractId,
         cursor: null,
         syncedBlockHeight: savedHeight,
+        initialBlockHeight: savedHeight,
         done: true,
         doneAtStart: true,
         startBlock: filter.startBlock,
@@ -230,12 +275,20 @@ function initContractFromSaved(
     if (filter.endBlock !== undefined && savedHeight > filter.endBlock) {
       yield* Effect.logInfo(
         `Resumed progress for ${filter.contractId} at block ${savedHeight} exceeds endBlock ${filter.endBlock}, marking done`,
+      ).pipe(
+        Effect.annotateLogs({
+          chainId,
+          contractId: filter.contractId,
+          phase: "init",
+          block: savedHeight,
+        }),
       );
 
       return {
         contractId: filter.contractId,
         cursor: saved.cursor,
         syncedBlockHeight: savedHeight,
+        initialBlockHeight: savedHeight,
         done: true,
         doneAtStart: true,
         startBlock: filter.startBlock,
@@ -244,11 +297,22 @@ function initContractFromSaved(
     }
 
     if (saved.cursor) {
-      yield* Effect.logInfo(`Resuming sync for ${filter.contractId} from block ${savedHeight}`);
+      yield* Effect.logInfo(
+        `Resuming sync for ${filter.contractId} from block ${savedHeight}`,
+      ).pipe(
+        Effect.annotateLogs({
+          chainId,
+          contractId: filter.contractId,
+          phase: "init",
+          block: savedHeight,
+        }),
+      );
 
       return {
         contractId: filter.contractId,
         cursor: saved.cursor,
+        syncedBlockHeight: Math.max(savedHeight - 1, 0),
+        initialBlockHeight: savedHeight,
         done: false,
         doneAtStart: false,
         startBlock: filter.startBlock,
@@ -273,6 +337,7 @@ function initContractFromSaved(
         contractId: filter.contractId,
         cursor: null,
         syncedBlockHeight: filter.endBlock ?? savedHeight,
+        initialBlockHeight: savedHeight,
         done: true,
         doneAtStart: true,
         startBlock: filter.startBlock,
@@ -285,6 +350,13 @@ function initContractFromSaved(
     if (filter.endBlock !== undefined && cursorHeight > filter.endBlock) {
       yield* Effect.logInfo(
         `Next event for ${filter.contractId} at block ${cursorHeight} exceeds endBlock ${filter.endBlock}, skipping`,
+      ).pipe(
+        Effect.annotateLogs({
+          chainId,
+          contractId: filter.contractId,
+          phase: "init",
+          block: cursorHeight,
+        }),
       );
       yield* syncStore.upsertSyncProgress({
         contractId: filter.contractId,
@@ -298,6 +370,7 @@ function initContractFromSaved(
         contractId: filter.contractId,
         cursor: null,
         syncedBlockHeight: filter.endBlock,
+        initialBlockHeight: savedHeight,
         done: true,
         doneAtStart: true,
         startBlock: filter.startBlock,
@@ -308,6 +381,8 @@ function initContractFromSaved(
     return {
       contractId: filter.contractId,
       cursor,
+      syncedBlockHeight: savedHeight,
+      initialBlockHeight: savedHeight,
       done: false,
       doneAtStart: false,
       startBlock: filter.startBlock,
@@ -432,7 +507,16 @@ function advanceContractSyncState(
       const isPastEndBlock = endBlock !== undefined && currentHeight > endBlock;
 
       if (endBlock !== undefined && isPastEndBlock) {
-        yield* Effect.logInfo(`Sync reached endBlock ${endBlock} for ${lowestState.contractId}`);
+        yield* Effect.logInfo(
+          `Sync reached endBlock ${endBlock} for ${lowestState.contractId}`,
+        ).pipe(
+          Effect.annotateLogs({
+            chainId,
+            contractId: lowestState.contractId,
+            phase: "sync",
+            block: endBlock,
+          }),
+        );
         yield* syncStore.upsertSyncProgress({
           contractId: lowestState.contractId,
           chainId,
@@ -452,7 +536,14 @@ function advanceContractSyncState(
         lowestState.cursor = nextCursor;
       }
     } else {
-      yield* Effect.logInfo(`Sync complete for ${lowestState.contractId}`);
+      yield* Effect.logInfo(`Sync complete for ${lowestState.contractId}`).pipe(
+        Effect.annotateLogs({
+          chainId,
+          contractId: lowestState.contractId,
+          phase: "sync",
+          block: currentHeight,
+        }),
+      );
       yield* syncStore.upsertSyncProgress({
         contractId: lowestState.contractId,
         chainId,
@@ -508,22 +599,43 @@ export const createSync = ({
             }
 
             // Fetch one page of events
-            const logsResponse = yield* client.getContractLogs(lowestState.contractId, {
-              cursor: lowestState.cursor,
-            });
+            const [fetchDuration, logsResponse] = yield* Effect.timed(
+              client.getContractLogs(lowestState.contractId, {
+                cursor: lowestState.cursor,
+              }),
+            );
+
+            const fetchDurationMs = Duration.toMillis(fetchDuration);
 
             yield* Metric.update(syncPages, 1);
             lowestState.pagesFetched = (lowestState.pagesFetched ?? 0) + 1;
 
             const { results: events, next_cursor: nextCursor } = logsResponse;
             const currentHeight = (yield* parseLogsCursor(lowestState.cursor)).blockHeight;
-            yield* Effect.logInfo(`Syncing ${lowestState.contractId}`).pipe(
+            yield* Effect.logDebug("Fetched page").pipe(
               Effect.annotateLogs({
+                chainId,
+                contractId: lowestState.contractId,
                 phase: "fetch",
                 block: currentHeight,
                 events: events.length,
+                durationMs: fetchDurationMs,
               }),
             );
+
+            if (fetchDurationMs > SLOW_OPERATION_MILLIS) {
+              yield* Effect.logWarning(
+                "Fetching contract logs is taking longer than expected",
+              ).pipe(
+                Effect.annotateLogs({
+                  chainId,
+                  contractId: lowestState.contractId,
+                  phase: "fetch",
+                  block: currentHeight,
+                  durationMs: fetchDurationMs,
+                }),
+              );
+            }
 
             // Batch fetch transactions (deduplicated by tx_id) in chronological order
             const txIds = [
@@ -539,17 +651,24 @@ export const createSync = ({
 
             const existingTxIds = new Set(existingTxs.map((tx) => tx.txId));
             const missingTxIds = txIds.filter((txId) => !existingTxIds.has(txId));
-            yield* Effect.logDebug(
-              `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
-            ).pipe(Effect.annotateLogs({ phase: "fetch" }));
 
-            const transactions = yield* fetchMissingTransactions(
-              missingTxIds,
-              lowestState.endBlock,
+            const [transactionsFetchDuration, transactions] = yield* Effect.timed(
+              fetchMissingTransactions(missingTxIds, lowestState.endBlock),
             );
 
             lowestState.transactionsFetched =
               (lowestState.transactionsFetched ?? 0) + transactions.length;
+
+            yield* Effect.logDebug(
+              `Transactions: ${txIds.length} total, ${missingTxIds.length} missing`,
+            ).pipe(
+              Effect.annotateLogs({
+                chainId,
+                contractId: lowestState.contractId,
+                phase: "fetch",
+                durationMs: Duration.toMillis(transactionsFetchDuration),
+              }),
+            );
 
             const blocks = extractBlocksFromTransactions(transactions);
 
@@ -577,21 +696,28 @@ export const createSync = ({
               })
               .filter((item) => item.blockHeight > 0);
 
-            yield* IndexerDatabase.transaction(() =>
-              Effect.all([
-                syncStore.insertBlocks({ blocks, chainId }),
-                syncStore.insertTransactions({ transactions, chainId }),
-                syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }),
-              ]),
+            const [storeDuration] = yield* Effect.timed(
+              IndexerDatabase.transaction(() =>
+                Effect.all([
+                  syncStore.insertBlocks({ blocks, chainId }),
+                  syncStore.insertTransactions({ transactions, chainId }),
+                  syncStore.insertEvents({ events: eventsWithBlockHeight, chainId }),
+                ]),
+              ),
             );
 
             yield* Metric.update(syncEvents, eventsWithBlockHeight.length);
+            lowestState.eventsStored =
+              (lowestState.eventsStored ?? 0) + eventsWithBlockHeight.length;
             yield* Effect.logDebug("Stored page").pipe(
               Effect.annotateLogs({
-                phase: "store",
+                chainId,
                 contractId: lowestState.contractId,
+                phase: "store",
+                block: currentHeight,
                 events: eventsWithBlockHeight.length,
                 transactions: transactions.length,
+                durationMs: Duration.toMillis(storeDuration),
               }),
             );
 
@@ -601,7 +727,11 @@ export const createSync = ({
             const safeHeight = getSafeBlockHeight(states);
 
             if (safeHeight !== undefined) {
-              yield* Queue.offer(queue, { type: "safe", safeBlockHeight: safeHeight });
+              yield* Queue.offer(queue, {
+                type: "safe",
+                safeBlockHeight: safeHeight,
+                contracts: states.map(toContractSyncSummary),
+              });
             }
           }
 
