@@ -12,12 +12,14 @@ import {
   Effect,
   Exit,
   Fiber,
+  Logger,
   Match,
   Metric,
   Predicate,
   References,
   type Schema,
 } from "effect";
+import { TestClock } from "effect/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
@@ -2765,6 +2767,14 @@ describe("historical runtime with handlers", () => {
       expect(new URL(url).origin).toBe(customBaseUrl);
       expect(init.headers["x-api-key"]).toBe(customApiKey);
 
+      // Open-ended filters read the chain tip once per run to report progress.
+      if (url.endsWith("/extended")) {
+        return {
+          statusCode: 200,
+          body: mockBody({ chain_tip: { block_height: 100 } }),
+        };
+      }
+
       if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
         return {
           statusCode: 200,
@@ -2801,7 +2811,7 @@ describe("historical runtime with handlers", () => {
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
     expect(result).toBeDefined();
-    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(mockRequest).toHaveBeenCalledTimes(3);
   });
 
   test("provides IndexingClient to handler with current block height tip and runtime api options", async () => {
@@ -5791,6 +5801,179 @@ describe("historical runtime with handlers", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  test("logs periodic sync progress while the run is blocked", async () => {
+    const contractId = "SP123.token";
+
+    await testDb.db.insert(blocksTable).values({
+      chainId: 1n,
+      height: 100n,
+      hash: "block-100",
+      blockTime: 1000n,
+      tenureHeight: 100n,
+    });
+    await testDb.db.insert(transactionsTable).values({
+      chainId: 1n,
+      txId: "tx-100",
+      blockHeight: 100n,
+      blockHash: "block-100",
+      txIndex: 0,
+      txType: "contract_call",
+      senderAddress: "SP sender",
+      feeRate: 1000n,
+      nonce: 0n,
+      txStatus: "success",
+    });
+    await testDb.db.insert(eventsTable).values(storedEventRow("tx-100", 100, 0));
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId,
+        chainId: 1,
+        cursor: null,
+        lastBlockHeight: 100,
+        isComplete: true,
+      }),
+    );
+
+    const blocked = Effect.runSync(Deferred.make<"blocked">());
+    const release = Effect.runSync(Deferred.make<"released">());
+
+    const handler = () =>
+      Deferred.succeed(blocked, "blocked").pipe(Effect.andThen(Deferred.await(release)));
+
+    const logs: { message: unknown; annotations: Record<string, string | number | boolean> }[] = [];
+
+    const capture = Logger.make((options) => {
+      const output = Logger.formatStructured.log(options);
+
+      logs.push({
+        message: output.message,
+        // SAFETY: `formatStructured` exposes annotations as an untyped record; this test reads known keys.
+        annotations: output.annotations as Record<string, string | number | boolean>,
+      });
+    });
+
+    const layer = HistoricalRuntime.layer({});
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkScoped(
+            Effect.gen(function* () {
+              const runtime = yield* HistoricalRuntime;
+
+              return yield* runtime.run([{ contractId, handler, endBlock: 100 }]);
+            }).pipe(Effect.provide(layer), Effect.provideService(IndexerDatabase, testDb.db)),
+          );
+
+          // Wait until the handler is blocking the final index pass, then advance
+          // The test clock to trigger periodic progress logs.
+          yield* Deferred.await(blocked);
+          yield* TestClock.adjust("5 seconds");
+          yield* Effect.yieldNow;
+          yield* TestClock.adjust("5 seconds");
+          yield* Effect.yieldNow;
+          yield* Deferred.succeed(release, "released");
+
+          return yield* Fiber.join(fiber);
+        }),
+      ).pipe(Effect.provide(TestClock.layer()), Effect.provide(Logger.layer([capture]))),
+    );
+
+    const progressLogs = logs.filter((log) => log.message === "Historical sync progress");
+
+    // One immediate log after `started` plus one per clock adjustment.
+    expect(progressLogs.length).toBeGreaterThanOrEqual(3);
+    expect(progressLogs[0]?.annotations).toMatchObject({
+      chainId: 1,
+      phase: "progress",
+      percent: 100,
+      completedBlocks: 1,
+      totalBlocks: 1,
+      activeContracts: 0,
+      doneContracts: 1,
+    });
+
+    const completionLogs = logs.filter((log) => log.message === "Historical indexing complete");
+
+    expect(completionLogs).toHaveLength(1);
+    expect(completionLogs[0]?.annotations).toMatchObject({
+      chainId: 1,
+      phase: "run",
+      contracts: 1,
+      upToDate: 1,
+      eventsProcessed: 1,
+      pagesFetched: 0,
+      transactionsFetched: 0,
+      fromBlock: 100,
+      toBlock: 100,
+      finalizedBlockHeight: 100,
+      durationMs: 10_000,
+    });
+  });
+
+  test("warns when an index batch is slow", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100]);
+
+    const sleeping = Effect.runSync(Deferred.make<"sleeping">());
+
+    const handler = () =>
+      Deferred.succeed(sleeping, "sleeping").pipe(Effect.andThen(Effect.sleep("11 seconds")));
+
+    const logs: {
+      level: string;
+      message: unknown;
+      annotations: Record<string, string | number | boolean>;
+    }[] = [];
+
+    const capture = Logger.make((options) => {
+      const output = Logger.formatStructured.log(options);
+
+      logs.push({
+        level: output.level,
+        message: output.message,
+        // SAFETY: `formatStructured` exposes annotations as an untyped record; this test reads known keys.
+        annotations: output.annotations as Record<string, string | number | boolean>,
+      });
+    });
+
+    const layer = HistoricalRuntime.layer({});
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkScoped(
+            Effect.gen(function* () {
+              const runtime = yield* HistoricalRuntime;
+
+              return yield* runtime.run([{ contractId, handler, endBlock: 100 }]);
+            }).pipe(Effect.provide(layer), Effect.provideService(IndexerDatabase, testDb.db)),
+          );
+
+          yield* Deferred.await(sleeping);
+          yield* TestClock.adjust("11 seconds");
+
+          return yield* Fiber.join(fiber);
+        }),
+      ).pipe(Effect.provide(TestClock.layer()), Effect.provide(Logger.layer([capture]))),
+    );
+
+    const warning = logs.find(
+      (log) => log.message === "Indexing events is taking longer than expected",
+    );
+
+    expect(warning?.level).toBe("WARN");
+    expect(warning?.annotations).toMatchObject({
+      chainId: 1,
+      phase: "index",
+      block: 100,
+      events: 1,
+      durationMs: 11_000,
+    });
+  });
+
+  // Keep this destructive test last: dropping `sync_progress` breaks the next
+  // `beforeEach` truncate.
   test("returns SyncStoreError when a sync store operation fails", async () => {
     const contractId = "SP123.token";
 

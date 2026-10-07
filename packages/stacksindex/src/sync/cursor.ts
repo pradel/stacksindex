@@ -233,7 +233,9 @@ export const getContractEventsFirstCursor = (
     const client = yield* StacksClient;
     const ADDRESS_TX_LIMIT = 50;
 
-    yield* Effect.logInfo(`Looking for deployment of ${contractId}`);
+    yield* Effect.logDebug(`Looking for deployment of ${contractId}`).pipe(
+      Effect.annotateLogs({ contractId, phase: "cursor" }),
+    );
 
     const contract = yield* client.getContract(contractId);
     const deploymentBlockHeight = contract.block.height;
@@ -243,9 +245,16 @@ export const getContractEventsFirstCursor = (
         ? deploymentBlockHeight
         : Math.max(deploymentBlockHeight, options.startBlock);
 
-    yield* Effect.logInfo(
+    yield* Effect.logDebug(
       `Looking for first event of ${contractId} starting at block ${initialBlockHeight}`,
-    ).pipe(Effect.annotateLogs({ deploymentBlockHeight, initialBlockHeight }));
+    ).pipe(
+      Effect.annotateLogs({
+        contractId,
+        phase: "cursor",
+        deploymentBlockHeight,
+        initialBlockHeight,
+      }),
+    );
 
     let currentCursor: string | null = buildTransactionCursor({
       blockHeight: initialBlockHeight,
@@ -255,7 +264,7 @@ export const getContractEventsFirstCursor = (
 
     while (currentCursor) {
       yield* Effect.logDebug(`Scanning page for ${contractId}`).pipe(
-        Effect.annotateLogs({ cursor: currentCursor }),
+        Effect.annotateLogs({ contractId, phase: "cursor", cursor: currentCursor }),
       );
 
       const page: PrincipalTransactionsResponse = yield* client.getPrincipalTransactions(
@@ -288,9 +297,15 @@ export const getContractEventsFirstCursor = (
           if (cursorResult) {
             const firstCursor = buildLogsCursor(cursorResult);
 
-            yield* Effect.logInfo(
+            yield* Effect.logDebug(
               `Found first cursor for ${contractId} at block ${cursorResult.blockHeight}`,
-            ).pipe(Effect.annotateLogs({ block: cursorResult.blockHeight }));
+            ).pipe(
+              Effect.annotateLogs({
+                contractId,
+                phase: "cursor",
+                block: cursorResult.blockHeight,
+              }),
+            );
 
             return firstCursor;
           }
@@ -301,7 +316,9 @@ export const getContractEventsFirstCursor = (
       currentCursor = cursor.previous;
     }
 
-    yield* Effect.logInfo(`No events found for ${contractId}`);
+    yield* Effect.logDebug(`No events found for ${contractId}`).pipe(
+      Effect.annotateLogs({ contractId, phase: "cursor" }),
+    );
 
     return null;
   }).pipe(

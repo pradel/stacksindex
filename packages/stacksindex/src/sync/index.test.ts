@@ -1,6 +1,7 @@
 // oxlint-disable typescript/no-unsafe-assignment
 
-import { Effect, Fiber, Metric, References, Stream } from "effect";
+import { Deferred, Effect, Fiber, Logger, Metric, References, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
 import type { StacksClientService } from "../datasources/api/index.ts";
@@ -88,6 +89,24 @@ const makeSyncClient = (): StacksClientService => ({
   callReadFunction: notUsed,
 });
 
+interface CapturedLog {
+  level: string;
+  message: unknown;
+  annotations: Record<string, string | number | boolean>;
+}
+
+const captureLogs = (logs: CapturedLog[]) =>
+  Logger.make((options) => {
+    const output = Logger.formatStructured.log(options);
+
+    logs.push({
+      level: output.level,
+      message: output.message,
+      // SAFETY: `formatStructured` exposes annotations as an untyped record; these tests read known keys.
+      annotations: output.annotations as Record<string, string | number | boolean>,
+    });
+  });
+
 describe("sync historical", () => {
   // oxlint-disable-next-line init-declarations
   let testDb: TestDatabase;
@@ -132,10 +151,24 @@ describe("sync historical", () => {
       type: "started",
       contracts: [{ contractId: CONTRACT_ID, doneAtStart: false }],
     });
-    expect(events[1]).toMatchObject({ type: "safe", safeBlockHeight: 99 });
+    expect(events[1]).toMatchObject({
+      type: "safe",
+      safeBlockHeight: 99,
+      contracts: [
+        {
+          contractId: CONTRACT_ID,
+          doneAtStart: false,
+          lastBlockHeight: 99,
+          initialBlockHeight: 100,
+          pagesFetched: 1,
+          transactionsFetched: 1,
+          eventsStored: 1,
+        },
+      ],
+    });
     expect(events[2]).toMatchObject({
       type: "completed",
-      contracts: [{ contractId: CONTRACT_ID, doneAtStart: false, lastBlockHeight: 199 }],
+      contracts: [{ contractId: CONTRACT_ID, doneAtStart: false, lastBlockHeight: 200 }],
     });
 
     const storedEvents = await testDb.run(
@@ -150,6 +183,76 @@ describe("sync historical", () => {
 
     expect(progress).toMatchObject({ cursor: null, lastBlockHeight: 200n, isComplete: false });
   });
+
+  test.each([
+    { nextCursor: "200:0:0:0", endBlock: 150, terminalHeight: 150 },
+    { nextCursor: null, endBlock: undefined, terminalHeight: 100 },
+  ])(
+    "reports terminal height $terminalHeight without limiting active contracts",
+    async ({ nextCursor, endBlock, terminalHeight }) => {
+      const activeContractId = "SP123.active";
+
+      for (const [contractId, height] of [
+        [CONTRACT_ID, 100],
+        [activeContractId, 400],
+      ] as const) {
+        await testDb.run(
+          syncStore.upsertSyncProgress({
+            contractId,
+            chainId: CHAIN_ID,
+            cursor: `${height}:0:0:0`,
+            lastBlockHeight: height,
+            isComplete: false,
+          }),
+        );
+      }
+
+      const pages = new Map([
+        [CONTRACT_ID, logPage("tx-1", nextCursor)],
+        [activeContractId, { ...logPage("tx-1", null), results: [] }],
+      ]);
+
+      const client: StacksClientService = {
+        ...makeSyncClient(),
+        getContractLogs: (contractId) =>
+          // SAFETY: Both seeded contracts have fixtures shaped like the logs endpoint response.
+          Effect.succeed(pages.get(contractId) as never),
+      };
+
+      const sync = createSync({ chainId: CHAIN_ID, client, database: testDb.db });
+
+      const events = await Effect.runPromise(
+        sync
+          .historical([{ contractId: CONTRACT_ID, endBlock }, { contractId: activeContractId }])
+          .pipe(Stream.runCollect, Effect.provideService(References.MinimumLogLevel, "None")),
+      );
+
+      expect(events.at(-2)).toMatchObject({
+        type: "safe",
+        safeBlockHeight: 399,
+        contracts: [
+          { contractId: CONTRACT_ID, lastBlockHeight: terminalHeight },
+          { contractId: activeContractId, lastBlockHeight: 399 },
+        ],
+      });
+      expect(events.at(-1)).toMatchObject({
+        type: "completed",
+        contracts: [
+          { contractId: CONTRACT_ID, lastBlockHeight: terminalHeight },
+          { contractId: activeContractId, lastBlockHeight: 400 },
+        ],
+      });
+
+      const progress = await testDb.run(
+        syncStore.getSyncProgress({ contractId: CONTRACT_ID, chainId: CHAIN_ID }),
+      );
+
+      expect(progress).toMatchObject({ cursor: null, lastBlockHeight: BigInt(terminalHeight) });
+      await expect(
+        testDb.run(syncStore.getEvents({ chainId: CHAIN_ID, fromBlockHeight: 0 })),
+      ).resolves.toHaveLength(1);
+    },
+  );
 
   test("bounds fetching while the consumer is busy", async () => {
     await testDb.run(
@@ -271,5 +374,134 @@ describe("sync historical", () => {
     );
 
     expect(result.count).toBe(1);
+  });
+
+  test("keeps per-page detail at debug", async () => {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId: CONTRACT_ID,
+        chainId: CHAIN_ID,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+        isComplete: false,
+      }),
+    );
+
+    const sync = createSync({ chainId: CHAIN_ID, client: makeSyncClient(), database: testDb.db });
+    const logs: CapturedLog[] = [];
+
+    await Effect.runPromise(
+      sync
+        .historical([{ contractId: CONTRACT_ID }])
+        .pipe(Stream.runDrain, Effect.provide(Logger.layer([captureLogs(logs)]))),
+    );
+
+    expect(logs.every((log) => log.level === "INFO")).toBe(true);
+    expect(logs.map((log) => log.message)).not.toContain("Fetched page");
+    expect(logs.map((log) => log.message)).toContain(
+      "Resuming sync for SP123.token from block 100",
+    );
+  });
+
+  test("logs per-page fetch and store detail at debug", async () => {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId: CONTRACT_ID,
+        chainId: CHAIN_ID,
+        cursor: "100:0:0:0",
+        lastBlockHeight: 100,
+        isComplete: false,
+      }),
+    );
+
+    const sync = createSync({ chainId: CHAIN_ID, client: makeSyncClient(), database: testDb.db });
+    const logs: CapturedLog[] = [];
+
+    await Effect.runPromise(
+      sync
+        .historical([{ contractId: CONTRACT_ID }])
+        .pipe(
+          Stream.runDrain,
+          Effect.provide(Logger.layer([captureLogs(logs)])),
+          Effect.provideService(References.MinimumLogLevel, "Debug"),
+        ),
+    );
+
+    const fetched = logs.find((log) => log.message === "Fetched page");
+    const stored = logs.find((log) => log.message === "Stored page");
+
+    expect(fetched?.level).toBe("DEBUG");
+    expect(fetched?.annotations).toMatchObject({
+      chainId: CHAIN_ID,
+      contractId: CONTRACT_ID,
+      phase: "fetch",
+      block: 100,
+      events: 1,
+      durationMs: expect.any(Number),
+    });
+    expect(stored?.annotations).toMatchObject({
+      chainId: CHAIN_ID,
+      contractId: CONTRACT_ID,
+      phase: "store",
+      events: 1,
+      transactions: 1,
+      durationMs: expect.any(Number),
+    });
+    expect(logs.some((log) => log.message === "Sync complete for SP123.token")).toBe(true);
+  });
+
+  test("warns when fetching a page is slow", async () => {
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId: CONTRACT_ID,
+        chainId: CHAIN_ID,
+        cursor: "200:0:0:0",
+        lastBlockHeight: 200,
+        isComplete: false,
+      }),
+    );
+
+    const fetchStarted = Effect.runSync(Deferred.make<"fetch-started">());
+
+    const client: StacksClientService = {
+      ...makeSyncClient(),
+      getContractLogs: () =>
+        Deferred.succeed(fetchStarted, "fetch-started").pipe(
+          Effect.andThen(Effect.sleep("11 seconds")),
+          // SAFETY: The mock returns a fixture shaped like the logs endpoint response; `never` satisfies the expected success type.
+          Effect.andThen(Effect.succeed(pageForCursor("200:0:0:0") as never)),
+        ),
+    };
+
+    const sync = createSync({ chainId: CHAIN_ID, client, database: testDb.db });
+    const logs: CapturedLog[] = [];
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkScoped(
+            sync.historical([{ contractId: CONTRACT_ID }]).pipe(Stream.runDrain),
+          );
+
+          yield* Deferred.await(fetchStarted);
+          yield* TestClock.adjust("11 seconds");
+
+          return yield* Fiber.join(fiber);
+        }),
+      ).pipe(Effect.provide(TestClock.layer()), Effect.provide(Logger.layer([captureLogs(logs)]))),
+    );
+
+    const warning = logs.find(
+      (log) => log.message === "Fetching contract logs is taking longer than expected",
+    );
+
+    expect(warning?.level).toBe("WARN");
+    expect(warning?.annotations).toMatchObject({
+      chainId: CHAIN_ID,
+      contractId: CONTRACT_ID,
+      phase: "fetch",
+      block: 200,
+      durationMs: 11_000,
+    });
   });
 });
