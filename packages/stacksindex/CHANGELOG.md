@@ -1,5 +1,27 @@
 # stacksindex
 
+## 0.0.7
+
+### Patch Changes
+
+- [#59](https://github.com/pradel/stacksindex/pull/59) [`6890510`](https://github.com/pradel/stacksindex/commit/689051088358f67c7164ab127c4a8bd1ab095f93) Thanks [@pradel](https://github.com/pradel)! - Improved crash recovery by committing each indexed event batch and its checkpoint in a single database transaction. A crash while processing a batch no longer replays events that were already handled.
+
+- [#55](https://github.com/pradel/stacksindex/pull/55) [`1992f67`](https://github.com/pradel/stacksindex/commit/1992f678e8266d0b407830aab6da77ab3759be36) Thanks [@pradel](https://github.com/pradel)! - Replace the consola logger with Effect's native logging and expose the runtime, indexing, and database as Effect services, with the promise API rebuilt as a boundary adapter.
+
+- [#56](https://github.com/pradel/stacksindex/pull/56) [`3fb992e`](https://github.com/pradel/stacksindex/commit/3fb992ecc7d7575113da5851c5e20087ecc84196) Thanks [@pradel](https://github.com/pradel)! - Split the package into two entrypoints and redesign the public API. `stacksindex` is now the promise-native API and `stacksindex/effect` is the Effect-native API.
+
+- [#60](https://github.com/pradel/stacksindex/pull/60) [`83422ec`](https://github.com/pradel/stacksindex/commit/83422ec44549687f0b382ceef52e761403be305f) Thanks [@pradel](https://github.com/pradel)! - Added a `finality` option that keeps a configurable number of trailing blocks unfinalized. Checkpoints now track a finalized block height, `RunResult` exposes it as `finalizedBlockHeight`, and unfinalized data is discarded and replayed after a restart so reorgs are handled automatically. Replayed handlers must be idempotent.
+
+- [#61](https://github.com/pradel/stacksindex/pull/61) [`dd03780`](https://github.com/pradel/stacksindex/commit/dd0378068472ef47aa4104d73962c835e8d711da) Thanks [@pradel](https://github.com/pradel)! - Improved historical sync logging with `debug`-level page detail, periodic `Historical sync progress` lines with percent and ETA, slow-operation warnings, and a completion summary with run totals.
+
+- [#58](https://github.com/pradel/stacksindex/pull/58) [`c5d2cc2`](https://github.com/pradel/stacksindex/commit/c5d2cc2316928188132a2ed55fcf47e3b513a73c) Thanks [@pradel](https://github.com/pradel)! - Build the promise entrypoint with `ManagedRuntime` and capture service dependencies when constructing `HistoricalRuntime` and `Indexing`, so `run` and `executeEvent` no longer require services.
+
+- [#53](https://github.com/pradel/stacksindex/pull/53) [`0e654cf`](https://github.com/pradel/stacksindex/commit/0e654cfc9e24950fe3bbff49d3d8199f185b1654) Thanks [@pradel](https://github.com/pradel)! - Rework the Stacks API datasource around a single Effect-native `StacksClient`.
+
+- [#60](https://github.com/pradel/stacksindex/pull/60) [`83422ec`](https://github.com/pradel/stacksindex/commit/83422ec44549687f0b382ceef52e761403be305f) Thanks [@pradel](https://github.com/pradel)! - Added Effect metrics for historical sync and indexing (`stacksindex.sync.pages`, `stacksindex.sync.events`, `stacksindex.sync.errors`, `stacksindex.index.batch_duration`), per-phase log annotations (`fetch`, `store`, `index`, `checkpoint`), and `pagesFetched`/`transactionsFetched` counters on `ContractRunResult`.
+
+- [#57](https://github.com/pradel/stacksindex/pull/57) [`e0e83d8`](https://github.com/pradel/stacksindex/commit/e0e83d8978e8ad767cd91799b9a92dc2e5379f54) Thanks [@pradel](https://github.com/pradel)! - Decode runtime boundaries with Schema and replace `unknown` layer errors with typed `ConfigurationError`, `DatabaseError`, `MigrationError`, and `InvalidCursorError` failures.
+
 ## 0.0.6
 
 ### Patch Changes
