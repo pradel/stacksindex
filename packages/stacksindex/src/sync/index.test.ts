@@ -168,7 +168,7 @@ describe("sync historical", () => {
     });
     expect(events[2]).toMatchObject({
       type: "completed",
-      contracts: [{ contractId: CONTRACT_ID, doneAtStart: false, lastBlockHeight: 199 }],
+      contracts: [{ contractId: CONTRACT_ID, doneAtStart: false, lastBlockHeight: 200 }],
     });
 
     const storedEvents = await testDb.run(
@@ -183,6 +183,76 @@ describe("sync historical", () => {
 
     expect(progress).toMatchObject({ cursor: null, lastBlockHeight: 200n, isComplete: false });
   });
+
+  test.each([
+    { nextCursor: "200:0:0:0", endBlock: 150, terminalHeight: 150 },
+    { nextCursor: null, endBlock: undefined, terminalHeight: 100 },
+  ])(
+    "reports terminal height $terminalHeight without limiting active contracts",
+    async ({ nextCursor, endBlock, terminalHeight }) => {
+      const activeContractId = "SP123.active";
+
+      for (const [contractId, height] of [
+        [CONTRACT_ID, 100],
+        [activeContractId, 400],
+      ] as const) {
+        await testDb.run(
+          syncStore.upsertSyncProgress({
+            contractId,
+            chainId: CHAIN_ID,
+            cursor: `${height}:0:0:0`,
+            lastBlockHeight: height,
+            isComplete: false,
+          }),
+        );
+      }
+
+      const pages = new Map([
+        [CONTRACT_ID, logPage("tx-1", nextCursor)],
+        [activeContractId, { ...logPage("tx-1", null), results: [] }],
+      ]);
+
+      const client: StacksClientService = {
+        ...makeSyncClient(),
+        getContractLogs: (contractId) =>
+          // SAFETY: Both seeded contracts have fixtures shaped like the logs endpoint response.
+          Effect.succeed(pages.get(contractId) as never),
+      };
+
+      const sync = createSync({ chainId: CHAIN_ID, client, database: testDb.db });
+
+      const events = await Effect.runPromise(
+        sync
+          .historical([{ contractId: CONTRACT_ID, endBlock }, { contractId: activeContractId }])
+          .pipe(Stream.runCollect, Effect.provideService(References.MinimumLogLevel, "None")),
+      );
+
+      expect(events.at(-2)).toMatchObject({
+        type: "safe",
+        safeBlockHeight: 399,
+        contracts: [
+          { contractId: CONTRACT_ID, lastBlockHeight: terminalHeight },
+          { contractId: activeContractId, lastBlockHeight: 399 },
+        ],
+      });
+      expect(events.at(-1)).toMatchObject({
+        type: "completed",
+        contracts: [
+          { contractId: CONTRACT_ID, lastBlockHeight: terminalHeight },
+          { contractId: activeContractId, lastBlockHeight: 400 },
+        ],
+      });
+
+      const progress = await testDb.run(
+        syncStore.getSyncProgress({ contractId: CONTRACT_ID, chainId: CHAIN_ID }),
+      );
+
+      expect(progress).toMatchObject({ cursor: null, lastBlockHeight: BigInt(terminalHeight) });
+      await expect(
+        testDb.run(syncStore.getEvents({ chainId: CHAIN_ID, fromBlockHeight: 0 })),
+      ).resolves.toHaveLength(1);
+    },
+  );
 
   test("bounds fetching while the consumer is busy", async () => {
     await testDb.run(

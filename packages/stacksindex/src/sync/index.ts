@@ -524,6 +524,7 @@ function advanceContractSyncState(
           lastBlockHeight: endBlock,
           isComplete: true,
         });
+        lowestState.syncedBlockHeight = endBlock;
         lowestState.done = true;
       } else {
         yield* syncStore.upsertSyncProgress({
@@ -551,6 +552,7 @@ function advanceContractSyncState(
         lastBlockHeight: currentHeight,
         isComplete: lowestState.endBlock !== undefined,
       });
+      lowestState.syncedBlockHeight = currentHeight;
       lowestState.done = true;
     }
   });
