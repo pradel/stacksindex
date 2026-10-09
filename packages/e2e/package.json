@@ -16,7 +16,7 @@
     "stacksindex": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "26.4.0",
+    "@types/node": "26.6.4",
     "@vitest/coverage-v8": "catalog:",
     "effect": "4.0.0",
     "typescript": "7.0.2",
