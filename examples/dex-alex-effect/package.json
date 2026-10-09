@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "drizzle-orm": "1.0.0-rc.5-5935859",
-    "effect": "4.0.0",
+    "effect": "4.0.2",
     "stacksindex": "workspace:*"
   },
   "devDependencies": {

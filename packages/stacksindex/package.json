@@ -36,24 +36,24 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "@effect/sql-pg": "4.0.0",
-    "@effect/sql-pglite": "4.0.0",
+    "@effect/sql-pg": "4.0.2",
+    "@effect/sql-pglite": "4.0.2",
     "@stacks/blockchain-api-client": "9.5.0",
     "@stacks/codec": "2.1.0",
     "@stacks/transactions": "7.6.0",
     "clarity-abitype": "0.8.0",
     "drizzle-orm": "1.0.0-rc.5-5935859",
-    "effect": "4.0.0"
+    "effect": "4.0.2"
   },
   "devDependencies": {
     "@arethetypeswrong/core": "0.18.5",
-    "@effect/vitest": "4.0.0",
+    "@effect/vitest": "4.0.2",
     "@electric-sql/pglite": "0.5.8",
     "@types/node": "26.6.4",
     "@types/pg": "8.23.1",
     "@vitest/coverage-v8": "catalog:",
     "drizzle-kit": "1.0.0-rc.5-5935859",
-    "pg": "8.23.0",
+    "pg": "8.23.1",
     "publint": "0.3.24",
     "typescript": "7.0.2",
     "vite": "catalog:",
