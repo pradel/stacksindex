@@ -27,6 +27,12 @@ import { getContractEventsFirstCursor, parseLogsCursor } from "./cursor.ts";
 const TRANSACTIONS_BATCH_LIMIT = 20;
 
 /**
+ * Max contracts initialized (DB read plus cursor discovery) concurrently.
+ * Bounded to keep the rate limiter and database from being flooded.
+ */
+const INITIALIZE_CONCURRENCY = 8;
+
+/**
  * Filter resolved by the runtime: `endBlock` is resolved to a concrete height
  * and the handler is stripped because the syncer only needs to know what to
  * fetch.
@@ -399,25 +405,21 @@ function initializeContractStates(
   StacksApiError | InvalidCursorError | SyncStoreError,
   StacksClient | IndexerDatabase
 > {
-  return Effect.gen(function* () {
-    const states: ContractSyncState[] = [];
+  return Effect.forEach(
+    filters,
+    (filter) =>
+      Effect.gen(function* () {
+        const saved = yield* syncStore.getSyncProgress({
+          contractId: filter.contractId,
+          chainId,
+        });
 
-    for (const filter of filters) {
-      const saved = yield* syncStore.getSyncProgress({
-        contractId: filter.contractId,
-        chainId,
-      });
-
-      const state =
-        saved === null
+        return saved === null
           ? yield* initContractFromScratch(filter, chainId)
           : yield* initContractFromSaved(filter, saved, chainId);
-
-      states.push(state);
-    }
-
-    return states;
-  });
+      }),
+    { concurrency: INITIALIZE_CONCURRENCY },
+  );
 }
 
 function fetchChunkViaBatch(
