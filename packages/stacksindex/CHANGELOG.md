@@ -1,5 +1,11 @@
 # stacksindex
 
+## 0.0.8
+
+### Patch Changes
+
+- [#62](https://github.com/pradel/stacksindex/pull/62) [`9f5081c`](https://github.com/pradel/stacksindex/commit/9f5081c1b20b3452b5245aa9c716a93c0079eba3) Thanks [@pradel](https://github.com/pradel)! - Initialize contracts concurrently instead of sequentially. Cursor discovery is network-bound, so runs with multiple caught-up contracts now overlap their initialization requests (bounded to 8 at a time) instead of paying for them one after another.
+
 ## 0.0.7
 
 ### Patch Changes
