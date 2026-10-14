@@ -146,7 +146,9 @@ Clarity-level failures (`okay: false`) reject with `ReadOnlyCallError`.
 
 Checkpoints and per-contract sync progress live in the indexer database, so `run` resumes where it left off.
 
-Set `finality` to keep the trailing `N` blocks unfinalized. On every run, the runtime discards cached data above `checkpoints.finalizedBlockHeight` before syncing, because those blocks may have been orphaned while the process was down. The canonical chain is refetched and replayed through your handlers automatically.
+Re-running on a schedule is cheap: a contract that is already synced costs a single request to the newest page of its logs, plus one chain-tip request per run. Events mined while a run is in progress are indexed by the next run, so handlers always see events in chain order.
+
+Set `finality` to keep the trailing `N` blocks unfinalized. On every run, the runtime discards cached data above `checkpoints.finalizedBlockHeight` before syncing, because those blocks may have been orphaned while the process was down. The canonical chain is refetched and replayed through your handlers automatically. With the default `finality: 0`, indexed data is never replayed after a reorg.
 
 Handler writes are **not** rolled back when a range is replayed. Write idempotent handlers (upsert by primary key, or delete-then-insert) so re-executing an event produces the same final state.
 

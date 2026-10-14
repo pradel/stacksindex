@@ -46,7 +46,8 @@ export const syncProgressTable = pgTable(
     chainId: table.bigint({ mode: "bigint" }).notNull(),
     contractId: text("contract_id").notNull(),
     cursor: text("cursor"),
-    lastBlockHeight: table.bigint({ mode: "bigint" }).notNull(),
+    /** Every event of the contract at or below this height is stored. */
+    syncedBlockHeight: table.bigint({ mode: "bigint" }).notNull(),
     isComplete: boolean("is_complete").notNull().default(false),
   }),
   (table) => [

@@ -207,7 +207,7 @@ describe("syncStore", () => {
         chainId: 1n,
         contractId: "SP123.token",
         cursor: "100:0:5:2",
-        lastBlockHeight: 100n,
+        syncedBlockHeight: 100n,
       });
 
       const result = await testDb.run(
@@ -218,7 +218,7 @@ describe("syncStore", () => {
         chainId: 1n,
         contractId: "SP123.token",
         cursor: "100:0:5:2",
-        lastBlockHeight: 100n,
+        syncedBlockHeight: 100n,
         isComplete: false,
       });
     });
@@ -231,7 +231,7 @@ describe("syncStore", () => {
           contractId: "SP123.token",
           chainId: 1,
           cursor: "200:0:3:1",
-          lastBlockHeight: 200,
+          syncedBlockHeight: 200,
         }),
       );
 
@@ -241,7 +241,7 @@ describe("syncStore", () => {
           chainId: 1n,
           contractId: "SP123.token",
           cursor: "200:0:3:1",
-          lastBlockHeight: 200n,
+          syncedBlockHeight: 200n,
           isComplete: false,
         },
       ]);
@@ -252,7 +252,7 @@ describe("syncStore", () => {
         chainId: 1n,
         contractId: "SP123.token",
         cursor: "100:0:5:2",
-        lastBlockHeight: 100n,
+        syncedBlockHeight: 100n,
       });
 
       await testDb.run(
@@ -260,7 +260,7 @@ describe("syncStore", () => {
           contractId: "SP123.token",
           chainId: 1,
           cursor: "300:0:1:0",
-          lastBlockHeight: 300,
+          syncedBlockHeight: 300,
         }),
       );
 
@@ -270,7 +270,7 @@ describe("syncStore", () => {
           chainId: 1n,
           contractId: "SP123.token",
           cursor: "300:0:1:0",
-          lastBlockHeight: 300n,
+          syncedBlockHeight: 300n,
           isComplete: false,
         },
       ]);
@@ -282,7 +282,7 @@ describe("syncStore", () => {
           contractId: "SP123.token",
           chainId: 1,
           cursor: null,
-          lastBlockHeight: 500,
+          syncedBlockHeight: 500,
           isComplete: true,
         }),
       );
@@ -293,7 +293,7 @@ describe("syncStore", () => {
           chainId: 1n,
           contractId: "SP123.token",
           cursor: null,
-          lastBlockHeight: 500n,
+          syncedBlockHeight: 500n,
           isComplete: true,
         },
       ]);
@@ -758,14 +758,14 @@ describe("syncStore", () => {
           chainId: 1n,
           contractId: "SP123.token",
           cursor: "300:0:0:0",
-          lastBlockHeight: 300n,
+          syncedBlockHeight: 299n,
           isComplete: false,
         },
         {
           chainId: 1n,
           contractId: "SP456.token",
           cursor: "150:0:0:0",
-          lastBlockHeight: 150n,
+          syncedBlockHeight: 149n,
           isComplete: false,
         },
       ]);
@@ -810,14 +810,14 @@ describe("syncStore", () => {
           chainId: 1n,
           contractId: "SP123.token",
           cursor: null,
-          lastBlockHeight: 200n,
+          syncedBlockHeight: 200n,
           isComplete: false,
         },
         {
           chainId: 1n,
           contractId: "SP456.token",
           cursor: "150:0:0:0",
-          lastBlockHeight: 150n,
+          syncedBlockHeight: 149n,
           isComplete: false,
         },
       ]);

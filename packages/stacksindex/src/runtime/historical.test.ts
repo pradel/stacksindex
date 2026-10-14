@@ -168,6 +168,24 @@ const parseBatchIds = (url: string): string[] => {
   return ids;
 };
 
+/** Matches the catch-up request for a contract's newest logs page (no cursor). */
+const isHeadLogsUrl = (url: string, contractId: string) =>
+  url.endsWith(`/extended/v2/smart-contracts/${contractId}/logs?limit=100`);
+
+/** A newest logs page whose events were already returned by earlier pages. */
+const headLogsPage = (results: unknown[], cursor: string, prevCursor: string | null) => ({
+  statusCode: 200,
+  body: mockBody({
+    results,
+    limit: 100,
+    offset: 0,
+    total: results.length,
+    cursor,
+    next_cursor: null,
+    prev_cursor: prevCursor,
+  }),
+});
+
 const standardTx = (txId: string, height: number, hash: string, txIndex = 0) => ({
   tx_id: txId,
   event_count: 1,
@@ -270,7 +288,7 @@ const seedCompleteContract = async (
       contractId,
       chainId: 1,
       cursor: null,
-      lastBlockHeight: Math.max(...blockHeights),
+      syncedBlockHeight: Math.max(...blockHeights),
       isComplete: true,
     }),
   );
@@ -445,7 +463,10 @@ describe("historical runtime", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=200:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=200:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -578,7 +599,7 @@ describe("historical runtime", () => {
 
     expect(progress.cursor).toBeNull();
     expect(progress.isComplete).toBe(false);
-    expect(Number(progress.lastBlockHeight)).toBe(200);
+    expect(Number(progress.syncedBlockHeight)).toBe(200);
   });
 
   test("schedules multiple contracts fairly by block height", async () => {
@@ -841,7 +862,8 @@ describe("historical runtime", () => {
 
       // Contract A page 2 (cursor 200)
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractA}/logs?limit=100&cursor=200:0:0:0`)
+        url.includes(`/extended/v2/smart-contracts/${contractA}/logs?limit=100&cursor=200:0:0:0`) ||
+        isHeadLogsUrl(url, contractA)
       ) {
         return makeLogsResponse(
           [
@@ -866,7 +888,8 @@ describe("historical runtime", () => {
 
       // Contract B page 2 (cursor 150)
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractB}/logs?limit=100&cursor=150:0:0:0`)
+        url.includes(`/extended/v2/smart-contracts/${contractB}/logs?limit=100&cursor=150:0:0:0`) ||
+        isHeadLogsUrl(url, contractB)
       ) {
         return makeLogsResponse(
           [
@@ -934,7 +957,7 @@ describe("historical runtime", () => {
         contractId,
         chainId: 1,
         cursor: "100:0:0:0",
-        lastBlockHeight: 100,
+        syncedBlockHeight: 99,
       }),
     );
 
@@ -963,7 +986,10 @@ describe("historical runtime", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -1070,7 +1096,7 @@ describe("historical runtime", () => {
         contractId,
         chainId: 1,
         cursor: "100:0:0:0",
-        lastBlockHeight: 100,
+        syncedBlockHeight: 99,
       }),
     );
     await testDb.db.insert(transactionsTable).values({
@@ -1105,7 +1131,10 @@ describe("historical runtime", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -1430,7 +1459,10 @@ describe("historical runtime", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:1`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:1`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -1563,6 +1595,7 @@ describe("historical runtime with handlers", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockRequest.mockReset();
+    vi.stubGlobal("fetch", mockFetch);
     await testDb.cleanup();
   });
 
@@ -1771,7 +1804,8 @@ describe("historical runtime with handlers", () => {
 
       // Contract A page 1 (cursor 100)
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractA}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(`/extended/v2/smart-contracts/${contractA}/logs?limit=100&cursor=100:0:0:0`) ||
+        isHeadLogsUrl(url, contractA)
       ) {
         return makeLogsResponse(
           [
@@ -1796,7 +1830,8 @@ describe("historical runtime with handlers", () => {
 
       // Contract B page 1 (cursor 50)
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractB}/logs?limit=100&cursor=50:0:0:0`)
+        url.includes(`/extended/v2/smart-contracts/${contractB}/logs?limit=100&cursor=50:0:0:0`) ||
+        isHeadLogsUrl(url, contractB)
       ) {
         return makeLogsResponse(
           [
@@ -1951,7 +1986,10 @@ describe("historical runtime with handlers", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -2043,7 +2081,7 @@ describe("historical runtime with handlers", () => {
         contractId,
         chainId: 1,
         cursor: "100:0:0:0",
-        lastBlockHeight: 100,
+        syncedBlockHeight: 99,
       }),
     );
     // Pre-seed block, transaction, and event
@@ -2079,7 +2117,10 @@ describe("historical runtime with handlers", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -2171,7 +2212,7 @@ describe("historical runtime with handlers", () => {
         contractId,
         chainId: 1,
         cursor: null,
-        lastBlockHeight: 200,
+        syncedBlockHeight: 200,
         isComplete: true,
       }),
     );
@@ -2357,6 +2398,17 @@ describe("historical runtime with handlers", () => {
         return { statusCode: 200, body: mockBody(logsPage("tx-400", null)) };
       }
 
+      if (isHeadLogsUrl(url, contractId)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            ...logsPage("tx-400", null),
+            cursor: "400:0:0:0",
+            prev_cursor: "300:0:0:0",
+          }),
+        };
+      }
+
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -2365,7 +2417,7 @@ describe("historical runtime with handlers", () => {
         contractId,
         chainId: 1,
         cursor: "100:0:0:0",
-        lastBlockHeight: 100,
+        syncedBlockHeight: 99,
         isComplete: false,
       }),
     );
@@ -2377,7 +2429,8 @@ describe("historical runtime with handlers", () => {
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.finalizedBlockHeight).toBe(200);
-    expect(result.contracts[0].pagesFetched).toBe(4);
+    // Four backfill pages plus the head page of the final catch-up.
+    expect(result.contracts[0].pagesFetched).toBe(5);
     expect(result.contracts[0].transactionsFetched).toBe(4);
 
     const checkpoint = await testDb.db.select().from(checkpointsTable);
@@ -2451,7 +2504,7 @@ describe("historical runtime with handlers", () => {
         contractId,
         chainId: 1,
         cursor: null,
-        lastBlockHeight: 100,
+        syncedBlockHeight: 100,
         isComplete: true,
       }),
     );
@@ -2541,7 +2594,7 @@ describe("historical runtime with handlers", () => {
         contractId,
         chainId: 1,
         cursor: null,
-        lastBlockHeight: 200,
+        syncedBlockHeight: 200,
         isComplete: true,
       }),
     );
@@ -2677,7 +2730,10 @@ describe("historical runtime with handlers", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -2935,7 +2991,8 @@ describe("historical runtime with handlers", () => {
         if (
           url.includes(
             `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=1234:0:0:0`,
-          )
+          ) ||
+          isHeadLogsUrl(url, contractId)
         ) {
           return {
             statusCode: 200,
@@ -3183,7 +3240,10 @@ describe("historical runtime with handlers", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -3377,7 +3437,10 @@ describe("historical runtime with handlers", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=150:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=150:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -3649,7 +3712,10 @@ describe("historical runtime with handlers", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -3957,7 +4023,10 @@ describe("historical runtime with handlers", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -4102,7 +4171,7 @@ describe("historical runtime with handlers", () => {
         contractId,
         chainId: 1,
         cursor: null,
-        lastBlockHeight: 150,
+        syncedBlockHeight: 150,
         isComplete: true,
       }),
     );
@@ -4135,7 +4204,7 @@ describe("historical runtime with handlers", () => {
         contractId,
         chainId: 1,
         cursor: null,
-        lastBlockHeight: 100,
+        syncedBlockHeight: 100,
         isComplete: true,
       }),
     );
@@ -4151,55 +4220,8 @@ describe("historical runtime with handlers", () => {
         return { statusCode: 200, body: mockBody({ results }) };
       }
 
-      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
-        return {
-          statusCode: 200,
-          body: mockBody({
-            contract_id: contractId,
-            block: { height: 50 },
-            tx_id: "tx-deploy",
-          }),
-        };
-      }
-
-      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
-        // Starts discovering from block 101
-        return {
-          statusCode: 200,
-          body: mockBody({
-            limit: 50,
-            total: 1,
-            cursor: { next: null, previous: null, current: "150:0:0" },
-            results: [{ transaction: { tx_id: "tx-150", block: { height: 150, tx_index: 0 } } }],
-          }),
-        };
-      }
-
-      if (url.includes("/extended/v3/transactions/tx-150/events")) {
-        return {
-          statusCode: 200,
-          body: mockBody({
-            total: 1,
-            limit: 50,
-            cursor: { next: null, previous: null, current: "0" },
-            results: [
-              {
-                event_index: 0,
-                type: "contract_log",
-                contract_log: {
-                  contract_id: contractId,
-                  topic: "print",
-                  value: { hex: "", repr: "" },
-                },
-              },
-            ],
-          }),
-        };
-      }
-
-      if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=150:0:0:0`)
-      ) {
+      // Catch-up from the synced height: the newest page holds the new event.
+      if (isHeadLogsUrl(url, contractId)) {
         return {
           statusCode: 200,
           body: mockBody({
@@ -4218,8 +4240,9 @@ describe("historical runtime with handlers", () => {
             limit: 100,
             offset: 0,
             total: 1,
+            cursor: "150:0:0:0",
             next_cursor: null,
-            prev_cursor: null,
+            prev_cursor: "100:0:0:0",
           }),
         };
       }
@@ -4297,11 +4320,17 @@ describe("historical runtime with handlers", () => {
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([150]);
 
+    // The newest page is enough: no first-event discovery.
+    const requestedPaths = mockRequest.mock.calls.map(([url]) => decodeURIComponent(String(url)));
+    expect(requestedPaths.filter((url) => url.includes("/principals/"))).toHaveLength(0);
+    expect(requestedPaths.filter((url) => url.includes("/logs?"))).toHaveLength(1);
+
     const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
     expect(progress).toMatchObject({
       cursor: null,
-      isComplete: true,
-      lastBlockHeight: 150n,
+      // Blocks 151-200 may still gain events, so the endBlock is not reached yet.
+      isComplete: false,
+      syncedBlockHeight: 150n,
     });
   });
 
@@ -4321,7 +4350,7 @@ describe("historical runtime with handlers", () => {
         contractId,
         chainId: 1,
         cursor: null,
-        lastBlockHeight: 100,
+        syncedBlockHeight: 100,
         isComplete: false,
       }),
     );
@@ -4337,54 +4366,8 @@ describe("historical runtime with handlers", () => {
         return { statusCode: 200, body: mockBody({ results }) };
       }
 
-      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
-        return {
-          statusCode: 200,
-          body: mockBody({
-            contract_id: contractId,
-            block: { height: 50 },
-            tx_id: "tx-deploy",
-          }),
-        };
-      }
-
-      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
-        return {
-          statusCode: 200,
-          body: mockBody({
-            limit: 50,
-            total: 1,
-            cursor: { next: null, previous: null, current: "150:0:0" },
-            results: [{ transaction: { tx_id: "tx-150", block: { height: 150, tx_index: 0 } } }],
-          }),
-        };
-      }
-
-      if (url.includes("/extended/v3/transactions/tx-150/events")) {
-        return {
-          statusCode: 200,
-          body: mockBody({
-            total: 1,
-            limit: 50,
-            cursor: { next: null, previous: null, current: "0" },
-            results: [
-              {
-                event_index: 0,
-                type: "contract_log",
-                contract_log: {
-                  contract_id: contractId,
-                  topic: "print",
-                  value: { hex: "", repr: "" },
-                },
-              },
-            ],
-          }),
-        };
-      }
-
-      if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=150:0:0:0`)
-      ) {
+      // Catch-up from the synced height: the newest page holds the new event.
+      if (isHeadLogsUrl(url, contractId)) {
         return {
           statusCode: 200,
           body: mockBody({
@@ -4403,8 +4386,9 @@ describe("historical runtime with handlers", () => {
             limit: 100,
             offset: 0,
             total: 1,
+            cursor: "150:0:0:0",
             next_cursor: null,
-            prev_cursor: null,
+            prev_cursor: "100:0:0:0",
           }),
         };
       }
@@ -4482,12 +4466,58 @@ describe("historical runtime with handlers", () => {
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handledHeights).toStrictEqual([150]);
 
+    // The newest page is enough: no first-event discovery.
+    const requestedPaths = mockRequest.mock.calls.map(([url]) => decodeURIComponent(String(url)));
+    expect(requestedPaths.filter((url) => url.includes("/principals/"))).toHaveLength(0);
+    expect(requestedPaths.filter((url) => url.includes("/logs?"))).toHaveLength(1);
+
     const progress = await testDb.run(syncStore.getSyncProgress({ contractId, chainId: 1 }));
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: false,
-      lastBlockHeight: 150n,
+      syncedBlockHeight: 150n,
     });
+  });
+
+  test("checks a caught-up contract with a single logs request and no discovery", async () => {
+    const contractId = "SP123.token";
+    const handler = vi.fn().mockReturnValue(Effect.void);
+    await seedCompleteContract(testDb, contractId, [100]);
+
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const url = decodeURIComponent(rawUrl);
+
+      if (isHeadLogsUrl(url, contractId)) {
+        return headLogsPage(
+          [
+            {
+              tx_id: "tx-100",
+              event_index: 0,
+              event_type: "smart_contract_log",
+              contract_log: {
+                contract_id: contractId,
+                topic: "print",
+                value: { hex: "0x01", repr: "(ok true)" },
+              },
+            },
+          ],
+          "100:0:0:0",
+          null,
+        );
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const runtime = makeRuntime({ db: testDb.db });
+    const result = await runtime.run([{ contractId, handler }]);
+
+    expect(result.contracts[0]).toMatchObject({ status: "up-to-date", lastBlockHeight: 100 });
+
+    const requestedPaths = mockRequest.mock.calls.map(([url]) => decodeURIComponent(String(url)));
+    expect(requestedPaths.filter((url) => !url.endsWith("/extended"))).toStrictEqual([
+      `https://api.hiro.so/extended/v2/smart-contracts/${contractId}/logs?limit=100`,
+    ]);
   });
 
   test("resolves block height for events whose transactions already exist in sync store", async () => {
@@ -4527,7 +4557,7 @@ describe("historical runtime with handlers", () => {
         contractId,
         chainId: 1,
         cursor: "100:0:0:0",
-        lastBlockHeight: 100,
+        syncedBlockHeight: 99,
         isComplete: false,
       }),
     );
@@ -4544,7 +4574,10 @@ describe("historical runtime with handlers", () => {
       }
 
       if (
-        url.includes(`/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`)
+        url.includes(
+          `/extended/v2/smart-contracts/${contractId}/logs?limit=100&cursor=100:0:0:0`,
+        ) ||
+        isHeadLogsUrl(url, contractId)
       ) {
         return {
           statusCode: 200,
@@ -4834,7 +4867,7 @@ describe("historical runtime with handlers", () => {
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: true,
-      lastBlockHeight: 100n,
+      syncedBlockHeight: 100n,
     });
   });
 
@@ -5121,7 +5154,7 @@ describe("historical runtime with handlers", () => {
     expect(progress).toMatchObject({
       cursor: null,
       isComplete: true,
-      lastBlockHeight: 100n,
+      syncedBlockHeight: 100n,
     });
   });
 
@@ -5829,7 +5862,7 @@ describe("historical runtime with handlers", () => {
         contractId,
         chainId: 1,
         cursor: null,
-        lastBlockHeight: 100,
+        syncedBlockHeight: 100,
         isComplete: true,
       }),
     );

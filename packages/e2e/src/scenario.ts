@@ -95,7 +95,7 @@ export async function runScenario(options: {
 
 export interface ExpectedSyncProgress {
   cursor: string | null;
-  lastBlockHeight: number;
+  syncedBlockHeight: number;
   isComplete: boolean;
 }
 
@@ -106,16 +106,16 @@ export async function expectProgress(
 ): Promise<void> {
   const rows = await selectRows<{
     cursor: string | null;
-    lastBlockHeight: string | number | bigint;
+    syncedBlockHeight: string | number | bigint;
     isComplete: boolean;
   }>(
     database,
-    sql`select "cursor", "lastBlockHeight", "is_complete" as "isComplete" from "sync_progress" where "contract_id" = ${contractId}`,
+    sql`select "cursor", "syncedBlockHeight", "is_complete" as "isComplete" from "sync_progress" where "contract_id" = ${contractId}`,
   );
 
   expect(rows).toHaveLength(1);
   expect(rows[0].cursor).toBe(expected.cursor);
-  expect(Number(rows[0].lastBlockHeight)).toBe(expected.lastBlockHeight);
+  expect(Number(rows[0].syncedBlockHeight)).toBe(expected.syncedBlockHeight);
   expect(rows[0].isComplete).toBe(expected.isComplete);
 }
 

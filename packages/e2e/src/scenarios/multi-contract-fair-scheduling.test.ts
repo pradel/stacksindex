@@ -139,12 +139,12 @@ describe("e2E: Multi-contract fair scheduling scenario", () => {
     // Verify both contracts are marked complete at endBlock.
     await expectProgress(database.db, SATOSHIBLES_CONTRACT, {
       cursor: null,
-      lastBlockHeight: END_BLOCK,
+      syncedBlockHeight: END_BLOCK,
       isComplete: true,
     });
     await expectProgress(database.db, BRIDGE_CONTRACT, {
       cursor: null,
-      lastBlockHeight: END_BLOCK,
+      syncedBlockHeight: END_BLOCK,
       isComplete: true,
     });
     await expectTableCount(database.db, "sync_progress", 2);
