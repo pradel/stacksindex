@@ -27,6 +27,7 @@ import {
   FilterValidationError,
   HandlerExecutionError,
   InvalidCursorError,
+  ReorgError,
   SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
@@ -92,6 +93,10 @@ const mockFetch = vi.fn(async (rawUrl: FetchInput, init?: any) => {
   }
 
   const requestInit = { ...init, headers: headersObj };
+  // Every run reads the chain tip. Tests that don't mock it get a fast,
+  // Non-retried failure, so the run proceeds without a tip.
+  const statusNotMocked = new Response(JSON.stringify({ error: "not mocked" }), { status: 404 });
+  const isStatusRequest = new URL(url).pathname === "/extended";
   let res: any;
 
   try {
@@ -111,7 +116,15 @@ const mockFetch = vi.fn(async (rawUrl: FetchInput, init?: any) => {
       );
     }
 
+    if (isStatusRequest) {
+      return statusNotMocked;
+    }
+
     throw err;
+  }
+
+  if (!res && isStatusRequest) {
+    return statusNotMocked;
   }
 
   if (!res) {
@@ -2293,6 +2306,63 @@ describe("historical runtime with handlers", () => {
     expect(Number(checkpoint[0].finalizedBlockTime)).toBe(2000);
   });
 
+  const mockAnchoredChain = (canonicalHashes: Record<number, string>, requestedBlocks: number[]) =>
+    mockRequest.mockImplementation((rawUrl: string) => {
+      const { pathname } = new URL(rawUrl);
+
+      if (pathname === "/extended") {
+        return {
+          statusCode: 200,
+          body: mockBody({ chain_tip: { block_height: 300, block_hash: "tip-300" } }),
+        };
+      }
+
+      const blockHeight = Number(pathname.split("/extended/v2/blocks/")[1]);
+      requestedBlocks.push(blockHeight);
+
+      return {
+        statusCode: 200,
+        body: mockBody({ height: blockHeight, hash: canonicalHashes[blockHeight] }),
+      };
+    });
+
+  test("does not replay the finality window when no reorg happened", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100, 200, 300]);
+    const requestedBlocks: number[] = [];
+    mockAnchoredChain({ 300: "tip-300" }, requestedBlocks);
+
+    const runtime = makeRuntime({ db: testDb.db, finality: 50 });
+    const handler = vi.fn(noopHandler);
+
+    await runtime.run([{ contractId, handler, endBlock: 300 }]);
+    expect(handler).toHaveBeenCalledTimes(3);
+
+    const second = await runtime.run([{ contractId, handler, endBlock: 300 }]);
+
+    // One hash check of the previous anchor; block 300 stays unfinalized but is
+    // Not replayed.
+    expect(requestedBlocks).toStrictEqual([300]);
+    expect(handler).toHaveBeenCalledTimes(3);
+    expect(second.finalizedBlockHeight).toBe(200);
+  });
+
+  test("fails with ReorgError when a reorg replaced the finalized block", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100, 200, 300]);
+    mockAnchoredChain({ 200: "new-200", 300: "new-300" }, []);
+
+    const runtime = makeRuntime({ db: testDb.db, finality: 50 });
+    await runtime.run([{ contractId, handler: noopHandler, endBlock: 300 }]);
+
+    const error = await Effect.runPromise(
+      runtime.run([{ contractId, handler: noopHandler, endBlock: 300 }]).pipe(Effect.flip),
+    );
+
+    expect(error).toBeInstanceOf(ReorgError);
+    expect(error).toMatchObject({ finalizedBlockHeight: 200, blockHeight: 200 });
+  });
+
   test("leaves nothing finalized when finality exceeds the indexed range", async () => {
     const contractId = "SP123.token";
     await seedCompleteContract(testDb, contractId, [100]);
@@ -4161,7 +4231,7 @@ describe("historical runtime with handlers", () => {
     expect(Exit.isFailure(result)).toBe(true);
   });
 
-  test("skips sync and network requests when contract is already marked complete for endBlock", async () => {
+  test("skips sync requests when contract is already marked complete for endBlock", async () => {
     const contractId = "SP123.token";
     const handler = vi.fn().mockReturnValue(Effect.void);
 
@@ -4184,7 +4254,10 @@ describe("historical runtime with handlers", () => {
     const result = await runtime.run([{ contractId, handler, startBlock: 100, endBlock: 150 }]);
 
     expect(result).toBeDefined();
-    expect(mockRequest).not.toHaveBeenCalled();
+    // Only the per-run chain-tip read; no sync request.
+    expect(mockRequest.mock.calls.map(([url]) => new URL(String(url)).pathname)).toStrictEqual([
+      "/extended",
+    ]);
     expect(handler).not.toHaveBeenCalled();
   });
 

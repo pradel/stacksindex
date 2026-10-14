@@ -96,3 +96,23 @@ export const checkpointsTable = pgTable(
     }),
   ],
 );
+
+/**
+ * The chain tip read at the start of the latest run. Nothing above it has been
+ * indexed, and its hash proves at the next run that every stored block at or
+ * below it is still canonical.
+ */
+export const syncAnchorsTable = pgTable(
+  "sync_anchors",
+  (table) => ({
+    chainId: table.bigint({ mode: "bigint" }).notNull(),
+    blockHeight: table.bigint({ mode: "bigint" }).notNull(),
+    blockHash: table.varchar({ length: 66 }).notNull(),
+  }),
+  (table) => [
+    primaryKey({
+      name: "sync_anchors_pkey",
+      columns: [table.chainId],
+    }),
+  ],
+);

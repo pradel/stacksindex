@@ -17,7 +17,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
 
     async cleanup() {
       await runtime.db.execute(
-        sql`truncate table "transactions", "blocks", "sync_progress", "events", "checkpoints" cascade`,
+        sql`truncate table "transactions", "blocks", "sync_progress", "events", "checkpoints", "sync_anchors" cascade`,
       );
     },
 

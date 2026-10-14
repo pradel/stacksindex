@@ -67,3 +67,13 @@ export class TransactionBatchError extends Schema.TaggedError<TransactionBatchEr
     missingIds: Schema.Array(Schema.String),
   },
 ) {}
+
+/**
+ * Raised when a chain reorganization replaced a block at or below the
+ * finalized height, so already finalized indexed data may be wrong.
+ */
+export class ReorgError extends Schema.TaggedError<ReorgError>()("ReorgError", {
+  finalizedBlockHeight: Schema.Number,
+  blockHeight: Schema.Number,
+  message: Schema.String,
+}) {}

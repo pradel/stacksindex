@@ -47,7 +47,7 @@ describe("e2E: Resume with idempotent re-run scenario", () => {
     vi.restoreAllMocks();
   });
 
-  test("second run on the same database performs no API calls and delivers no events", async () => {
+  test("second run on the same database only checks the chain and delivers no events", async () => {
     const contracts = [
       { contractId: SATOSHIBLES_CONTRACT, startBlock: START_BLOCK, endBlock: END_BLOCK },
     ];
@@ -81,8 +81,8 @@ describe("e2E: Resume with idempotent re-run scenario", () => {
     await expectTableCount(database.db, "transactions", 7);
     await expectTableCount(database.db, "events", 7);
 
-    // The combined API call count matches a single run exactly, proving the
-    // Second run performed zero API calls.
+    // The second run only reads the chain tip and checks the first run's tip
+    // Hash for reorgs: no sync requests.
     assertBenchmarkSnapshot(recorder.getBenchmarkSummary());
   });
 });

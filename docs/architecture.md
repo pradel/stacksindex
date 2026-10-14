@@ -355,58 +355,89 @@ Checkpoint {
 `finalizedBlockHeight` trails `blockHeight` by the configured `finality`
 (confirmations). Blocks above it are provisional and may be reorged.
 
+### Sync Anchor
+
+`sync_anchors` holds the chain tip (height and hash) read at the start of the
+latest run. Indexing in that run is capped at the anchor, so nothing above it
+was indexed. When the anchor's block is still canonical at the next run, every
+stored block below it is canonical too, because a canonical block's ancestors
+are canonical.
+
 ## Crash Recovery
 
 On startup, the indexer:
 
-1. Reads the `checkpoints` table to find the last processed block
-2. Discards any cached data above `finalizedBlockHeight` and lowers the
-   `sync_progress` rows that were ahead of it (see Reorgs)
-3. Reads `sync_progress` for each contract
-4. Resumes backfilling from the saved cursor, or catches up from the newest
+1. Reads the chain tip
+2. Verifies the previous anchor against the canonical chain and discards stored
+   data that may belong to an orphaned fork (see Reorgs)
+3. Saves the chain tip as the new anchor
+4. Reads `sync_progress` for each contract
+5. Resumes backfilling from the saved cursor, or catches up from the newest
    events down to `syncedBlockHeight`
-5. Resumes indexing from the checkpoint block
+6. Resumes indexing from the checkpoint block
 
 ### Reorgs
 
-Blocks above `checkpoints.finalizedBlockHeight` are provisional. On startup
-the runtime deletes every cached block, transaction, and event above the
-finalized height, sets `syncedBlockHeight` of the affected contracts to the
-finalized height and drops their forward cursor. The catch-up then refetches
-that range from the canonical chain (the logs endpoint only returns canonical
-events, and the catch-up follows cursors returned by the same walk), and the
-events are replayed through handlers.
+Reorgs are detected, not assumed. At startup the runtime fetches the block at
+the anchor height (`GET /extended/v2/blocks/{height}`) and compares its hash:
 
-With `finality: 0` nothing is provisional, so already indexed data is never
-replayed after a reorg.
+- **Same hash:** no reorg reached stored data. Only the data fetched above the
+  anchor, which was never indexed, is discarded and refetched. Nothing is
+  replayed through handlers. This costs one request.
+- **Different hash, or no block at that height:** a reorg replaced the anchor.
+  Stored blocks are a canonical prefix followed by orphaned blocks, so a binary
+  search over the stored blocks between `finalizedBlockHeight` and the anchor
+  finds the highest one that is still canonical. Everything above it is
+  deleted, the affected contracts' `syncedBlockHeight` is lowered to it and their
+  forward cursor dropped, and the checkpoint is lowered so the range is
+  refetched and replayed through handlers.
+- **The finalized block itself was replaced:** the run fails with `ReorgError`
+  and changes nothing. Data at or below `finalizedBlockHeight` was reported as
+  final, so the indexer cannot repair it silently: re-sync from an empty indexer
+  database (and reset handler tables), and raise `finality` to tolerate deeper
+  reorgs. With `finality: 0`, any reorg that replaces indexed blocks fails this
+  way.
+
+Without an anchor (first run after upgrading, or the chain tip could not be
+read in the previous run) stored data cannot be verified, so everything above
+`finalizedBlockHeight` is discarded and replayed.
+
+The catch-up refetches from the canonical chain: the logs endpoint only returns
+canonical events, and the catch-up follows cursors returned by the same walk.
 
 Handler writes are not rolled back when a range is replayed, so handlers must
 be idempotent: upsert by primary key, or delete-then-insert, so re-executing an
-event produces the same final state.
+event produces the same final state. Writes for events that disappear in a
+reorg are not undone.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                     ON STARTUP                          │
 ├─────────────────────────────────────────────────────────┤
-│  1. Read checkpoints table                              │
-│     └─▶ block = 1000, finalized = 990                   │
+│  1. Read the chain tip            └─▶ 1100 / 0xabc…     │
 │                                                         │
-│  2. Discard sync data above block 990                   │
-│     └─▶ contract SP6P4...: synced_block_height = 990    │
+│  2. Verify the previous anchor    └─▶ block 1000        │
+│     same hash: drop never-indexed data above 1000       │
+│     changed:   binary search stored blocks in           │
+│                [finalized, 1000] for the newest one     │
+│                still canonical (e.g. 995), rewind       │
+│                sync data and checkpoint to 995          │
+│     finalized block changed: fail with ReorgError       │
 │                                                         │
-│  3. Catch up: newest page, then prev_cursor back to 990 │
-│     (1 request when the window holds < 100 events)      │
+│  3. Save 1100 / 0xabc… as the new anchor                │
 │                                                         │
-│  4. Resume indexing from block 991                      │
-│     (replays events 991-1000 through handlers)          │
+│  4. Catch up: newest page, then prev_cursor back to     │
+│     syncedBlockHeight                                   │
+│                                                         │
+│  5. Resume indexing from the checkpoint, up to 1100     │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ## Summary
 
-| Component  | Purpose                          | Storage / Tech                     |
-| ---------- | -------------------------------- | ---------------------------------- |
-| Syncer     | Fetch events, txs, blocks        | `events`, `transactions`, `blocks` |
-| Sync Store | Cache raw Stacks data            | PostgreSQL / PGlite                |
-| Indexer    | Execute handlers, transform data | user tables                        |
-| Checkpoint | Track progress, enable recovery  | `checkpoints`, `sync_progress`     |
+| Component  | Purpose                          | Storage / Tech                                 |
+| ---------- | -------------------------------- | ---------------------------------------------- |
+| Syncer     | Fetch events, txs, blocks        | `events`, `transactions`, `blocks`             |
+| Sync Store | Cache raw Stacks data            | PostgreSQL / PGlite                            |
+| Indexer    | Execute handlers, transform data | user tables                                    |
+| Checkpoint | Track progress, enable recovery  | `checkpoints`, `sync_progress`, `sync_anchors` |

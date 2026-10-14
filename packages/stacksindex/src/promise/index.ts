@@ -98,8 +98,10 @@ export interface HistoricalRuntimeOptions {
     apiKey?: string;
   };
   /**
-   * Number of blocks kept unfinalized behind the indexed height. Defaults to
-   * `0` (everything indexed is immediately finalized).
+   * Number of blocks kept unfinalized behind the chain tip. Reorgs within this
+   * depth are replayed; a reorg that replaces a finalized block fails the run
+   * with `ReorgError`. Defaults to `0` (everything indexed is immediately
+   * finalized).
    */
   finality?: number;
   /** Minimum log level for the console logger. Defaults to `"Info"`. */

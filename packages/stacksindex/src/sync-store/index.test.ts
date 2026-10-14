@@ -677,14 +677,14 @@ describe("syncStore", () => {
     });
   });
 
-  describe("rewindToFinalized", () => {
+  describe("rewindTo", () => {
     test("returns null when no checkpoint exists", async () => {
-      const result = await testDb.run(syncStore.rewindToFinalized({ chainId: 1 }));
+      const result = await testDb.run(syncStore.rewindTo({ chainId: 1, blockHeight: 0 }));
 
       expect(result).toBeNull();
     });
 
-    test("returns null when nothing is unfinalized", async () => {
+    test("returns null when the checkpoint is not above the height", async () => {
       await testDb.db.insert(checkpointsTable).values({
         chainId: 1n,
         blockHeight: 200n,
@@ -693,12 +693,12 @@ describe("syncStore", () => {
         finalizedBlockTime: 2000n,
       });
 
-      const result = await testDb.run(syncStore.rewindToFinalized({ chainId: 1 }));
+      const result = await testDb.run(syncStore.rewindTo({ chainId: 1, blockHeight: 200 }));
 
       expect(result).toBeNull();
     });
 
-    test("discards data above the finalized height and resets affected progress", async () => {
+    test("discards data above the height and resets affected progress", async () => {
       await testDb.db.insert(blocksTable).values([
         { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
         { chainId: 1n, height: 200n, hash: "block-200", blockTime: 2000n, tenureHeight: 200n },
@@ -778,7 +778,7 @@ describe("syncStore", () => {
         finalizedBlockTime: 2000n,
       });
 
-      const result = await testDb.run(syncStore.rewindToFinalized({ chainId: 1 }));
+      const result = await testDb.run(syncStore.rewindTo({ chainId: 1, blockHeight: 200 }));
 
       expect(result).toStrictEqual({ fromBlockHeight: 300, toBlockHeight: 200 });
 
