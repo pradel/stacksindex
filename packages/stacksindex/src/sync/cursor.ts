@@ -189,10 +189,11 @@ function checkTransactionForMatchingEvent(
  * Discovers the initial cursor required to start synchronizing smart contract logs.
  *
  * ### Background & API Limitations
- * 1. **`/extended/v2/smart-contracts/{contract_id}/logs` requires an existing on-chain cursor**:
+ * 1. **`/extended/v2/smart-contracts/{contract_id}/logs` pages backwards from an existing event**:
  *    - The logs endpoint expects a 4-part cursor formatted as `block_height:microblock_sequence:tx_index:event_index`.
- *    - The API strictly validates that this cursor matches an actual existing event on-chain; passing arbitrary or
- *      synthesized cursors (such as `0:0:0:0` or `${deploymentBlock}:0:0:0`) returns `404 Not Found (Cursor not found)`.
+ *    - A cursor selects the events at or below it (newest first), so a synthesized cursor such as
+ *      `${deploymentBlock}:0:0:0` returns older events, and older API versions reject it with
+ *      `404 Not Found (Cursor not found)`. Paging forward requires the cursor of the first event itself.
  *
  * 2. **`/extended/v3/principals/{principal}/transactions` defaults to reverse-chronological order (newest first)**:
  *    - Default pagination starts from the latest tip and only paginates backwards via `cursor.next`.

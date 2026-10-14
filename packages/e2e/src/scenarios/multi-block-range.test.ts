@@ -105,7 +105,7 @@ describe("e2E: Multi-block bounded range scenario", () => {
     // Verify sync progress is marked complete at endBlock.
     await expectProgress(database.db, SATOSHIBLES_CONTRACT, {
       cursor: null,
-      lastBlockHeight: END_BLOCK,
+      syncedBlockHeight: END_BLOCK,
       isComplete: true,
     });
 

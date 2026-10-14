@@ -141,21 +141,31 @@ Key differences from EVM:
    └────────────────────────┬─────────────────────────────────┘
                             │
                             ▼
-   Step B: Event Ingestion & Cache
+   Step B: Event Ingestion & Cache (backfill)
    ┌──────────────────────────────────────────────────────────┐
    │ Fetch events with cursor:                                │
    │ GET /extended/v2/smart-contracts/{contract_id}/logs      │
    │     ?cursor={cursor}&limit=100                           │
+   │ Follow next_cursor until it is null                      │
+   └────────────────────────┬─────────────────────────────────┘
+                            │
+                            ▼
+   Step C: Catch-up from the newest events
+   ┌──────────────────────────────────────────────────────────┐
+   │ GET /extended/v2/smart-contracts/{contract_id}/logs      │
+   │     ?limit=100            (no cursor = newest page)      │
+   │ Follow prev_cursor back to syncedBlockHeight             │
+   │ Nothing newer than syncedBlockHeight: done (1 request)   │
    └────────────────────────┬─────────────────────────────────┘
                             │
                             ▼
    ┌──────────────────────────────────────────────────────────┐
-   │ For each batch:                                          │
+   │ For each page (oldest first):                            │
    │ - Batch fetch missing txs: GET /extended/v3/transactions/│
    │   batch (up to 20 tx_ids per request)                    │
    │ - Extract missing blocks from transactions in memory     │
    │ Store in sync store: events, transactions, blocks        │
-   │ Update cursor in sync_progress                           │
+   │ Update cursor and syncedBlockHeight in sync_progress     │
    └────────────────────────┬─────────────────────────────────┘
                             │
 2. INDEX PHASE              ▼
@@ -188,9 +198,15 @@ block_height:microblock_sequence:tx_index:event_index
 
 Example: `100:0:5:2` means block height 100, microblock sequence 0, transaction index 5, event index 2.
 
+The logs endpoint returns events newest first, limited to the canonical chain. A `cursor` selects the events at or below it. In the response:
+
+- `cursor` is the newest event on the page.
+- `next_cursor` is the event one full page newer. It is `null` whenever fewer than `limit` newer events exist, so following `next_cursor` alone never reaches the newest events.
+- `prev_cursor` is the newest event of the next older page.
+
 #### Why Cursor Discovery is Required
 
-The Stacks `/extended/v2/smart-contracts/{contract_id}/logs` endpoint strictly validates that the supplied cursor corresponds to an actual, existing contract log event on-chain. Supplying an arbitrary or synthesized cursor (such as `0:0:0:0` or `${startBlock}:0:0:0`) returns `404 Not Found (Cursor not found)`.
+Because a cursor selects events at or below it, paging forward from `startBlock` requires the cursor of the first event at or above it. Synthesized cursors such as `${startBlock}:0:0:0` select older events instead, and older API versions reject cursors that do not match an existing event.
 
 To resolve the initial cursor:
 
@@ -199,26 +215,34 @@ To resolve the initial cursor:
 3. Scan transactions in chronological order and query `GET /extended/v3/transactions/{tx_id}/events` to locate the first `smart_contract_log` for that contract.
 4. Construct the exact 4-part cursor (`block_height:0:tx_index:event_index`) to begin forward pagination with `/logs`.
 
+Discovery runs only for a contract's first sync, and as a fallback when a catch-up backlog exceeds 10 pages.
+
 ## Sync Modes
 
 ### Historical Sync
 
-Fetches past blockchain data using cursor-based pagination, from oldest to newest.
+Backfills past blockchain data using cursor-based pagination, from oldest to newest, then catches up from the newest events.
 
 ```
-Start Block ──────────────────────────────────▶ End Block / Latest
-             [page 1] → [page 2] → [page 3] → ...
-                            │
-                       (next cursor)
+Start Block ──────────────────────────────────▶ Latest
+             [page 1] → [page 2] → ... → [last full page]   [head] ← [older] ← ...
+                            │                                  │
+                       (next cursor)                     (prev cursor)
 
 - Discover initial cursor at startBlock / deployment block
 - Use "next_cursor" from response to paginate forward through history
+- When "next_cursor" is null, fetch the newest page and follow "prev_cursor"
+  back to syncedBlockHeight, then store those pages oldest first
 - For each page of events:
   - Batch fetch transactions (deduplicated by tx_id)
   - Extract blocks by hash from transaction payloads in memory
 - Store everything in sync store
-- Save cursor to sync_progress to enable resume after restart
+- Save cursor and syncedBlockHeight to sync_progress to enable resume after restart
 ```
+
+`sync_progress.syncedBlockHeight` guarantees every event of the contract at or below it is stored. A run for a caught-up contract fetches only the newest page; when its newest event is at or below `syncedBlockHeight`, the contract is up to date after a single request.
+
+Indexing within a run is capped at the chain tip read before syncing starts. Contracts are checked one after another, so events above that tip may still be missing for contracts checked earlier; they are indexed by the next run, which keeps handler order chronological.
 
 ### Realtime Sync
 
@@ -336,18 +360,25 @@ Checkpoint {
 On startup, the indexer:
 
 1. Reads the `checkpoints` table to find the last processed block
-2. Discards any cached data above `finalizedBlockHeight` and resets the
-   `sync_progress` cursors for contracts that were ahead of it (see Reorgs)
-3. Reads `sync_progress` to find the last cursor and status for each contract
-4. Resumes syncing from the saved cursor (or resolves the next cursor via discovery if unindexed events remain)
+2. Discards any cached data above `finalizedBlockHeight` and lowers the
+   `sync_progress` rows that were ahead of it (see Reorgs)
+3. Reads `sync_progress` for each contract
+4. Resumes backfilling from the saved cursor, or catches up from the newest
+   events down to `syncedBlockHeight`
 5. Resumes indexing from the checkpoint block
 
 ### Reorgs
 
 Blocks above `checkpoints.finalizedBlockHeight` are provisional. On startup
 the runtime deletes every cached block, transaction, and event above the
-finalized height so the range is refetched from the canonical chain and
-replayed through handlers.
+finalized height, sets `syncedBlockHeight` of the affected contracts to the
+finalized height and drops their forward cursor. The catch-up then refetches
+that range from the canonical chain (the logs endpoint only returns canonical
+events, and the catch-up follows cursors returned by the same walk), and the
+events are replayed through handlers.
+
+With `finality: 0` nothing is provisional, so already indexed data is never
+replayed after a reorg.
 
 Handler writes are not rolled back when a range is replayed, so handlers must
 be idempotent: upsert by primary key, or delete-then-insert, so re-executing an
@@ -358,18 +389,17 @@ event produces the same final state.
 │                     ON STARTUP                          │
 ├─────────────────────────────────────────────────────────┤
 │  1. Read checkpoints table                              │
-│     └─▶ last_block = 1000                               │
+│     └─▶ block = 1000, finalized = 990                   │
 │                                                         │
-│  2. Read sync_progress table                            │
-│     └─▶ contract SP6P4...: cursor = "1500:0:5:2"        │
-│         last_block_height = 1500                        │
+│  2. Discard sync data above block 990                   │
+│     └─▶ contract SP6P4...: synced_block_height = 990    │
 │                                                         │
-│  3. Resume sync from cursor "1500:0:5:2"                │
-│     (continue paginating where we left off)             │
+│  3. Catch up: newest page, then prev_cursor back to 990 │
+│     (1 request when the window holds < 100 events)      │
 │                                                         │
-│  4. Resume indexing from block 1001                     │
-│     (events 1001-1500 already in sync store)            │
-│ └─────────────────────────────────────────────────────────┘
+│  4. Resume indexing from block 991                      │
+│     (replays events 991-1000 through handlers)          │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ## Summary

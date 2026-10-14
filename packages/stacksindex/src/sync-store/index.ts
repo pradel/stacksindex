@@ -170,13 +170,13 @@ export const syncStore = {
     contractId,
     chainId,
     cursor,
-    lastBlockHeight,
+    syncedBlockHeight,
     isComplete = false,
   }: {
     contractId: string;
     chainId: number;
     cursor: string | null;
-    lastBlockHeight: number;
+    syncedBlockHeight: number;
     isComplete?: boolean;
   }): Effect.Effect<void, SyncStoreError, IndexerDatabase> =>
     Effect.gen(function* () {
@@ -188,14 +188,14 @@ export const syncStore = {
           chainId: BigInt(chainId),
           contractId,
           cursor,
-          lastBlockHeight: BigInt(lastBlockHeight),
+          syncedBlockHeight: BigInt(syncedBlockHeight),
           isComplete,
         })
         .onConflictDoUpdate({
           target: [syncProgressTable.chainId, syncProgressTable.contractId],
           set: {
             cursor,
-            lastBlockHeight: BigInt(lastBlockHeight),
+            syncedBlockHeight: BigInt(syncedBlockHeight),
             isComplete,
           },
         })
@@ -366,11 +366,13 @@ export const syncStore = {
     }),
 
   /**
-   * Discards all sync data above the checkpoint's finalized height and resets
-   * the affected `sync_progress` rows so the data is refetched.
+   * Discards all sync data above the checkpoint's finalized height and lowers
+   * the affected `sync_progress` rows to it so the data is refetched.
    *
    * The unfinalized window is provisional: after a restart it can belong to an
-   * orphaned fork, so the runtime replays it from the finalized height.
+   * orphaned fork, so the runtime replays it from the finalized height. The
+   * affected contracts drop their forward cursor and catch up from the newest
+   * canonical events down to the finalized height on the next sync.
    * Handler writes are not rolled back, so handlers must be idempotent.
    *
    * Returns the discarded range, or `null` when there is no unfinalized data.
@@ -438,13 +440,13 @@ export const syncStore = {
           .update(syncProgressTable)
           .set({
             cursor: null,
-            lastBlockHeight: checkpoint.finalizedBlockHeight,
+            syncedBlockHeight: checkpoint.finalizedBlockHeight,
             isComplete: false,
           })
           .where(
             and(
               eq(syncProgressTable.chainId, BigInt(chainId)),
-              gt(syncProgressTable.lastBlockHeight, checkpoint.finalizedBlockHeight),
+              gt(syncProgressTable.syncedBlockHeight, checkpoint.finalizedBlockHeight),
             ),
           );
 

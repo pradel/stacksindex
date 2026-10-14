@@ -92,7 +92,7 @@ export type PrincipalTransactionsResponse =
 type ContractApiResponse =
   paths["/extended/v3/smart-contracts/{contract_id}"]["get"]["responses"]["200"]["content"]["application/json"];
 
-type ContractLogsResponse =
+export type ContractLogsResponse =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
 
 type ApiStatusResponse =

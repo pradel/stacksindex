@@ -59,7 +59,7 @@ describe("e2E: Resume with idempotent re-run scenario", () => {
 
     await expectProgress(database.db, SATOSHIBLES_CONTRACT, {
       cursor: null,
-      lastBlockHeight: END_BLOCK,
+      syncedBlockHeight: END_BLOCK,
       isComplete: true,
     });
     await expectCheckpoint(database.db, END_BLOCK);
@@ -73,7 +73,7 @@ describe("e2E: Resume with idempotent re-run scenario", () => {
     // Sync state is untouched by the no-op run.
     await expectProgress(database.db, SATOSHIBLES_CONTRACT, {
       cursor: null,
-      lastBlockHeight: END_BLOCK,
+      syncedBlockHeight: END_BLOCK,
       isComplete: true,
     });
     await expectCheckpoint(database.db, END_BLOCK);

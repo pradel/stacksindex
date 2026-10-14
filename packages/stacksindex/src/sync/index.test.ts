@@ -8,85 +8,162 @@ import type { StacksClientService } from "../datasources/api/index.ts";
 import { syncErrors, syncEvents, syncPages } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
-import { createSync } from "./index.ts";
+import { createSync, type SyncFilter } from "./index.ts";
 
 const CHAIN_ID = 1;
 
 const CONTRACT_ID = "SP123.token";
 
-const transaction = (txId: string, height: number, hash: string) => ({
+interface ChainEvent {
+  readonly txId: string;
+  readonly height: number;
+}
+
+const cursorOf = (event: ChainEvent) => `${event.height}:0:0:0`;
+
+const transaction = (txId: string, height: number) => ({
   tx_id: txId,
   sender: { address: "SP sender", nonce: 0 },
   fee_rate: "1000",
-  block: { height, hash, tx_index: 0, time: height * 10 },
+  block: { height, hash: `block-${height}`, tx_index: 0, time: height * 10 },
   bitcoin_block: { height, time: height * 10 },
   status: "success",
   type: "contract_call",
 });
 
-const logPage = (txId: string, nextCursor: string | null) => ({
-  results: [
-    {
-      tx_id: txId,
-      event_index: 0,
-      event_type: "smart_contract_log",
-      contract_log: {
-        contract_id: CONTRACT_ID,
-        topic: "print",
-        value: { hex: "0x01", repr: "(ok true)" },
-      },
-    },
-  ],
-  limit: 100,
-  offset: 0,
-  total: 1,
-  next_cursor: nextCursor,
-  prev_cursor: null,
+const logEvent = (event: ChainEvent) => ({
+  tx_id: event.txId,
+  event_index: 0,
+  event_type: "smart_contract_log",
+  contract_log: {
+    contract_id: CONTRACT_ID,
+    topic: "print",
+    value: { hex: "0x01", repr: "(ok true)" },
+  },
 });
 
+/** One log event per block at each height, named `tx-<height>`. */
+const chainAt = (heights: number[]): ChainEvent[] =>
+  heights.map((height) => ({ txId: `tx-${height}`, height }));
+
 /**
- * Module-level fixtures and lookups so the test bodies stay free of
- * conditionals.
+ * Mirrors `GET /extended/v2/smart-contracts/{id}/logs` (stacks-blockchain-api
+ * `getSmartContractLogs`): newest first, `cursor` selects events at or below
+ * it, `next_cursor` is the event a full page newer than the top (null when no
+ * full page of newer events exists) and `prev_cursor` the newest event of the
+ * next older page.
  */
-const pageForCursor = (cursor: string | undefined) => {
-  if (cursor === "200:0:0:0") {
-    return logPage("tx-2", null);
-  }
+const logsPage = (chain: readonly ChainEvent[], limit: number, cursor: string | undefined) => {
+  const cursorHeight =
+    cursor === undefined ? Number.MAX_SAFE_INTEGER : Number(cursor.split(":")[0]);
 
-  return logPage("tx-1", "200:0:0:0");
-};
+  const topIndex = chain.findLastIndex((event) => event.height <= cursorHeight);
+  const selected = chain.slice(Math.max(topIndex - limit + 1, 0), topIndex + 1).reverse();
+  const next = chain[topIndex + limit];
+  const prev = topIndex >= limit ? chain[topIndex - limit] : undefined;
 
-const pageForOptions = (options: { cursor?: string } | undefined) => pageForCursor(options?.cursor);
-
-const transactionForId = (txId: string) => {
-  if (txId === "tx-2") {
-    return transaction("tx-2", 200, "block-2");
-  }
-
-  return transaction("tx-1", 100, "block-1");
+  return {
+    limit,
+    offset: 0,
+    total: chain.length,
+    cursor: topIndex === -1 ? null : cursorOf(chain[topIndex]),
+    next_cursor: topIndex === -1 || next === undefined ? null : cursorOf(next),
+    prev_cursor: prev === undefined ? null : cursorOf(prev),
+    results: selected.map(logEvent),
+  };
 };
 
 const notUsed = () => Effect.die("StacksClient method not used in this test");
 
-/** Always returns the same page so an unbounded producer would loop forever. */
-const repeatingPage = logPage("tx-1", "200:0:0:0");
+interface FakeApi {
+  readonly client: StacksClientService;
+  readonly logRequests: (string | undefined)[];
+  readonly batchRequests: string[][];
+}
 
-const makeSyncClient = (): StacksClientService => ({
-  getStatus: notUsed,
-  getBlock: notUsed,
-  getBlockTransactions: notUsed,
-  getTransaction: notUsed,
-  getV1Transaction: notUsed,
-  getTransactionsBatch: (txIds: string[]) =>
-    // SAFETY: The mock returns fixtures shaped like the batch endpoint response; `never` satisfies the expected success type.
-    Effect.succeed({ results: txIds.map(transactionForId) } as never),
-  getTransactionEvents: notUsed,
-  getPrincipalTransactions: notUsed,
-  getContract: notUsed,
-  getContractLogs: (_contractId: string, options?: { cursor?: string }) =>
-    // SAFETY: The mock returns fixtures shaped like the logs endpoint response; `never` satisfies the expected success type.
-    Effect.succeed(pageForOptions(options) as never),
-  callReadFunction: notUsed,
+/** Fake Stacks API serving `chain` with `limit` events per logs page. */
+const makeFakeApi = (chain: readonly ChainEvent[], limit = 2): FakeApi => {
+  const logRequests: (string | undefined)[] = [];
+  const batchRequests: string[][] = [];
+  const heightByTxId = new Map(chain.map((event) => [event.txId, event.height]));
+
+  return {
+    logRequests,
+    batchRequests,
+    client: {
+      getStatus: notUsed,
+      getBlock: notUsed,
+      getBlockTransactions: notUsed,
+      getTransaction: notUsed,
+      getV1Transaction: notUsed,
+      getTransactionsBatch: (txIds: string[]) => {
+        batchRequests.push(txIds);
+
+        // SAFETY: `transaction` builds the batch summary fields the sync reads; `never` satisfies the expected success type.
+        return Effect.succeed({
+          results: txIds.map((txId) => transaction(txId, heightByTxId.get(txId) ?? 0)),
+        } as never);
+      },
+      getTransactionEvents: notUsed,
+      getPrincipalTransactions: notUsed,
+      getContract: notUsed,
+      getContractLogs: (_contractId: string, options?: { cursor?: string }) => {
+        logRequests.push(options?.cursor);
+
+        // SAFETY: `logsPage` builds the logs endpoint response shape; `never` satisfies the expected success type.
+        return Effect.succeed(logsPage(chain, limit, options?.cursor) as never);
+      },
+      callReadFunction: notUsed,
+    },
+  };
+};
+
+/**
+ * Fake API whose cursor discovery finds `first` as the first event. Each
+ * response carries only the fields `getContractEventsFirstCursor` reads.
+ */
+const withDiscovery = (api: FakeApi, first: ChainEvent): StacksClientService => ({
+  ...api.client,
+  // SAFETY: Discovery reads only `block.height` from the contract.
+  getContract: () => Effect.succeed({ block: { height: first.height } } as never),
+  getPrincipalTransactions: () =>
+    // SAFETY: Discovery reads only `results[].transaction` and `cursor.previous`.
+    Effect.succeed({
+      results: [{ transaction: { tx_id: first.txId, block: { height: first.height } } }],
+      cursor: { previous: null },
+    } as never),
+  getTransaction: () =>
+    // SAFETY: Discovery reads only `tx_id`, `event_count` and `block`.
+    Effect.succeed({
+      tx_id: first.txId,
+      event_count: 1,
+      block: { height: first.height, tx_index: 0 },
+    } as never),
+  getTransactionEvents: () =>
+    // SAFETY: Discovery reads only `results[]` contract logs and `cursor.next`.
+    Effect.succeed({
+      results: [
+        { type: "contract_log", event_index: 0, contract_log: { contract_id: CONTRACT_ID } },
+      ],
+      cursor: { next: null },
+    } as never),
+  // SAFETY: Discovery reads only `microblock_sequence`.
+  getV1Transaction: () => Effect.succeed({ microblock_sequence: 0 } as never),
+});
+
+/** Delays forward-page fetches by 11 seconds, signalling `fetchStarted` first. */
+const withSlowForwardPages = (
+  api: FakeApi,
+  fetchStarted: Deferred.Deferred<"fetch-started">,
+): StacksClientService => ({
+  ...api.client,
+  getContractLogs: (contractId, options) =>
+    options?.cursor === undefined
+      ? api.client.getContractLogs(contractId, options)
+      : Deferred.succeed(fetchStarted, "fetch-started").pipe(
+          Effect.andThen(Effect.sleep("11 seconds")),
+          Effect.andThen(api.client.getContractLogs(contractId, options)),
+        ),
 });
 
 interface CapturedLog {
@@ -123,30 +200,50 @@ describe("sync historical", () => {
     await testDb.close();
   });
 
-  test("streams started, safe and completed while persisting fetched data", async () => {
-    const client = makeSyncClient();
-
-    // Seed progress so initialization resumes from a saved cursor instead of
-    // Running first-cursor discovery.
-    await testDb.run(
+  const seedProgress = (
+    cursor: string | null,
+    syncedBlockHeight: number,
+    contractId = CONTRACT_ID,
+  ) =>
+    testDb.run(
       syncStore.upsertSyncProgress({
-        contractId: CONTRACT_ID,
+        contractId,
         chainId: CHAIN_ID,
-        cursor: "100:0:0:0",
-        lastBlockHeight: 100,
-        isComplete: false,
+        cursor,
+        syncedBlockHeight,
       }),
     );
 
-    const sync = createSync({ chainId: CHAIN_ID, client, database: testDb.db });
-
-    const events = await Effect.runPromise(
-      sync
-        .historical([{ contractId: CONTRACT_ID }])
+  const runSync = (
+    client: StacksClientService,
+    filters: SyncFilter[] = [{ contractId: CONTRACT_ID }],
+  ) =>
+    Effect.runPromise(
+      createSync({ chainId: CHAIN_ID, client, database: testDb.db })
+        .historical(filters)
         .pipe(Stream.runCollect, Effect.provideService(References.MinimumLogLevel, "None")),
     );
 
-    expect(events.map((event) => event.type)).toStrictEqual(["started", "safe", "completed"]);
+  const storedEventHeights = async () =>
+    (await testDb.run(syncStore.getEvents({ chainId: CHAIN_ID, fromBlockHeight: 0 }))).map(
+      (event) => Number(event.blockHeight),
+    );
+
+  const getProgress = () =>
+    testDb.run(syncStore.getSyncProgress({ contractId: CONTRACT_ID, chainId: CHAIN_ID }));
+
+  test("streams started, safe and completed while persisting fetched data", async () => {
+    const api = makeFakeApi(chainAt([100, 200]), 1);
+    await seedProgress("100:0:0:0", 99);
+
+    const events = await runSync(api.client);
+
+    expect(events.map((event) => event.type)).toStrictEqual([
+      "started",
+      "safe",
+      "safe",
+      "completed",
+    ]);
     expect(events[0]).toMatchObject({
       type: "started",
       contracts: [{ contractId: CONTRACT_ID, doneAtStart: false }],
@@ -159,133 +256,164 @@ describe("sync historical", () => {
           contractId: CONTRACT_ID,
           doneAtStart: false,
           lastBlockHeight: 99,
-          initialBlockHeight: 100,
+          initialBlockHeight: 99,
           pagesFetched: 1,
           transactionsFetched: 1,
           eventsStored: 1,
         },
       ],
     });
-    expect(events[2]).toMatchObject({
+    expect(events.at(-1)).toMatchObject({
       type: "completed",
       contracts: [{ contractId: CONTRACT_ID, doneAtStart: false, lastBlockHeight: 200 }],
     });
-
-    const storedEvents = await testDb.run(
-      syncStore.getEvents({ chainId: CHAIN_ID, fromBlockHeight: 0 }),
-    );
-
-    expect(storedEvents).toHaveLength(2);
-
-    const progress = await testDb.run(
-      syncStore.getSyncProgress({ contractId: CONTRACT_ID, chainId: CHAIN_ID }),
-    );
-
-    expect(progress).toMatchObject({ cursor: null, lastBlockHeight: 200n, isComplete: false });
+    await expect(storedEventHeights()).resolves.toStrictEqual([100, 200]);
+    await expect(getProgress()).resolves.toMatchObject({
+      cursor: null,
+      syncedBlockHeight: 200n,
+      isComplete: false,
+    });
   });
 
-  test.each([
-    { nextCursor: "200:0:0:0", endBlock: 150, terminalHeight: 150 },
-    { nextCursor: null, endBlock: undefined, terminalHeight: 100 },
-  ])(
-    "reports terminal height $terminalHeight without limiting active contracts",
-    async ({ nextCursor, endBlock, terminalHeight }) => {
-      const activeContractId = "SP123.active";
+  test("fetches events newer than the last full forward page", async () => {
+    // With two events per page, the page at 300 has no `next_cursor` because
+    // Only one newer event (400) exists. Forward pagination alone stops there.
+    const api = makeFakeApi(chainAt([100, 200, 300, 400]), 2);
+    await seedProgress("100:0:0:0", 99);
 
-      for (const [contractId, height] of [
-        [CONTRACT_ID, 100],
-        [activeContractId, 400],
-      ] as const) {
-        await testDb.run(
-          syncStore.upsertSyncProgress({
-            contractId,
-            chainId: CHAIN_ID,
-            cursor: `${height}:0:0:0`,
-            lastBlockHeight: height,
-            isComplete: false,
-          }),
-        );
-      }
+    const events = await runSync(api.client);
 
-      const pages = new Map([
-        [CONTRACT_ID, logPage("tx-1", nextCursor)],
-        [activeContractId, { ...logPage("tx-1", null), results: [] }],
-      ]);
+    await expect(storedEventHeights()).resolves.toStrictEqual([100, 200, 300, 400]);
+    expect(api.logRequests).toStrictEqual(["100:0:0:0", "300:0:0:0", undefined]);
+    expect(events.at(-1)).toMatchObject({
+      type: "completed",
+      contracts: [{ lastBlockHeight: 400 }],
+    });
+    await expect(getProgress()).resolves.toMatchObject({ cursor: null, syncedBlockHeight: 400n });
+  });
 
-      const client: StacksClientService = {
-        ...makeSyncClient(),
-        getContractLogs: (contractId) =>
-          // SAFETY: Both seeded contracts have fixtures shaped like the logs endpoint response.
-          Effect.succeed(pages.get(contractId) as never),
-      };
+  test("checks a caught-up contract with a single request", async () => {
+    const api = makeFakeApi(chainAt([100, 200]));
+    await seedProgress(null, 200);
 
-      const sync = createSync({ chainId: CHAIN_ID, client, database: testDb.db });
+    const events = await runSync(api.client);
 
-      const events = await Effect.runPromise(
-        sync
-          .historical([{ contractId: CONTRACT_ID, endBlock }, { contractId: activeContractId }])
-          .pipe(Stream.runCollect, Effect.provideService(References.MinimumLogLevel, "None")),
-      );
+    expect(api.logRequests).toStrictEqual([undefined]);
+    expect(api.batchRequests).toStrictEqual([]);
+    expect(events.map((event) => event.type)).toStrictEqual(["started", "completed"]);
+    expect(events.at(-1)).toMatchObject({
+      contracts: [{ doneAtStart: true, lastBlockHeight: 200, pagesFetched: 1 }],
+    });
+  });
 
-      expect(events.at(-2)).toMatchObject({
-        type: "safe",
-        safeBlockHeight: 399,
-        contracts: [
-          { contractId: CONTRACT_ID, lastBlockHeight: terminalHeight },
-          { contractId: activeContractId, lastBlockHeight: 399 },
-        ],
-      });
-      expect(events.at(-1)).toMatchObject({
-        type: "completed",
-        contracts: [
-          { contractId: CONTRACT_ID, lastBlockHeight: terminalHeight },
-          { contractId: activeContractId, lastBlockHeight: 400 },
-        ],
-      });
-
-      const progress = await testDb.run(
-        syncStore.getSyncProgress({ contractId: CONTRACT_ID, chainId: CHAIN_ID }),
-      );
-
-      expect(progress).toMatchObject({ cursor: null, lastBlockHeight: BigInt(terminalHeight) });
-      await expect(
-        testDb.run(syncStore.getEvents({ chainId: CHAIN_ID, fromBlockHeight: 0 })),
-      ).resolves.toHaveLength(1);
-    },
-  );
-
-  test("bounds fetching while the consumer is busy", async () => {
+  test("catches up new events across pages oldest first", async () => {
+    const api = makeFakeApi(chainAt([100, 200, 300, 400, 500, 600]), 2);
+    await seedProgress(null, 200);
     await testDb.run(
-      syncStore.upsertSyncProgress({
-        contractId: CONTRACT_ID,
+      syncStore.insertTransactions({
+        transactions: [transaction("tx-200", 200)],
         chainId: CHAIN_ID,
-        cursor: "100:0:0:0",
-        lastBlockHeight: 100,
-        isComplete: false,
       }),
     );
 
-    let pageCalls = 0;
+    const events = await runSync(api.client);
 
+    // Pages [600, 500], [400, 300], then stop: the next older page tops at 200.
+    expect(api.logRequests).toStrictEqual([undefined, "400:0:0:0"]);
+    expect(api.batchRequests.flat()).toStrictEqual(["tx-300", "tx-400", "tx-500", "tx-600"]);
+    await expect(storedEventHeights()).resolves.toStrictEqual([300, 400, 500, 600]);
+    expect(events.filter((event) => event.type === "safe")).toMatchObject([
+      { safeBlockHeight: 399 },
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      contracts: [{ doneAtStart: false, lastBlockHeight: 600 }],
+    });
+    await expect(getProgress()).resolves.toMatchObject({ cursor: null, syncedBlockHeight: 600n });
+  });
+
+  test("resumes forward sync when the catch-up backlog exceeds the page budget", async () => {
+    const heights = Array.from({ length: 12 }, (_, index) => 200 + index * 100);
+    const chain = chainAt([100, ...heights]);
+    const api = makeFakeApi(chain, 1);
+    await seedProgress(null, 100);
+
+    await runSync(withDiscovery(api, chain[1]));
+
+    await expect(storedEventHeights()).resolves.toStrictEqual(heights);
+    // Ten buffered catch-up pages are dropped, then pagination runs forward
+    // From the discovered cursor and finishes from the head.
+    expect(api.logRequests.slice(10, 12)).toStrictEqual(["200:0:0:0", "300:0:0:0"]);
+    expect(api.logRequests.at(-1)).toBeUndefined();
+    await expect(getProgress()).resolves.toMatchObject({ cursor: null, syncedBlockHeight: 1300n });
+  });
+
+  test("completes at endBlock while catching up", async () => {
+    const api = makeFakeApi(chainAt([100, 200, 300, 400]), 2);
+    await seedProgress(null, 100);
+
+    const events = await runSync(api.client, [{ contractId: CONTRACT_ID, endBlock: 300 }]);
+
+    // The oldest page overlaps the synced range (100); nothing past endBlock is stored.
+    await expect(storedEventHeights()).resolves.toStrictEqual([100, 200, 300]);
+    expect(events.at(-1)).toMatchObject({ contracts: [{ lastBlockHeight: 300 }] });
+    await expect(getProgress()).resolves.toMatchObject({
+      cursor: null,
+      syncedBlockHeight: 300n,
+      isComplete: true,
+    });
+  });
+
+  test("completes at endBlock while paginating forward", async () => {
+    const api = makeFakeApi(chainAt([100, 200, 300, 400, 500, 600]), 2);
+    await seedProgress("100:0:0:0", 99);
+
+    const events = await runSync(api.client, [{ contractId: CONTRACT_ID, endBlock: 250 }]);
+
+    expect(api.logRequests).toStrictEqual(["100:0:0:0", "300:0:0:0"]);
+    expect(events.at(-1)).toMatchObject({ contracts: [{ lastBlockHeight: 250 }] });
+    await expect(getProgress()).resolves.toMatchObject({
+      cursor: null,
+      syncedBlockHeight: 250n,
+      isComplete: true,
+    });
+  });
+
+  test("reports done contracts without limiting the safe height of active ones", async () => {
+    const activeContractId = "SP123.active";
+    const api = makeFakeApi(chainAt([100, 400]), 1);
+    await seedProgress(null, 400);
+    await seedProgress("100:0:0:0", 99, activeContractId);
+
+    const events = await runSync(api.client, [
+      { contractId: CONTRACT_ID },
+      { contractId: activeContractId },
+    ]);
+
+    expect(events[1]).toMatchObject({
+      type: "safe",
+      safeBlockHeight: 99,
+      contracts: [
+        { contractId: CONTRACT_ID, doneAtStart: true, lastBlockHeight: 400 },
+        { contractId: activeContractId, lastBlockHeight: 99 },
+      ],
+    });
+  });
+
+  test("bounds fetching while the consumer is busy", async () => {
+    await seedProgress("100:0:0:0", 99);
+
+    let pageCalls = 0;
+    const api = makeFakeApi(chainAt([100, 200]), 1);
+
+    // Always returns the same page so an unbounded producer would loop forever.
     const client: StacksClientService = {
-      getStatus: notUsed,
-      getBlock: notUsed,
-      getBlockTransactions: notUsed,
-      getTransaction: notUsed,
-      getV1Transaction: notUsed,
-      getTransactionsBatch: (txIds: string[]) =>
-        // SAFETY: The mock returns fixtures shaped like the batch endpoint response; `never` satisfies the expected success type.
-        Effect.succeed({ results: txIds.map(transactionForId) } as never),
-      getTransactionEvents: notUsed,
-      getPrincipalTransactions: notUsed,
-      getContract: notUsed,
+      ...api.client,
       getContractLogs: () => {
         pageCalls += 1;
 
-        // SAFETY: The mock returns a fixture shaped like the logs endpoint response; `never` satisfies the expected success type.
-        return Effect.succeed(repeatingPage as never);
+        // SAFETY: `logsPage` builds the logs endpoint response shape; `never` satisfies the expected success type.
+        return Effect.succeed(logsPage(chainAt([100, 200]), 1, "100:0:0:0") as never);
       },
-      callReadFunction: notUsed,
     };
 
     const sync = createSync({ chainId: CHAIN_ID, client, database: testDb.db });
@@ -308,17 +436,13 @@ describe("sync historical", () => {
   });
 
   test("records sync metrics", async () => {
-    await testDb.run(
-      syncStore.upsertSyncProgress({
-        contractId: CONTRACT_ID,
-        chainId: CHAIN_ID,
-        cursor: "100:0:0:0",
-        lastBlockHeight: 100,
-        isComplete: false,
-      }),
-    );
+    await seedProgress("100:0:0:0", 99);
 
-    const sync = createSync({ chainId: CHAIN_ID, client: makeSyncClient(), database: testDb.db });
+    const sync = createSync({
+      chainId: CHAIN_ID,
+      client: makeFakeApi(chainAt([100, 200]), 1).client,
+      database: testDb.db,
+    });
 
     const result = await Effect.runPromise(
       Effect.gen(function* () {
@@ -336,27 +460,20 @@ describe("sync historical", () => {
       ),
     );
 
-    expect(result.pages).toBe(2);
-    expect(result.storedEvents).toBe(2);
-    expect(result.events[2]).toMatchObject({
+    // Two forward pages, then the head page that confirms the newest event.
+    expect(result.pages).toBe(3);
+    expect(result.storedEvents).toBe(3);
+    expect(result.events.at(-1)).toMatchObject({
       type: "completed",
-      contracts: [{ contractId: CONTRACT_ID, pagesFetched: 2, transactionsFetched: 2 }],
+      contracts: [{ contractId: CONTRACT_ID, pagesFetched: 3, transactionsFetched: 2 }],
     });
   });
 
   test("records sync errors", async () => {
-    await testDb.run(
-      syncStore.upsertSyncProgress({
-        contractId: CONTRACT_ID,
-        chainId: CHAIN_ID,
-        cursor: "100:0:0:0",
-        lastBlockHeight: 100,
-        isComplete: false,
-      }),
-    );
+    await seedProgress("100:0:0:0", 99);
 
     const client: StacksClientService = {
-      ...makeSyncClient(),
+      ...makeFakeApi(chainAt([100])).client,
       getContractLogs: () => Effect.die("fetch failed"),
     };
 
@@ -377,17 +494,14 @@ describe("sync historical", () => {
   });
 
   test("keeps per-page detail at debug", async () => {
-    await testDb.run(
-      syncStore.upsertSyncProgress({
-        contractId: CONTRACT_ID,
-        chainId: CHAIN_ID,
-        cursor: "100:0:0:0",
-        lastBlockHeight: 100,
-        isComplete: false,
-      }),
-    );
+    await seedProgress("100:0:0:0", 99);
 
-    const sync = createSync({ chainId: CHAIN_ID, client: makeSyncClient(), database: testDb.db });
+    const sync = createSync({
+      chainId: CHAIN_ID,
+      client: makeFakeApi(chainAt([100, 200]), 1).client,
+      database: testDb.db,
+    });
+
     const logs: CapturedLog[] = [];
 
     await Effect.runPromise(
@@ -404,17 +518,14 @@ describe("sync historical", () => {
   });
 
   test("logs per-page fetch and store detail at debug", async () => {
-    await testDb.run(
-      syncStore.upsertSyncProgress({
-        contractId: CONTRACT_ID,
-        chainId: CHAIN_ID,
-        cursor: "100:0:0:0",
-        lastBlockHeight: 100,
-        isComplete: false,
-      }),
-    );
+    await seedProgress("100:0:0:0", 99);
 
-    const sync = createSync({ chainId: CHAIN_ID, client: makeSyncClient(), database: testDb.db });
+    const sync = createSync({
+      chainId: CHAIN_ID,
+      client: makeFakeApi(chainAt([100, 200]), 1).client,
+      database: testDb.db,
+    });
+
     const logs: CapturedLog[] = [];
 
     await Effect.runPromise(
@@ -451,29 +562,16 @@ describe("sync historical", () => {
   });
 
   test("warns when fetching a page is slow", async () => {
-    await testDb.run(
-      syncStore.upsertSyncProgress({
-        contractId: CONTRACT_ID,
-        chainId: CHAIN_ID,
-        cursor: "200:0:0:0",
-        lastBlockHeight: 200,
-        isComplete: false,
-      }),
-    );
+    await seedProgress("200:0:0:0", 199);
 
     const fetchStarted = Effect.runSync(Deferred.make<"fetch-started">());
 
-    const client: StacksClientService = {
-      ...makeSyncClient(),
-      getContractLogs: () =>
-        Deferred.succeed(fetchStarted, "fetch-started").pipe(
-          Effect.andThen(Effect.sleep("11 seconds")),
-          // SAFETY: The mock returns a fixture shaped like the logs endpoint response; `never` satisfies the expected success type.
-          Effect.andThen(Effect.succeed(pageForCursor("200:0:0:0") as never)),
-        ),
-    };
+    const sync = createSync({
+      chainId: CHAIN_ID,
+      client: withSlowForwardPages(makeFakeApi(chainAt([200]), 1), fetchStarted),
+      database: testDb.db,
+    });
 
-    const sync = createSync({ chainId: CHAIN_ID, client, database: testDb.db });
     const logs: CapturedLog[] = [];
 
     await Effect.runPromise(

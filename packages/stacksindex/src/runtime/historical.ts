@@ -638,9 +638,15 @@ function runHistorical(
     let startedContracts: readonly ContractSyncSummary[] = [];
     let completedContracts: readonly ContractSyncSummary[] = [];
 
+    // Every contract's newest events are fetched after the tip is read, so all
+    // Events up to the tip are stored once the sync ends. Events above it may
+    // Still be missing for contracts fetched earlier in the run; indexing them
+    // Now would move the checkpoint past events that only the next run stores.
+    const indexingCap = chainTipHeight ?? Number.MAX_SAFE_INTEGER;
+
     const indexSafeHeight = (safeBlockHeight: number) =>
       indexEventsUpTo(
-        safeBlockHeight,
+        Math.min(safeBlockHeight, indexingCap),
         filterMap,
         chainId,
         eventsByContract,
@@ -698,7 +704,7 @@ function runHistorical(
 
         // Final pass: index any remaining stored events (e.g. events from a
         // Contract that finished after the last safe height was emitted).
-        yield* indexSafeHeight(Number.MAX_SAFE_INTEGER);
+        yield* indexSafeHeight(indexingCap);
       }).pipe(Effect.provide(Indexing.layer({ handlers }))),
     );
 
