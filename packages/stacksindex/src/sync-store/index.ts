@@ -14,6 +14,7 @@ import {
   blocksTable,
   checkpointsTable,
   eventsTable,
+  syncAnchorsTable,
   syncProgressTable,
   transactionsTable,
 } from "./schema.ts";
@@ -366,21 +367,21 @@ export const syncStore = {
     }),
 
   /**
-   * Discards all sync data above the checkpoint's finalized height and lowers
-   * the affected `sync_progress` rows to it so the data is refetched.
-   *
-   * The unfinalized window is provisional: after a restart it can belong to an
-   * orphaned fork, so the runtime replays it from the finalized height. The
-   * affected contracts drop their forward cursor and catch up from the newest
-   * canonical events down to the finalized height on the next sync.
+   * Discards all sync data above `blockHeight` and lowers the affected
+   * `sync_progress` rows to it, so the next sync refetches that range from the
+   * canonical chain: the affected contracts drop their forward cursor and
+   * catch up from the newest events down to `blockHeight`. A checkpoint above
+   * `blockHeight` is lowered to it so the range is replayed through handlers.
    * Handler writes are not rolled back, so handlers must be idempotent.
    *
-   * Returns the discarded range, or `null` when there is no unfinalized data.
+   * Returns the replayed range, or `null` when no indexed data was discarded.
    */
-  rewindToFinalized: ({
+  rewindTo: ({
     chainId,
+    blockHeight,
   }: {
     chainId: number;
+    blockHeight: number;
   }): Effect.Effect<
     { fromBlockHeight: number; toBlockHeight: number } | null,
     SyncStoreError,
@@ -389,33 +390,18 @@ export const syncStore = {
     IndexerDatabase.transaction(() =>
       Effect.gen(function* () {
         const db = yield* IndexerDatabase;
+        const height = BigInt(blockHeight);
 
-        const rows = yield* db
+        const [checkpoint] = yield* db
           .select()
           .from(checkpointsTable)
           .where(eq(checkpointsTable.chainId, BigInt(chainId)))
           .limit(1);
 
-        const checkpoint = rows[0] ?? null;
-
-        if (checkpoint === null) {
-          return null;
-        }
-
-        const fromBlockHeight = Number(checkpoint.blockHeight);
-        const toBlockHeight = Number(checkpoint.finalizedBlockHeight);
-
-        if (toBlockHeight >= fromBlockHeight) {
-          return null;
-        }
-
         yield* db
           .delete(eventsTable)
           .where(
-            and(
-              eq(eventsTable.chainId, BigInt(chainId)),
-              gt(eventsTable.blockHeight, checkpoint.finalizedBlockHeight),
-            ),
+            and(eq(eventsTable.chainId, BigInt(chainId)), gt(eventsTable.blockHeight, height)),
           );
 
         yield* db
@@ -423,46 +409,140 @@ export const syncStore = {
           .where(
             and(
               eq(transactionsTable.chainId, BigInt(chainId)),
-              gt(transactionsTable.blockHeight, checkpoint.finalizedBlockHeight),
+              gt(transactionsTable.blockHeight, height),
             ),
           );
 
         yield* db
           .delete(blocksTable)
-          .where(
-            and(
-              eq(blocksTable.chainId, BigInt(chainId)),
-              gt(blocksTable.height, checkpoint.finalizedBlockHeight),
-            ),
-          );
+          .where(and(eq(blocksTable.chainId, BigInt(chainId)), gt(blocksTable.height, height)));
 
         yield* db
           .update(syncProgressTable)
-          .set({
-            cursor: null,
-            syncedBlockHeight: checkpoint.finalizedBlockHeight,
-            isComplete: false,
-          })
+          .set({ cursor: null, syncedBlockHeight: height, isComplete: false })
           .where(
             and(
               eq(syncProgressTable.chainId, BigInt(chainId)),
-              gt(syncProgressTable.syncedBlockHeight, checkpoint.finalizedBlockHeight),
+              gt(syncProgressTable.syncedBlockHeight, height),
             ),
           );
 
+        if (checkpoint === undefined || checkpoint.blockHeight <= height) {
+          return null;
+        }
+
+        const [block] = yield* db
+          .select({ blockTime: blocksTable.blockTime })
+          .from(blocksTable)
+          .where(and(eq(blocksTable.chainId, BigInt(chainId)), eq(blocksTable.height, height)))
+          .limit(1);
+
+        // The finalized block time is recorded even when its block row is not
+        // Stored (e.g. a checkpoint finalized at the chain tip).
+        const blockTime =
+          checkpoint.finalizedBlockHeight === height
+            ? checkpoint.finalizedBlockTime
+            : (block?.blockTime ?? 0n);
+
         yield* db
           .update(checkpointsTable)
-          .set({
-            blockHeight: checkpoint.finalizedBlockHeight,
-            blockTime: checkpoint.finalizedBlockTime,
-          })
+          .set({ blockHeight: height, blockTime })
           .where(eq(checkpointsTable.chainId, BigInt(chainId)));
 
-        return { fromBlockHeight, toBlockHeight };
+        return { fromBlockHeight: Number(checkpoint.blockHeight), toBlockHeight: blockHeight };
       }),
     ).pipe(
+      Effect.mapError((cause: unknown) => new SyncStoreError({ operation: "rewindTo", cause })),
+    ),
+
+  /** Stored block heights and hashes within `[fromBlockHeight, toBlockHeight]`, ascending. */
+  getStoredBlocks: ({
+    chainId,
+    fromBlockHeight,
+    toBlockHeight,
+  }: {
+    chainId: number;
+    fromBlockHeight: number;
+    toBlockHeight: number;
+  }): Effect.Effect<{ height: number; hash: string }[], SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      const rows = yield* db
+        .select({ height: blocksTable.height, hash: blocksTable.hash })
+        .from(blocksTable)
+        .where(
+          and(
+            eq(blocksTable.chainId, BigInt(chainId)),
+            gte(blocksTable.height, BigInt(fromBlockHeight)),
+            lte(blocksTable.height, BigInt(toBlockHeight)),
+          ),
+        )
+        .orderBy(blocksTable.height);
+
+      return rows.map((row) => ({ height: Number(row.height), hash: row.hash }));
+    }).pipe(
       Effect.mapError(
-        (cause: unknown) => new SyncStoreError({ operation: "rewindToFinalized", cause }),
+        (cause: unknown) => new SyncStoreError({ operation: "getStoredBlocks", cause }),
+      ),
+    ),
+
+  getSyncAnchor: ({
+    chainId,
+  }: {
+    chainId: number;
+  }): Effect.Effect<
+    { blockHeight: number; blockHash: string } | null,
+    SyncStoreError,
+    IndexerDatabase
+  > =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      const [row] = yield* db
+        .select()
+        .from(syncAnchorsTable)
+        .where(eq(syncAnchorsTable.chainId, BigInt(chainId)))
+        .limit(1);
+
+      return row === undefined
+        ? null
+        : { blockHeight: Number(row.blockHeight), blockHash: row.blockHash };
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "getSyncAnchor", cause }),
+      ),
+    ),
+
+  /** Saves the anchor, or removes it when `anchor` is `null`. */
+  setSyncAnchor: ({
+    chainId,
+    anchor,
+  }: {
+    chainId: number;
+    anchor: { blockHeight: number; blockHash: string } | null;
+  }): Effect.Effect<void, SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      if (anchor === null) {
+        yield* db.delete(syncAnchorsTable).where(eq(syncAnchorsTable.chainId, BigInt(chainId)));
+
+        return;
+      }
+
+      const values = {
+        blockHeight: BigInt(anchor.blockHeight),
+        blockHash: anchor.blockHash,
+      };
+
+      yield* db
+        .insert(syncAnchorsTable)
+        .values({ chainId: BigInt(chainId), ...values })
+        .onConflictDoUpdate({ target: [syncAnchorsTable.chainId], set: values });
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "setSyncAnchor", cause }),
       ),
     ),
 };

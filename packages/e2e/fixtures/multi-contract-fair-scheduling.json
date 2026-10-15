@@ -5942,5 +5942,16 @@
         }
       ]
     }
+  },
+  "GET https://api.hiro.so/extended": {
+    "statusCode": 200,
+    "body": {
+      "server_version": "stacks-blockchain-api v9.6.0 (HEAD:ee0c0ac)",
+      "status": "ready",
+      "chain_tip": {
+        "block_height": 9207456,
+        "block_hash": "0x7c5ab1cfbdeb318b9be2d994f59e6d88467aec38eec570e066ae98ce12f2479a"
+      }
+    }
   }
 }

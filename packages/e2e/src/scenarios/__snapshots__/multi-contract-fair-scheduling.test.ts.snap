@@ -3,6 +3,7 @@
 exports[`e2E: Multi-contract fair scheduling scenario > delivers globally ordered events across contracts sharing overlapping block ranges 1`] = `
 {
   "endpoints": {
+    "GET /extended": 1,
     "GET /extended/v1/tx/:tx_id": 2,
     "GET /extended/v2/smart-contracts/:contract_id/logs": 4,
     "GET /extended/v3/principals/:principal/transactions": 2,
@@ -11,6 +12,6 @@ exports[`e2E: Multi-contract fair scheduling scenario > delivers globally ordere
     "GET /extended/v3/transactions/:tx_id/events": 2,
     "GET /extended/v3/transactions/batch": 6,
   },
-  "totalCalls": 20,
+  "totalCalls": 21,
 }
 `;

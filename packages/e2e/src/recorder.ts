@@ -310,7 +310,8 @@ const sanitizeStatus = (body: JsonObject): JsonValue => {
   const chainTip = body.chain_tip;
 
   if (isJsonObject(chainTip)) {
-    sanitized.chain_tip = { block_height: chainTip.block_height };
+    // The hash anchors the next run's reorg check.
+    sanitized.chain_tip = { block_height: chainTip.block_height, block_hash: chainTip.block_hash };
   }
 
   return sanitized;

@@ -23,6 +23,7 @@ import {
   type HandlerExecutionError,
   type InvalidCursorError,
   type MigrationError,
+  type ReorgError,
   type SyncStoreError,
   type TransactionBatchError,
 } from "../lib/errors.ts";
@@ -52,6 +53,7 @@ import {
   PROGRESS_LOG_INTERVAL,
   type ProgressTrackerState,
 } from "./progress.ts";
+import { reconcileWithCanonicalChain } from "./reorg.ts";
 
 export type { Filter } from "./filters.ts";
 
@@ -64,8 +66,10 @@ export interface HistoricalRuntimeOptions {
     apiKey?: string;
   };
   /**
-   * Number of blocks kept unfinalized behind the indexed height. Defaults to
-   * `0` (everything indexed is immediately finalized).
+   * Number of blocks kept unfinalized behind the chain tip. Reorgs within this
+   * depth are replayed; a reorg that replaces a finalized block fails the run
+   * with `ReorgError`. Defaults to `0` (everything indexed is immediately
+   * finalized).
    */
   finality?: number;
 }
@@ -202,19 +206,23 @@ function indexBatch(
 }
 
 /**
- * Reads the chain tip height once per run, when a finality window is
- * configured. Falls back to `undefined` (and logs a warning) when the status
- * request or its payload is unavailable, so finality lags rather than failing
- * the run.
+ * Reads the chain tip once per run. Falls back to `undefined` (and logs a
+ * warning) when the status request or its payload is unavailable: finality
+ * lags, indexing is not capped, and the next run cannot verify the stored
+ * chain, rather than failing this run.
  */
-function readChainTipHeight(
+function readChainTip(
   chainId: number,
-): Effect.Effect<number | undefined, never, StacksClient> {
+): Effect.Effect<{ blockHeight: number; blockHash: string } | undefined, never, StacksClient> {
   return Effect.gen(function* () {
     const client = yield* StacksClient;
     const status = yield* client.getStatus();
 
-    return status.chain_tip?.block_height;
+    const tip = status.chain_tip;
+
+    return tip === undefined || tip === null
+      ? undefined
+      : { blockHeight: tip.block_height, blockHash: tip.block_hash };
   }).pipe(
     Effect.tapError((error) =>
       Effect.logWarning("Failed to read the chain tip; finality may lag behind").pipe(
@@ -432,6 +440,7 @@ function indexEventsUpTo(
 export type HistoricalRuntimeError =
   | StacksApiError
   | HandlerExecutionError
+  | ReorgError
   | FilterValidationError
   | SyncStoreError
   | TransactionBatchError
@@ -591,25 +600,16 @@ function runHistorical(
 
     yield* migrate();
 
-    // Unfinalized data is provisional across restarts: it may belong to a fork
-    // That was orphaned while the process was down. Discard it and let the
-    // Normal sync/index pass refetch and replay the canonical chain.
-    const rewind = yield* syncStore.rewindToFinalized({ chainId });
+    // The chain tip read now anchors this run: nothing above it is indexed,
+    // And its hash lets the next run prove that every stored block below it is
+    // Still canonical. The previous anchor is verified first.
+    const chainTip = yield* readChainTip(chainId);
 
-    if (rewind !== null) {
-      yield* Effect.logWarning(
-        `Discarded unfinalized data from block ${rewind.fromBlockHeight}; refetching from block ${rewind.toBlockHeight + 1}`,
-      ).pipe(Effect.annotateLogs({ chainId, phase: "init", ...rewind }));
-    }
+    yield* reconcileWithCanonicalChain(chainId);
+    // A status payload without a hash cannot anchor the next run's check.
+    yield* syncStore.setSyncAnchor({ chainId, anchor: chainTip?.blockHash ? chainTip : null });
 
-    // Finality is measured against the chain tip when a finality window is
-    // Configured. The tip is also the progress target for open-ended filters,
-    // So it is read whenever either needs it. Reading it once per run keeps the
-    // Final pass accurate even when no events were stored near the tip.
-    const needsChainTip =
-      config.finality > 0 || resolvedFilters.some((filter) => filter.endBlock === undefined);
-
-    const chainTipHeight = needsChainTip ? yield* readChainTipHeight(chainId) : undefined;
+    const chainTipHeight = chainTip?.blockHeight;
 
     yield* Effect.logInfo("Starting historical indexing").pipe(
       Effect.annotateLogs({

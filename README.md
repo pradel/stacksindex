@@ -146,11 +146,13 @@ Clarity-level failures (`okay: false`) reject with `ReadOnlyCallError`.
 
 Checkpoints and per-contract sync progress live in the indexer database, so `run` resumes where it left off.
 
-Re-running on a schedule is cheap: a contract that is already synced costs a single request to the newest page of its logs, plus one chain-tip request per run. Events mined while a run is in progress are indexed by the next run, so handlers always see events in chain order.
+Re-running on a schedule is cheap: a contract that is already synced costs a single request to the newest page of its logs, plus two requests per run (the chain tip and the reorg check). Events mined while a run is in progress are indexed by the next run, so handlers always see events in chain order.
 
-Set `finality` to keep the trailing `N` blocks unfinalized. On every run, the runtime discards cached data above `checkpoints.finalizedBlockHeight` before syncing, because those blocks may have been orphaned while the process was down. The canonical chain is refetched and replayed through your handlers automatically. With the default `finality: 0`, indexed data is never replayed after a reorg.
+Every run checks for reorgs: it compares the hash of the chain tip saved by the previous run with the canonical chain. When a reorg replaced stored blocks, the runtime rewinds to the newest stored block that is still canonical, refetches from there and replays the range through your handlers. Without a reorg nothing is replayed.
 
-Handler writes are **not** rolled back when a range is replayed. Write idempotent handlers (upsert by primary key, or delete-then-insert) so re-executing an event produces the same final state.
+Set `finality` to the deepest reorg you want handled automatically. A reorg that replaces a block at or below `finalizedBlockHeight` fails the run with `ReorgError` instead of silently changing data reported as final; re-sync from an empty indexer database to recover. With the default `finality: 0`, any reorg that reaches indexed blocks fails this way.
+
+Handler writes are **not** rolled back when a range is replayed. Write idempotent handlers (upsert by primary key, or delete-then-insert) so re-executing an event produces the same final state. Writes for events that disappear in a reorg are not undone.
 
 ## Configuration Reference
 
@@ -160,7 +162,7 @@ Handler writes are **not** rolled back when a range is replayed. Write idempoten
 | ------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `database`    | `DatabaseConfig`                   | _Required_        | Indexer storage. `{ kind: "pglite", directory? }` or `{ kind: "postgres", connectionString }`.                                                   |
 | `network`     | `"mainnet" \| "testnet" \| number` | `"mainnet"`       | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                                 |
-| `finality`    | `number`                           | `0`               | Number of trailing blocks kept unfinalized and replayed after a restart.                                                                         |
+| `finality`    | `number`                           | `0`               | Depth, in blocks, of reorgs handled by replaying; deeper reorgs fail the run with `ReorgError`.                                                  |
 | `api.baseUrl` | `string`                           | _Network default_ | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the network default. |
 | `api.apiKey`  | `string`                           | `undefined`       | Optional Hiro API key.                                                                                                                           |
 | `logLevel`    | `LogLevel`                         | `"Info"`          | Minimum log level for the console logger.                                                                                                        |

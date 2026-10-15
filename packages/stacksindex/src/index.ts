@@ -46,6 +46,7 @@ export {
   HandlerExecutionError,
   InvalidCursorError,
   MigrationError,
+  ReorgError,
   SyncStoreError,
   TransactionBatchError,
 } from "./lib/errors.ts";
