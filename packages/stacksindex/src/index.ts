@@ -1,13 +1,13 @@
 // Promise-native entrypoint (`stacksindex`).
 
-export { createHistoricalRuntime } from "./promise/index.ts";
+export { createIndexer } from "./promise/index.ts";
 
 export type {
   EventHandler,
   Filter,
   HandlerContext,
-  HistoricalRuntime,
-  HistoricalRuntimeOptions,
+  Indexer,
+  IndexerOptions,
   IndexingClient,
   LogAnnotations,
   Logger,
@@ -15,7 +15,7 @@ export type {
   LogValue,
 } from "./promise/index.ts";
 
-export type { ContractRunResult, RunResult } from "./runtime/historical.ts";
+export type { ContractRunResult, LiveOptions, RunResult } from "./runtime/index.ts";
 
 export { type DatabaseConfig, type IndexerDb } from "./database/index.ts";
 

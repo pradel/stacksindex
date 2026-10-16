@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { afterAll, describe, expect, test } from "vite-plus/test";
 
-import { createHistoricalRuntime } from "../promise/index.ts";
+import { createIndexer } from "../promise/index.ts";
 import { blocksTable, eventsTable } from "../sync-store/schema.ts";
 
 describe("database", () => {
@@ -20,7 +20,7 @@ describe("database", () => {
   });
 
   test("creates in-memory pglite database and applies migrations via migrate()", async () => {
-    const runtime = await createHistoricalRuntime({ database: { kind: "pglite" } });
+    const runtime = await createIndexer({ database: { kind: "pglite" } });
 
     await runtime.migrate();
 
@@ -38,7 +38,7 @@ describe("database", () => {
     const tempDir = path.resolve(import.meta.dirname, `../../test-data-${Date.now()}`);
     tempDirs.push(tempDir);
 
-    const runtime = await createHistoricalRuntime({
+    const runtime = await createIndexer({
       database: {
         kind: "pglite",
         directory: tempDir,
@@ -55,11 +55,11 @@ describe("database", () => {
   });
 
   test("close is idempotent and further calls reject after closing", async () => {
-    const runtime = await createHistoricalRuntime({ database: { kind: "pglite" } });
+    const runtime = await createIndexer({ database: { kind: "pglite" } });
 
     await runtime.close();
     await runtime.close();
 
-    await expect(runtime.migrate()).rejects.toThrow("HistoricalRuntime is closed");
+    await expect(runtime.migrate()).rejects.toThrow("Indexer is closed");
   });
 });

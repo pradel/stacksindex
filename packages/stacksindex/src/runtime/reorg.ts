@@ -38,9 +38,13 @@ function getCanonicalBlockHash(
  *
  * Without an anchor (first run, or the tip could not be read) the stored chain
  * cannot be verified, so everything above the finalized block is replayed.
+ *
+ * `anchorIsCanonical` skips the canonical-hash request when the caller already
+ * proved the anchor canonical, e.g. a new head whose parent is the anchor.
  */
 export function reconcileWithCanonicalChain(
   chainId: number,
+  options?: { readonly anchorIsCanonical?: boolean },
 ): Effect.Effect<
   void,
   StacksHttpError | ReorgError | SyncStoreError,
@@ -68,7 +72,10 @@ export function reconcileWithCanonicalChain(
       return;
     }
 
-    if ((yield* getCanonicalBlockHash(anchor.blockHeight)) === anchor.blockHash) {
+    if (
+      options?.anchorIsCanonical === true ||
+      (yield* getCanonicalBlockHash(anchor.blockHeight)) === anchor.blockHash
+    ) {
       yield* syncStore.rewindTo({ chainId, blockHeight: anchor.blockHeight });
 
       return;

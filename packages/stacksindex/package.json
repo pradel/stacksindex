@@ -1,7 +1,7 @@
 {
   "name": "stacksindex",
   "version": "0.0.8",
-  "description": "A simple, open-source historical indexer for the Stacks blockchain.",
+  "description": "A simple, open-source indexer for the Stacks blockchain: historical backfill and live sync.",
   "homepage": "https://github.com/pradel/stacksindex#readme",
   "bugs": {
     "url": "https://github.com/pradel/stacksindex/issues"
@@ -72,5 +72,8 @@
     "pg": {
       "optional": true
     }
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -1,0 +1,407 @@
+import { Cause, Effect, Exit, References } from "effect";
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+
+import { IndexerDatabase } from "../database/index.ts";
+import { HandlerExecutionError, ReorgError } from "../lib/errors.ts";
+import type { HandlerEvent } from "../lib/types.ts";
+import { createIndexer } from "../promise/index.ts";
+import { syncStore } from "../sync-store/index.ts";
+import { checkpointsTable, eventsTable, syncProgressTable } from "../sync-store/schema.ts";
+import { createFakeChain, type FakeChain, type FakeTransaction } from "../test-utils/fake-chain.ts";
+import { createTestDatabase, type TestDatabase } from "../test/database.ts";
+import { Indexer, type Filter, type IndexerOptions } from "./index.ts";
+
+const CONTRACT_ID = "SP123.token";
+
+const BASE_HEIGHT = 100;
+
+const logTx = (txId: string, contractId = CONTRACT_ID): FakeTransaction => ({
+  txId,
+  events: [{ contractId, eventIndex: 0 }],
+});
+
+interface HandledEvent {
+  readonly height: number;
+  readonly txId: string;
+}
+
+const recordingHandler = (handled: HandledEvent[]) => (event: HandlerEvent) =>
+  Effect.sync(() => {
+    handled.push({ height: event.block_height, txId: event.tx_id });
+  });
+
+const seedSynced = (testDb: TestDatabase, contractId: string) =>
+  testDb.run(
+    syncStore.upsertSyncProgress({
+      contractId,
+      chainId: 1,
+      cursor: null,
+      syncedBlockHeight: BASE_HEIGHT - 1,
+    }),
+  );
+
+/**
+ * Runs `live` on the Effect API with fast polling. Contracts are seeded as
+ * synced through `BASE_HEIGHT - 1`, so no first-event discovery is needed.
+ */
+const runLive = (
+  testDb: TestDatabase,
+  filters: Filter[],
+  options: IndexerOptions = {},
+): Promise<Exit.Exit<void, unknown>> =>
+  Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const indexer = yield* Indexer;
+
+      yield* indexer.live(filters);
+    }).pipe(
+      Effect.provide(Indexer.layer({ live: { pollingInterval: 100 }, ...options })),
+      Effect.provideService(IndexerDatabase, testDb.db),
+      Effect.provideService(References.MinimumLogLevel, "None"),
+    ),
+  );
+
+const failureOf = (exit: Exit.Exit<void, unknown>) =>
+  Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+
+const failOnBlock = (height: number) => (event: HandlerEvent) =>
+  event.block_height === height ? Effect.fail(new Error("boom")) : Effect.void;
+
+/** Runs one scripted step per head poll, after the first poll. */
+const scriptHeads = (chain: FakeChain, steps: readonly (() => void)[]) => {
+  const pending = [...steps];
+  let polls = 0;
+
+  chain.onHeadPoll = () => {
+    polls += 1;
+
+    if (polls > 1) {
+      pending.shift()?.();
+    }
+  };
+};
+
+const getBlockRequests = (chain: FakeChain) =>
+  chain.requests.filter((request) => /^\/extended\/v2\/blocks\/[^/?]+$/u.test(request));
+
+const countRequests = (chain: FakeChain, pattern: RegExp) =>
+  chain.requests.filter((request) => pattern.test(request)).length;
+
+describe("live indexing", () => {
+  // oxlint-disable-next-line init-declarations
+  let testDb: TestDatabase;
+  // oxlint-disable-next-line init-declarations
+  let chain: FakeChain;
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase();
+    // The HTTP client may keep the first `fetch` it sees; delegate to the
+    // Current test's chain instead of stubbing each chain's own function.
+    vi.stubGlobal("fetch", (input: string | URL | Request) => chain.fetch(input));
+  });
+
+  beforeEach(async () => {
+    await testDb.cleanup();
+    await seedSynced(testDb, CONTRACT_ID);
+
+    chain = createFakeChain({ baseHeight: BASE_HEIGHT - 1 });
+    chain.mine([logTx("tx-100")]);
+  });
+
+  afterAll(async () => {
+    await testDb.close();
+  });
+
+  test("indexes blocks as they arrive and stops at the end block", async () => {
+    const handled: HandledEvent[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+      },
+      () => {
+        chain.mine();
+      },
+      () => {
+        chain.mine([logTx("tx-103")]);
+      },
+    ]);
+
+    const exit = await runLive(testDb, [
+      { contractId: CONTRACT_ID, handler: recordingHandler(handled), endBlock: 103 },
+    ]);
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(handled).toStrictEqual([
+      { height: 100, txId: "tx-100" },
+      { height: 101, txId: "tx-101" },
+      { height: 103, txId: "tx-103" },
+    ]);
+
+    // Every head built on the previous one, so no canonical-hash lookups.
+    expect(getBlockRequests(chain)).toStrictEqual([]);
+
+    const [checkpoint] = await testDb.db.select().from(checkpointsTable);
+
+    expect(Number(checkpoint.blockHeight)).toBe(103);
+    // Default finality keeps the 6 newest blocks unfinalized.
+    expect(Number(checkpoint.finalizedBlockHeight)).toBeLessThanOrEqual(97);
+
+    await expect(testDb.run(syncStore.getSyncAnchor({ chainId: 1 }))).resolves.toStrictEqual({
+      blockHeight: 103,
+      blockHash: "0x103",
+    });
+  });
+
+  test("replays the canonical fork after a reorg", async () => {
+    const handled: HandledEvent[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101-orphaned")]);
+      },
+      () => {
+        chain.orphanFrom(101);
+        chain.mine([logTx("tx-101-canonical")]);
+        chain.mine([logTx("tx-102")]);
+      },
+    ]);
+
+    const exit = await runLive(testDb, [
+      { contractId: CONTRACT_ID, handler: recordingHandler(handled), endBlock: 102 },
+    ]);
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(handled).toStrictEqual([
+      { height: 100, txId: "tx-100" },
+      { height: 101, txId: "tx-101-orphaned" },
+      { height: 101, txId: "tx-101-canonical" },
+      { height: 102, txId: "tx-102" },
+    ]);
+
+    // The head's parent was not the anchor, so its canonical hash was checked.
+    expect(getBlockRequests(chain)).toContain("/extended/v2/blocks/101");
+
+    const stored = await testDb.db.select({ txId: eventsTable.txId }).from(eventsTable);
+
+    expect(stored.map((row) => row.txId).toSorted()).toStrictEqual([
+      "tx-100",
+      "tx-101-canonical",
+      "tx-102",
+    ]);
+  });
+
+  test("fails with ReorgError when a reorg replaces a finalized block", async () => {
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+      },
+      () => {
+        chain.orphanFrom(101);
+        chain.mine([logTx("tx-101-fork")]);
+        chain.mine();
+      },
+    ]);
+
+    const exit = await runLive(testDb, [{ contractId: CONTRACT_ID, handler: () => Effect.void }], {
+      finality: 0,
+    });
+
+    expect(failureOf(exit)).toBeInstanceOf(ReorgError);
+  });
+
+  test("retries a head whose sync failed with the next head", async () => {
+    const handled: HandledEvent[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+        // The catch-up request for this head fails once.
+        chain.failures.set(`/extended/v2/smart-contracts/${CONTRACT_ID}/logs`, 1);
+      },
+      () => {
+        chain.mine([logTx("tx-102")]);
+      },
+    ]);
+
+    const exit = await runLive(testDb, [
+      { contractId: CONTRACT_ID, handler: recordingHandler(handled), endBlock: 102 },
+    ]);
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(handled.map((event) => event.txId)).toStrictEqual(["tx-100", "tx-101", "tx-102"]);
+    expect(chain.failures.get(`/extended/v2/smart-contracts/${CONTRACT_ID}/logs`)).toBe(0);
+  });
+
+  test("fails at once when a handler fails", async () => {
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+      },
+      () => {
+        chain.mine();
+      },
+    ]);
+
+    const exit = await runLive(testDb, [
+      {
+        contractId: CONTRACT_ID,
+        handler: failOnBlock(101),
+      },
+    ]);
+
+    const failure = failureOf(exit);
+
+    expect(failure).toBeInstanceOf(HandlerExecutionError);
+    expect(failure).toMatchObject({ contractId: CONTRACT_ID });
+  });
+
+  test("ignores a head below the indexed tip instead of replaying", async () => {
+    const handled: HandledEvent[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+      },
+      () => {
+        chain.mine([logTx("tx-102")]);
+        // A lagging replica answers the next poll with block 101.
+        chain.staleHeads.push(101);
+      },
+      () => {
+        chain.mine([logTx("tx-103")]);
+      },
+    ]);
+
+    const exit = await runLive(testDb, [
+      { contractId: CONTRACT_ID, handler: recordingHandler(handled), endBlock: 103 },
+    ]);
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(chain.staleHeads).toStrictEqual([]);
+    expect(handled.map((event) => event.txId)).toStrictEqual([
+      "tx-100",
+      "tx-101",
+      "tx-102",
+      "tx-103",
+    ]);
+  });
+
+  test("catches up a contract whose first-event discovery found nothing", async () => {
+    const contractId = "SP1.nested";
+    const handled: HandledEvent[] = [];
+
+    chain.mine([logTx("tx-nested-101", contractId)]);
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-nested-102", contractId)]);
+      },
+    ]);
+
+    // Discovery sees no transaction for the contract, so the historical pass
+    // Ends without reading its logs; the first head must still catch it up.
+    const exit = await runLive(testDb, [
+      { contractId, startBlock: BASE_HEIGHT, handler: recordingHandler(handled), endBlock: 102 },
+    ]);
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(handled).toStrictEqual([
+      { height: 101, txId: "tx-nested-101" },
+      { height: 102, txId: "tx-nested-102" },
+    ]);
+  });
+
+  test("fetches block by block when that costs fewer requests than one logs page per contract", async () => {
+    const contractIds = [CONTRACT_ID, "SP1.b", "SP1.c", "SP1.d", "SP1.e"];
+
+    for (const contractId of contractIds.slice(1)) {
+      await seedSynced(testDb, contractId);
+    }
+
+    const handled: HandledEvent[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([
+          {
+            txId: "tx-101",
+            events: [
+              { contractId: CONTRACT_ID, eventIndex: 0 },
+              { contractId: "SP1.c", eventIndex: 1 },
+              { contractId: "SP9.unwatched", eventIndex: 2 },
+            ],
+          },
+        ]);
+      },
+      () => {
+        chain.mine();
+      },
+      () => {
+        // The log sits on the second events page.
+        chain.mine([
+          { txId: "tx-103", assetEvents: 120, events: [{ contractId: "SP1.e", eventIndex: 120 }] },
+        ]);
+      },
+    ]);
+
+    const exit = await runLive(
+      testDb,
+      contractIds.map((contractId) => ({
+        contractId,
+        handler: recordingHandler(handled),
+        endBlock: 103,
+      })),
+    );
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(handled).toStrictEqual([
+      { height: 100, txId: "tx-100" },
+      { height: 101, txId: "tx-101" },
+      { height: 101, txId: "tx-101" },
+      { height: 103, txId: "tx-103" },
+    ]);
+
+    // Only the historical pass read contract logs: one page per contract.
+    expect(countRequests(chain, /\/logs\?/u)).toBe(contractIds.length);
+    expect(countRequests(chain, /^\/extended\/v3\/blocks\/0x10[1-3]\/transactions/u)).toBe(3);
+    expect(countRequests(chain, /^\/extended\/v3\/transactions\/tx-103\/events/u)).toBe(2);
+  });
+
+  test("close() ends live indexing on the promise API", async () => {
+    const indexer = await createIndexer({
+      database: { kind: "pglite" },
+      live: { pollingInterval: 100 },
+      logLevel: "None",
+    });
+
+    await indexer.migrate();
+    await indexer.db.insert(syncProgressTable).values({
+      chainId: 1n,
+      contractId: CONTRACT_ID,
+      cursor: null,
+      syncedBlockHeight: BigInt(BASE_HEIGHT - 1),
+    });
+
+    const handled: string[] = [];
+    let resolveFirstEvent: () => void = () => undefined;
+
+    const firstEvent = new Promise<void>((resolve) => {
+      resolveFirstEvent = resolve;
+    });
+
+    const live = indexer.live({
+      contractId: CONTRACT_ID,
+      handler: (event) => {
+        handled.push(event.tx_id);
+        resolveFirstEvent();
+      },
+    });
+
+    await firstEvent;
+    await indexer.close();
+
+    await expect(live).resolves.toBeUndefined();
+    expect(handled).toStrictEqual(["tx-100"]);
+  });
+});

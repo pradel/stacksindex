@@ -1,51 +1,23 @@
-import {
-  Clock,
-  Context,
-  Duration,
-  Effect,
-  Layer,
-  Match,
-  Metric,
-  Ref,
-  Schedule,
-  Schema,
-  Stream,
-  type LogLevel,
-} from "effect";
+import { Clock, Duration, Effect, Match, Metric, Ref, Schedule, Stream } from "effect";
 
-import { type DatabaseConfig, IndexerDatabase, migrate } from "../database/index.ts";
+import { IndexerDatabase, migrate } from "../database/index.ts";
 import { type StacksApiError, StacksClient } from "../datasources/api/index.ts";
 import { Indexing } from "../indexing/index.ts";
-import {
-  ConfigurationError,
-  type DatabaseError,
-  type FilterValidationError,
-  type HandlerExecutionError,
-  type InvalidCursorError,
-  type MigrationError,
-  type ReorgError,
-  type SyncStoreError,
-  type TransactionBatchError,
+import type {
+  DatabaseError,
+  FilterValidationError,
+  HandlerExecutionError,
+  MigrationError,
+  SyncStoreError,
 } from "../lib/errors.ts";
 import { SLOW_OPERATION_MILLIS } from "../lib/logging.ts";
 import { indexBatchDuration } from "../lib/metrics.ts";
-import {
-  NetworkOptionSchema,
-  resolveNetwork,
-  type NetworkOption,
-  type ResolvedNetwork,
-} from "../lib/network.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
-import { loggerLayer } from "../logger/index.ts";
 import { type StoredEvent, storedEventToHandlerEvent } from "../sync-store/decode.ts";
 import { syncStore } from "../sync-store/index.ts";
-import {
-  type ContractSyncSummary,
-  Sync,
-  type SyncFilter,
-  type SyncService,
-} from "../sync/index.ts";
+import type { ContractSyncSummary, SyncFilter, SyncService } from "../sync/index.ts";
 import { chunkEventsByBlock } from "./batches.ts";
+import type { IndexerError, ResolvedIndexerConfig } from "./config.ts";
 import { type Filter, type ResolvedFilter, validateAndResolveFilters } from "./filters.ts";
 import {
   createEtaEstimator,
@@ -54,32 +26,6 @@ import {
   type ProgressTrackerState,
 } from "./progress.ts";
 import { reconcileWithCanonicalChain } from "./reorg.ts";
-
-export type { Filter } from "./filters.ts";
-
-export interface HistoricalRuntimeOptions {
-  /** Which chain to index. Defaults to `"mainnet"`. */
-  network?: NetworkOption;
-  api?: {
-    /** Overrides the network's default API endpoint. */
-    baseUrl?: string;
-    apiKey?: string;
-  };
-  /**
-   * Number of blocks kept unfinalized behind the chain tip. Reorgs within this
-   * depth are replayed; a reorg that replaces a finalized block fails the run
-   * with `ReorgError`. Defaults to `0` (everything indexed is immediately
-   * finalized).
-   */
-  finality?: number;
-}
-
-export interface HistoricalRuntimeWithDatabaseOptions extends HistoricalRuntimeOptions {
-  /** Database used for sync storage and checkpoints. */
-  database: DatabaseConfig;
-  /** Minimum log level for the pretty console logger. Defaults to `"Info"`. */
-  logLevel?: LogLevel.LogLevel;
-}
 
 /**
  * Outcome of a single contract sync within a `run`.
@@ -111,48 +57,6 @@ export interface RunResult {
    * checkpoint exists yet.
    */
   finalizedBlockHeight?: number;
-}
-
-interface ResolvedHistoricalRuntimeConfig {
-  chainId: number;
-  api: { baseUrl: string; apiKey?: string };
-  network: ResolvedNetwork;
-  finality: number;
-}
-
-const HistoricalRuntimeOptionsSchema = Schema.Struct({
-  network: Schema.optional(NetworkOptionSchema),
-  api: Schema.optional(
-    Schema.Struct({
-      baseUrl: Schema.optional(Schema.String),
-      apiKey: Schema.optional(Schema.String),
-    }),
-  ),
-  finality: Schema.optional(Schema.Natural),
-});
-
-function resolveRuntimeConfig(
-  options?: HistoricalRuntimeOptions,
-): Effect.Effect<ResolvedHistoricalRuntimeConfig, ConfigurationError> {
-  return Schema.decodeUnknownEffect(HistoricalRuntimeOptionsSchema)(options ?? {}).pipe(
-    Effect.mapError((error) => new ConfigurationError({ message: error.message })),
-    Effect.map((decoded) => {
-      const network = resolveNetwork(decoded.network);
-      const baseUrl = decoded.api?.baseUrl ?? network.baseUrl;
-      const api: ResolvedHistoricalRuntimeConfig["api"] = { baseUrl };
-
-      if (decoded.api?.apiKey !== undefined) {
-        api.apiKey = decoded.api.apiKey;
-      }
-
-      return {
-        network,
-        chainId: network.chainId,
-        api,
-        finality: decoded.finality ?? 0,
-      };
-    }),
-  );
 }
 
 /**
@@ -205,15 +109,20 @@ function indexBatch(
   );
 }
 
+export interface ChainTip {
+  readonly blockHeight: number;
+  readonly blockHash: string;
+}
+
 /**
  * Reads the chain tip once per run. Falls back to `undefined` (and logs a
  * warning) when the status request or its payload is unavailable: finality
  * lags, indexing is not capped, and the next run cannot verify the stored
  * chain, rather than failing this run.
  */
-function readChainTip(
+export function readChainTip(
   chainId: number,
-): Effect.Effect<{ blockHeight: number; blockHash: string } | undefined, never, StacksClient> {
+): Effect.Effect<ChainTip | undefined, never, StacksClient> {
   return Effect.gen(function* () {
     const client = yield* StacksClient;
     const status = yield* client.getStatus();
@@ -316,7 +225,7 @@ function indexBatches(options: {
  * event-bearing block on the final `MAX_SAFE_INTEGER` pass. It never refers to
  * data that is not yet committed.
  */
-function indexEventsUpTo(
+export function indexEventsUpTo(
   toBlockHeight: number,
   filterMap: Map<string, ResolvedFilter>,
   chainId: number,
@@ -437,17 +346,6 @@ function indexEventsUpTo(
   });
 }
 
-export type HistoricalRuntimeError =
-  | StacksApiError
-  | HandlerExecutionError
-  | ReorgError
-  | FilterValidationError
-  | SyncStoreError
-  | TransactionBatchError
-  | DatabaseError
-  | MigrationError
-  | InvalidCursorError;
-
 /**
  * Logs the run summary: one `info` line with run totals and block range, then
  * one `debug` line per contract. Unknown bounds are annotated as `null` rather
@@ -526,152 +424,136 @@ function logRunSummary(options: {
   });
 }
 
-export interface HistoricalRuntimeService {
-  readonly run: (filters: Filter[]) => Effect.Effect<RunResult, HistoricalRuntimeError>;
+/** Filters resolved once per `run` or `live` call. */
+export interface PreparedFilters {
+  readonly contractIds: readonly string[];
+  readonly filterMap: Map<string, ResolvedFilter>;
+  readonly handlers: Record<string, EventHandler | undefined>;
+  readonly syncFilters: readonly SyncFilter[];
 }
 
-export class HistoricalRuntime extends Context.Service<
-  HistoricalRuntime,
-  HistoricalRuntimeService
->()("stacksindex/runtime/HistoricalRuntime") {
-  static readonly layer = (
-    options?: HistoricalRuntimeOptions,
-  ): Layer.Layer<HistoricalRuntime, ConfigurationError, IndexerDatabase> =>
-    Layer.unwrap(
-      resolveRuntimeConfig(options).pipe(
-        Effect.map((config) =>
-          Layer.effect(
-            HistoricalRuntime,
-            Effect.gen(function* () {
-              const sync = yield* Sync;
-              const client = yield* StacksClient;
-              const database = yield* IndexerDatabase;
-
-              return HistoricalRuntime.of({
-                run: (filters) =>
-                  runHistorical(filters, config, sync).pipe(
-                    Effect.provideService(StacksClient, client),
-                    Effect.provideService(IndexerDatabase, database),
-                  ),
-              });
-            }),
-          ).pipe(
-            Layer.provide(Sync.layer({ chainId: config.chainId })),
-            Layer.provide(
-              StacksClient.layer({ baseUrl: config.api.baseUrl, apiKey: config.api.apiKey }),
-            ),
-          ),
-        ),
-      ),
-    );
-
-  /**
-   * Batteries-included layer: provides `HistoricalRuntime`, `IndexerDatabase`
-   * and the pretty console logger from a single config.
-   */
-  static readonly layerWithDatabase = (
-    options: HistoricalRuntimeWithDatabaseOptions,
-  ): Layer.Layer<HistoricalRuntime | IndexerDatabase, ConfigurationError | DatabaseError> =>
-    Layer.mergeAll(
-      HistoricalRuntime.layer({
-        network: options.network,
-        api: options.api,
-        finality: options.finality,
-      }).pipe(Layer.provideMerge(IndexerDatabase.layer(options.database))),
-      loggerLayer({ level: options.logLevel }),
-    );
-}
-
-function runHistorical(
+/** Validates filters, resolves `"latest"` end blocks and applies pending migrations. */
+export function prepareFilters(
   filters: Filter[],
-  config: ResolvedHistoricalRuntimeConfig,
-  sync: SyncService,
-): Effect.Effect<RunResult, HistoricalRuntimeError, StacksClient | IndexerDatabase> {
-  const { chainId } = config;
-
-  const effect = Effect.gen(function* run() {
-    if (filters.length === 0) {
-      return { contracts: [], eventsProcessed: 0 };
-    }
-
-    const startedAtMillis = yield* Clock.currentTimeMillis;
-
+): Effect.Effect<
+  PreparedFilters,
+  StacksApiError | FilterValidationError | MigrationError,
+  StacksClient | IndexerDatabase
+> {
+  return Effect.gen(function* () {
     const resolvedFilters = yield* validateAndResolveFilters(filters);
 
     yield* migrate();
 
-    // The chain tip read now anchors this run: nothing above it is indexed,
-    // And its hash lets the next run prove that every stored block below it is
-    // Still canonical. The previous anchor is verified first.
-    const chainTip = yield* readChainTip(chainId);
-
-    yield* reconcileWithCanonicalChain(chainId);
-    // A status payload without a hash cannot anchor the next run's check.
-    yield* syncStore.setSyncAnchor({ chainId, anchor: chainTip?.blockHash ? chainTip : null });
-
-    const chainTipHeight = chainTip?.blockHeight;
-
-    yield* Effect.logInfo("Starting historical indexing").pipe(
-      Effect.annotateLogs({
-        chainId,
-        phase: "run",
-        contracts: resolvedFilters.map((filter) => filter.contractId),
-        finality: config.finality,
-      }),
-    );
-
-    const filterMap = new Map(resolvedFilters.map((filter) => [filter.contractId, filter]));
     const handlers: Record<string, EventHandler | undefined> = {};
 
     for (const filter of resolvedFilters) {
       handlers[filter.contractId] = filter.handler;
     }
 
-    const syncFilters: SyncFilter[] = resolvedFilters.map((filter) => ({
-      contractId: filter.contractId,
-      startBlock: filter.startBlock,
-      endBlock: filter.endBlock,
-    }));
+    return {
+      contractIds: resolvedFilters.map((filter) => filter.contractId),
+      filterMap: new Map(resolvedFilters.map((filter) => [filter.contractId, filter])),
+      handlers,
+      syncFilters: resolvedFilters.map((filter) => ({
+        contractId: filter.contractId,
+        startBlock: filter.startBlock,
+        endBlock: filter.endBlock,
+      })),
+    };
+  });
+}
 
-    const eventsByContract = new Map<string, number>();
+/** Contracts whose filter has not ended at or below `blockHeight`. */
+export function getSyncingContractIds(prepared: PreparedFilters, blockHeight: number): string[] {
+  const contractIds: string[] = [];
 
-    let startedContracts: readonly ContractSyncSummary[] = [];
-    let completedContracts: readonly ContractSyncSummary[] = [];
+  for (const filter of prepared.filterMap.values()) {
+    if (filter.endBlock === undefined || filter.endBlock >= blockHeight) {
+      contractIds.push(filter.contractId);
+    }
+  }
 
-    // Every contract's newest events are fetched after the tip is read, so all
-    // Events up to the tip are stored once the sync ends. Events above it may
-    // Still be missing for contracts fetched earlier in the run; indexing them
-    // Now would move the checkpoint past events that only the next run stores.
+  return contractIds;
+}
+
+export interface SyncPassResult {
+  /** Per-contract snapshots taken before anything was fetched. */
+  readonly startedContracts: readonly ContractSyncSummary[];
+  /** Per-contract snapshots once every contract is synced. */
+  readonly completedContracts: readonly ContractSyncSummary[];
+}
+
+/**
+ * One sync-and-index pass anchored at `tip`.
+ *
+ * The previous anchor is verified first (replaying a reorged range), then
+ * `tip` becomes the new anchor: nothing above it is indexed, and its hash lets
+ * the next pass prove that every stored block below it is still canonical.
+ * Every contract's newest events are fetched after the tip was read, so all
+ * events up to the tip are stored once the sync ends. Events above it may
+ * still be missing for contracts fetched earlier in the pass; indexing them
+ * now would move the checkpoint past events that only the next pass stores.
+ */
+export function syncAndIndexTo(options: {
+  readonly chainId: number;
+  readonly finality: number;
+  readonly sync: SyncService;
+  readonly prepared: PreparedFilters;
+  /** Chain tip anchoring this pass; `undefined` when it could not be read. */
+  readonly tip: ChainTip | undefined;
+  /** Per-contract count of events passed to handlers, updated in place. */
+  readonly eventsByContract: Map<string, number>;
+  /** Logs aggregate progress at `info` while the pass runs. */
+  readonly logProgress: boolean;
+  /** The caller proved the stored anchor canonical (e.g. `tip` builds on it). */
+  readonly anchorIsCanonical?: boolean;
+}): Effect.Effect<SyncPassResult, IndexerError, StacksClient | IndexerDatabase | Indexing> {
+  const { chainId, tip, prepared } = options;
+
+  return Effect.gen(function* () {
+    yield* reconcileWithCanonicalChain(chainId, { anchorIsCanonical: options.anchorIsCanonical });
+    // A status payload without a hash cannot anchor the next pass's check.
+    yield* syncStore.setSyncAnchor({ chainId, anchor: tip?.blockHash ? tip : null });
+
+    const chainTipHeight = tip?.blockHeight;
     const indexingCap = chainTipHeight ?? Number.MAX_SAFE_INTEGER;
 
     const indexSafeHeight = (safeBlockHeight: number) =>
       indexEventsUpTo(
         Math.min(safeBlockHeight, indexingCap),
-        filterMap,
+        prepared.filterMap,
         chainId,
-        eventsByContract,
-        config.finality,
+        options.eventsByContract,
+        options.finality,
         chainTipHeight,
       );
 
     const progressState = yield* Ref.make<ProgressTrackerState>({ contracts: [] });
 
-    const logProgress = logRunProgress({
-      chainId,
-      state: progressState,
-      tipBlockHeight: chainTipHeight,
-      estimator: createEtaEstimator(),
-    });
+    const logProgress = options.logProgress
+      ? logRunProgress({
+          chainId,
+          state: progressState,
+          tipBlockHeight: chainTipHeight,
+          estimator: createEtaEstimator(),
+        })
+      : Effect.void;
+
+    let startedContracts: readonly ContractSyncSummary[] = [];
+    let completedContracts: readonly ContractSyncSummary[] = [];
 
     yield* Effect.scoped(
       Effect.gen(function* consumeSyncEvents() {
         // Aggregate progress at info while per-page detail stays at debug. The
-        // Fiber stops when the run scope closes, i.e. when the stream ends.
-        yield* Effect.forkScoped(
-          Effect.repeat(logProgress, Schedule.spaced(PROGRESS_LOG_INTERVAL)),
-        );
+        // Fiber stops when the scope closes, i.e. when the stream ends.
+        if (options.logProgress) {
+          yield* Effect.forkScoped(
+            Effect.repeat(logProgress, Schedule.spaced(PROGRESS_LOG_INTERVAL)),
+          );
+        }
 
-        yield* sync.historical(syncFilters).pipe(
+        yield* options.sync.historical(prepared.syncFilters).pipe(
           Stream.runForEach((event) =>
             Match.value(event).pipe(
               Match.when({ type: "started" }, (started) =>
@@ -702,11 +584,85 @@ function runHistorical(
           ),
         );
 
+        // Contracts that finished on their newest logs page, fetched after the
+        // Tip was read, have all their events up to the tip stored now. A
+        // Contract whose first-event discovery found nothing has not read its
+        // Newest page and keeps its height, so the next pass catches it up.
+        if (tip !== undefined) {
+          const syncingContractIds = new Set(getSyncingContractIds(prepared, tip.blockHeight));
+
+          yield* syncStore.raiseSyncedBlockHeight({
+            chainId,
+            contractIds: completedContracts
+              .filter(
+                (contract) => contract.syncedToHead && syncingContractIds.has(contract.contractId),
+              )
+              .map((contract) => contract.contractId),
+            blockHeight: tip.blockHeight,
+          });
+        }
+
         // Final pass: index any remaining stored events (e.g. events from a
         // Contract that finished after the last safe height was emitted).
         yield* indexSafeHeight(indexingCap);
-      }).pipe(Effect.provide(Indexing.layer({ handlers }))),
+      }),
     );
+
+    return { startedContracts, completedContracts };
+  });
+}
+
+export function runHistorical(
+  filters: Filter[],
+  config: ResolvedIndexerConfig,
+  sync: SyncService,
+): Effect.Effect<RunResult, IndexerError, StacksClient | IndexerDatabase> {
+  return Effect.gen(function* () {
+    if (filters.length === 0) {
+      return { contracts: [], eventsProcessed: 0 };
+    }
+
+    const prepared = yield* prepareFilters(filters);
+
+    return yield* runPreparedHistorical(prepared, config, sync);
+  });
+}
+
+/**
+ * Syncs and indexes prepared filters up to the chain tip read at the start of
+ * the pass, then logs and returns the run summary.
+ */
+export function runPreparedHistorical(
+  prepared: PreparedFilters,
+  config: ResolvedIndexerConfig,
+  sync: SyncService,
+): Effect.Effect<RunResult, IndexerError, StacksClient | IndexerDatabase> {
+  const { chainId } = config;
+
+  return Effect.gen(function* run() {
+    const startedAtMillis = yield* Clock.currentTimeMillis;
+    const tip = yield* readChainTip(chainId);
+
+    yield* Effect.logInfo("Starting historical indexing").pipe(
+      Effect.annotateLogs({
+        chainId,
+        phase: "run",
+        contracts: prepared.contractIds,
+        finality: config.finality,
+      }),
+    );
+
+    const eventsByContract = new Map<string, number>();
+
+    const { startedContracts, completedContracts } = yield* syncAndIndexTo({
+      chainId,
+      finality: config.finality,
+      sync,
+      prepared,
+      tip,
+      eventsByContract,
+      logProgress: true,
+    }).pipe(Effect.provide(Indexing.layer({ handlers: prepared.handlers })));
 
     const finalContracts = completedContracts.length > 0 ? completedContracts : startedContracts;
     let eventsProcessed = 0;
@@ -744,10 +700,5 @@ function runHistorical(
     });
 
     return { contracts, eventsProcessed, finalizedBlockHeight };
-  }).pipe(
-    Effect.annotateLogs({ service: "historicalRuntime" }),
-    Effect.withLogSpan("historicalIndexing"),
-  );
-
-  return effect;
+  }).pipe(Effect.annotateLogs({ service: "indexer" }), Effect.withLogSpan("historicalIndexing"));
 }

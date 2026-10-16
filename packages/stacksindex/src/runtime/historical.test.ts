@@ -33,7 +33,7 @@ import {
 } from "../lib/errors.ts";
 import { indexBatchDuration } from "../lib/metrics.ts";
 import type { HandlerContext, HandlerEvent } from "../lib/types.ts";
-import { createHistoricalRuntime } from "../promise/index.ts";
+import { createIndexer } from "../promise/index.ts";
 import { toThenable } from "../promise/thenable.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
@@ -45,10 +45,10 @@ import {
 import { parseLogsCursor, parseTransactionCursor } from "../sync/cursor.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
-import { HistoricalRuntime, type Filter, type HistoricalRuntimeOptions } from "./historical.ts";
+import { Indexer, type Filter, type IndexerOptions } from "./index.ts";
 
-const makeRuntime = (input: { db: IndexerDb } & HistoricalRuntimeOptions) => {
-  const layer = HistoricalRuntime.layer({
+const makeRuntime = (input: { db: IndexerDb } & IndexerOptions) => {
+  const layer = Indexer.layer({
     network: input.network,
     api: input.api,
     finality: input.finality,
@@ -58,7 +58,7 @@ const makeRuntime = (input: { db: IndexerDb } & HistoricalRuntimeOptions) => {
     run: (filters: Filter[]) =>
       toThenable(
         Effect.gen(function* () {
-          const runtime = yield* HistoricalRuntime;
+          const runtime = yield* Indexer;
 
           return yield* runtime.run(filters);
         }).pipe(
@@ -2266,11 +2266,11 @@ describe("historical runtime with handlers", () => {
     expect(Number(checkpointAfterResume[0].blockHeight)).toBe(200);
   });
 
-  test("finalizes the indexed height by default", async () => {
+  test("finalizes the indexed height when finality is 0", async () => {
     const contractId = "SP123.token";
     await seedCompleteContract(testDb, contractId, [100]);
 
-    const runtime = makeRuntime({ db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db, finality: 0 });
     const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
 
     expect(result.finalizedBlockHeight).toBe(100);
@@ -2670,7 +2670,7 @@ describe("historical runtime with handlers", () => {
     );
 
     const started = Effect.runSync(Deferred.make<"started">());
-    const runtime = makeRuntime({ db: testDb.db });
+    const runtime = makeRuntime({ db: testDb.db, finality: 0 });
 
     const fiber = Effect.runFork(
       runtime.run([{ contractId, handler: blockOnBlock200Handler(started), endBlock: 200 }]),
@@ -3195,7 +3195,7 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createHistoricalRuntime({ database: { kind: "pglite" } });
+    const runtime = await createIndexer({ database: { kind: "pglite" } });
 
     const result = await runtime.run({ contractId, handler: () => undefined });
     expect(result.contracts).toHaveLength(1);
@@ -5958,14 +5958,14 @@ describe("historical runtime with handlers", () => {
       });
     });
 
-    const layer = HistoricalRuntime.layer({});
+    const layer = Indexer.layer({ finality: 0 });
 
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const fiber = yield* Effect.forkScoped(
             Effect.gen(function* () {
-              const runtime = yield* HistoricalRuntime;
+              const runtime = yield* Indexer;
 
               return yield* runtime.run([{ contractId, handler, endBlock: 100 }]);
             }).pipe(Effect.provide(layer), Effect.provideService(IndexerDatabase, testDb.db)),
@@ -6043,14 +6043,14 @@ describe("historical runtime with handlers", () => {
       });
     });
 
-    const layer = HistoricalRuntime.layer({});
+    const layer = Indexer.layer({});
 
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           const fiber = yield* Effect.forkScoped(
             Effect.gen(function* () {
-              const runtime = yield* HistoricalRuntime;
+              const runtime = yield* Indexer;
 
               return yield* runtime.run([{ contractId, handler, endBlock: 100 }]);
             }).pipe(Effect.provide(layer), Effect.provideService(IndexerDatabase, testDb.db)),

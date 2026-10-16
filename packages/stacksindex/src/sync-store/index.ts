@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, inArray, lte } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, lte } from "drizzle-orm";
 import { Effect } from "effect";
 
 import { IndexerDatabase } from "../database/index.ts";
@@ -207,6 +207,46 @@ export const syncStore = {
           ),
         );
     }),
+
+  /**
+   * Raises `syncedBlockHeight` to `blockHeight` for the given contracts that
+   * are still syncing (not complete at their end block) and lower than it.
+   * Callers must have stored every event of those contracts up to
+   * `blockHeight`, e.g. after a sync pass that fetched their newest events
+   * once the tip `blockHeight` was read.
+   */
+  raiseSyncedBlockHeight: ({
+    chainId,
+    contractIds,
+    blockHeight,
+  }: {
+    chainId: number;
+    contractIds: readonly string[];
+    blockHeight: number;
+  }): Effect.Effect<void, SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      if (contractIds.length === 0) {
+        return;
+      }
+
+      const db = yield* IndexerDatabase;
+
+      yield* db
+        .update(syncProgressTable)
+        .set({ syncedBlockHeight: BigInt(blockHeight) })
+        .where(
+          and(
+            eq(syncProgressTable.chainId, BigInt(chainId)),
+            inArray(syncProgressTable.contractId, [...contractIds]),
+            eq(syncProgressTable.isComplete, false),
+            lt(syncProgressTable.syncedBlockHeight, BigInt(blockHeight)),
+          ),
+        );
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "raiseSyncedBlockHeight", cause }),
+      ),
+    ),
 
   insertEvents: ({
     events,

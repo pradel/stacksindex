@@ -76,6 +76,12 @@ export interface ContractSyncSummary {
   readonly transactionsFetched: number;
   /** Smart contract log events stored by this run. */
   readonly eventsStored: number;
+  /**
+   * The contract finished by reading its newest logs page, so every event
+   * that existed when that page was fetched is stored. `false` when it
+   * finished at its `endBlock` or because first-event discovery found nothing.
+   */
+  readonly syncedToHead: boolean;
 }
 
 /**
@@ -134,6 +140,8 @@ interface ContractSyncState {
   eventsStored: number;
   done: boolean;
   doneAtStart: boolean;
+  /** Finished by reading the newest logs page (see `ContractSyncSummary`). */
+  syncedToHead: boolean;
 }
 
 function makeContractSyncState(filter: SyncFilter, syncedBlockHeight: number): ContractSyncState {
@@ -150,6 +158,7 @@ function makeContractSyncState(filter: SyncFilter, syncedBlockHeight: number): C
     eventsStored: 0,
     done: false,
     doneAtStart: false,
+    syncedToHead: false,
   };
 }
 
@@ -176,6 +185,7 @@ function toContractSyncSummary(state: ContractSyncState): ContractSyncSummary {
     pagesFetched: state.pagesFetched,
     transactionsFetched: state.transactionsFetched,
     eventsStored: state.eventsStored,
+    syncedToHead: state.syncedToHead,
   };
 }
 
@@ -400,6 +410,7 @@ function catchUp(
 
     if (pages.length === 0) {
       state.done = true;
+      state.syncedToHead = true;
 
       return;
     }
@@ -747,6 +758,7 @@ function syncCatchUpPage(
     }
 
     state.done = isNewestPage;
+    state.syncedToHead = isNewestPage;
 
     yield* persistProgress(state, chainId);
   });

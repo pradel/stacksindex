@@ -68,7 +68,7 @@ Define the Stacks network to connect to:
 
 - API endpoint URL (e.g., `https://api.hiro.so`)
 - Optional API key (`apiKey`)
-- Polling interval for new blocks
+- How live sync detects new blocks: `live.transport` (`"polling"` or `"websocket"`), `live.pollingInterval`, `live.webSocketUrl`
 
 ### Filters
 
@@ -240,30 +240,43 @@ Start Block ──────────────────────�
 - Save cursor and syncedBlockHeight to sync_progress to enable resume after restart
 ```
 
-`sync_progress.syncedBlockHeight` guarantees every event of the contract at or below it is stored. A run for a caught-up contract fetches only the newest page; when its newest event is at or below `syncedBlockHeight`, the contract is up to date after a single request.
+`sync_progress.syncedBlockHeight` guarantees every event of the contract at or below it is stored. A run for a caught-up contract fetches only the newest page; when its newest event is at or below `syncedBlockHeight`, the contract is up to date after a single request. A contract that finished on its newest page, read after the tip, has all its events up to the tip stored, so the pass raises its `syncedBlockHeight` to the tip. A contract whose first-event discovery found nothing keeps its height and is caught up by the next pass, since discovery only sees transactions involving the contract's principal.
 
 Indexing within a run is capped at the chain tip read before syncing starts. Contracts are checked one after another, so events above that tip may still be missing for contracts checked earlier; they are indexed by the next run, which keeps handler order chronological.
 
-### Realtime Sync
+### Live Sync
 
-Polls for new blocks after historical sync completes, then fetches events for new blocks.
+`live` runs a historical pass, then follows new chain heads (`runtime/realtime.ts`), after Ponder's realtime sync.
 
+```mermaid
+flowchart TD
+  H[head from BlockHeads<br/>polling or websocket] --> D[repeated hashes dropped<br/>only the newest head kept]
+  D --> S{head is the anchor<br/>or below it?}
+  S -- yes --> H
+  S -- no --> P{blocks link the head to the anchor<br/>and cost fewer requests than<br/>one logs page per contract?}
+  P -- yes --> B[per block: block transactions<br/>then each transaction's events]
+  P -- no --> C[per contract: newest logs pages<br/>after verifying the anchor]
+  B --> I[anchor = head, index up to head]
+  C --> I
+  I --> E{every filter past its endBlock?}
+  E -- no --> H
+  E -- yes --> X[done]
 ```
-              poll         poll         poll
-               │            │            │
-               ▼            ▼            ▼
-... ────[block N]────[block N+1]────[block N+2]────▶
 
-1. Poll for latest block height
-2. If new blocks exist since last sync:
-   - Fetch events for each new block
-   - Fetch transactions for those events
-   - Store in sync cache
-   - Process through indexer
-3. Update checkpoint
-4. Wait for polling interval
-5. Repeat
-```
+**Heads** (`datasources/api/heads.ts`). `"polling"` reads `GET /extended/v2/blocks?limit=1` every `pollingInterval` (default 5s; Stacks blocks arrive every ~10s and unauthenticated Hiro clients get 50 requests per minute). `"websocket"` subscribes to `block` notifications on `/extended/v1/ws` (JSON-RPC), polls once per connection to catch heads missed while disconnected, reconnects after `125 * 2^n` ms and switches to polling for good after 9 consecutive failures. Both warn when no new head arrived for 30s.
+
+**One pass per head.** Heads that arrive while a pass runs collapse to the newest, because each pass covers the whole range since the anchor. A head older than the anchor (a lagging API replica) is skipped: lowering the anchor would replay indexed blocks.
+
+**Fetch path.** Ponder fetches every block with one `eth_getLogs` filtered by address. The Stacks API has no per-block filtered events endpoint: block transaction summaries carry no events, and a contract's print events may come from transactions calling other contracts. So each head picks the cheaper of:
+
+- **Per block** (`sync-realtime/block.ts`): for every block between the anchor and the head, `GET /extended/v3/blocks/{hash}/transactions` (50 per page), then `GET /extended/v3/transactions/{tx_id}/events` (100 per page) for each successful transaction, keeping the watched contracts' logs. Cost ≈ `Σ (1 + tx_count)`. Requires the blocks to link the head to the anchor (`GET /extended/v2/blocks`, at most 30) and every syncing contract synced through the anchor.
+- **Per contract**: the historical catch-up, one newest logs page per syncing contract.
+
+Both store the same rows, and the per-block path raises every syncing contract's `syncedBlockHeight` with each block.
+
+**Reorgs.** A head built on the anchor (or blocks linking it) proves the anchor canonical without a request. Otherwise the anchor check of `reconcileWithCanonicalChain` runs, and a reorged range is rewound and replayed like at the start of a run.
+
+**Errors.** A failed pass is retried with the next head. `live` fails once 10 consecutive passes failed over at least 10 minutes (Ponder's realtime budget), and at once on handler, database, cursor or finalized-reorg errors.
 
 ## Key Data Structures
 
@@ -326,15 +339,15 @@ The core handler contract is Effect-only. The promise entrypoint (`stacksindex`)
 
 ### Entrypoints
 
-- `stacksindex` — promise-native facade: `createHistoricalRuntime({ database, network, api, logLevel })` owns the database and runtime lifecycle and returns `{ db, migrate, run, close, [Symbol.asyncDispose] }`. `run` returns a `RunResult` summary.
-- `stacksindex/effect` — Effect-native surface: `HistoricalRuntime` (+ `layer` and `layerWithDatabase`), `IndexerDatabase`, `Indexing`, `StacksClient`, `readOnly`, `makeDatabase`, `migrate`, and `loggerLayer`.
+- `stacksindex` — promise-native facade: `createIndexer({ database, network, api, finality, live, logLevel })` owns the database and runtime lifecycle and returns `{ db, migrate, run, live, close, [Symbol.asyncDispose] }`. `run` returns a `RunResult` summary; `live` resolves when every filter reached its `endBlock` or on `close()`.
+- `stacksindex/effect` — Effect-native surface: `Indexer` (+ `layer` and `layerWithDatabase`), `IndexerDatabase`, `Indexing`, `StacksClient`, `readOnly`, `makeDatabase`, `migrate`, and `loggerLayer`.
 
 ### Services
 
 The runtime is composed from Effect services and layers:
 
 - `IndexerDatabase` — the Drizzle database; `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service.
-- `HistoricalRuntime` — `HistoricalRuntime.layer({ network, api })` builds the Stacks API client and `run(filters)` requires `IndexerDatabase`. `HistoricalRuntime.layerWithDatabase({ database, network, api, logLevel })` provides the runtime, database, and logger in one layer.
+- `Indexer` — `Indexer.layer({ network, api, finality, live })` builds the Stacks API client; `run(filters)` and `live(filters)` require `IndexerDatabase`. `Indexer.layerWithDatabase({ database, network, api, finality, live, logLevel })` provides the indexer, database, and logger in one layer.
 - `Indexing` — `Indexing.layer({ handlers })` executes user handlers inside `IndexerDatabase.transaction` (internal).
 - `loggerLayer({ level })` — installs Effect's pretty console logger and minimum log level.
 
@@ -358,10 +371,10 @@ Checkpoint {
 ### Sync Anchor
 
 `sync_anchors` holds the chain tip (height and hash) read at the start of the
-latest run. Indexing in that run is capped at the anchor, so nothing above it
-was indexed. When the anchor's block is still canonical at the next run, every
-stored block below it is canonical too, because a canonical block's ancestors
-are canonical.
+latest pass: a run, or a new head in live sync. Indexing in that pass is
+capped at the anchor, so nothing above it was indexed. When the anchor's block
+is still canonical at the next pass, every stored block below it is canonical
+too, because a canonical block's ancestors are canonical.
 
 ## Crash Recovery
 
