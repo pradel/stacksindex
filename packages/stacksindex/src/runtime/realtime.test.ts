@@ -1,8 +1,9 @@
-import { Cause, Effect, Exit, References } from "effect";
+import { Cause, Effect, Exit, Metric, References } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase } from "../database/index.ts";
 import { HandlerExecutionError, ReorgError } from "../lib/errors.ts";
+import { liveConsecutiveFailures, liveIsRealtime, syncErrors } from "../lib/metrics.ts";
 import type { HandlerEvent } from "../lib/types.ts";
 import { createIndexer } from "../promise/index.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -48,6 +49,7 @@ const runLive = (
   testDb: TestDatabase,
   filters: Filter[],
   options: IndexerOptions = {},
+  registry: Metric.MetricRegistry = new Map(),
 ): Promise<Exit.Exit<void, unknown>> =>
   Effect.runPromiseExit(
     Effect.gen(function* () {
@@ -57,9 +59,35 @@ const runLive = (
     }).pipe(
       Effect.provide(Indexer.layer({ live: { pollingInterval: 100 }, ...options })),
       Effect.provideService(IndexerDatabase, testDb.db),
+      Effect.provideService(Metric.MetricRegistry, registry),
       Effect.provideService(References.MinimumLogLevel, "None"),
     ),
   );
+
+/**
+ * Current value of the series of `metric` carrying `attributes`, ignoring any
+ * other attribute (such as the chain id the indexer adds). Synchronous, so
+ * handlers can sample it mid-pass.
+ */
+const readMetric = (
+  registry: Metric.MetricRegistry,
+  metric: Metric.Metric<number, unknown>,
+  attributes: Record<string, string> = {},
+): number | undefined => {
+  const series = Effect.runSync(
+    Metric.snapshot.pipe(Effect.provideService(Metric.MetricRegistry, registry)),
+  ).find(
+    (snapshot) =>
+      snapshot.id === metric.id &&
+      Object.entries(attributes).every(([key, value]) => snapshot.attributes?.[key] === value),
+  );
+
+  if (series?.type === "Counter") {
+    return Number(series.state.count);
+  }
+
+  return series?.type === "Gauge" ? Number(series.state.value) : undefined;
+};
 
 const failureOf = (exit: Exit.Exit<void, unknown>) =>
   Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
@@ -231,6 +259,75 @@ describe("live indexing", () => {
     expect(exit).toStrictEqual(Exit.void);
     expect(handled.map((event) => event.txId)).toStrictEqual(["tx-100", "tx-101", "tx-102"]);
     expect(chain.failures.get(`/extended/v2/smart-contracts/${CONTRACT_ID}/logs`)).toBe(0);
+  });
+
+  test("reports realtime only while following new blocks", async () => {
+    const registry: Metric.MetricRegistry = new Map();
+    const realtimeByTx: Record<string, number | undefined> = {};
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+      },
+    ]);
+
+    const exit = await runLive(
+      testDb,
+      [
+        {
+          contractId: CONTRACT_ID,
+          handler: (event) =>
+            Effect.sync(() => {
+              realtimeByTx[event.tx_id] = readMetric(registry, liveIsRealtime);
+            }),
+          endBlock: 101,
+        },
+      ],
+      {},
+      registry,
+    );
+
+    expect(exit).toStrictEqual(Exit.void);
+    // Block 100 is indexed by the historical pass, block 101 by a live pass.
+    expect(realtimeByTx).toStrictEqual({ "tx-100": undefined, "tx-101": 1 });
+    expect(readMetric(registry, liveIsRealtime)).toBe(0);
+  });
+
+  test("reports failed live passes until one succeeds", async () => {
+    const registry: Metric.MetricRegistry = new Map();
+    const failuresByTx: Record<string, number | undefined> = {};
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+        chain.failures.set(`/extended/v2/smart-contracts/${CONTRACT_ID}/logs`, 1);
+      },
+      () => {
+        chain.mine([logTx("tx-102")]);
+      },
+    ]);
+
+    const exit = await runLive(
+      testDb,
+      [
+        {
+          contractId: CONTRACT_ID,
+          // Handlers run inside the retrying pass, before it succeeds.
+          handler: (event) =>
+            Effect.sync(() => {
+              failuresByTx[event.tx_id] = readMetric(registry, liveConsecutiveFailures);
+            }),
+          endBlock: 102,
+        },
+      ],
+      {},
+      registry,
+    );
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(failuresByTx).toStrictEqual({ "tx-100": undefined, "tx-101": 1, "tx-102": 1 });
+    expect(readMetric(registry, liveConsecutiveFailures)).toBe(0);
+    expect(readMetric(registry, syncErrors, { mode: "live" })).toBe(1);
   });
 
   test("fails at once when a handler fails", async () => {

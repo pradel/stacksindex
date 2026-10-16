@@ -1,10 +1,17 @@
-import { Cause, Context, Effect, Layer } from "effect";
+import { Cause, Context, Duration, Effect, Layer, Metric } from "effect";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
 import { type IndexerDb, IndexerDatabase } from "../database/index.ts";
 import { readOnly, StacksClient, type StacksClientService } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
-import type { HandlerContext, HandlerEvent, Handlers, IndexingClient } from "../lib/types.ts";
+import { indexingHandlerDuration, indexingHandlerErrors } from "../lib/metrics.ts";
+import type {
+  EventHandler,
+  HandlerContext,
+  HandlerEvent,
+  Handlers,
+  IndexingClient,
+} from "../lib/types.ts";
 
 export interface IndexingService {
   /**
@@ -28,13 +35,33 @@ export const createIndexing = ({
   handlers,
   client: stacksClient,
 }: IndexingOptions): IndexingService => {
+  // Labelled once per contract so the per-event path does not allocate them.
+  const contractHandlers = new Map<
+    string,
+    {
+      handler: EventHandler;
+      duration: typeof indexingHandlerDuration;
+      errors: typeof indexingHandlerErrors;
+    }
+  >();
+
+  for (const [contract, handler] of Object.entries(handlers)) {
+    if (handler !== undefined) {
+      contractHandlers.set(contract, {
+        handler,
+        duration: Metric.withAttributes(indexingHandlerDuration, { contract }),
+        errors: Metric.withAttributes(indexingHandlerErrors, { contract }),
+      });
+    }
+  }
+
   const executeEvent = (
     event: HandlerEvent,
     db: IndexerDb,
   ): Effect.Effect<void, HandlerExecutionError> => {
-    const handler = handlers[event.contract_log.contract_id];
+    const contractHandler = contractHandlers.get(event.contract_log.contract_id);
 
-    if (handler === undefined) {
+    if (contractHandler === undefined) {
       return Effect.logDebug("No handler found for event").pipe(
         Effect.annotateLogs({
           phase: "index",
@@ -46,6 +73,8 @@ export const createIndexing = ({
         Effect.asVoid,
       );
     }
+
+    const { handler } = contractHandler;
 
     return Effect.gen(function* executeEvent() {
       // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event height unless overridden.
@@ -66,12 +95,19 @@ export const createIndexing = ({
           decodeClarityWithSchema(schema)(hex) as Effect.Effect<(typeof schema)["Type"], unknown>,
       };
 
-      const result = yield* Effect.try({
-        try: () => handler(event, handlerContext),
-        catch: (err) => err,
+      const call = Effect.gen(function* () {
+        const result = yield* Effect.try({
+          try: () => handler(event, handlerContext),
+          catch: (err) => err,
+        });
+
+        yield* result;
       });
 
-      yield* result;
+      // Failed calls are timed too: a slow handler that then throws is still slow.
+      const [duration, exit] = yield* Effect.timed(Effect.exit(call));
+      yield* Metric.update(contractHandler.duration, Duration.toMillis(duration));
+      yield* exit;
     }).pipe(
       Effect.asVoid,
       Effect.tap(() =>
@@ -95,6 +131,7 @@ export const createIndexing = ({
         const err = Cause.squash(cause);
 
         return Effect.gen(function* () {
+          yield* Metric.update(contractHandler.errors, 1);
           yield* Effect.logError(cause).pipe(
             Effect.annotateLogs({
               phase: "index",

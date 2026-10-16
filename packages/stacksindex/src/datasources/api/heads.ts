@@ -1,7 +1,13 @@
-import { Clock, Effect, Queue, Result, Schema, Stream } from "effect";
+import { Clock, Effect, Metric, Queue, Result, Schema, Stream } from "effect";
 import { Socket } from "effect/socket";
 
 import { createFailureBudget } from "../../lib/failure-budget.ts";
+import {
+  liveHeadBlock,
+  liveStalls,
+  liveTransportFallbacks,
+  liveWebSocketReconnects,
+} from "../../lib/metrics.ts";
 import {
   type BlocksApiResponse,
   StacksClient,
@@ -250,11 +256,13 @@ const webSocketHeads = (
         yield* Effect.logWarning("Block subscription failed; reconnecting").pipe(
           Effect.annotateLogs({ error: String(error), retryCount: failures, retryDelayMs }),
         );
+        yield* Metric.update(liveWebSocketReconnects, 1);
         yield* Effect.sleep(retryDelayMs);
       } else {
         yield* Effect.logWarning(
           `Block subscription failed ${WEBSOCKET_RETRY_LIMIT} consecutive times; falling back to polling`,
         ).pipe(Effect.annotateLogs({ error: String(error) }));
+        yield* Metric.update(liveTransportFallbacks, 1);
       }
     }
 
@@ -276,6 +284,7 @@ const watchStalls = (head: HeadState) =>
           yield* Effect.logWarning("No new block for 30s").pipe(
             Effect.annotateLogs(head.height === undefined ? {} : { lastHeight: head.height }),
           );
+          yield* Metric.update(liveStalls, 1);
         }
 
         yield* Effect.sleep(STALL_MS);
@@ -313,6 +322,7 @@ export const blockHeads = (
             head.height = block.height;
             head.updatedAt = yield* Clock.currentTimeMillis;
             head.stallReported = false;
+            yield* Metric.update(liveHeadBlock, block.height);
             yield* Queue.offer(queue, block);
           });
 

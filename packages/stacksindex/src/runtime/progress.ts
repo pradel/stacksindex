@@ -1,5 +1,6 @@
-import { Clock, Duration, Effect, Ref } from "effect";
+import { Clock, Duration, Effect, Metric, Ref } from "effect";
 
+import { historicalCompletedBlocks, historicalTotalBlocks } from "../lib/metrics.ts";
 import type { ContractSyncSummary } from "../sync/index.ts";
 
 /** How often the runtime logs aggregate progress while a run is in flight. */
@@ -239,6 +240,8 @@ export function logRunProgress(options: {
       tipBlockHeight: options.tipBlockHeight,
     });
 
+    yield* recordRunProgress(progress);
+
     const nowMillis = yield* Clock.currentTimeMillis;
 
     const etaMillis = options.estimator.sample({
@@ -286,5 +289,16 @@ export function logRunProgress(options: {
     }
 
     yield* Effect.logInfo("Historical sync progress").pipe(Effect.annotateLogs({ ...annotations }));
+  });
+}
+
+/** Mirrors run progress into the historical gauges; the total only when known. */
+export function recordRunProgress(progress: RunProgress): Effect.Effect<void> {
+  return Effect.gen(function* () {
+    yield* Metric.update(historicalCompletedBlocks, progress.completedBlocks);
+
+    if (progress.totalBlocks !== undefined) {
+      yield* Metric.update(historicalTotalBlocks, progress.totalBlocks);
+    }
   });
 }

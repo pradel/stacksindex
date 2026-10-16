@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Metric } from "effect";
 
 import { IndexerDatabase } from "../database/index.ts";
 import type { LightBlock } from "../datasources/api/heads.ts";
@@ -11,6 +11,7 @@ import {
   type TransactionEventsResponse,
 } from "../datasources/api/index.ts";
 import type { DatabaseError, SyncStoreError } from "../lib/errors.ts";
+import { syncBlock as syncBlockGauge, syncEvents } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import type { SyncFilter } from "../sync/index.ts";
 
@@ -22,6 +23,32 @@ const TRANSACTION_EVENTS_PAGE_LIMIT = 100;
 
 /** Transactions whose events are fetched concurrently within one block. */
 const EVENTS_FETCH_CONCURRENCY = 4;
+
+interface ContractMetrics {
+  readonly events: Metric.Metric<number, Metric.CounterState<number>>;
+  readonly block: Metric.Metric<number, Metric.GaugeState<number>>;
+}
+
+function makeContractMetrics(contract: string): ContractMetrics {
+  return {
+    events: Metric.withAttributes(syncEvents, { contract, path: "block" }),
+    block: Metric.withAttributes(syncBlockGauge, { contract }),
+  };
+}
+
+/** Per-contract series, labelled once per contract rather than once per block. */
+const contractMetrics = new Map<string, ContractMetrics>();
+
+function getContractMetrics(contract: string) {
+  let metrics = contractMetrics.get(contract);
+
+  if (metrics === undefined) {
+    metrics = makeContractMetrics(contract);
+    contractMetrics.set(contract, metrics);
+  }
+
+  return metrics;
+}
 
 /**
  * Requests a per-block fetch of `block` costs at least: its transaction pages
@@ -173,6 +200,28 @@ export function syncBlock(options: {
         });
       }),
     );
+
+    const eventsByContract = new Map<string, number>();
+
+    for (const { logs } of matched) {
+      for (const log of logs) {
+        const contract = log.contract_log.contract_id;
+        eventsByContract.set(contract, (eventsByContract.get(contract) ?? 0) + 1);
+      }
+    }
+
+    for (const contract of contractIds) {
+      const metrics = getContractMetrics(contract);
+      const count = eventsByContract.get(contract);
+
+      if (count !== undefined) {
+        yield* Metric.update(metrics.events, count);
+      }
+
+      // Live blocks sit above the anchor, which no syncing contract has passed,
+      // So the raise above moved every syncing contract to this block.
+      yield* Metric.update(metrics.block, block.height);
+    }
 
     return events.length;
   });

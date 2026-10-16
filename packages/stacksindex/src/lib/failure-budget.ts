@@ -1,8 +1,8 @@
 /**
- * Consecutive failures tolerated while following the chain, after Ponder's
- * realtime error budget: retrying stops only once at least `maxFailures`
- * attempts failed in a row and those failures span at least `minSpanMillis`,
- * so neither a short burst nor a slow trickle of errors is fatal on its own.
+ * Consecutive failures tolerated while following the chain: retrying stops
+ * only once at least `maxFailures` attempts failed in a row and those failures
+ * span at least `minSpanMillis`, so neither a short burst nor a slow trickle of
+ * errors is fatal on its own.
  */
 export interface FailureBudget {
   /** Records a failure at `nowMillis`; returns `true` once the budget is spent. */

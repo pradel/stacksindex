@@ -1,10 +1,57 @@
-import { Effect, Predicate } from "effect";
+import { Effect, Metric, Predicate } from "effect";
 import { HttpClientError } from "effect/http";
 
 import type { IndexerDatabase } from "../database/index.ts";
 import { StacksClient, type StacksHttpError } from "../datasources/api/index.ts";
 import { ReorgError, type SyncStoreError } from "../lib/errors.ts";
+import {
+  indexingBlock,
+  indexingBlockTimestamp,
+  indexingFinalizedBlock,
+  reorgDepth,
+  reorgs,
+} from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
+
+/** Mirrors a committed checkpoint into the indexing gauges. */
+export function recordCheckpointMetrics(checkpoint: {
+  readonly blockHeight: number | bigint;
+  readonly blockTime: number | bigint;
+  readonly finalizedBlockHeight: number | bigint;
+}): Effect.Effect<void> {
+  return Effect.all(
+    [
+      Metric.update(indexingBlock, Number(checkpoint.blockHeight)),
+      Metric.update(indexingBlockTimestamp, Number(checkpoint.blockTime)),
+      Metric.update(indexingFinalizedBlock, Number(checkpoint.finalizedBlockHeight)),
+    ],
+    { discard: true },
+  );
+}
+
+/** Rewinds to `blockHeight` and refreshes the indexing gauges when the checkpoint moved. */
+function rewind(
+  chainId: number,
+  blockHeight: number,
+): Effect.Effect<
+  { fromBlockHeight: number; toBlockHeight: number } | null,
+  SyncStoreError,
+  IndexerDatabase
+> {
+  return Effect.gen(function* () {
+    const replayed = yield* syncStore.rewindTo({ chainId, blockHeight });
+
+    if (replayed !== null) {
+      const checkpoint = yield* syncStore.getCheckpoint({ chainId });
+
+      if (checkpoint !== null) {
+        yield* recordCheckpointMetrics(checkpoint);
+      }
+    }
+
+    return replayed;
+  });
+}
 
 /** Canonical hash of the block at `height`, or `undefined` when there is none. */
 function getCanonicalBlockHash(
@@ -41,6 +88,9 @@ function getCanonicalBlockHash(
  *
  * `anchorIsCanonical` skips the canonical-hash request when the caller already
  * proved the anchor canonical, e.g. a new head whose parent is the anchor.
+ *
+ * Every pass starts here, so the indexing gauges are seeded from the stored
+ * checkpoint (populated after a restart) and refreshed after each rewind.
  */
 export function reconcileWithCanonicalChain(
   chainId: number,
@@ -55,13 +105,17 @@ export function reconcileWithCanonicalChain(
     const checkpoint = yield* syncStore.getCheckpoint({ chainId });
     const finalizedBlockHeight = checkpoint === null ? 0 : Number(checkpoint.finalizedBlockHeight);
 
+    if (checkpoint !== null) {
+      yield* recordCheckpointMetrics(checkpoint);
+    }
+
     if (anchor === null) {
       // Unverifiable: replay the unfinalized indexed range, if there is one.
       if (checkpoint === null || Number(checkpoint.blockHeight) <= finalizedBlockHeight) {
         return;
       }
 
-      const replayed = yield* syncStore.rewindTo({ chainId, blockHeight: finalizedBlockHeight });
+      const replayed = yield* rewind(chainId, finalizedBlockHeight);
 
       if (replayed !== null) {
         yield* Effect.logWarning(
@@ -76,7 +130,7 @@ export function reconcileWithCanonicalChain(
       options?.anchorIsCanonical === true ||
       (yield* getCanonicalBlockHash(anchor.blockHeight)) === anchor.blockHash
     ) {
-      yield* syncStore.rewindTo({ chainId, blockHeight: anchor.blockHeight });
+      yield* rewind(chainId, anchor.blockHeight);
 
       return;
     }
@@ -120,7 +174,14 @@ export function reconcileWithCanonicalChain(
     const ancestorBlockHeight =
       ancestorIndex === -1 ? finalizedBlockHeight : blocks[ancestorIndex].height;
 
-    const replayed = yield* syncStore.rewindTo({ chainId, blockHeight: ancestorBlockHeight });
+    const replayed = yield* rewind(chainId, ancestorBlockHeight);
+
+    // Depth counts the heights from the highest still-canonical stored block
+    // (exclusive) up to the anchor (inclusive): the stored range the reorg may
+    // Have replaced. It is independent of where the checkpoint was, since
+    // Stored-but-unindexed blocks are refetched as well.
+    yield* Metric.update(reorgs, 1);
+    yield* Metric.update(reorgDepth, anchor.blockHeight - ancestorBlockHeight);
 
     yield* Effect.logWarning(
       `Chain reorganization detected: block ${anchor.blockHeight} is no longer canonical; refetching from block ${ancestorBlockHeight + 1}`,

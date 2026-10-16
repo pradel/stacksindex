@@ -339,7 +339,7 @@ The core handler contract is Effect-only. The promise entrypoint (`stacksindex`)
 
 ### Entrypoints
 
-- `stacksindex` — promise-native facade: `createIndexer({ database, network, api, finality, live, logLevel })` owns the database and runtime lifecycle and returns `{ db, migrate, run, live, close, [Symbol.asyncDispose] }`. `run` returns a `RunResult` summary; `live` resolves when every filter reached its `endBlock` or on `close()`.
+- `stacksindex` — promise-native facade: `createIndexer({ database, network, api, finality, live, logLevel, telemetry })` owns the database and runtime lifecycle and returns `{ db, migrate, run, live, status, close, [Symbol.asyncDispose] }`. `run` returns a `RunResult` summary; `live` resolves when every filter reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter.
 - `stacksindex/effect` — Effect-native surface: `Indexer` (+ `layer` and `layerWithDatabase`), `IndexerDatabase`, `Indexing`, `StacksClient`, `readOnly`, `makeDatabase`, `migrate`, and `loggerLayer`.
 
 ### Services
@@ -347,9 +347,10 @@ The core handler contract is Effect-only. The promise entrypoint (`stacksindex`)
 The runtime is composed from Effect services and layers:
 
 - `IndexerDatabase` — the Drizzle database; `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service.
-- `Indexer` — `Indexer.layer({ network, api, finality, live })` builds the Stacks API client; `run(filters)` and `live(filters)` require `IndexerDatabase`. `Indexer.layerWithDatabase({ database, network, api, finality, live, logLevel })` provides the indexer, database, and logger in one layer.
+- `Indexer` — `Indexer.layer({ network, api, finality, live })` builds the Stacks API client and the in-memory `RunPhase`; `run(filters)` and `live(filters)` require `IndexerDatabase`. Both set the phase (`backfill`, then `done`, `failed`, or `idle` when interrupted; `runLive` sets `live` once it follows new heads) and add the `chain_id` attribute to every metric recorded inside through `Metric.CurrentMetricAttributes`. `status` combines the phase with the stored checkpoint, sync anchor and per-contract sync progress. `Indexer.layerWithDatabase({ database, network, api, finality, live, logLevel, telemetry })` provides the indexer, database, logger and, with `telemetry.otlp`, the metrics exporter in one layer.
 - `Indexing` — `Indexing.layer({ handlers })` executes user handlers inside `IndexerDatabase.transaction` (internal).
 - `loggerLayer({ level })` — installs Effect's pretty console logger and minimum log level.
+- `telemetryLayer(telemetry)` — `OtlpMetrics.layer` over the fetch HTTP client with protobuf serialization, posting to `${baseUrl}/v1/metrics` (internal). Metrics are defined once in `lib/metrics.ts` and recorded in Effect's default `MetricRegistry`; nothing is served over HTTP. Closing the layer flushes the last snapshot.
 
 ### Checkpoint
 

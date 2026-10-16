@@ -28,9 +28,11 @@ import type { NetworkOption } from "../lib/network.ts";
 import type { EventHandler as EffectEventHandler, HandlerEvent } from "../lib/types.ts";
 import {
   Indexer as IndexerService,
+  type IndexerStatus,
   type LiveOptions,
   type RunResult,
   type Filter as EffectFilter,
+  type TelemetryOptions,
 } from "../runtime/index.ts";
 import { toThenable } from "./thenable.ts";
 
@@ -117,6 +119,8 @@ export interface IndexerOptions {
   live?: LiveOptions;
   /** Minimum log level for the console logger. Defaults to `"Info"`. */
   logLevel?: LogLevel;
+  /** Pushes metrics over OTLP when `telemetry.otlp` is set; see `OtlpOptions`. */
+  telemetry?: TelemetryOptions;
 }
 
 /**
@@ -136,7 +140,9 @@ export interface Indexer {
    * called; rejects on a fatal error.
    */
   live: (filters: Filter | Filter[]) => Promise<void>;
-  /** Release the database and runtime resources. Safe to call multiple times. */
+  /** Current phase plus the stored checkpoint, anchor and per-contract sync progress. */
+  status: () => Promise<IndexerStatus>;
+  /** Flush pending metrics and release the database and runtime. Safe to call multiple times. */
   close: () => Promise<void>;
   [Symbol.asyncDispose]: () => Promise<void>;
 }
@@ -190,6 +196,7 @@ export async function createIndexer(options: IndexerOptions): Promise<Indexer> {
       finality: options.finality,
       live: options.live,
       logLevel: options.logLevel,
+      telemetry: options.telemetry,
     }),
   );
 
@@ -259,6 +266,11 @@ export async function createIndexer(options: IndexerOptions): Promise<Indexer> {
       } finally {
         liveFibers.delete(fiber);
       }
+    },
+    status: async () => {
+      ensureOpen();
+
+      return runtime.runPromise(service.status);
     },
     close,
     [Symbol.asyncDispose]: close,

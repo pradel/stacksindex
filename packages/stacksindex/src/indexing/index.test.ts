@@ -2,12 +2,13 @@
 // oxlint-disable vitest/prefer-called-once, vitest/no-conditional-expect, vitest/no-conditional-in-test
 
 import type { ClarityAbi } from "clarity-abitype";
-import { Effect, References } from "effect";
+import { Effect, Metric, References } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import type { StacksClientService } from "../datasources/api/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
+import { indexingHandlerErrors } from "../lib/metrics.ts";
 import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
 import { blocksTable } from "../sync-store/schema.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
@@ -248,6 +249,44 @@ describe("indexing engine", () => {
     expect(result).toBeTaggedError(
       new HandlerExecutionError({ contractId: "SP123.token", cause: error }),
     );
+  });
+
+  test("counts failed handler calls per contract", async () => {
+    const handlers: Handlers = {
+      "SP123.token": () => Effect.fail(new Error("Handler failed")),
+      "SP456.other": () => Effect.void,
+    };
+
+    const indexing = createIndexing({ handlers, client: makeStacksClient() });
+
+    const [tokenErrors, otherErrors] = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* indexing
+          .executeBatch([
+            createMockEvent({
+              contract_log: { ...createMockEvent().contract_log, contract_id: "SP456.other" },
+            }),
+            createMockEvent(),
+          ])
+          .pipe(Effect.ignore);
+
+        return [
+          yield* Metric.value(
+            Metric.withAttributes(indexingHandlerErrors, { contract: "SP123.token" }),
+          ),
+          yield* Metric.value(
+            Metric.withAttributes(indexingHandlerErrors, { contract: "SP456.other" }),
+          ),
+        ];
+      }).pipe(
+        Effect.provideService(IndexerDatabase, mockDb),
+        Effect.provideService(Metric.MetricRegistry, new Map()),
+        Effect.provideService(References.MinimumLogLevel, "None"),
+      ),
+    );
+
+    expect(tokenErrors.count).toBe(1);
+    expect(otherErrors.count).toBe(0);
   });
 });
 

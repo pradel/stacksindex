@@ -5,7 +5,7 @@ import { TestClock } from "effect/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
 import type { StacksClientService } from "../datasources/api/index.ts";
-import { syncErrors, syncEvents, syncPages } from "../lib/metrics.ts";
+import { syncBlock, syncErrors, syncEvents, syncPages } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { createSync, type SyncFilter } from "./index.ts";
@@ -451,10 +451,29 @@ describe("sync historical", () => {
           .historical([{ contractId: CONTRACT_ID }])
           .pipe(Stream.runCollect);
 
-        const pages = yield* Metric.value(syncPages);
-        const storedEvents = yield* Metric.value(syncEvents);
+        const backfillPages = yield* Metric.value(
+          Metric.withAttributes(syncPages, { contract: CONTRACT_ID, kind: "backfill" }),
+        );
 
-        return { events, pages: pages.count, storedEvents: storedEvents.count };
+        const catchupPages = yield* Metric.value(
+          Metric.withAttributes(syncPages, { contract: CONTRACT_ID, kind: "catchup" }),
+        );
+
+        const storedEvents = yield* Metric.value(
+          Metric.withAttributes(syncEvents, { contract: CONTRACT_ID, path: "historical" }),
+        );
+
+        const block = yield* Metric.value(
+          Metric.withAttributes(syncBlock, { contract: CONTRACT_ID }),
+        );
+
+        return {
+          events,
+          backfillPages: backfillPages.count,
+          catchupPages: catchupPages.count,
+          storedEvents: storedEvents.count,
+          block: block.value,
+        };
       }).pipe(
         Effect.provideService(Metric.MetricRegistry, new Map()),
         Effect.provideService(References.MinimumLogLevel, "None"),
@@ -462,8 +481,11 @@ describe("sync historical", () => {
     );
 
     // Two forward pages, then the head page that confirms the newest event.
-    expect(result.pages).toBe(3);
+    expect(result.backfillPages).toBe(2);
+    expect(result.catchupPages).toBe(1);
     expect(result.storedEvents).toBe(3);
+    expect(result.block).toBe(Number((await getProgress())?.syncedBlockHeight));
+    expect(result.block).toBe(200);
     expect(result.events.at(-1)).toMatchObject({
       type: "completed",
       contracts: [{ contractId: CONTRACT_ID, pagesFetched: 3, transactionsFetched: 2 }],
@@ -484,7 +506,7 @@ describe("sync historical", () => {
       Effect.gen(function* () {
         yield* sync.historical([{ contractId: CONTRACT_ID }]).pipe(Stream.runDrain, Effect.exit);
 
-        return yield* Metric.value(syncErrors);
+        return yield* Metric.value(Metric.withAttributes(syncErrors, { mode: "historical" }));
       }).pipe(
         Effect.provideService(Metric.MetricRegistry, new Map()),
         Effect.provideService(References.MinimumLogLevel, "None"),

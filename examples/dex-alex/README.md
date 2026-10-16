@@ -25,6 +25,8 @@ An end-to-end example demonstrating how to index ALEX DEX pool events using the 
 
    Add `--live` to keep following new blocks after the historical sync (`pnpm dev --live`). Set `STACKS_TRANSPORT=websocket` to detect them over the API websocket instead of polling.
 
+   Set `OTEL_EXPORTER_OTLP_ENDPOINT` to push the indexer's metrics over OTLP, e.g. `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 pnpm dev --live` for an OpenTelemetry Collector, or `http://localhost:9090/api/v1/otlp` for Prometheus started with `--web.enable-otlp-receiver`.
+
 3. **Inspect indexed data with Drizzle Studio**:
    ```bash
    pnpm studio

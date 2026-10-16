@@ -1,9 +1,10 @@
 // oxlint-disable vitest/prefer-called-once
-import { Effect, Layer, Predicate } from "effect";
+import { Effect, Layer, Metric, Predicate, References } from "effect";
 import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { RateLimiter } from "effect/persistence";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import { apiRequestDuration, apiResponses } from "../../lib/metrics.ts";
 import {
   expectDecodeError,
   expectStatusError,
@@ -461,6 +462,77 @@ describe("aPI DataSource", () => {
         causeMessage: "The operation was aborted",
       });
       expect(mockHandler).toHaveBeenCalledTimes(4);
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe("metrics", () => {
+    const readMetrics = Effect.gen(function* () {
+      const responses = (status: string) =>
+        Metric.value(Metric.withAttributes(apiResponses, { endpoint: "getTransaction", status }));
+
+      const durations = (outcome: string) =>
+        Metric.value(
+          Metric.withAttributes(apiRequestDuration, { endpoint: "getTransaction", outcome }),
+        );
+
+      return {
+        "2xx": (yield* responses("2xx")).count,
+        "429": (yield* responses("429")).count,
+        "5xx": (yield* responses("5xx")).count,
+        success: (yield* durations("success")).count,
+        failure: (yield* durations("failure")).count,
+      };
+    });
+
+    const runMeasured = () =>
+      Effect.runPromise(
+        withClient((client) => client.getTransaction("0xabc123")).pipe(
+          Effect.andThen(readMetrics),
+          Effect.provideService(Metric.MetricRegistry, new Map()),
+          Effect.provideService(References.MinimumLogLevel, "None"),
+        ),
+      );
+
+    test("counts each attempt of a retried 5xx under one successful request", async () => {
+      vi.useFakeTimers();
+      mockHandler
+        .mockResolvedValueOnce(jsonResponse({ error: "Down" }, 503))
+        .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
+
+      const promise = runMeasured();
+
+      await vi.runAllTimersAsync();
+
+      await expect(promise).resolves.toStrictEqual({
+        "2xx": 1,
+        "429": 0,
+        "5xx": 1,
+        success: 1,
+        failure: 0,
+      });
+
+      vi.useRealTimers();
+    });
+
+    test("counts a 429 retried by the rate limiter", async () => {
+      vi.useFakeTimers();
+      mockHandler
+        .mockResolvedValueOnce(jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "1" }))
+        .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
+
+      const promise = runMeasured();
+
+      await vi.runAllTimersAsync();
+
+      await expect(promise).resolves.toStrictEqual({
+        "2xx": 1,
+        "429": 1,
+        "5xx": 0,
+        success: 1,
+        failure: 0,
+      });
 
       vi.useRealTimers();
     });

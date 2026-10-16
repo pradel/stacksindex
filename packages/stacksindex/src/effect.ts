@@ -15,10 +15,14 @@ export type {
   Filter,
   IndexerError,
   IndexerOptions,
+  IndexerPhase,
   IndexerService,
+  IndexerStatus,
   IndexerWithDatabaseOptions,
   LiveOptions,
+  OtlpOptions,
   RunResult,
+  TelemetryOptions,
 } from "./runtime/index.ts";
 
 export {
