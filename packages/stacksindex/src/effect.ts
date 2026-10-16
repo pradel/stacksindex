@@ -8,17 +8,18 @@ export { getMigrationsFolder, IndexerDatabase, makeDatabase, migrate } from "./d
 
 export type { DatabaseConfig, IndexerDb } from "./database/index.ts";
 
-export { HistoricalRuntime } from "./runtime/historical.ts";
+export { Indexer } from "./runtime/index.ts";
 
 export type {
   ContractRunResult,
   Filter,
-  HistoricalRuntimeError,
-  HistoricalRuntimeOptions,
-  HistoricalRuntimeService,
-  HistoricalRuntimeWithDatabaseOptions,
+  IndexerError,
+  IndexerOptions,
+  IndexerService,
+  IndexerWithDatabaseOptions,
+  LiveOptions,
   RunResult,
-} from "./runtime/historical.ts";
+} from "./runtime/index.ts";
 
 export {
   MAINNET_API_BASE_URL,

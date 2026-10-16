@@ -16,6 +16,7 @@ const summary = (
   pagesFetched: 0,
   transactionsFetched: 0,
   eventsStored: 0,
+  syncedToHead: false,
   ...overrides,
 });
 

@@ -23,6 +23,8 @@ The same ALEX DEX pool indexer as [`examples/dex-alex`](../dex-alex), written wi
    pnpm dev
    ```
 
+   Add `--live` to keep following new blocks after the historical sync (`pnpm dev --live`). Set `STACKS_TRANSPORT=websocket` to detect them over the API websocket instead of polling.
+
 3. **Inspect indexed data with Drizzle Studio**:
    ```bash
    pnpm studio

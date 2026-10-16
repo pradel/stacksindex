@@ -466,6 +466,32 @@ describe("aPI DataSource", () => {
     });
   });
 
+  describe("getBlocks", () => {
+    test("returns recent blocks on 200 with limit and offset", async () => {
+      const mockResponse = {
+        limit: 1,
+        offset: 0,
+        total: 9_219_535,
+        next_cursor: null,
+        prev_cursor: null,
+        cursor: "0xabc123",
+        results: [{ hash: "0xabc123", height: 9_219_535, tx_count: 2 }],
+      };
+
+      mockHandler.mockImplementation((request) => {
+        expect(toUrlString(request)).toBe(
+          "https://api.hiro.so/extended/v2/blocks?limit=1&offset=0",
+        );
+
+        return Promise.resolve(jsonResponse(mockResponse));
+      });
+
+      const result = await runRequest((client) => client.getBlocks({ limit: 1, offset: 0 }));
+
+      expect(result).toStrictEqual(mockResponse);
+    });
+  });
+
   describe("getBlock", () => {
     test("returns block data on 200 by hash", async () => {
       mockHandler.mockImplementation((request) => {

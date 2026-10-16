@@ -1,6 +1,14 @@
 // oxlint-disable typescript/method-signature-style
 import type { ClarityAbi } from "clarity-abitype";
-import { Context, Effect, ManagedRuntime, type LogLevel as EffectLogLevel } from "effect";
+import {
+  Cause,
+  Context,
+  Effect,
+  Exit,
+  Fiber,
+  ManagedRuntime,
+  type LogLevel as EffectLogLevel,
+} from "effect";
 
 import type { ClarityJsonValue } from "../codec/index.ts";
 import {
@@ -19,9 +27,11 @@ import type {
 import type { NetworkOption } from "../lib/network.ts";
 import type { EventHandler as EffectEventHandler, HandlerEvent } from "../lib/types.ts";
 import {
-  HistoricalRuntime as HistoricalRuntimeService,
+  Indexer as IndexerService,
+  type LiveOptions,
   type RunResult,
-} from "../runtime/historical.ts";
+  type Filter as EffectFilter,
+} from "../runtime/index.ts";
 import { toThenable } from "./thenable.ts";
 
 declare module "drizzle-orm/pg-core/effect/select" {
@@ -87,7 +97,7 @@ export interface Filter {
 
 export type LogLevel = EffectLogLevel.LogLevel;
 
-export interface HistoricalRuntimeOptions {
+export interface IndexerOptions {
   /** Database used for sync storage and checkpoints. */
   database: DatabaseConfig;
   /** Which chain to index. Defaults to `"mainnet"`. */
@@ -99,26 +109,33 @@ export interface HistoricalRuntimeOptions {
   };
   /**
    * Number of blocks kept unfinalized behind the chain tip. Reorgs within this
-   * depth are replayed; a reorg that replaces a finalized block fails the run
-   * with `ReorgError`. Defaults to `0` (everything indexed is immediately
-   * finalized).
+   * depth are replayed; a reorg that replaces a finalized block fails with
+   * `ReorgError`. Defaults to `6`.
    */
   finality?: number;
+  /** How `live` follows new blocks: `transport`, `pollingInterval`, `webSocketUrl`. */
+  live?: LiveOptions;
   /** Minimum log level for the console logger. Defaults to `"Info"`. */
   logLevel?: LogLevel;
 }
 
 /**
- * Promise-native historical indexer. Owns the indexer database and the
- * Stacks API runtime; call `close()` (or use `await using`) when done.
+ * Promise-native indexer. Owns the indexer database and the Stacks API
+ * runtime; call `close()` (or use `await using`) when done.
  */
-export interface HistoricalRuntime {
+export interface Indexer {
   /** Indexer database handle, useful to inspect sync progress and cached data. */
   readonly db: IndexerDb;
   /** Run pending migrations on the indexer database. */
   migrate: (options?: { migrationsFolder?: string }) => Promise<void>;
-  /** Historical sync for one or more contracts. */
+  /** Syncs and indexes one or more contracts up to the current chain tip. */
   run: (filters: Filter | Filter[]) => Promise<RunResult>;
+  /**
+   * Runs `run`, then follows new blocks and indexes them as they arrive.
+   * Resolves once every filter reached its `endBlock`, or when `close()` is
+   * called; rejects on a fatal error.
+   */
+  live: (filters: Filter | Filter[]) => Promise<void>;
   /** Release the database and runtime resources. Safe to call multiple times. */
   close: () => Promise<void>;
   [Symbol.asyncDispose]: () => Promise<void>;
@@ -161,18 +178,17 @@ const toEffectHandler =
   };
 
 /**
- * Creates a promise-native historical indexer from a database and network
- * configuration. The runtime is ready once the returned promise resolves.
+ * Creates a promise-native indexer from a database and network configuration.
+ * The indexer is ready once the returned promise resolves.
  */
-export async function createHistoricalRuntime(
-  options: HistoricalRuntimeOptions,
-): Promise<HistoricalRuntime> {
+export async function createIndexer(options: IndexerOptions): Promise<Indexer> {
   const runtime = ManagedRuntime.make(
-    HistoricalRuntimeService.layerWithDatabase({
+    IndexerService.layerWithDatabase({
       database: options.database,
       network: options.network,
       api: options.api,
       finality: options.finality,
+      live: options.live,
       logLevel: options.logLevel,
     }),
   );
@@ -187,10 +203,11 @@ export async function createHistoricalRuntime(
     throw error;
   }
 
-  const service = Context.get(context, HistoricalRuntimeService);
+  const service = Context.get(context, IndexerService);
   const db = toThenable(Context.get(context, IndexerDatabase));
   const logger = makeLogger((effect) => runtime.runSync(effect));
   let closed = false;
+  const liveFibers = new Set<Fiber.Fiber<void, unknown>>();
 
   const close = async (): Promise<void> => {
     if (closed) {
@@ -198,14 +215,23 @@ export async function createHistoricalRuntime(
     }
 
     closed = true;
+    await Promise.all(Array.from(liveFibers, (fiber) => Effect.runPromise(Fiber.interrupt(fiber))));
     await runtime.dispose();
   };
 
   const ensureOpen = (): void => {
     if (closed) {
-      throw new Error("HistoricalRuntime is closed. Create a new runtime to run more syncs.");
+      throw new Error("Indexer is closed. Create a new indexer to run more syncs.");
     }
   };
+
+  const toEffectFilters = (filters: Filter | Filter[]): EffectFilter[] =>
+    (Array.isArray(filters) ? filters : [filters]).map((filter) => ({
+      contractId: filter.contractId,
+      handler: toEffectHandler(filter.handler, logger),
+      startBlock: filter.startBlock,
+      endBlock: filter.endBlock,
+    }));
 
   return {
     db,
@@ -215,18 +241,24 @@ export async function createHistoricalRuntime(
     },
     run: async (filters) => {
       ensureOpen();
-      const normalized = Array.isArray(filters) ? filters : [filters];
 
-      return runtime.runPromise(
-        service.run(
-          normalized.map((filter) => ({
-            contractId: filter.contractId,
-            handler: toEffectHandler(filter.handler, logger),
-            startBlock: filter.startBlock,
-            endBlock: filter.endBlock,
-          })),
-        ),
-      );
+      return runtime.runPromise(service.run(toEffectFilters(filters)));
+    },
+    live: async (filters) => {
+      ensureOpen();
+      const fiber = runtime.runFork(service.live(toEffectFilters(filters)));
+      liveFibers.add(fiber);
+
+      try {
+        const exit = await Effect.runPromise(Fiber.await(fiber));
+
+        // `close()` interrupts live indexing; that ends it without an error.
+        if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
+          throw Cause.squash(exit.cause);
+        }
+      } finally {
+        liveFibers.delete(fiber);
+      }
     },
     close,
     [Symbol.asyncDispose]: close,

@@ -32,6 +32,7 @@ const makeClient = (
   requested: number[],
 ): StacksClientService => ({
   getStatus: notUsed,
+  getBlocks: notUsed,
   getBlock: (height) => {
     requested.push(Number(height));
     const hash = canonical[Number(height)];

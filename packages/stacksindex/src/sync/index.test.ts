@@ -92,6 +92,7 @@ const makeFakeApi = (chain: readonly ChainEvent[], limit = 2): FakeApi => {
     batchRequests,
     client: {
       getStatus: notUsed,
+      getBlocks: notUsed,
       getBlock: notUsed,
       getBlockTransactions: notUsed,
       getTransaction: notUsed,

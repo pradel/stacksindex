@@ -17,6 +17,7 @@ const notUsed = () => Effect.die("StacksClient method not used in this test");
 
 const makeStacksClient = (overrides: Partial<StacksClientService> = {}): StacksClientService => ({
   getStatus: notUsed,
+  getBlocks: notUsed,
   getBlock: notUsed,
   getBlockTransactions: notUsed,
   getTransaction: notUsed,

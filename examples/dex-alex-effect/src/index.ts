@@ -2,11 +2,14 @@ import fs from "node:fs";
 import process from "node:process";
 
 import { Cause, Effect, Exit, Fiber } from "effect";
-import { HistoricalRuntime, loggerLayer, makeDatabase } from "stacksindex/effect";
+import { Indexer, loggerLayer, makeDatabase } from "stacksindex/effect";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 
 const apiKey = process.env.HIRO_API_KEY;
+
+// `pnpm dev --live` keeps following new blocks after the historical sync.
+const isLive = process.argv.includes("--live");
 
 const program = Effect.gen(function* () {
   yield* Effect.sync(() => {
@@ -20,23 +23,26 @@ const program = Effect.gen(function* () {
 
   yield* appDatabase.migrate({ migrationsFolder: "./drizzle" });
 
-  const runtime = yield* HistoricalRuntime;
+  const indexer = yield* Indexer;
 
-  yield* runtime.run([
+  const filters = [
     {
       contractId: POOL_CONTRACT,
       handler: createPoolHandler({ db: appDatabase.db }),
     },
-  ]);
+  ];
+
+  yield* isLive ? indexer.live(filters) : indexer.run(filters);
 });
 
 const fiber = Effect.runFork(
   Effect.scoped(program).pipe(
     Effect.provide(
-      HistoricalRuntime.layerWithDatabase({
+      Indexer.layerWithDatabase({
         database: { kind: "pglite", directory: "./data/indexer.db" },
         network: "mainnet",
         api: { apiKey },
+        live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },
         logLevel: "Info",
       }),
     ),
@@ -73,7 +79,7 @@ if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
 
   Effect.runSync(
     Effect.logError(
-      "Error running historical sync",
+      "Error running the indexer",
       error instanceof Error ? error : new Error(String(error)),
     ).pipe(Effect.provide(loggerLayer({ level: "Info" }))),
   );

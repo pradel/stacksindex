@@ -25,12 +25,18 @@ export type {
   UntypedCallReadOnlyFunctionParameters,
 } from "./read-only.ts";
 
+export type BlocksApiResponse =
+  paths["/extended/v2/blocks/"]["get"]["responses"]["200"]["content"]["application/json"];
+
+/** Pagination for `GET /extended/v2/blocks`; the API caps `limit` at 30. */
+type GetBlocksQuery = paths["/extended/v2/blocks/"]["get"]["parameters"]["query"];
+
 type BlockApiResponse =
   paths["/extended/v2/blocks/{height_or_hash}"]["get"]["responses"]["200"]["content"]["application/json"];
 
 type GetBlockQuery = paths["/extended/v2/blocks/{height_or_hash}"]["get"]["parameters"]["query"];
 
-type BlockTransactionsApiResponse =
+export type BlockTransactionsApiResponse =
   paths["/extended/v3/blocks/{height_or_hash}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
 
 type GetBlockTransactionsQuery =
@@ -127,6 +133,10 @@ export interface StacksClientConfig {
 
 export interface StacksClientService {
   readonly getStatus: () => Effect.Effect<ApiStatusResponse, StacksHttpError>;
+  /** Most recent blocks first (`GET /extended/v2/blocks`). */
+  readonly getBlocks: (
+    options?: GetBlocksQuery,
+  ) => Effect.Effect<BlocksApiResponse, StacksHttpError>;
   readonly getBlock: (
     heightOrHash: string | number,
     options?: GetBlockQuery,
@@ -289,6 +299,7 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
 
       return StacksClient.of({
         getStatus: () => get<ApiStatusResponse>("/extended"),
+        getBlocks: (options) => get<BlocksApiResponse>("/extended/v2/blocks", options),
         getBlock: (heightOrHash, options) =>
           get<BlockApiResponse>(`/extended/v2/blocks/${heightOrHash}`, options),
         getBlockTransactions: (heightOrHash, options) =>

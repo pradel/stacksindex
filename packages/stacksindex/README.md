@@ -1,11 +1,11 @@
 # stacksindex
 
-A simple, open-source historical indexer for the Stacks blockchain.
+A simple, open-source indexer for the Stacks blockchain: historical backfill, then live sync of new blocks.
 
 [![npm version](https://img.shields.io/npm/v/stacksindex.svg)](https://www.npmjs.com/package/stacksindex)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-`stacksindex` lets you backfill smart contract events, execute user-defined handlers to derive custom relational state, and query historical contract data at specific block heights.
+`stacksindex` lets you backfill smart contract events, follow new blocks as they are mined, execute user-defined handlers to derive custom relational state, and query historical contract data at specific block heights.
 
 Two entrypoints ship with the package:
 
@@ -18,6 +18,7 @@ Two entrypoints ship with the package:
 
 - **Simple & Open-Source**: Focused on developer simplicity with zero unnecessary abstractions.
 - **Reliable Historical Backfill**: Automatically discovers contract deployment blocks and initial event cursors to paginate backwards or forwards seamlessly.
+- **Live Sync**: After the backfill, follow new blocks by polling the API or over its websocket, fetching each block's events or each contract's newest logs, whichever costs fewer requests.
 - **Embedded or External Database**: First-class support for embedded [PGlite](https://pglite.electric-sql.com/) (zero configuration) or production PostgreSQL via [Drizzle ORM](https://orm.drizzle.team/).
 - **Time-Travel Read-Only Calls**: Query contract state (`client.callReadOnly`) automatically pinned to the exact block height of the event being processed.
 - **Clarity Codec Built-in**: Easily decode raw Clarity hex values to plain JavaScript objects (`decodeHex`, `cvToJSON`).
@@ -38,10 +39,10 @@ _(or via `npm install` / `yarn add` / `bun add`)_
 ## Quickstart (Promise)
 
 ```ts
-import { createHistoricalRuntime, decodeHex } from "stacksindex";
+import { createIndexer, decodeHex } from "stacksindex";
 
-// 1. Create the runtime: it owns the indexer database and the Stacks API client
-await using runtime = await createHistoricalRuntime({
+// 1. Create the indexer: it owns the indexer database and the Stacks API client
+await using indexer = await createIndexer({
   database: { kind: "pglite", directory: "./indexer.db" },
   network: "mainnet",
   api: {
@@ -50,8 +51,8 @@ await using runtime = await createHistoricalRuntime({
   logLevel: "Info",
 });
 
-// 2. Run historical sync for one or more contracts
-const result = await runtime.run({
+// 2. Sync and index one or more contracts up to the current chain tip
+const result = await indexer.run({
   contractId: "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
   startBlock: 47784, // optional: start indexing from this block height
   endBlock: "latest", // optional: stop at a specific height or 'latest'
@@ -72,7 +73,38 @@ const result = await runtime.run({
 console.log(`Indexed ${result.eventsProcessed} events`);
 ```
 
-`createHistoricalRuntime` owns the database lifecycle. Call `runtime.close()` (or use `await using` as above) to release resources. Pass an array of filters to `run` to index multiple contracts in one pass.
+`createIndexer` owns the database lifecycle. Call `indexer.close()` (or use `await using` as above) to release resources. Pass an array of filters to `run` to index multiple contracts in one pass.
+
+---
+
+## Live Sync
+
+`live` runs the same historical pass, then keeps indexing new blocks as they are mined:
+
+```ts
+await using indexer = await createIndexer({
+  database: { kind: "pglite", directory: "./indexer.db" },
+  live: {
+    transport: "polling", // or "websocket"
+    pollingInterval: 5000,
+  },
+});
+
+// Resolves once every filter reached its `endBlock`, or when `close()` is called.
+await indexer.live({
+  contractId: "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+  handler(event) {
+    // ...
+  },
+});
+```
+
+- **New blocks**: `"polling"` (default) asks the API for the latest block every `pollingInterval` milliseconds. `"websocket"` subscribes to new blocks on `/extended/v1/ws`; after 9 consecutive connection failures it falls back to polling for good.
+- **Fetching**: each new head is fetched the cheaper way. Block by block, it lists the block's transactions and their events. Contract by contract, it reads each contract's newest logs page. Several heads that arrive while one is processed are fetched together.
+- **Reorgs**: a head whose parent is the previous head needs no check. Otherwise the previous head's hash is compared with the canonical chain, and a reorged range is replayed as described in [Crash Recovery & Reorgs](#crash-recovery--reorgs).
+- **Errors**: API failures are retried with the next head; `live` fails only after 10 consecutive failures spanning 10 minutes. Handler, database and finalized-reorg errors fail it at once.
+
+Without an API key the Hiro API allows 50 requests per minute. Polling every 5 seconds uses 12 of them; lower `pollingInterval` only with an API key, or use the websocket.
 
 ---
 
@@ -82,14 +114,15 @@ The same indexer can be composed entirely with Effect services and layers from `
 
 ```ts
 import { Effect } from "effect";
-import { HistoricalRuntime } from "stacksindex/effect";
+import { Indexer } from "stacksindex/effect";
 
 const apiKey = process.env.HIRO_API_KEY;
 
 const program = Effect.gen(function* () {
-  const runtime = yield* HistoricalRuntime;
+  const indexer = yield* Indexer;
 
-  yield* runtime.run([
+  // `indexer.live(filters)` follows new blocks after the historical pass.
+  yield* indexer.run([
     {
       contractId: "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
       handler: (event) =>
@@ -103,7 +136,7 @@ const program = Effect.gen(function* () {
 await Effect.runPromise(
   program.pipe(
     Effect.provide(
-      HistoricalRuntime.layerWithDatabase({
+      Indexer.layerWithDatabase({
         database: { kind: "pglite", directory: "./indexer.db" },
         network: "mainnet",
         api: { apiKey },
@@ -114,7 +147,7 @@ await Effect.runPromise(
 );
 ```
 
-`HistoricalRuntime.layerWithDatabase` provides `HistoricalRuntime`, `IndexerDatabase` and Effect's pretty console logger from a single config. For advanced composition, use the granular building blocks: `HistoricalRuntime.layer(options)` (requires `IndexerDatabase`), `IndexerDatabase.layer(config)`, `IndexerDatabase.transaction`, `makeDatabase`, `migrate`, `loggerLayer`, `StacksClient` and `readOnly`.
+`Indexer.layerWithDatabase` provides `Indexer`, `IndexerDatabase` and Effect's pretty console logger from a single config. For advanced composition, use the granular building blocks: `Indexer.layer(options)` (requires `IndexerDatabase`), `IndexerDatabase.layer(config)`, `IndexerDatabase.transaction`, `makeDatabase`, `migrate`, `loggerLayer`, `StacksClient` and `readOnly`. Interrupting the `live` fiber stops live sync.
 
 ---
 
@@ -144,38 +177,42 @@ Clarity-level failures (`okay: false`) reject with `ReadOnlyCallError`.
 
 ## Crash Recovery & Reorgs
 
-Checkpoints and per-contract sync progress live in the indexer database, so `run` resumes where it left off.
+Checkpoints and per-contract sync progress live in the indexer database, so `run` and `live` resume where they left off.
 
 Re-running on a schedule is cheap: a contract that is already synced costs a single request to the newest page of its logs, plus two requests per run (the chain tip and the reorg check). Events mined while a run is in progress are indexed by the next run, so handlers always see events in chain order.
 
-Every run checks for reorgs: it compares the hash of the chain tip saved by the previous run with the canonical chain. When a reorg replaced stored blocks, the runtime rewinds to the newest stored block that is still canonical, refetches from there and replays the range through your handlers. Without a reorg nothing is replayed.
+Every run, and every new head in live sync, checks for reorgs: it compares the hash of the chain tip saved by the previous pass with the canonical chain. When a reorg replaced stored blocks, the indexer rewinds to the newest stored block that is still canonical, refetches from there and replays the range through your handlers. Without a reorg nothing is replayed.
 
-Set `finality` to the deepest reorg you want handled automatically. A reorg that replaces a block at or below `finalizedBlockHeight` fails the run with `ReorgError` instead of silently changing data reported as final; re-sync from an empty indexer database to recover. With the default `finality: 0`, any reorg that reaches indexed blocks fails this way.
+Set `finality` to the deepest reorg you want handled automatically (default `6`). A reorg that replaces a block at or below `finalizedBlockHeight` fails with `ReorgError` instead of silently changing data reported as final; re-sync from an empty indexer database to recover. With `finality: 0`, any reorg that reaches indexed blocks fails this way.
 
 Handler writes are **not** rolled back when a range is replayed. Write idempotent handlers (upsert by primary key, or delete-then-insert) so re-executing an event produces the same final state. Writes for events that disappear in a reorg are not undone.
 
 ## Configuration Reference
 
-### `createHistoricalRuntime(options)`
+### `createIndexer(options)`
 
-| Option        | Type                               | Default           | Description                                                                                                                                      |
-| ------------- | ---------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `database`    | `DatabaseConfig`                   | _Required_        | Indexer storage. `{ kind: "pglite", directory? }` or `{ kind: "postgres", connectionString }`.                                                   |
-| `network`     | `"mainnet" \| "testnet" \| number` | `"mainnet"`       | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                                 |
-| `finality`    | `number`                           | `0`               | Depth, in blocks, of reorgs handled by replaying; deeper reorgs fail the run with `ReorgError`.                                                  |
-| `api.baseUrl` | `string`                           | _Network default_ | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the network default. |
-| `api.apiKey`  | `string`                           | `undefined`       | Optional Hiro API key.                                                                                                                           |
-| `logLevel`    | `LogLevel`                         | `"Info"`          | Minimum log level for the console logger.                                                                                                        |
+| Option                 | Type                               | Default                 | Description                                                                                                                                      |
+| ---------------------- | ---------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `database`             | `DatabaseConfig`                   | _Required_              | Indexer storage. `{ kind: "pglite", directory? }` or `{ kind: "postgres", connectionString }`.                                                   |
+| `network`              | `"mainnet" \| "testnet" \| number` | `"mainnet"`             | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                                 |
+| `finality`             | `number`                           | `6`                     | Depth, in blocks, of reorgs handled by replaying; deeper reorgs fail with `ReorgError`.                                                          |
+| `api.baseUrl`          | `string`                           | _Network default_       | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the network default. |
+| `api.apiKey`           | `string`                           | `undefined`             | Optional Hiro API key.                                                                                                                           |
+| `live.transport`       | `"polling" \| "websocket"`         | `"polling"`             | How `live` detects new blocks.                                                                                                                   |
+| `live.pollingInterval` | `number`                           | `5000`                  | Milliseconds between polls for the latest block (minimum `100`). Also used after a websocket falls back to polling.                              |
+| `live.webSocketUrl`    | `string`                           | `/extended/v1/ws` (API) | Websocket endpoint; defaults to the API base URL with `wss:` (or `ws:`) and `/extended/v1/ws`.                                                   |
+| `logLevel`             | `LogLevel`                         | `"Info"`                | Minimum log level for the console logger.                                                                                                        |
 
-### `HistoricalRuntime` (Promise)
+### `Indexer` (Promise)
 
-| Member                  | Description                                                                        |
-| ----------------------- | ---------------------------------------------------------------------------------- |
-| `run(filters)`          | Runs historical sync for a single filter or an array; resolves with a `RunResult`. |
-| `db`                    | Indexer database handle for inspecting sync progress and cached data.              |
-| `migrate(options?)`     | Applies pending migrations to the indexer database.                                |
-| `close()`               | Releases database and runtime resources. Safe to call multiple times.              |
-| `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                         |
+| Member                  | Description                                                                                                                       |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `run(filters)`          | Syncs and indexes a single filter or an array up to the current chain tip; resolves with a `RunResult`.                           |
+| `live(filters)`         | Runs `run`, then follows new blocks. Resolves when every filter reached its `endBlock` or on `close()`; rejects on a fatal error. |
+| `db`                    | Indexer database handle for inspecting sync progress and cached data.                                                             |
+| `migrate(options?)`     | Applies pending migrations to the indexer database.                                                                               |
+| `close()`               | Stops live sync and releases database and runtime resources. Safe to call multiple times.                                         |
+| `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                        |
 
 ### Filter
 

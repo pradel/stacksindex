@@ -1,6 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { Effect } from "effect";
-import { HistoricalRuntime, IndexerDatabase, loggerLayer, type Filter } from "stacksindex/effect";
+import { Indexer, IndexerDatabase, loggerLayer, type Filter } from "stacksindex/effect";
 import { expect } from "vite-plus/test";
 
 import { createTestDatabase, type TestDatabase } from "./test-db.ts";
@@ -81,10 +81,10 @@ export async function runScenario(options: {
 
   await Effect.runPromise(
     Effect.gen(function* () {
-      const runtime = yield* HistoricalRuntime;
+      const runtime = yield* Indexer;
       yield* runtime.run(filters);
     }).pipe(
-      Effect.provide(HistoricalRuntime.layer()),
+      Effect.provide(Indexer.layer()),
       Effect.provideService(IndexerDatabase, options.db),
       Effect.provide(loggerLayer({ level: "None" })),
     ),

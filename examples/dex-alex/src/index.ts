@@ -4,7 +4,7 @@ import process from "node:process";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { createHistoricalRuntime, type HistoricalRuntime } from "stacksindex";
+import { createIndexer, type Indexer } from "stacksindex";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 
@@ -20,7 +20,7 @@ const appDb = drizzle({ client: appClient });
 
 await migrate(appDb, { migrationsFolder: "./drizzle" });
 
-let runtime: HistoricalRuntime | undefined;
+let indexer: Indexer | undefined;
 
 let isShuttingDown = false;
 
@@ -38,7 +38,7 @@ async function shutdown(code: number) {
   }
 
   try {
-    await runtime?.close();
+    await indexer?.close();
   } catch {
     // Ignore error on close
   }
@@ -56,23 +56,29 @@ process.on("SIGTERM", () => {
   void shutdown(0);
 });
 
+// `pnpm dev --live` keeps following new blocks after the historical sync.
+const isLive = process.argv.includes("--live");
+
 try {
-  runtime = await createHistoricalRuntime({
+  indexer = await createIndexer({
     database: { kind: "pglite", directory: "./data/indexer.db" },
     network: "mainnet",
     api: { apiKey },
+    live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },
   });
 
-  await runtime.run({
+  const filter = {
     contractId: POOL_CONTRACT,
     handler: createPoolHandler({ db: appDb }),
-  });
+  };
+
+  await (isLive ? indexer.live(filter) : indexer.run(filter));
 
   await shutdown(0);
 } catch (err) {
   const error = err instanceof Error ? err : new Error(String(err));
 
   // oxlint-disable-next-line no-console
-  console.error("Error running historical sync", error);
+  console.error("Error running the indexer", error);
   await shutdown(1);
 }
