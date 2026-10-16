@@ -21,15 +21,19 @@ export interface LightBlock {
 
 export type HeadsTransport = "polling" | "websocket";
 
-export interface BlockHeadsConfig {
+export type BlockHeadsConfig = {
   /** Annotates every log line. */
   readonly chainId: number;
-  readonly transport: HeadsTransport;
   /** Milliseconds between polls of the latest block. */
   readonly pollingInterval: number;
-  /** Hiro JSON-RPC endpoint, e.g. `wss://api.hiro.so/extended/v1/ws`. */
-  readonly webSocketUrl: string;
-}
+} & (
+  | { readonly transport: "polling" }
+  | {
+      readonly transport: "websocket";
+      /** Hiro JSON-RPC endpoint, e.g. `wss://api.hiro.so/extended/v1/ws`. */
+      readonly webSocketUrl: string;
+    }
+);
 
 type BlockRow = BlocksApiResponse["results"][number];
 
@@ -220,7 +224,7 @@ const subscribeHeads = (
  * failures the source switches to polling for good.
  */
 const webSocketHeads = (
-  config: BlockHeadsConfig,
+  config: Extract<BlockHeadsConfig, { readonly transport: "websocket" }>,
   client: StacksClientService,
   emit: Emit,
 ): Effect.Effect<never, StacksHttpError, Socket.WebSocketConstructor> =>

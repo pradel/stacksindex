@@ -32,10 +32,13 @@ const pollingConfig: BlockHeadsConfig = {
   chainId: CHAIN_ID,
   transport: "polling",
   pollingInterval: 1000,
-  webSocketUrl: WEB_SOCKET_URL,
 };
 
-const webSocketConfig: BlockHeadsConfig = { ...pollingConfig, transport: "websocket" };
+const webSocketConfig: BlockHeadsConfig = {
+  ...pollingConfig,
+  transport: "websocket",
+  webSocketUrl: WEB_SOCKET_URL,
+};
 
 /** The `GET /extended/v2/blocks` row fields heads read. */
 type HeadRow = Pick<

@@ -72,11 +72,9 @@ export interface IndexerWithDatabaseOptions extends IndexerOptions {
   logLevel?: LogLevel.LogLevel;
 }
 
-export interface ResolvedLiveConfig {
-  transport: HeadsTransport;
-  pollingInterval: number;
-  webSocketUrl: string;
-}
+export type ResolvedLiveConfig =
+  | { transport: "polling"; pollingInterval: number }
+  | { transport: "websocket"; pollingInterval: number; webSocketUrl: string };
 
 export interface ResolvedIndexerConfig {
   chainId: number;
@@ -117,12 +115,52 @@ const IndexerOptionsSchema = Schema.Struct({
   ),
 });
 
+type DecodedLiveOptions = NonNullable<(typeof IndexerOptionsSchema.Type)["live"]>;
+
+/**
+ * The websocket URL is only resolved for the websocket transport, so a polling
+ * indexer never depends on it. A default derived from an unparseable
+ * `api.baseUrl` fails as a `ConfigurationError`.
+ */
+function resolveLiveConfig(
+  live: DecodedLiveOptions | undefined,
+  baseUrl: string,
+): Effect.Effect<ResolvedLiveConfig, ConfigurationError> {
+  const pollingInterval = live?.pollingInterval ?? DEFAULT_POLLING_INTERVAL;
+
+  if (live?.transport !== "websocket") {
+    return Effect.succeed({ transport: "polling", pollingInterval });
+  }
+
+  if (live.webSocketUrl !== undefined) {
+    return Effect.succeed({
+      transport: "websocket",
+      pollingInterval,
+      webSocketUrl: live.webSocketUrl,
+    });
+  }
+
+  return Effect.try({
+    try: () => defaultWebSocketUrl(baseUrl),
+    catch: () =>
+      new ConfigurationError({
+        message: `Cannot derive a websocket URL from api.baseUrl ${JSON.stringify(baseUrl)}; set live.webSocketUrl.`,
+      }),
+  }).pipe(
+    Effect.map((webSocketUrl) => ({
+      transport: "websocket" as const,
+      pollingInterval,
+      webSocketUrl,
+    })),
+  );
+}
+
 export function resolveIndexerConfig(
   options?: IndexerOptions,
 ): Effect.Effect<ResolvedIndexerConfig, ConfigurationError> {
   return Schema.decodeUnknownEffect(IndexerOptionsSchema)(options ?? {}).pipe(
     Effect.mapError((error) => new ConfigurationError({ message: error.message })),
-    Effect.map((decoded) => {
+    Effect.flatMap((decoded) => {
       const network = resolveNetwork(decoded.network);
       const baseUrl = decoded.api?.baseUrl ?? network.baseUrl;
       const api: ResolvedIndexerConfig["api"] = { baseUrl };
@@ -131,17 +169,15 @@ export function resolveIndexerConfig(
         api.apiKey = decoded.api.apiKey;
       }
 
-      return {
-        network,
-        chainId: network.chainId,
-        api,
-        finality: decoded.finality ?? DEFAULT_FINALITY,
-        live: {
-          transport: decoded.live?.transport ?? "polling",
-          pollingInterval: decoded.live?.pollingInterval ?? DEFAULT_POLLING_INTERVAL,
-          webSocketUrl: decoded.live?.webSocketUrl ?? defaultWebSocketUrl(baseUrl),
-        },
-      };
+      return resolveLiveConfig(decoded.live, baseUrl).pipe(
+        Effect.map((live) => ({
+          network,
+          chainId: network.chainId,
+          api,
+          finality: decoded.finality ?? DEFAULT_FINALITY,
+          live,
+        })),
+      );
     }),
   );
 }
