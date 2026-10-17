@@ -20,6 +20,7 @@ import {
   type NetworkOption,
   type ResolvedNetwork,
 } from "../lib/network.ts";
+import type { TelemetryOptions } from "../telemetry/index.ts";
 
 /** Default number of blocks kept unfinalized behind the chain tip. */
 export const DEFAULT_FINALITY = 6;
@@ -70,6 +71,8 @@ export interface IndexerWithDatabaseOptions extends IndexerOptions {
   database: DatabaseConfig;
   /** Minimum log level for the pretty console logger. Defaults to `"Info"`. */
   logLevel?: LogLevel.LogLevel;
+  /** Pushes metrics over OTLP. Unset: metrics are recorded but not exported. */
+  telemetry?: TelemetryOptions;
 }
 
 export type ResolvedLiveConfig =

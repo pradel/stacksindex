@@ -167,6 +167,27 @@ export const syncStore = {
         );
     }),
 
+  /** Every contract's sync progress on the chain, ordered by contract id. */
+  listSyncProgress: ({
+    chainId,
+  }: {
+    chainId: number;
+  }): Effect.Effect<(typeof syncProgressTable.$inferSelect)[], SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      return yield* db
+        .select()
+        .from(syncProgressTable)
+        .where(eq(syncProgressTable.chainId, BigInt(chainId)))
+        .orderBy(syncProgressTable.contractId)
+        .pipe(
+          Effect.mapError(
+            (cause: unknown) => new SyncStoreError({ operation: "listSyncProgress", cause }),
+          ),
+        );
+    }),
+
   upsertSyncProgress: ({
     contractId,
     chainId,

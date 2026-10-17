@@ -1,4 +1,14 @@
-import { Clock, Duration, Effect, Predicate, References, Result, Stream } from "effect";
+import {
+  Clock,
+  Duration,
+  Effect,
+  Metric,
+  Predicate,
+  Ref,
+  References,
+  Result,
+  Stream,
+} from "effect";
 import type { Socket } from "effect/socket";
 
 import type { IndexerDatabase } from "../database/index.ts";
@@ -7,6 +17,14 @@ import { StacksClient, type StacksHttpError } from "../datasources/api/index.ts"
 import { Indexing } from "../indexing/index.ts";
 import type { SyncStoreError } from "../lib/errors.ts";
 import { createFailureBudget } from "../lib/failure-budget.ts";
+import {
+  chainTipBlock,
+  liveBlockArrivalLatency,
+  liveConsecutiveFailures,
+  liveIsRealtime,
+  livePassDuration,
+  syncErrors,
+} from "../lib/metrics.ts";
 import { estimateBlockRequests, syncBlock } from "../sync-realtime/block.ts";
 import { syncStore } from "../sync-store/index.ts";
 import type { SyncService } from "../sync/index.ts";
@@ -21,9 +39,51 @@ import {
   syncAndIndexTo,
 } from "./historical.ts";
 import { reconcileWithCanonicalChain } from "./reorg.ts";
+import { RunPhase } from "./status.ts";
 
 /** Max blocks a per-block fetch covers: one `GET /extended/v2/blocks` page. */
 const MAX_BLOCKS_PER_FETCH = 30;
+
+const livePassDurationByFetch: Record<FetchPlan["type"], typeof livePassDuration> = {
+  blocks: Metric.withAttributes(livePassDuration, { fetch: "blocks" }),
+  contracts: Metric.withAttributes(livePassDuration, { fetch: "contracts" }),
+};
+
+const liveSyncErrors = Metric.withAttributes(syncErrors, { mode: "live" });
+
+/**
+ * Live runs following heads, per chain. `liveIsRealtime` is one series per
+ * chain, so it drops to 0 only once the last of them stops.
+ */
+const followingRuns = new Map<number, number>();
+
+function followHeads<A, E, R>(
+  chainId: number,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> {
+  return Effect.acquireUseRelease(
+    Effect.suspend(() => {
+      followingRuns.set(chainId, (followingRuns.get(chainId) ?? 0) + 1);
+
+      return Metric.update(liveIsRealtime, 1);
+    }),
+    () => effect,
+    () =>
+      Effect.suspend(() => {
+        const remaining = (followingRuns.get(chainId) ?? 1) - 1;
+
+        if (remaining > 0) {
+          followingRuns.set(chainId, remaining);
+
+          return Effect.void;
+        }
+
+        followingRuns.delete(chainId);
+
+        return Metric.update(liveIsRealtime, 0);
+      }),
+  );
+}
 
 /**
  * Errors worth retrying with the next head: API transport, status and rate
@@ -68,7 +128,7 @@ type HeadOutcome =
  * How a head is fetched:
  *
  * - `blocks`: the events of every block between the anchor and the head, one
- *   block at a time (Ponder style). Costs grow with chain activity.
+ *   block at a time. Costs grow with chain activity.
  * - `contracts`: each contract's newest logs page (the historical catch-up).
  *   Costs grow with the number of contracts.
  *
@@ -234,6 +294,12 @@ function processHead(options: {
       return { type: "skipped" } as const;
     }
 
+    // `blockTime` is the block's Unix timestamp in seconds. Clocks may disagree
+    // By a little, so a block stamped after now counts as no latency.
+    const now = yield* Clock.currentTimeMillis;
+
+    yield* Metric.update(liveBlockArrivalLatency, Math.max(0, now - head.blockTime * 1000));
+
     const plan = yield* planFetch({ chainId, prepared, anchor, head });
     const eventsByContract = new Map<string, number>();
 
@@ -264,6 +330,10 @@ function processHead(options: {
         ),
       ),
     );
+
+    // Both passes moved the sync anchor to the head.
+    yield* Metric.update(livePassDurationByFetch[plan.type], Duration.toMillis(duration));
+    yield* Metric.update(chainTipBlock, head.height);
 
     let events = 0;
 
@@ -299,7 +369,11 @@ export function runLive(
   filters: Filter[],
   config: ResolvedIndexerConfig,
   sync: SyncService,
-): Effect.Effect<void, IndexerError, StacksClient | IndexerDatabase | Socket.WebSocketConstructor> {
+): Effect.Effect<
+  void,
+  IndexerError,
+  StacksClient | IndexerDatabase | Socket.WebSocketConstructor | RunPhase
+> {
   const { chainId } = config;
 
   return Effect.gen(function* () {
@@ -336,6 +410,8 @@ export function runLive(
       }),
     );
 
+    yield* Ref.set(yield* RunPhase, "live");
+
     const budget = createFailureBudget();
 
     const handleHead = (head: LightBlock) =>
@@ -344,12 +420,16 @@ export function runLive(
 
         if (Result.isSuccess(outcome)) {
           budget.reset();
+          yield* Metric.update(liveConsecutiveFailures, 0);
 
           return outcome.success.type === "skipped" || !isComplete(outcome.success.blockHeight);
         }
 
         const error = outcome.failure;
         const isSpent = budget.recordFailure(yield* Clock.currentTimeMillis);
+
+        yield* Metric.update(liveSyncErrors, 1);
+        yield* Metric.update(liveConsecutiveFailures, budget.consecutiveFailures());
 
         if (!isTransientError(error) || isSpent) {
           return yield* Effect.fail(error);
@@ -370,10 +450,13 @@ export function runLive(
         return true;
       });
 
-    yield* blockHeads({ chainId, ...config.live }).pipe(
-      Stream.buffer({ capacity: 1, strategy: "sliding" }),
-      Stream.runForEachWhile(handleHead),
-      Effect.provide(Indexing.layer({ handlers: prepared.handlers })),
+    yield* followHeads(
+      chainId,
+      blockHeads({ chainId, ...config.live }).pipe(
+        Stream.buffer({ capacity: 1, strategy: "sliding" }),
+        Stream.runForEachWhile(handleHead),
+        Effect.provide(Indexing.layer({ handlers: prepared.handlers })),
+      ),
     );
 
     yield* Effect.logInfo("Every filter reached its end block; live indexing complete").pipe(

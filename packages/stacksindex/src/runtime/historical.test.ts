@@ -31,7 +31,7 @@ import {
   SyncStoreError,
   TransactionBatchError,
 } from "../lib/errors.ts";
-import { indexBatchDuration } from "../lib/metrics.ts";
+import { indexingBatchDuration, indexingBlock, indexingEvents } from "../lib/metrics.ts";
 import type { HandlerContext, HandlerEvent } from "../lib/types.ts";
 import { createIndexer } from "../promise/index.ts";
 import { toThenable } from "../promise/thenable.ts";
@@ -2598,22 +2598,36 @@ describe("historical runtime with handlers", () => {
 
   test("records indexing metrics", async () => {
     const contractId = "SP123.token";
-    await seedCompleteContract(testDb, contractId, [100]);
+    await seedCompleteContract(testDb, contractId, [100, 200]);
 
     const runtime = makeRuntime({ db: testDb.db });
 
-    const histogram = await Effect.runPromise(
+    const { histogram, block, events } = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
+        yield* runtime.run([{ contractId, handler: noopHandler, endBlock: 200 }]);
 
-        return yield* Metric.value(indexBatchDuration);
+        // `run` labels every series with the chain.
+        const chain = { chain_id: "1" };
+
+        return {
+          histogram: yield* Metric.value(Metric.withAttributes(indexingBatchDuration, chain)),
+          block: yield* Metric.value(Metric.withAttributes(indexingBlock, chain)),
+          events: yield* Metric.value(
+            Metric.withAttributes(indexingEvents, { ...chain, contract: contractId }),
+          ),
+        };
       }).pipe(
         Effect.provideService(Metric.MetricRegistry, new Map()),
         Effect.provideService(References.MinimumLogLevel, "None"),
       ),
     );
 
+    const [checkpoint] = await testDb.db.select().from(checkpointsTable);
+
     expect(histogram.count).toBeGreaterThan(0);
+    expect(Number(checkpoint.blockHeight)).toBe(200);
+    expect(block.value).toBe(200);
+    expect(events.count).toBe(2);
   });
 
   test("interrupting mid-batch keeps the last committed checkpoint", async () => {

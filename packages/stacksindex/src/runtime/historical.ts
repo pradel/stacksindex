@@ -11,7 +11,7 @@ import type {
   SyncStoreError,
 } from "../lib/errors.ts";
 import { SLOW_OPERATION_MILLIS } from "../lib/logging.ts";
-import { indexBatchDuration } from "../lib/metrics.ts";
+import { chainTipBlock, indexingBatchDuration, indexingEvents, syncBlock } from "../lib/metrics.ts";
 import type { EventHandler, HandlerEvent } from "../lib/types.ts";
 import { type StoredEvent, storedEventToHandlerEvent } from "../sync-store/decode.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -20,12 +20,14 @@ import { chunkEventsByBlock } from "./batches.ts";
 import type { IndexerError, ResolvedIndexerConfig } from "./config.ts";
 import { type Filter, type ResolvedFilter, validateAndResolveFilters } from "./filters.ts";
 import {
+  computeRunProgress,
   createEtaEstimator,
   logRunProgress,
   PROGRESS_LOG_INTERVAL,
   type ProgressTrackerState,
+  recordRunProgress,
 } from "./progress.ts";
-import { reconcileWithCanonicalChain } from "./reorg.ts";
+import { reconcileWithCanonicalChain, recordCheckpointMetrics } from "./reorg.ts";
 
 /**
  * Outcome of a single contract sync within a `run`.
@@ -59,6 +61,20 @@ export interface RunResult {
   finalizedBlockHeight?: number;
 }
 
+const indexingEventsByContract = new Map<string, typeof indexingEvents>();
+
+/** `indexingEvents` labelled with `contract`, built once per contract. */
+function contractIndexingEvents(contract: string): typeof indexingEvents {
+  let metric = indexingEventsByContract.get(contract);
+
+  if (metric === undefined) {
+    metric = Metric.withAttributes(indexingEvents, { contract });
+    indexingEventsByContract.set(contract, metric);
+  }
+
+  return metric;
+}
+
 /**
  * Indexes one block-aligned batch of stored events together with the new
  * checkpoint, in a single transaction.
@@ -75,38 +91,53 @@ function indexBatch(
   HandlerExecutionError | SyncStoreError | DatabaseError,
   Indexing | IndexerDatabase
 > {
-  return IndexerDatabase.transaction(() =>
-    Effect.gen(function* () {
-      const indexing = yield* Indexing;
-      const events: HandlerEvent[] = [];
+  const lastRow = batch[batch.length - 1];
 
-      for (const row of batch) {
-        const filter = filterMap.get(row.contractId);
-        const rowBlockHeight = Number(row.blockHeight);
+  const checkpoint = {
+    chainId,
+    blockHeight: Number(lastRow.blockHeight),
+    blockTime: Number(lastRow.blockTime),
+    finalizedBlockHeight,
+    finalizedBlockTime,
+  };
 
-        const isBeforeStart =
-          filter?.startBlock !== undefined && rowBlockHeight < filter.startBlock;
+  return Effect.gen(function* () {
+    const batchEventsByContract = yield* IndexerDatabase.transaction(() =>
+      Effect.gen(function* () {
+        const indexing = yield* Indexing;
+        const events: HandlerEvent[] = [];
+        const counts = new Map<string, number>();
 
-        const isAfterEnd = filter?.endBlock !== undefined && rowBlockHeight > filter.endBlock;
+        for (const row of batch) {
+          const filter = filterMap.get(row.contractId);
+          const rowBlockHeight = Number(row.blockHeight);
 
-        if (!isBeforeStart && !isAfterEnd) {
-          events.push(storedEventToHandlerEvent(row));
-          eventsByContract.set(row.contractId, (eventsByContract.get(row.contractId) ?? 0) + 1);
+          const isBeforeStart =
+            filter?.startBlock !== undefined && rowBlockHeight < filter.startBlock;
+
+          const isAfterEnd = filter?.endBlock !== undefined && rowBlockHeight > filter.endBlock;
+
+          if (!isBeforeStart && !isAfterEnd) {
+            events.push(storedEventToHandlerEvent(row));
+            counts.set(row.contractId, (counts.get(row.contractId) ?? 0) + 1);
+          }
         }
-      }
 
-      yield* indexing.executeBatch(events);
+        yield* indexing.executeBatch(events);
+        yield* syncStore.upsertCheckpoint(checkpoint);
 
-      const lastRow = batch[batch.length - 1];
-      yield* syncStore.upsertCheckpoint({
-        chainId,
-        blockHeight: Number(lastRow.blockHeight),
-        blockTime: Number(lastRow.blockTime),
-        finalizedBlockHeight,
-        finalizedBlockTime,
-      });
-    }),
-  );
+        return counts;
+      }),
+    );
+
+    // Counted once committed, so a rolled-back batch is not reported.
+    for (const [contractId, count] of batchEventsByContract) {
+      eventsByContract.set(contractId, (eventsByContract.get(contractId) ?? 0) + count);
+      yield* Metric.update(contractIndexingEvents(contractId), count);
+    }
+
+    yield* recordCheckpointMetrics(checkpoint);
+  });
 }
 
 export interface ChainTip {
@@ -192,7 +223,7 @@ function indexBatches(options: {
       const batchDurationMs = Duration.toMillis(batchDuration);
       indexedDurationMs += batchDurationMs;
 
-      yield* Metric.update(indexBatchDuration, batchDurationMs);
+      yield* Metric.update(indexingBatchDuration, batchDurationMs);
 
       const lastBatchRow = batch[batch.length - 1];
 
@@ -268,13 +299,16 @@ export function indexEventsUpTo(
           checkpointHeight <= confirmationHeight - finality &&
           checkpointHeight > checkpointFinalizedHeight
         ) {
-          yield* syncStore.upsertCheckpoint({
+          const finalizedCheckpoint = {
             chainId,
             blockHeight: checkpointHeight,
             blockTime: Number(checkpoint.blockTime),
             finalizedBlockHeight: checkpointHeight,
             finalizedBlockTime: Number(checkpoint.blockTime),
-          });
+          };
+
+          yield* syncStore.upsertCheckpoint(finalizedCheckpoint);
+          yield* recordCheckpointMetrics(finalizedCheckpoint);
         }
       }
 
@@ -516,6 +550,10 @@ export function syncAndIndexTo(options: {
     // A status payload without a hash cannot anchor the next pass's check.
     yield* syncStore.setSyncAnchor({ chainId, anchor: tip?.blockHash ? tip : null });
 
+    if (tip !== undefined) {
+      yield* Metric.update(chainTipBlock, tip.blockHeight);
+    }
+
     const chainTipHeight = tip?.blockHeight;
     const indexingCap = chainTipHeight ?? Number.MAX_SAFE_INTEGER;
 
@@ -584,6 +622,17 @@ export function syncAndIndexTo(options: {
           ),
         );
 
+        if (options.logProgress) {
+          // The interval logger may last have run before the final pages.
+          const { contracts } = yield* Ref.get(progressState);
+
+          if (contracts.length > 0) {
+            yield* recordRunProgress(
+              computeRunProgress({ contracts, tipBlockHeight: chainTipHeight }),
+            );
+          }
+        }
+
         // Contracts that finished on their newest logs page, fetched after the
         // Tip was read, have all their events up to the tip stored now. A
         // Contract whose first-event discovery found nothing has not read its
@@ -591,15 +640,23 @@ export function syncAndIndexTo(options: {
         if (tip !== undefined) {
           const syncingContractIds = new Set(getSyncingContractIds(prepared, tip.blockHeight));
 
+          const raisedContracts = completedContracts.filter(
+            (contract) => contract.syncedToHead && syncingContractIds.has(contract.contractId),
+          );
+
           yield* syncStore.raiseSyncedBlockHeight({
             chainId,
-            contractIds: completedContracts
-              .filter(
-                (contract) => contract.syncedToHead && syncingContractIds.has(contract.contractId),
-              )
-              .map((contract) => contract.contractId),
+            contractIds: raisedContracts.map((contract) => contract.contractId),
             blockHeight: tip.blockHeight,
           });
+
+          // The store only raises, so a contract already past the tip keeps its height.
+          for (const contract of raisedContracts) {
+            yield* Metric.update(
+              Metric.withAttributes(syncBlock, { contract: contract.contractId }),
+              Math.max(contract.lastBlockHeight ?? tip.blockHeight, tip.blockHeight),
+            );
+          }
         }
 
         // Final pass: index any remaining stored events (e.g. events from a

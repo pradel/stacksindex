@@ -1,9 +1,10 @@
-import { Effect } from "effect";
+import { Effect, Metric } from "effect";
 import { HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
 import { StacksClient, type StacksClientService } from "../datasources/api/index.ts";
 import { ReorgError } from "../lib/errors.ts";
+import { reorgDepth, reorgs } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { blocksTable } from "../sync-store/schema.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
@@ -125,6 +126,19 @@ describe("canonical chain reconciliation", () => {
     ),
   });
 
+  /** Reconciles against `canonical` in a fresh metric registry and reads the reorg metrics. */
+  const reconcileMetrics = (canonical: Record<number, string>) =>
+    testDb.run(
+      Effect.gen(function* () {
+        yield* reconcileWithCanonicalChain(CHAIN_ID);
+
+        return { reorgs: yield* Metric.value(reorgs), depth: yield* Metric.value(reorgDepth) };
+      }).pipe(
+        Effect.provideService(StacksClient, StacksClient.of(makeClient(canonical, []))),
+        Effect.provideService(Metric.MetricRegistry, new Map()),
+      ),
+    );
+
   test("keeps indexed data when the anchor is still canonical", async () => {
     await seed({ blockHeight: 450, blockHash: "tip-450" });
     const requested: number[] = [];
@@ -201,5 +215,30 @@ describe("canonical chain reconciliation", () => {
       checkpoint: 200,
       synced: 200,
     });
+  });
+
+  test("records a reorg and its depth when stored blocks were replaced", async () => {
+    await seed({ blockHeight: 450, blockHash: "tip-450" });
+
+    const metrics = await reconcileMetrics({
+      200: "old-200",
+      300: "old-300",
+      400: "new-400",
+      450: "new-450",
+    });
+
+    // Anchor 450 minus the highest still-canonical stored block, 300.
+    expect(metrics.reorgs.count).toBe(1);
+    expect(metrics.depth.count).toBe(1);
+    expect(metrics.depth.sum).toBe(150);
+  });
+
+  test("records no reorg when the anchor is still canonical", async () => {
+    await seed({ blockHeight: 450, blockHash: "tip-450" });
+
+    const metrics = await reconcileMetrics({ 450: "tip-450" });
+
+    expect(metrics.reorgs.count).toBe(0);
+    expect(metrics.depth.count).toBe(0);
   });
 });

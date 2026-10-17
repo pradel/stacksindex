@@ -1,5 +1,16 @@
 import type { paths } from "@stacks/blockchain-api-client";
-import { Context, Duration, Effect, Layer, Predicate, Schedule } from "effect";
+import {
+  Cause,
+  Clock,
+  Context,
+  Duration,
+  Effect,
+  Exit,
+  Layer,
+  Metric,
+  Predicate,
+  Schedule,
+} from "effect";
 import {
   FetchHttpClient,
   HttpClient,
@@ -9,6 +20,7 @@ import {
 } from "effect/http";
 import { RateLimiter } from "effect/persistence";
 
+import { apiRequestDuration, apiResponses } from "../../lib/metrics.ts";
 import { DEFAULT_SENDER, type StacksHttpError } from "./read-only.ts";
 
 export { readOnly, ReadOnlyCallError } from "./read-only.ts";
@@ -211,24 +223,108 @@ function isRetryable(
 
 const retrySchedule = Schedule.exponential(Duration.millis(500)).pipe(Schedule.jittered);
 
+/** The `StacksClient` method name; URL paths embed tx ids and hashes, so never label by them. */
+type Endpoint = keyof StacksClientService;
+
+type ResponseStatus = "2xx" | "3xx" | "4xx" | "429" | "5xx" | "network";
+
+interface EndpointMetrics {
+  readonly success: typeof apiRequestDuration;
+  readonly failure: typeof apiRequestDuration;
+  readonly responses: Readonly<Record<ResponseStatus, typeof apiResponses>>;
+}
+
+const endpointMetricsCache = new Map<Endpoint, EndpointMetrics>();
+
+/** Labels an endpoint's series once, keeping attribute building off the request path. */
+function endpointMetrics(endpoint: Endpoint): EndpointMetrics {
+  const cached = endpointMetricsCache.get(endpoint);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const responses = (status: ResponseStatus) =>
+    Metric.withAttributes(apiResponses, { endpoint, status });
+
+  const metrics: EndpointMetrics = {
+    success: Metric.withAttributes(apiRequestDuration, { endpoint, outcome: "success" }),
+    failure: Metric.withAttributes(apiRequestDuration, { endpoint, outcome: "failure" }),
+    responses: {
+      "2xx": responses("2xx"),
+      "3xx": responses("3xx"),
+      "4xx": responses("4xx"),
+      "429": responses("429"),
+      "5xx": responses("5xx"),
+      network: responses("network"),
+    },
+  };
+
+  endpointMetricsCache.set(endpoint, metrics);
+
+  return metrics;
+}
+
+/**
+ * The calling endpoint's metrics, provided per logical request so the
+ * per-attempt counter below the rate limiter can label attempts without
+ * touching the outgoing request.
+ */
+class ApiEndpoint extends Context.Service<ApiEndpoint, EndpointMetrics>()(
+  "stacksindex/datasources/StacksClient/ApiEndpoint",
+) {}
+
+function responseStatus(status: number): ResponseStatus {
+  if (status === 429) {
+    return "429";
+  }
+
+  if (status >= 500) {
+    return "5xx";
+  }
+
+  if (status >= 400) {
+    return "4xx";
+  }
+
+  return status >= 300 ? "3xx" : "2xx";
+}
+
 /**
  * Executes a request and trusts the API contract for the response shape.
  * No runtime decoding is performed, keeping the hot path allocation-free.
  */
 function execute<A>(
   client: StacksHttpClient,
+  endpoint: Endpoint,
   request: HttpClientRequest.HttpClientRequest,
 ): Effect.Effect<A, StacksHttpError> {
   const path = new URL(request.url).pathname;
+  const metrics = endpointMetrics(endpoint);
 
-  return client.execute(request).pipe(
-    Effect.retry({ schedule: retrySchedule, times: MAX_RETRIES, while: isRetryable }),
-    Effect.flatMap((response) => response.json),
-    Effect.map(
-      (json) =>
-        // SAFETY: The endpoint's JSON shape is fixed by the API contract that selected A.
-        json as A,
+  return Effect.flatMap(Clock.currentTimeMillis, (startedAt) =>
+    client.execute(request).pipe(
+      Effect.retry({ schedule: retrySchedule, times: MAX_RETRIES, while: isRetryable }),
+      Effect.flatMap((response) => response.json),
+      Effect.map(
+        (json) =>
+          // SAFETY: The endpoint's JSON shape is fixed by the API contract that selected A.
+          json as A,
+      ),
+      // An interrupted request neither succeeded nor failed; leave it out.
+      Effect.onExit((exit) =>
+        Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)
+          ? Effect.void
+          : Effect.flatMap(Clock.currentTimeMillis, (endedAt) =>
+              Metric.update(
+                Exit.isSuccess(exit) ? metrics.success : metrics.failure,
+                endedAt - startedAt,
+              ),
+            ),
+      ),
+      Effect.provideService(ApiEndpoint, metrics),
     ),
+  ).pipe(
     Effect.withSpan("StacksApi.request", {
       attributes: { "http.request.method": request.method, "url.path": path },
     }),
@@ -241,7 +337,22 @@ const makeHttpClient = () =>
     const baseClient = yield* HttpClient.HttpClient;
     const limiter = yield* RateLimiter.RateLimiter;
 
-    return baseClient.pipe(
+    // Count every attempt here, below the rate limiter and `execute`'s retry,
+    // So retried 429s and transient failures are each counted.
+    const countedClient = HttpClient.transformResponse(baseClient, (effect) =>
+      Effect.flatMap(Effect.service(ApiEndpoint), ({ responses }) =>
+        effect.pipe(
+          Effect.tap((response) => Metric.update(responses[responseStatus(response.status)], 1)),
+          Effect.tapError((error) =>
+            Predicate.isTagged(error.reason, "TransportError")
+              ? Metric.update(responses.network, 1)
+              : Effect.void,
+          ),
+        ),
+      ),
+    );
+
+    return countedClient.pipe(
       // Throttle proactively, learn the budget from `x-ratelimit-*` headers, and
       // Retry rate limits (429) honoring the `Retry-After` header.
       HttpClient.withRateLimiter({
@@ -273,9 +384,10 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
         headers["x-api-key"] = config.apiKey;
       }
 
-      const get = <A>(path: string, query?: UrlParams.Input) =>
+      const get = <A>(endpoint: Endpoint, path: string, query?: UrlParams.Input) =>
         execute<A>(
           client,
+          endpoint,
           HttpClientRequest.get(`${config.baseUrl}${path}`, {
             urlParams: query,
             headers,
@@ -283,7 +395,12 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
           }),
         );
 
-      const post = <A>(path: string, query: UrlParams.Input | undefined, body: CallReadBody) =>
+      const post = <A>(
+        endpoint: Endpoint,
+        path: string,
+        query: UrlParams.Input | undefined,
+        body: CallReadBody,
+      ) =>
         Effect.gen(function* () {
           const request = yield* HttpClientRequest.bodyJson(
             HttpClientRequest.post(`${config.baseUrl}${path}`, {
@@ -294,16 +411,17 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
             body,
           ).pipe(Effect.orDie);
 
-          return yield* execute<A>(client, request);
+          return yield* execute<A>(client, endpoint, request);
         });
 
       return StacksClient.of({
-        getStatus: () => get<ApiStatusResponse>("/extended"),
-        getBlocks: (options) => get<BlocksApiResponse>("/extended/v2/blocks", options),
+        getStatus: () => get<ApiStatusResponse>("getStatus", "/extended"),
+        getBlocks: (options) => get<BlocksApiResponse>("getBlocks", "/extended/v2/blocks", options),
         getBlock: (heightOrHash, options) =>
-          get<BlockApiResponse>(`/extended/v2/blocks/${heightOrHash}`, options),
+          get<BlockApiResponse>("getBlock", `/extended/v2/blocks/${heightOrHash}`, options),
         getBlockTransactions: (heightOrHash, options) =>
           get<BlockTransactionsApiResponse>(
+            "getBlockTransactions",
             `/extended/v3/blocks/${heightOrHash}/transactions`,
             options,
           ),
@@ -315,42 +433,50 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
               ? { include: include.join(",") }
               : undefined;
 
-          return get<TransactionApiResponse>(`/extended/v3/transactions/${txId}`, query);
+          return get<TransactionApiResponse>(
+            "getTransaction",
+            `/extended/v3/transactions/${txId}`,
+            query,
+          );
         },
-        getV1Transaction: (txId) => get<V1TransactionApiResponse>(`/extended/v1/tx/${txId}`),
+        getV1Transaction: (txId) =>
+          get<V1TransactionApiResponse>("getV1Transaction", `/extended/v1/tx/${txId}`),
         getTransactionsBatch: (txIds) =>
           txIds.length === 0
             ? Effect.succeed<TransactionsBatchResponse>({ results: [] })
-            : get<TransactionsBatchResponse>("/extended/v3/transactions/batch", {
-                tx_id: txIds,
-              }),
+            : get<TransactionsBatchResponse>(
+                "getTransactionsBatch",
+                "/extended/v3/transactions/batch",
+                { tx_id: txIds },
+              ),
         getTransactionEvents: (txId, options = {}) => {
           const { limit = 50, cursor, ...rest } = options;
 
-          return get<TransactionEventsResponse>(`/extended/v3/transactions/${txId}/events`, {
-            limit,
-            cursor,
-            ...rest,
-          });
+          return get<TransactionEventsResponse>(
+            "getTransactionEvents",
+            `/extended/v3/transactions/${txId}/events`,
+            { limit, cursor, ...rest },
+          );
         },
         getPrincipalTransactions: (principal, options = {}) => {
           const { limit = 50, cursor, ...rest } = options;
 
           return get<PrincipalTransactionsResponse>(
+            "getPrincipalTransactions",
             `/extended/v3/principals/${principal}/transactions`,
             { limit, cursor, ...rest },
           );
         },
         getContract: (contractId) =>
-          get<ContractApiResponse>(`/extended/v3/smart-contracts/${contractId}`),
+          get<ContractApiResponse>("getContract", `/extended/v3/smart-contracts/${contractId}`),
         getContractLogs: (contractId, options = {}) => {
           const { limit = 100, cursor, ...rest } = options;
 
-          return get<ContractLogsResponse>(`/extended/v2/smart-contracts/${contractId}/logs`, {
-            limit,
-            cursor,
-            ...rest,
-          });
+          return get<ContractLogsResponse>(
+            "getContractLogs",
+            `/extended/v2/smart-contracts/${contractId}/logs`,
+            { limit, cursor, ...rest },
+          );
         },
         callReadFunction: (contractId, functionName, options = {}) => {
           const { args = [], sender = DEFAULT_SENDER, tip } = options;
@@ -361,10 +487,12 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
               ? `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`
               : `/v2/contracts/call-read/${contractId}/${functionName}`;
 
-          return post<CallReadResponse>(path, tip === undefined ? undefined : { tip }, {
-            sender,
-            arguments: args,
-          });
+          return post<CallReadResponse>(
+            "callReadFunction",
+            path,
+            tip === undefined ? undefined : { tip },
+            { sender, arguments: args },
+          );
         },
       });
     });

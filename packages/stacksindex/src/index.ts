@@ -15,7 +15,15 @@ export type {
   LogValue,
 } from "./promise/index.ts";
 
-export type { ContractRunResult, LiveOptions, RunResult } from "./runtime/index.ts";
+export type {
+  ContractRunResult,
+  IndexerPhase,
+  IndexerStatus,
+  LiveOptions,
+  OtlpOptions,
+  RunResult,
+  TelemetryOptions,
+} from "./runtime/index.ts";
 
 export { type DatabaseConfig, type IndexerDb } from "./database/index.ts";
 

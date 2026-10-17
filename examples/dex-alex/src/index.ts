@@ -10,6 +10,9 @@ import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 
 const apiKey = process.env.HIRO_API_KEY;
 
+// For example http://localhost:4318 (OpenTelemetry Collector) or http://localhost:9090/api/v1/otlp (Prometheus).
+const otlpBaseUrl = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+
 fs.mkdirSync("./data", { recursive: true });
 
 const appClient = new PGlite("./data/app.db");
@@ -65,6 +68,7 @@ try {
     network: "mainnet",
     api: { apiKey },
     live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },
+    telemetry: otlpBaseUrl ? { otlp: { baseUrl: otlpBaseUrl } } : undefined,
   });
 
   const filter = {

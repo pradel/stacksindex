@@ -17,7 +17,14 @@ import {
   TransactionBatchError,
 } from "../lib/errors.ts";
 import { SLOW_OPERATION_MILLIS } from "../lib/logging.ts";
-import { syncErrors, syncEvents, syncPages } from "../lib/metrics.ts";
+import {
+  syncBlock,
+  syncComplete,
+  syncErrors,
+  syncEvents,
+  syncPages,
+  syncTransactions,
+} from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { getContractEventsFirstCursor, parseLogsCursor } from "./cursor.ts";
 
@@ -114,6 +121,36 @@ type InitError = StacksApiError | InvalidCursorError | SyncStoreError;
 
 type InitRequirements = StacksClient | IndexerDatabase;
 
+type PageKind = "backfill" | "catchup";
+
+const historicalSyncErrors = Metric.withAttributes(syncErrors, { mode: "historical" });
+
+type CounterSeries = Metric.Metric<number, Metric.CounterState<number>>;
+
+type GaugeSeries = Metric.Metric<number, Metric.GaugeState<number>>;
+
+/** Per-contract series, labelled once so per-page updates skip `withAttributes`. */
+interface ContractMetrics {
+  readonly pages: Readonly<Record<PageKind, CounterSeries>>;
+  readonly transactions: CounterSeries;
+  readonly events: CounterSeries;
+  readonly block: GaugeSeries;
+  readonly complete: GaugeSeries;
+}
+
+function makeContractMetrics(contract: string): ContractMetrics {
+  return {
+    pages: {
+      backfill: Metric.withAttributes(syncPages, { contract, kind: "backfill" }),
+      catchup: Metric.withAttributes(syncPages, { contract, kind: "catchup" }),
+    },
+    transactions: Metric.withAttributes(syncTransactions, { contract }),
+    events: Metric.withAttributes(syncEvents, { contract, path: "historical" }),
+    block: Metric.withAttributes(syncBlock, { contract }),
+    complete: Metric.withAttributes(syncComplete, { contract }),
+  };
+}
+
 /**
  * A contract is in one of three sync modes:
  *
@@ -142,6 +179,7 @@ interface ContractSyncState {
   doneAtStart: boolean;
   /** Finished by reading the newest logs page (see `ContractSyncSummary`). */
   syncedToHead: boolean;
+  readonly metrics: ContractMetrics;
 }
 
 function makeContractSyncState(filter: SyncFilter, syncedBlockHeight: number): ContractSyncState {
@@ -159,6 +197,7 @@ function makeContractSyncState(filter: SyncFilter, syncedBlockHeight: number): C
     done: false,
     doneAtStart: false,
     syncedToHead: false,
+    metrics: makeContractMetrics(filter.contractId),
   };
 }
 
@@ -194,13 +233,18 @@ function persistProgress(
   chainId: number,
   isComplete = false,
 ): Effect.Effect<void, SyncStoreError, IndexerDatabase> {
-  return syncStore.upsertSyncProgress({
-    contractId: state.contractId,
-    chainId,
-    cursor: state.cursor,
-    syncedBlockHeight: state.syncedBlockHeight,
-    isComplete,
-  });
+  return syncStore
+    .upsertSyncProgress({
+      contractId: state.contractId,
+      chainId,
+      cursor: state.cursor,
+      syncedBlockHeight: state.syncedBlockHeight,
+      isComplete,
+    })
+    .pipe(
+      Effect.andThen(Metric.update(state.metrics.block, state.syncedBlockHeight)),
+      Effect.andThen(Metric.update(state.metrics.complete, isComplete ? 1 : 0)),
+    );
 }
 
 /** Marks the contract synced through its `endBlock`. */
@@ -222,6 +266,7 @@ function fetchLogsPage(
   state: ContractSyncState,
   cursor: string | undefined,
   chainId: number,
+  kind: PageKind,
 ): Effect.Effect<ContractLogsResponse, StacksApiError | InvalidCursorError, StacksClient> {
   return Effect.gen(function* () {
     const client = yield* StacksClient;
@@ -232,7 +277,7 @@ function fetchLogsPage(
 
     const fetchDurationMs = Duration.toMillis(fetchDuration);
 
-    yield* Metric.update(syncPages, 1);
+    yield* Metric.update(state.metrics.pages[kind], 1);
     state.pagesFetched += 1;
 
     const annotations = {
@@ -274,7 +319,7 @@ function fetchNewPages(
     let cursor: string | undefined = undefined;
 
     for (;;) {
-      const page: ContractLogsResponse = yield* fetchLogsPage(state, cursor, chainId);
+      const page: ContractLogsResponse = yield* fetchLogsPage(state, cursor, chainId, "catchup");
 
       if (page.results.length === 0) {
         break;
@@ -450,6 +495,9 @@ function initContractFromSaved(
   return Effect.gen(function* () {
     const state = makeContractSyncState(filter, Number(saved.syncedBlockHeight));
 
+    // Populate the progress gauge on restart, before any page is synced.
+    yield* Metric.update(state.metrics.block, state.syncedBlockHeight);
+
     const annotations = {
       chainId,
       contractId: filter.contractId,
@@ -511,9 +559,17 @@ function initializeContractStates(
           chainId,
         });
 
-        return saved === null
-          ? yield* initContractFromScratch(filter, chainId)
-          : yield* initContractFromSaved(filter, saved, chainId);
+        const state =
+          saved === null
+            ? yield* initContractFromScratch(filter, chainId)
+            : yield* initContractFromSaved(filter, saved, chainId);
+
+        const isComplete =
+          state.endBlock !== undefined && state.syncedBlockHeight >= state.endBlock;
+
+        yield* Metric.update(state.metrics.complete, isComplete ? 1 : 0);
+
+        return state;
       }),
     { concurrency: INITIALIZE_CONCURRENCY },
   );
@@ -681,7 +737,8 @@ function storeEvents(
       ),
     );
 
-    yield* Metric.update(syncEvents, eventsWithBlockHeight.length);
+    yield* Metric.update(state.metrics.events, eventsWithBlockHeight.length);
+    yield* Metric.update(state.metrics.transactions, transactions.length);
     state.eventsStored += eventsWithBlockHeight.length;
     yield* Effect.logDebug("Stored page").pipe(
       Effect.annotateLogs({
@@ -707,7 +764,7 @@ function syncBackfillPage(
 ): Effect.Effect<void, SyncError, StacksClient | IndexerDatabase> {
   return Effect.gen(function* () {
     const currentHeight = (yield* parseLogsCursor(cursor)).blockHeight;
-    const page = yield* fetchLogsPage(state, cursor, chainId);
+    const page = yield* fetchLogsPage(state, cursor, chainId, "backfill");
 
     yield* storeEvents(state, page.results, currentHeight, chainId);
 
@@ -867,7 +924,7 @@ export const createSync = ({
           Effect.catchCause((cause) =>
             Cause.hasInterruptsOnly(cause)
               ? Effect.failCause(cause)
-              : Metric.update(syncErrors, 1).pipe(
+              : Metric.update(historicalSyncErrors, 1).pipe(
                   Effect.andThen(Queue.failCause(queue, cause)),
                   Effect.asVoid,
                 ),
