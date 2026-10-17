@@ -286,15 +286,22 @@ Names follow OpenTelemetry conventions. Prometheus renders dots as underscores a
 ```ts
 import { createServer } from "node:http";
 
-createServer(async (_request, response) => {
-  const status = await indexer.status();
+// `status()` reads the indexer tables, so create them before accepting probes.
+await indexer.migrate();
 
-  response.writeHead(status.ready ? 200 : 503, { "content-type": "application/json" });
-  response.end(JSON.stringify(status));
+createServer(async (_request, response) => {
+  try {
+    const status = await indexer.status();
+
+    response.writeHead(status.ready ? 200 : 503, { "content-type": "application/json" });
+    response.end(JSON.stringify(status));
+  } catch {
+    response.writeHead(503).end();
+  }
 }).listen(8080);
 ```
 
-See [`IndexerStatus`](#indexerstatus) for the fields. `status()` reads the indexer tables, so it rejects with `SyncStoreError` until they exist: call `migrate()` first, or treat a rejection as not ready, as a probe answering 503 would.
+See [`IndexerStatus`](#indexerstatus) for the fields. `status()` rejects with `SyncStoreError` while the indexer tables are missing or the database is unreachable.
 
 ### Troubleshooting
 

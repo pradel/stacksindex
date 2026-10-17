@@ -36,10 +36,19 @@ export interface TelemetryOptions {
 
 const StringRecord = Schema.Record(Schema.String, Schema.String);
 
+// Invalid URLs would otherwise only fail at export time, logged at Debug.
+const HttpUrl = Schema.String.check(
+  Schema.makeFilter((url) =>
+    URL.canParse(url) && ["http:", "https:"].includes(new URL(url).protocol)
+      ? undefined
+      : `Expected an http or https URL, got ${JSON.stringify(url)}`,
+  ),
+);
+
 const TelemetryOptionsSchema = Schema.Struct({
   otlp: Schema.optional(
     Schema.Struct({
-      baseUrl: Schema.NonEmptyString,
+      baseUrl: HttpUrl,
       headers: Schema.optional(StringRecord),
       exportInterval: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
       temporality: Schema.optional(Schema.Literals(["cumulative", "delta"])),

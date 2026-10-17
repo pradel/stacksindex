@@ -1,4 +1,4 @@
-import { Effect, Metric, References } from "effect";
+import { Effect, Fiber, Metric, References, Schedule } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase } from "../database/index.ts";
@@ -21,7 +21,7 @@ const withIndexer = <A, E>(
     Effect.gen(function* () {
       return yield* program(yield* Indexer);
     }).pipe(
-      Effect.provide(Indexer.layer({ finality: 0 })),
+      Effect.provide(Indexer.layer({ finality: 0, live: { pollingInterval: 100 } })),
       Effect.provideService(IndexerDatabase, testDb.db),
       Effect.provideService(Metric.MetricRegistry, new Map()),
       Effect.provideService(References.MinimumLogLevel, "None"),
@@ -113,5 +113,34 @@ describe("indexer status", () => {
 
     expect(error).toBeInstanceOf(HandlerExecutionError);
     expect(status).toMatchObject({ phase: "failed", ready: false });
+  });
+
+  test("a run overlapping live does not end the shared phase", async () => {
+    const filters = [
+      { contractId: CONTRACT_ID, endBlock: BASE_HEIGHT + 1, handler: () => Effect.void },
+    ];
+
+    const phases = await withIndexer(testDb, (indexer) =>
+      Effect.gen(function* () {
+        const live = yield* Effect.forkChild(indexer.live(filters));
+
+        yield* indexer.status.pipe(
+          Effect.repeat({
+            until: (status) => status.phase === "live",
+            schedule: Schedule.spaced("10 millis"),
+          }),
+        );
+        yield* indexer.run(filters);
+
+        const afterRun = (yield* indexer.status).phase;
+
+        chain.mine();
+        yield* Fiber.join(live);
+
+        return [afterRun, (yield* indexer.status).phase];
+      }),
+    );
+
+    expect(phases).toStrictEqual(["live", "done"]);
   });
 });

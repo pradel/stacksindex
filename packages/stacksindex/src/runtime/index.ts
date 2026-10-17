@@ -67,22 +67,37 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
               const webSocketConstructor = yield* Socket.WebSocketConstructor;
               const phase = yield* RunPhase;
 
-              // `runLive` moves the phase to "live" itself once it follows new heads.
+              // Concurrent calls share the phase: only a call starting while none
+              // Is active moves it to "backfill", and only the last call to end
+              // Sets the outcome. `runLive` moves it to "live" once it follows new heads.
+              const activeCalls = yield* Ref.make(0);
+
               const trackRun = <A>(
                 effect: Effect.Effect<A, IndexerError, RunPhase>,
               ): Effect.Effect<A, IndexerError> =>
-                Ref.set(phase, "backfill").pipe(
-                  Effect.andThen(effect),
-                  Effect.onExit((exit) =>
-                    Ref.set(
-                      phase,
-                      Exit.isSuccess(exit)
-                        ? "done"
-                        : Cause.hasInterruptsOnly(exit.cause)
-                          ? "idle"
-                          : "failed",
+                Effect.acquireUseRelease(
+                  Ref.getAndUpdate(activeCalls, (count) => count + 1).pipe(
+                    Effect.flatMap((active) =>
+                      active === 0 ? Ref.set(phase, "backfill") : Effect.void,
                     ),
                   ),
+                  () => effect,
+                  (_, exit) =>
+                    Ref.updateAndGet(activeCalls, (count) => count - 1).pipe(
+                      Effect.flatMap((active) =>
+                        active === 0
+                          ? Ref.set(
+                              phase,
+                              Exit.isSuccess(exit)
+                                ? "done"
+                                : Cause.hasInterruptsOnly(exit.cause)
+                                  ? "idle"
+                                  : "failed",
+                            )
+                          : Effect.void,
+                      ),
+                    ),
+                ).pipe(
                   Effect.provideService(RunPhase, phase),
                   // Every metric recorded during the call carries the chain.
                   Effect.updateService(Metric.CurrentMetricAttributes, (attributes) => ({

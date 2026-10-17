@@ -52,6 +52,40 @@ const livePassDurationByFetch: Record<FetchPlan["type"], typeof livePassDuration
 const liveSyncErrors = Metric.withAttributes(syncErrors, { mode: "live" });
 
 /**
+ * Live runs following heads, per chain. `liveIsRealtime` is one series per
+ * chain, so it drops to 0 only once the last of them stops.
+ */
+const followingRuns = new Map<number, number>();
+
+function followHeads<A, E, R>(
+  chainId: number,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> {
+  return Effect.acquireUseRelease(
+    Effect.suspend(() => {
+      followingRuns.set(chainId, (followingRuns.get(chainId) ?? 0) + 1);
+
+      return Metric.update(liveIsRealtime, 1);
+    }),
+    () => effect,
+    () =>
+      Effect.suspend(() => {
+        const remaining = (followingRuns.get(chainId) ?? 1) - 1;
+
+        if (remaining > 0) {
+          followingRuns.set(chainId, remaining);
+
+          return Effect.void;
+        }
+
+        followingRuns.delete(chainId);
+
+        return Metric.update(liveIsRealtime, 0);
+      }),
+  );
+}
+
+/**
  * Errors worth retrying with the next head: API transport, status and rate
  * limit failures, and transaction batches missing ids the API has not caught
  * up on yet. Handler, database, cursor and reorg errors fail `live` at once.
@@ -377,7 +411,6 @@ export function runLive(
     );
 
     yield* Ref.set(yield* RunPhase, "live");
-    yield* Metric.update(liveIsRealtime, 1);
 
     const budget = createFailureBudget();
 
@@ -417,18 +450,17 @@ export function runLive(
         return true;
       });
 
-    yield* blockHeads({ chainId, ...config.live }).pipe(
-      Stream.buffer({ capacity: 1, strategy: "sliding" }),
-      Stream.runForEachWhile(handleHead),
-      Effect.provide(Indexing.layer({ handlers: prepared.handlers })),
+    yield* followHeads(
+      chainId,
+      blockHeads({ chainId, ...config.live }).pipe(
+        Stream.buffer({ capacity: 1, strategy: "sliding" }),
+        Stream.runForEachWhile(handleHead),
+        Effect.provide(Indexing.layer({ handlers: prepared.handlers })),
+      ),
     );
 
     yield* Effect.logInfo("Every filter reached its end block; live indexing complete").pipe(
       Effect.annotateLogs({ chainId, phase: "live" }),
     );
-  }).pipe(
-    Effect.ensuring(Metric.update(liveIsRealtime, 0)),
-    Effect.annotateLogs({ service: "indexer" }),
-    Effect.withLogSpan("liveIndexing"),
-  );
+  }).pipe(Effect.annotateLogs({ service: "indexer" }), Effect.withLogSpan("liveIndexing"));
 }

@@ -51,6 +51,19 @@ describe("telemetry", () => {
     ).rejects.toBeInstanceOf(ConfigurationError);
   });
 
+  test.each(["not a url", "collector.test:4318", "ftp://collector.test"])(
+    "rejects baseUrl %j, which is not an http(s) URL",
+    async (baseUrl) => {
+      await expect(
+        createIndexer({
+          database: { kind: "pglite" },
+          logLevel: "None",
+          telemetry: { otlp: { baseUrl } },
+        }),
+      ).rejects.toBeInstanceOf(ConfigurationError);
+    },
+  );
+
   test("rejects a negative exportInterval", async () => {
     await expect(
       createIndexer({
