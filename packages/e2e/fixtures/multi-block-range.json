@@ -1,177 +1,735 @@
 {
-  "GET https://api.hiro.so/extended/v3/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles": {
+  "GET https://api.hiro.so/extended": {
     "statusCode": 200,
     "body": {
-      "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-      "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
-      "clarity_version": 1,
-      "block": {
-        "height": 47486
+      "server_version": "stacks-blockchain-api v9.6.0 (HEAD:ee0c0ac)",
+      "status": "ready",
+      "chain_tip": {
+        "block_height": 9254748,
+        "block_hash": "0x7dda66782b41c8c61221ea421ccfe56f21037a3684c4c1b99218c3ad9e609ac4"
       }
     }
   },
-  "GET https://api.hiro.so/extended/v3/principals/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/transactions?cursor=47784:0:0&limit=50": {
-    "statusCode": 200,
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47783:2147483647:32767:2147483647&limit=100": {
+    "statusCode": 404,
     "body": {
-      "total": 3615,
-      "limit": 50,
-      "cursor": {
-        "next": null,
-        "previous": "47807:0:64",
-        "current": "47784:0:48"
-      },
-      "results": [
-        {
-          "transaction": {
-            "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
-            "block": {
-              "height": 47784,
-              "tx_index": 48
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
-            "block": {
-              "height": 47784,
-              "tx_index": 34
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-            "block": {
-              "height": 47784,
-              "tx_index": 28
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x551cb8f8512081b09438564d0883f65c65cf3c5b1fc595e84072ca7354894ea7",
-            "block": {
-              "height": 47499,
-              "tx_index": 6
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xa3b71ffc99ffa9d2e136ce2f3f52e674ee2b4bf40b620c9ef29de9515458e610",
-            "block": {
-              "height": 47498,
-              "tx_index": 51
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x0b2f643ad48ac0eede31a71cf631725a282be60152e8546e5fe80d493d171122",
-            "block": {
-              "height": 47495,
-              "tx_index": 27
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xdfb34d373c5abfdae150a67e00d6e4654d3eec07b93840629abb6fcbbbda4ac7",
-            "block": {
-              "height": 47490,
-              "tx_index": 9
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xbefd1dd1ccdec2de01c5be4cb1c9a63fb732261a472ae41d7fbe64c92f6ae494",
-            "block": {
-              "height": 47489,
-              "tx_index": 31
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
-            "block": {
-              "height": 47486,
-              "tx_index": 13
-            }
-          }
-        }
-      ]
+      "statusCode": 404,
+      "error": "Not Found",
+      "message": "Cursor not found"
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?limit=1": {
     "statusCode": 200,
     "body": {
-      "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-      "event_count": 1,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "300000",
-      "sender": {
-        "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-        "nonce": 294
-      },
-      "block": {
-        "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
-        "height": 47784,
-        "tx_index": 28
-      },
-      "bitcoin_block": {
-        "height": 722076,
-        "time": 1644169830
-      }
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d/events?limit=50": {
-    "statusCode": 200,
-    "body": {
-      "total": 1,
-      "limit": 50,
-      "cursor": {
-        "next": null,
-        "previous": null,
-        "current": "0"
-      },
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "9242561:2147483647:0:0",
+      "next_cursor": null,
+      "prev_cursor": "9242190:2147483647:0:0",
       "results": [
         {
           "event_index": 0,
-          "type": "contract_log",
+          "event_type": "smart_contract_log",
+          "tx_id": "0x48d1dd370c6c71196bc42296d82ab4fca16b7629f17ec843914f2224b8ec13b6",
           "contract_log": {
             "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
             "topic": "print",
             "value": {
-              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000d6b057072696365010000000000000000000000003b9aca00",
-              "repr": "(tuple (a \"list-in-ustx\") (commission 'SP2KAF9RF86PVX3NEE27DFV1CQX0T4WGR41X3S45C.byzantion-satoshibles-commission) (id u3435) (price u1000000000))"
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d757374780269640100000000000000000000000000000e30",
+              "repr": ""
             }
           }
         }
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v1/tx/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=9242561:2147483647:32767:2147483647&limit=1": {
     "statusCode": 200,
     "body": {
-      "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-      "block_height": 47784,
-      "tx_index": 28,
-      "microblock_sequence": 0
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "9242561:2147483647:0:0",
+      "next_cursor": null,
+      "prev_cursor": "9242190:2147483647:0:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x48d1dd370c6c71196bc42296d82ab4fca16b7629f17ec843914f2224b8ec13b6",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d757374780269640100000000000000000000000000000e30",
+              "repr": ""
+            }
+          }
+        }
+      ]
     }
   },
-  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47784:0:28:0&limit=100": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=4645172:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "4557952:2147483647:1:0",
+      "next_cursor": "4977190:2147483647:0:0",
+      "prev_cursor": "4557944:2147483647:0:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xf07608272d952d8d62c47babacfc946bd95017956f253f3813e6c07e61540657",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d757374780269640100000000000000000000000000001007",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=2346478:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "2210161:2147483647:0:0",
+      "next_cursor": "2358209:2147483647:0:0",
+      "prev_cursor": "2199257:2147483647:1:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x70a84ffb19b51cf689d0655c41347d0e207aaa120289a88ca1c2bd59a4e1d7e6",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e026964010000000000000000000000000000088c05707269636501000000000000000000000000275c8f0f",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=1197131:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "1009692:2147483647:0:4",
+      "next_cursor": "2197402:2147483647:0:0",
+      "prev_cursor": "981636:2147483647:2:4",
+      "results": [
+        {
+          "event_index": 4,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x22ac0daccd0a23a60293e6a253496e1002e0ef03dfef75476e29c99c2880d161",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000b6275792d696e2d7573747802696401000000000000000000000000000000af",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=622457:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "619461:2147483647:0:0",
+      "next_cursor": "701733:2147483647:0:0",
+      "prev_cursor": "602585:2147483647:0:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xd6dd13befb8859def27c358cfc6b032cdaaf6721f24fb069355e21d3970dd75f",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000e570570726963650100000000000000000000000014bfc938",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=335120:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "333231:2147483647:0:0",
+      "next_cursor": "366742:2147483647:1:4",
+      "prev_cursor": "333230:2147483647:0:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x691ee94bc5bbc7192fc7095c536af6b0b516b944325f0cfb4a060c00e41c589b",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d757374780269640100000000000000000000000000000acf",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=191452:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "188302:2147483647:19:4",
+      "next_cursor": "191459:2147483647:5:0",
+      "prev_cursor": "178440:2147483647:0:0",
+      "results": [
+        {
+          "event_index": 4,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xd93d8bb9453434c725d752f8b80a3462ca548ac041ea23fbe1af960e2a72735b",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000b6275792d696e2d75737478026964010000000000000000000000000000113e",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=119618:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "119136:2147483647:8:0",
+      "next_cursor": "122086:2147483647:17:0",
+      "prev_cursor": "119136:2147483647:7:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x8bba46406ab095b48aebd06464f0101a6ed25e05fe1f46c389b54d96182652ee",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d757374780269640100000000000000000000000000001069",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=83701:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "83557:2:27:0",
+      "next_cursor": "83802:0:14:0",
+      "prev_cursor": "83450:2147483647:83:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xa71ac15de4090a99bdca2e4e8488517a8599ff2d835b176e5ffbbb6d619be187",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d7573747802696401000000000000000000000000000004f6",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=65742:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "65397:2147483647:2:4",
+      "next_cursor": "65852:2147483647:20:0",
+      "prev_cursor": "65239:0:4:0",
+      "results": [
+        {
+          "event_index": 4,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x3a502220ffcc2a8baa86dc44b99c58d04e7237b5037a8639639963e4c222816e",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000b6275792d696e2d757374780269640100000000000000000000000000000318",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=56763:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "56760:2147483647:29:0",
+      "next_cursor": "56848:2147483647:22:4",
+      "prev_cursor": "56760:2147483647:12:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x165ac4e443db8786838bf0038af3363fdccb52ec7eac2fe7d0711ab860d077de",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000ee505707269636501000000000000000000000000173eed80",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=52273:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "52257:1:100:0",
+      "next_cursor": "52275:0:145:0",
+      "prev_cursor": "52251:2147483647:10:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x7bd4f3f6c52a2fcc4cdff4f1703cb5056b3ed5e078a4d46332bb4922b26a5337",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000000d7057072696365010000000000000000000000002cfc1136",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=50028:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "50026:2147483647:10:0",
+      "next_cursor": "50037:0:70:0",
+      "prev_cursor": "49982:2147483647:7:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xe3743f6429a7697c98d79f2bfa9e17e457a628beaf82076c47c17e4867d7da52",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d7573747802696401000000000000000000000000000007db",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=48906:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "48894:0:67:0",
+      "next_cursor": "48919:0:27:0",
+      "prev_cursor": "48856:1:21:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xd88be5e6ba04a12ce89af9364836fd6f6c60c826ea0cec5aa300dd507087f3ca",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000012ed05707269636501000000000000000000000000383b1583",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=48345:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "48342:2147483647:178:0",
+      "next_cursor": "48347:2147483647:10:0",
+      "prev_cursor": "48342:2147483647:50:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xc5dea6b67f4c1b4310de8dc5291994c89a3482833d19a73e465270f7d6b1c745",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000dd6057072696365010000000000000000000000005458a044",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=48064:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "48062:2147483647:2:0",
+      "next_cursor": "48069:2147483647:1:0",
+      "prev_cursor": "48054:2147483647:28:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x3ce098d712930bc4d6eb7139d4756ad6bee4fe6501ab7fa45a3d9e9833c8f639",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000013790570726963650100000000000000000000000059682f00",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47924:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "47923:2147483647:6:0",
+      "next_cursor": "47926:2147483647:16:0",
+      "prev_cursor": "47923:0:46:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x9e01530919826d87a0cc28043aa4695554800b52d575a64a46be3151851a8678",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000002b105707269636501000000000000000000000000383b1583",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47854:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "47848:2147483647:5:0",
+      "next_cursor": "47859:3:85:0",
+      "prev_cursor": "47848:2147483647:4:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x3565621eaa43f4c224a2432f1a3dfc11191792ffa0291ded17775580fc7cd869",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000006aa057072696365010000000000000000000000004d7c6d00",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47819:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "47819:0:5:0",
+      "next_cursor": "47821:2147483647:1:4",
+      "prev_cursor": "47817:0:3:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x8c9cbcef6e80a2cf1ce59ccc677a3c938f0c8d845fc534b75e400a61d4870f40",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000134057072696365010000000000000000000000004a817c80",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47801:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "47800:2147483647:4:0",
+      "next_cursor": "47802:1:48:0",
+      "prev_cursor": "47800:2147483647:3:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xf5897ebc85a69338d7375104e7bb9d57034ccdc7da1d5505d190d83a765add45",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e026964010000000000000000000000000000085f057072696365010000000000000000000000006553f100",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47792:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "47792:7:57:0",
+      "next_cursor": "47794:2147483647:5:0",
+      "prev_cursor": "47792:6:49:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xf92d9ee72e0d527a96b2326f9c00af51d28d8375fc148c0ebe6306e15d969cdf",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e026964010000000000000000000000000000102a057072696365010000000000000000000000003dda97aa",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47788:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "47786:2147483647:4:0",
+      "next_cursor": "47789:2147483647:3:0",
+      "prev_cursor": "47786:2147483647:3:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009c8057072696365010000000000000000000000022d4dad80",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47786:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "47786:2147483647:4:0",
+      "next_cursor": "47789:2147483647:3:0",
+      "prev_cursor": "47786:2147483647:3:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009c8057072696365010000000000000000000000022d4dad80",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47785:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "47784:0:48:0",
+      "next_cursor": "47786:1:58:0",
+      "prev_cursor": "47784:0:34:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009e1057072696365010000000000000000000000004190ab00",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47784:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "47784:0:48:0",
+      "next_cursor": "47786:1:58:0",
+      "prev_cursor": "47784:0:34:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009e1057072696365010000000000000000000000004190ab00",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47784:2147483647:32767:2147483647&limit=100": {
     "statusCode": 200,
     "body": {
       "limit": 100,
       "offset": 0,
       "total": 3094,
-      "next_cursor": "47884:2147483647:26:0",
+      "cursor": "47784:0:48:0",
+      "next_cursor": "47884:2147483647:28:0",
+      "prev_cursor": null,
       "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009e1057072696365010000000000000000000000004190ab00",
+              "repr": ""
+            }
+          }
+        },
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000be905707269636501000000000000000000000000ee6b2800",
+              "repr": ""
+            }
+          }
+        },
         {
           "event_index": 0,
           "event_type": "smart_contract_log",
@@ -188,10 +746,102 @@
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47784:0:48:0&limit=100": {
+    "statusCode": 200,
+    "body": {
+      "limit": 100,
+      "offset": 0,
+      "total": 3094,
+      "cursor": "47784:0:48:0",
+      "next_cursor": "47884:2147483647:28:0",
+      "prev_cursor": null,
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009e1057072696365010000000000000000000000004190ab00",
+              "repr": ""
+            }
+          }
+        },
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000be905707269636501000000000000000000000000ee6b2800",
+              "repr": ""
+            }
+          }
+        },
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000d6b057072696365010000000000000000000000003b9aca00",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d&tx_id=0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11&tx_id=0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae": {
     "statusCode": 200,
     "body": {
       "results": [
+        {
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "102000",
+          "sender": {
+            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
+            "nonce": 296
+          },
+          "block": {
+            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
+            "height": 47784,
+            "tx_index": 48
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
+          }
+        },
+        {
+          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "102000",
+          "sender": {
+            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
+            "nonce": 295
+          },
+          "block": {
+            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
+            "height": 47784,
+            "tx_index": 34
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
+          }
+        },
         {
           "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
           "type": "contract_call",
@@ -215,14 +865,42 @@
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47884:2147483647:26:0&limit=100": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47884:2147483647:28:0&limit=100": {
     "statusCode": 200,
     "body": {
       "limit": 100,
       "offset": 0,
       "total": 3094,
-      "next_cursor": "47988:2147483647:30:0",
+      "cursor": "47884:2147483647:28:0",
+      "next_cursor": "47994:2147483647:12:0",
+      "prev_cursor": "47784:0:48:0",
       "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x938e1d262985b705b5c6f8fcf57b3a36c8bc37a518c0bb3707540ad6bf9eb839",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009cd05707269636501000000000000000000000000383b1583",
+              "repr": ""
+            }
+          }
+        },
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xba93be7bad9e4d5ea94677ce89ef3264f2b714bfc1cc002c5eacfcaa0b621594",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000a1905707269636501000000000000000000000000383b1583",
+              "repr": ""
+            }
+          }
+        },
         {
           "event_index": 0,
           "event_type": "smart_contract_log",
@@ -1496,40 +2174,54 @@
               "repr": ""
             }
           }
-        },
-        {
-          "event_index": 0,
-          "event_type": "smart_contract_log",
-          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
-          "contract_log": {
-            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-            "topic": "print",
-            "value": {
-              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009e1057072696365010000000000000000000000004190ab00",
-              "repr": ""
-            }
-          }
-        },
-        {
-          "event_index": 0,
-          "event_type": "smart_contract_log",
-          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
-          "contract_log": {
-            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-            "topic": "print",
-            "value": {
-              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000be905707269636501000000000000000000000000ee6b2800",
-              "repr": ""
-            }
-          }
         }
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11&tx_id=0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae&tx_id=0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494&tx_id=0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a&tx_id=0x3c1593a34589e64780c8d6a0bff94d91187efabbd93a4e5dc082c9a7bbac27ed&tx_id=0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d&tx_id=0xb5118ef0d83825321026f45626e60c3f7f9164ea4e64f8147289ad11dccf4b1e&tx_id=0xbd7aa1a7910be36de2d2761c123eb8c990d31f2c1e7d8f8f67bdcb4e077e9bca&tx_id=0x8b7e4f295feff48c5a9868bbacc6125cb001ed6db66e9ad1b41395157337eb3c&tx_id=0xf50b716fe552d9aee13f2700dd7cc3ec3aa4e22142c4c0184e993269d6122f2f&tx_id=0x1c58de0de71e7865635d966c0fb10d21b41de6c8cd6636dd5a166d30ef9c0184&tx_id=0x2e1589f13aabb8782e70aa27d914fba122863cfe3f264a5c23c328fa08c8ede1&tx_id=0x099ecbb6a96f634f7645b5c02f4ed13ca7d40c1dac869c696168f7024212b4ef&tx_id=0xad61848410739e33bfc869780a3e9587cf635d26e88ca4f01cc5c7cd71d84439&tx_id=0x4bb2c0aace86499c3b72d3f8e2c72e8b08682941cb0a0a12cee8abdca1c38f91&tx_id=0x694b3c4e7b2e436924eb26182ea9110c6adc2b78544f739e1f29825cd3664879&tx_id=0x7e9ec594559208d81887e5d6829d94d9044201f0c5eb357ea85f9c723cfc0891&tx_id=0x2cc5e29e64a87b127d957cae99990f64c511203f2e5d32ecbcd1aa8ead632911&tx_id=0xfbbf2a2ac38ed12b493efac1781324d169a674a2c73d868377ca5402884d1c9e&tx_id=0x4970101b4f4400bbf28061194b08a4ef891568d8d72085249d26a236fbc9b474": {
+  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494&tx_id=0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a&tx_id=0x3c1593a34589e64780c8d6a0bff94d91187efabbd93a4e5dc082c9a7bbac27ed&tx_id=0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d&tx_id=0xb5118ef0d83825321026f45626e60c3f7f9164ea4e64f8147289ad11dccf4b1e&tx_id=0xbd7aa1a7910be36de2d2761c123eb8c990d31f2c1e7d8f8f67bdcb4e077e9bca&tx_id=0x8b7e4f295feff48c5a9868bbacc6125cb001ed6db66e9ad1b41395157337eb3c&tx_id=0xf50b716fe552d9aee13f2700dd7cc3ec3aa4e22142c4c0184e993269d6122f2f&tx_id=0x1c58de0de71e7865635d966c0fb10d21b41de6c8cd6636dd5a166d30ef9c0184&tx_id=0x2e1589f13aabb8782e70aa27d914fba122863cfe3f264a5c23c328fa08c8ede1&tx_id=0x099ecbb6a96f634f7645b5c02f4ed13ca7d40c1dac869c696168f7024212b4ef&tx_id=0xad61848410739e33bfc869780a3e9587cf635d26e88ca4f01cc5c7cd71d84439&tx_id=0x4bb2c0aace86499c3b72d3f8e2c72e8b08682941cb0a0a12cee8abdca1c38f91&tx_id=0x694b3c4e7b2e436924eb26182ea9110c6adc2b78544f739e1f29825cd3664879&tx_id=0x7e9ec594559208d81887e5d6829d94d9044201f0c5eb357ea85f9c723cfc0891&tx_id=0x2cc5e29e64a87b127d957cae99990f64c511203f2e5d32ecbcd1aa8ead632911&tx_id=0xfbbf2a2ac38ed12b493efac1781324d169a674a2c73d868377ca5402884d1c9e&tx_id=0x4970101b4f4400bbf28061194b08a4ef891568d8d72085249d26a236fbc9b474&tx_id=0xfa657172d2f01ad897c4c86476cea93ac2202dafc1822050b117aeb01f648e37&tx_id=0x0b31c725c94244f787e6c3a2eea9e032bde43039a631add21a0efa0998878e23": {
     "statusCode": 200,
     "body": {
       "results": [
+        {
+          "tx_id": "0x0b31c725c94244f787e6c3a2eea9e032bde43039a631add21a0efa0998878e23",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "214996",
+          "sender": {
+            "address": "SP1YW2GJ40TKBJZ55NVTGXCJ49N6BVM556F6308D5",
+            "nonce": 5
+          },
+          "block": {
+            "hash": "0xb3bafb36f523a7b9971544ce7568477a48312189b5633866b0e5a8113a9398c0",
+            "index_hash": "0x4a0f9649a0cac660ba9d84f0f946b87adc6af36daabfe30ebfe233244eb0e3ef",
+            "height": 47792,
+            "tx_index": 34
+          },
+          "bitcoin_block": {
+            "height": 722087,
+            "time": 1644174305
+          }
+        },
+        {
+          "tx_id": "0xfa657172d2f01ad897c4c86476cea93ac2202dafc1822050b117aeb01f648e37",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "214996",
+          "sender": {
+            "address": "SP1YW2GJ40TKBJZ55NVTGXCJ49N6BVM556F6308D5",
+            "nonce": 4
+          },
+          "block": {
+            "hash": "0xb3bafb36f523a7b9971544ce7568477a48312189b5633866b0e5a8113a9398c0",
+            "index_hash": "0x4a0f9649a0cac660ba9d84f0f946b87adc6af36daabfe30ebfe233244eb0e3ef",
+            "height": 47792,
+            "tx_index": 18
+          },
+          "bitcoin_block": {
+            "height": 722087,
+            "time": 1644174305
+          }
+        },
         {
           "tx_id": "0x4970101b4f4400bbf28061194b08a4ef891568d8d72085249d26a236fbc9b474",
           "type": "contract_call",
@@ -1889,77 +2581,26 @@
             "height": 722078,
             "time": 1644171646
           }
-        },
-        {
-          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "102000",
-          "sender": {
-            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-            "nonce": 296
-          },
-          "block": {
-            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
-            "height": 47784,
-            "tx_index": 48
-          },
-          "bitcoin_block": {
-            "height": 722076,
-            "time": 1644169830
-          }
-        },
-        {
-          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "102000",
-          "sender": {
-            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-            "nonce": 295
-          },
-          "block": {
-            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
-            "height": 47784,
-            "tx_index": 34
-          },
-          "bitcoin_block": {
-            "height": 722076,
-            "time": 1644169830
-          }
         }
       ]
     }
   },
-  "GET https://api.hiro.so/extended": {
+  "GET https://api.hiro.so/extended/v2/blocks/9254746": {
     "statusCode": 200,
     "body": {
-      "server_version": "stacks-blockchain-api v9.6.0 (HEAD:ee0c0ac)",
-      "status": "ready",
-      "chain_tip": {
-        "block_height": 9253609,
-        "block_hash": "0xbc814ddf923effd99919e7a72314d37eb4d0e96c358be1ecb143aab8b8ba1ffa"
-      }
+      "height": 9254746,
+      "hash": "0x60108e43e19c551d3ee1c27150c58a5bba0cdf55ded7340c0919cb0d7708b813",
+      "burn_block_time": 1792440223,
+      "burn_block_height": 972201
     }
   },
-  "GET https://api.hiro.so/extended/v2/blocks/9207456": {
+  "GET https://api.hiro.so/extended/v2/blocks/9254748": {
     "statusCode": 200,
     "body": {
-      "height": 9207456,
-      "hash": "0x7c5ab1cfbdeb318b9be2d994f59e6d88467aec38eec570e066ae98ce12f2479a",
-      "burn_block_time": 1791989916,
-      "burn_block_height": 971415
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/blocks/9253609": {
-    "statusCode": 200,
-    "body": {
-      "height": 9253609,
-      "hash": "0xbc814ddf923effd99919e7a72314d37eb4d0e96c358be1ecb143aab8b8ba1ffa",
-      "burn_block_time": 1792427867,
-      "burn_block_height": 972183
+      "height": 9254748,
+      "hash": "0x7dda66782b41c8c61221ea421ccfe56f21037a3684c4c1b99218c3ad9e609ac4",
+      "burn_block_time": 1792440223,
+      "burn_block_height": 972201
     }
   }
 }

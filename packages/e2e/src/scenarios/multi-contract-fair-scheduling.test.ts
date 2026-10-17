@@ -152,21 +152,14 @@ describe("e2E: Multi-contract fair scheduling scenario", () => {
     // Verify the indexing checkpoint advanced to the shared endBlock.
     await expectCheckpoint(database.db, END_BLOCK);
 
-    // Verify blocks are cached once and shared across contracts. The sync
-    // Sweeps one logs page past endBlock plus the cursor-discovery backlog, so
-    // The store holds 24 blocks while indexing filters delivery to the range.
-    await expectStoredBlockHeights(
-      database.db,
-      [
-        47669, 47675, 47678, 47681, 47690, 47693, 47695, 47697, 47698, 47706, 47708, 47711, 47713,
-        47729, 47731, 47733, 47767, 47771, 47773, 47779, 47783, 47784, 47785, 47786,
-      ],
-    );
+    // Verify blocks are cached once and shared across contracts. Pagination
+    // Starts right above the newest event below startBlock, and transactions
+    // Past endBlock are not fetched, so only the range's blocks are stored.
+    await expectStoredBlockHeights(database.db, [47784, 47785, 47786]);
 
-    // 76 cached transactions back 25 delivered events: blocks are fetched once
-    // And shared, transactions deduplicate across pages.
-    await expectTableCount(database.db, "transactions", 76);
-    await expectTableCount(database.db, "events", 83);
+    // Only the delivered events and their transactions are stored.
+    await expectTableCount(database.db, "transactions", 25);
+    await expectTableCount(database.db, "events", 25);
 
     // Verify API call count benchmark snapshot
     assertBenchmarkSnapshot(recorder.getBenchmarkSummary());

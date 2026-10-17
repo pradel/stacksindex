@@ -1,10 +1,11 @@
-import { Effect, Schema, SchemaGetter } from "effect";
+import { Effect, Predicate, Schema, SchemaGetter } from "effect";
+import { HttpClientError } from "effect/http";
 
 import {
-  type PrincipalTransactionsResponse,
+  type ContractLogsResponse,
   StacksClient,
   type StacksApiError,
-  type TransactionEventsResponse,
+  type StacksHttpError,
 } from "../datasources/api/index.ts";
 import { InvalidCursorError } from "../lib/errors.ts";
 
@@ -67,262 +68,128 @@ export const parseLogsCursor = (cursor: string): Effect.Effect<LogsCursor, Inval
     ),
   );
 
-export interface TransactionCursor {
-  blockHeight: number;
-  microblockSequence: number;
-  txIndex: number;
-}
+/** `microblock_sequence` of events confirmed in an anchor block (the highest value). */
+const ANCHOR_MICROBLOCK_SEQUENCE = 2_147_483_647;
 
-export const buildTransactionCursor = ({
-  blockHeight,
-  microblockSequence,
-  txIndex,
-}: TransactionCursor): string => `${blockHeight}:${microblockSequence}:${txIndex}`;
+/** Highest `tx_index` the logs endpoint accepts (a Postgres `smallint`). */
+const MAX_TX_INDEX = 32_767;
 
-const TransactionCursorSchema = Schema.TemplateLiteralParser([
-  Schema.Natural,
-  ":",
-  Schema.Natural,
-  ":",
-  Schema.Natural,
-]).pipe(
-  Schema.decodeTo(
-    Schema.Struct({
-      blockHeight: Schema.Natural,
-      microblockSequence: Schema.Natural,
-      txIndex: Schema.Natural,
-    }),
-    {
-      decode: SchemaGetter.transform((parts) => ({
-        blockHeight: parts[0],
-        microblockSequence: parts[2],
-        txIndex: parts[4],
-      })),
-      encode: SchemaGetter.transform((cursor) => [
-        cursor.blockHeight,
-        ":",
-        cursor.microblockSequence,
-        ":",
-        cursor.txIndex,
-      ]),
-    },
-  ),
-);
+/** Highest `event_index` the logs endpoint accepts (a Postgres `integer`). */
+const MAX_EVENT_INDEX = 2_147_483_647;
 
-const decodeTransactionCursor = Schema.decodeUnknownEffect(TransactionCursorSchema);
+/** A logs cursor selecting every event at or below `blockHeight`. */
+const atOrBelowBlock = (blockHeight: number): string =>
+  buildLogsCursor({
+    blockHeight,
+    microblockSequence: ANCHOR_MICROBLOCK_SEQUENCE,
+    txIndex: MAX_TX_INDEX,
+    eventIndex: MAX_EVENT_INDEX,
+  });
 
-export const parseTransactionCursor = (
+/**
+ * The newest page of events at or below `cursor`, or `undefined` when the
+ * contract has none: the logs endpoint answers `404 Cursor not found`.
+ */
+function fetchLogsAtOrBelow(
+  contractId: string,
   cursor: string,
-): Effect.Effect<TransactionCursor, InvalidCursorError> =>
-  decodeTransactionCursor(cursor).pipe(
-    Effect.mapError(
-      (error) => new InvalidCursorError({ format: "transaction", cursor, message: error.message }),
+  limit?: number,
+): Effect.Effect<ContractLogsResponse | undefined, StacksHttpError, StacksClient> {
+  return Effect.gen(function* () {
+    const client = yield* StacksClient;
+
+    return yield* client.getContractLogs(contractId, { cursor, limit });
+  }).pipe(
+    Effect.catchIf(
+      (error) =>
+        HttpClientError.isHttpClientError(error) &&
+        Predicate.isTagged(error.reason, "StatusCodeError") &&
+        error.reason.response.status === 404,
+      () => Effect.succeed(undefined),
     ),
   );
-
-function findFirstMatchingContractEvent(
-  txId: string,
-  contractId: string,
-): Effect.Effect<{ event_index: number } | null, StacksApiError, StacksClient> {
-  return Effect.gen(function* () {
-    const client = yield* StacksClient;
-    let eventCursor: string | null = "initial";
-
-    while (eventCursor) {
-      const eventsResponse: TransactionEventsResponse = yield* client.getTransactionEvents(txId, {
-        limit: 50,
-        cursor: eventCursor === "initial" ? undefined : eventCursor,
-      });
-
-      const { results, cursor } = eventsResponse;
-
-      for (const event of results) {
-        if (event.type === "contract_log" && "contract_log" in event) {
-          if (event.contract_log.contract_id === contractId) {
-            return { event_index: event.event_index };
-          }
-        }
-      }
-
-      eventCursor = cursor.next;
-    }
-
-    return null;
-  });
 }
 
-function checkTransactionForMatchingEvent(
-  txId: string,
+/** Whether the contract has an event at or below `blockHeight`, read with a one-event page. */
+function hasEventAtOrBelow(
   contractId: string,
-): Effect.Effect<LogsCursor | null, StacksApiError, StacksClient> {
-  return Effect.gen(function* () {
-    const client = yield* StacksClient;
-    const fullTx = yield* client.getTransaction(txId);
-
-    if (fullTx.event_count === 0) {
-      return null;
-    }
-
-    const matchingEvent = yield* findFirstMatchingContractEvent(fullTx.tx_id, contractId);
-
-    if (!matchingEvent) {
-      return null;
-    }
-
-    // The v2 /logs endpoint strictly matches (block_height, microblock_sequence, tx_index, event_index).
-    // In Hiro's DB, transactions confirmed in an anchor block have microblock_sequence = 2147483647 (0x7FFFFFFF),
-    // While microblock transactions have 0..N. Because v3 endpoints completely dropped microblock_sequence and
-    // V3 cursors do not expose it, GET /extended/v1/tx/{tx_id} is the only endpoint that provides the true
-    // Microblock_sequence needed to construct a valid cursor.
-    const v1Tx = yield* client.getV1Transaction(fullTx.tx_id);
-
-    return {
-      blockHeight: fullTx.block.height,
-      microblockSequence: v1Tx.microblock_sequence,
-      txIndex: fullTx.block.tx_index,
-      eventIndex: matchingEvent.event_index,
-    };
-  });
+  blockHeight: number,
+): Effect.Effect<boolean, StacksHttpError, StacksClient> {
+  return fetchLogsAtOrBelow(contractId, atOrBelowBlock(blockHeight), 1).pipe(
+    Effect.map((page) => page !== undefined),
+  );
 }
 
 /**
- * Discovers the initial cursor required to start synchronizing smart contract logs.
+ * Finds the logs cursor to start forward pagination from so that every event
+ * of the contract at or above `fromBlockHeight` is fetched, or `null` when
+ * fewer than one page of such events exists and the newest page covers them.
  *
- * ### Background & API Limitations
- * 1. **`/extended/v2/smart-contracts/{contract_id}/logs` pages backwards from an existing event**:
- *    - The logs endpoint expects a 4-part cursor formatted as `block_height:microblock_sequence:tx_index:event_index`.
- *    - A cursor selects the events at or below it (newest first), so a synthesized cursor such as
- *      `${deploymentBlock}:0:0:0` returns older events, and older API versions reject it with
- *      `404 Not Found (Cursor not found)`. Paging forward requires the cursor of the first event itself.
+ * The logs endpoint pages newest first, and a cursor selects the events at or
+ * below it. A synthesized cursor (`height:2147483647:32767:2147483647`) need
+ * not match an existing event, so:
  *
- * 2. **`/extended/v3/principals/{principal}/transactions` defaults to reverse-chronological order (newest first)**:
- *    - Default pagination starts from the latest tip and only paginates backwards via `cursor.next`.
- *    - For active contracts with hundreds of thousands of transactions, traversing from the tip backwards would require
- *      thousands of sequential HTTP requests just to reach the contract's genesis.
- *    - However, the transactions endpoint allows inequality coordinate querying (`<= cursor`). Passing a cursor like
- *      `${deploymentBlock}:0:0` jumps directly to that block's transactions without validating prior existence.
+ * - With events below `fromBlockHeight`, the page at or below
+ *   `fromBlockHeight - 1` ends at the newest of them, and its `next_cursor`
+ *   (one full page newer) starts at the first event at or above
+ *   `fromBlockHeight`. One request.
+ * - Without them, a binary search over block heights (one-event pages) finds
+ *   the first block holding events, then `prev_cursor` walks to that block's
+ *   oldest page.
  *
- * 3. **Transactions may contain non-log events or logs for other contracts**:
- *    - In v3, transaction objects return `event_count` rather than an inline `events` array.
- *    - A transaction's events may be token transfers (`ft_asset`, `stx_asset`), locks, or print logs for other contracts
- *      in a multi-contract transaction.
- *    - Blindly using `event_index: 0` can result in a 404 from `/logs` if index 0 is not a `contract_log` for that contract.
- *
- * 4. **`microblock_sequence` resolution requires `GET /extended/v1/tx/{tx_id}`**:
- *    - `/logs` strictly validates `microblock_sequence` (`2147483647` for anchor blocks, `0..N` for microblocks).
- *    - V3 transaction endpoints dropped `microblock_sequence`, and v3 pagination cursors do not contain it.
- *    - Since `/logs` lacks inequality querying, fetching `GET /extended/v1/tx/{tx_id}` once for the first matching
- *      event is the only way to obtain the exact `microblock_sequence` needed for the initial cursor.
- *
- * ### Implementation Strategy
- * 1. Fetch contract metadata via `GET /extended/v3/smart-contracts/{contract_id}` (1 request) to obtain its deployment `block.height`.
- * 2. Jump straight to the deployment block by querying `getPrincipalTransactions` with `cursor: "${deploymentBlock}:0:0"`.
- * 3. Iterate transactions from oldest to newest within the page:
- *    - If `event_count === 0`, skip immediately (0 extra requests).
- *    - If `event_count > 0`, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
- *      matching `contract_id`.
- *    - When found, fetch `GET /extended/v1/tx/{tx_id}` to obtain its `microblock_sequence`
- *      (e.g. `2147483647` for anchor blocks, `0..N` for microblocks) and construct the exact 4-part cursor
- *      (`block.height:microblock_sequence:block.tx_index:event_index`) for `getContractLogs`.
- * 5. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
+ * Only the contract's own logs are read, so events emitted through calls made
+ * by other contracts are found too.
  */
-export const getContractEventsFirstCursor = (
+export const findBackfillCursor = (
   contractId: string,
-  options?: { startBlock?: number },
-): Effect.Effect<string | null, StacksApiError, StacksClient> =>
-  Effect.gen(function* getContractEventsFirstCursor() {
+  fromBlockHeight: number,
+): Effect.Effect<string | null, StacksApiError | InvalidCursorError, StacksClient> =>
+  Effect.gen(function* () {
     const client = yield* StacksClient;
-    const ADDRESS_TX_LIMIT = 50;
 
-    yield* Effect.logDebug(`Looking for deployment of ${contractId}`).pipe(
-      Effect.annotateLogs({ contractId, phase: "cursor" }),
-    );
+    if (fromBlockHeight > 0) {
+      const below = yield* fetchLogsAtOrBelow(contractId, atOrBelowBlock(fromBlockHeight - 1));
 
-    const contract = yield* client.getContract(contractId);
-    const deploymentBlockHeight = contract.block.height;
-
-    const initialBlockHeight =
-      options?.startBlock === undefined
-        ? deploymentBlockHeight
-        : Math.max(deploymentBlockHeight, options.startBlock);
-
-    yield* Effect.logDebug(
-      `Looking for first event of ${contractId} starting at block ${initialBlockHeight}`,
-    ).pipe(
-      Effect.annotateLogs({
-        contractId,
-        phase: "cursor",
-        deploymentBlockHeight,
-        initialBlockHeight,
-      }),
-    );
-
-    let currentCursor: string | null = buildTransactionCursor({
-      blockHeight: initialBlockHeight,
-      microblockSequence: 0,
-      txIndex: 0,
-    });
-
-    while (currentCursor) {
-      yield* Effect.logDebug(`Scanning page for ${contractId}`).pipe(
-        Effect.annotateLogs({ contractId, phase: "cursor", cursor: currentCursor }),
-      );
-
-      const page: PrincipalTransactionsResponse = yield* client.getPrincipalTransactions(
-        contractId,
-        {
-          limit: ADDRESS_TX_LIMIT,
-          cursor: currentCursor,
-        },
-      );
-
-      const { results, cursor } = page;
-
-      if (results.length === 0) {
-        break;
+      if (below !== undefined) {
+        return below.next_cursor;
       }
-
-      // Iterate from oldest to newest within the page
-      for (const item of results.slice().reverse()) {
-        const itemBlockHeight = item.transaction.block.height;
-
-        const isBeforeStart =
-          options?.startBlock !== undefined && itemBlockHeight < options.startBlock;
-
-        if (!isBeforeStart) {
-          const cursorResult = yield* checkTransactionForMatchingEvent(
-            item.transaction.tx_id,
-            contractId,
-          );
-
-          if (cursorResult) {
-            const firstCursor = buildLogsCursor(cursorResult);
-
-            yield* Effect.logDebug(
-              `Found first cursor for ${contractId} at block ${cursorResult.blockHeight}`,
-            ).pipe(
-              Effect.annotateLogs({
-                contractId,
-                phase: "cursor",
-                block: cursorResult.blockHeight,
-              }),
-            );
-
-            return firstCursor;
-          }
-        }
-      }
-
-      // Move forward in time to newer transactions
-      currentCursor = cursor.previous;
     }
 
-    yield* Effect.logDebug(`No events found for ${contractId}`).pipe(
-      Effect.annotateLogs({ contractId, phase: "cursor" }),
-    );
+    const head = yield* client.getContractLogs(contractId, { limit: 1 });
 
-    return null;
-  }).pipe(
-    Effect.annotateLogs({ service: "getContractEventsFirstCursor" }),
-    Effect.withLogSpan("getContractEventsFirstCursor"),
-  );
+    if (head.results.length === 0 || !head.cursor) {
+      return null;
+    }
+
+    let high = (yield* parseLogsCursor(head.cursor)).blockHeight;
+
+    if (!(yield* hasEventAtOrBelow(contractId, high))) {
+      return yield* new InvalidCursorError({
+        format: "logs",
+        cursor: atOrBelowBlock(high),
+        message:
+          "The Stacks API rejected a logs cursor that does not match an event; this stacks-blockchain-api version is not supported",
+      });
+    }
+
+    let low = fromBlockHeight;
+
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+
+      if (yield* hasEventAtOrBelow(contractId, middle)) {
+        high = middle;
+      } else {
+        low = middle + 1;
+      }
+    }
+
+    // The events of the first block holding any, newest first.
+    let page = yield* client.getContractLogs(contractId, { cursor: atOrBelowBlock(high) });
+
+    while (page.prev_cursor) {
+      page = yield* client.getContractLogs(contractId, { cursor: page.prev_cursor });
+    }
+
+    return page.cursor;
+  }).pipe(Effect.annotateLogs({ contractId, phase: "cursor" }));

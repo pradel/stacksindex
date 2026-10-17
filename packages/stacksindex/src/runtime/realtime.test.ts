@@ -384,7 +384,7 @@ describe("live indexing", () => {
     ]);
   });
 
-  test("catches up a contract whose first-event discovery found nothing", async () => {
+  test("syncs a contract from scratch before following new blocks", async () => {
     const contractId = "SP1.nested";
     const handled: HandledEvent[] = [];
 
@@ -396,8 +396,6 @@ describe("live indexing", () => {
       },
     ]);
 
-    // Discovery sees no transaction for the contract, so the historical pass
-    // Ends without reading its logs; the first head must still catch it up.
     const exit = await runLive(testDb, [
       { contractId, startBlock: BASE_HEIGHT, handler: recordingHandler(handled), endBlock: 102 },
     ]);
