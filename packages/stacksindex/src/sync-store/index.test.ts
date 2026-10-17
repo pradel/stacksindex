@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
-import type { SmartContractLogEvent, TransactionApiResponse } from "../datasources/api/index.ts";
+import type { SmartContractLogEvent } from "../datasources/api/index.ts";
 import { SyncStoreError } from "../lib/errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { syncStore } from "./index.ts";
@@ -36,7 +36,7 @@ const block = {
   execution_cost_write_length: 0,
 };
 
-const transaction: TransactionApiResponse = {
+const transaction = {
   tx_id: "0x78323ef7a23b45b96f318f5e41306dee91ee1d083b0e98be75382b91cab88f80",
   fee_rate: "1218",
   sender: {

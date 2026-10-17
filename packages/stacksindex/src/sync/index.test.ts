@@ -95,8 +95,6 @@ const makeFakeApi = (chain: readonly ChainEvent[], limit = 2): FakeApi => {
       getBlocks: notUsed,
       getBlock: notUsed,
       getBlockTransactions: notUsed,
-      getTransaction: notUsed,
-      getV1Transaction: notUsed,
       getTransactionsBatch: (txIds: string[]) => {
         batchRequests.push(txIds);
 
@@ -106,8 +104,6 @@ const makeFakeApi = (chain: readonly ChainEvent[], limit = 2): FakeApi => {
         } as never);
       },
       getTransactionEvents: notUsed,
-      getPrincipalTransactions: notUsed,
-      getContract: notUsed,
       getContractLogs: (_contractId: string, options?: { cursor?: string }) => {
         logRequests.push(options?.cursor);
 
@@ -118,39 +114,6 @@ const makeFakeApi = (chain: readonly ChainEvent[], limit = 2): FakeApi => {
     },
   };
 };
-
-/**
- * Fake API whose cursor discovery finds `first` as the first event. Each
- * response carries only the fields `getContractEventsFirstCursor` reads.
- */
-const withDiscovery = (api: FakeApi, first: ChainEvent): StacksClientService => ({
-  ...api.client,
-  // SAFETY: Discovery reads only `block.height` from the contract.
-  getContract: () => Effect.succeed({ block: { height: first.height } } as never),
-  getPrincipalTransactions: () =>
-    // SAFETY: Discovery reads only `results[].transaction` and `cursor.previous`.
-    Effect.succeed({
-      results: [{ transaction: { tx_id: first.txId, block: { height: first.height } } }],
-      cursor: { previous: null },
-    } as never),
-  getTransaction: () =>
-    // SAFETY: Discovery reads only `tx_id`, `event_count` and `block`.
-    Effect.succeed({
-      tx_id: first.txId,
-      event_count: 1,
-      block: { height: first.height, tx_index: 0 },
-    } as never),
-  getTransactionEvents: () =>
-    // SAFETY: Discovery reads only `results[]` contract logs and `cursor.next`.
-    Effect.succeed({
-      results: [
-        { type: "contract_log", event_index: 0, contract_log: { contract_id: CONTRACT_ID } },
-      ],
-      cursor: { next: null },
-    } as never),
-  // SAFETY: Discovery reads only `microblock_sequence`.
-  getV1Transaction: () => Effect.succeed({ microblock_sequence: 0 } as never),
-});
 
 /** Delays forward-page fetches by 11 seconds, signalling `fetchStarted` first. */
 const withSlowForwardPages = (
@@ -338,12 +301,17 @@ describe("sync historical", () => {
     const api = makeFakeApi(chain, 1);
     await seedProgress(null, 100);
 
-    await runSync(withDiscovery(api, chain[1]));
+    await runSync(api.client);
 
     await expect(storedEventHeights()).resolves.toStrictEqual(heights);
-    // Ten buffered catch-up pages are dropped, then pagination runs forward
-    // From the discovered cursor and finishes from the head.
-    expect(api.logRequests.slice(10, 12)).toStrictEqual(["200:0:0:0", "300:0:0:0"]);
+    // Ten buffered catch-up pages are dropped. The page at or below the synced
+    // Height then points one page newer, where forward pagination starts, and
+    // The sync finishes from the head.
+    expect(api.logRequests.slice(10, 13)).toStrictEqual([
+      "100:2147483647:32767:2147483647",
+      "200:0:0:0",
+      "300:0:0:0",
+    ]);
     expect(api.logRequests.at(-1)).toBeUndefined();
     await expect(getProgress()).resolves.toMatchObject({ cursor: null, syncedBlockHeight: 1300n });
   });

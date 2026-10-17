@@ -150,7 +150,14 @@ const transactionEvents = (transaction: FakeTransaction) =>
       ]
     : [];
 
-export function createFakeChain(options: { readonly baseHeight: number }): FakeChain {
+export function createFakeChain(options: {
+  readonly baseHeight: number;
+  /**
+   * Rejects logs cursors that do not match an existing event, like older
+   * stacks-blockchain-api versions.
+   */
+  readonly exactLogCursors?: boolean;
+}): FakeChain {
   const blocks: FakeBlock[] = [
     {
       height: options.baseHeight,
@@ -216,7 +223,17 @@ export function createFakeChain(options: { readonly baseHeight: number }): FakeC
     const firstAtCursor =
       cursor === null ? 0 : entries.findIndex((entry) => isAtOrBelowCursor(entry, cursor));
 
-    const start = firstAtCursor === -1 ? entries.length : firstAtCursor;
+    const isUnknownCursor =
+      cursor !== null &&
+      (firstAtCursor === -1 ||
+        (options.exactLogCursors === true && logCursor(entries[firstAtCursor]) !== cursor));
+
+    // `404 Cursor not found`: no event at or below the cursor.
+    if (isUnknownCursor) {
+      return json({ error: "Cursor not found" }, 404);
+    }
+
+    const start = firstAtCursor;
     const page = entries.slice(start, start + limit);
     const older = entries.at(start + limit);
     const newer = start - limit >= 0 ? entries[start - limit] : undefined;
@@ -269,43 +286,12 @@ export function createFakeChain(options: { readonly baseHeight: number }): FakeC
     });
   };
 
-  /**
-   * First-event discovery endpoints. Contracts are deployed at the base block
-   * and their principal transactions are always empty, as for a contract whose
-   * logs only come from calls made by other contracts: discovery finds nothing.
-   */
-  const routeDiscovery = (path: string) => {
-    const deployedContract = /^\/extended\/v3\/smart-contracts\/(?<id>[^/]+)$/u.exec(path)?.groups
-      ?.id;
-
-    if (deployedContract !== undefined) {
-      return json({ contract_id: deployedContract, block: { height: blocks[0].height } });
-    }
-
-    if (/^\/extended\/v3\/principals\/[^/]+\/transactions$/u.test(path)) {
-      return json({
-        limit: 50,
-        total: 0,
-        cursor: { next: null, previous: null, current: null },
-        results: [],
-      });
-    }
-
-    return undefined;
-  };
-
   const route = (chain: FakeChain, url: URL) => {
     const path = url.pathname;
     const params = url.searchParams;
 
     if (path === "/extended") {
       return json({ chain_tip: { block_height: tip().height, block_hash: tip().hash } });
-    }
-
-    const discovery = routeDiscovery(path);
-
-    if (discovery !== undefined) {
-      return discovery;
     }
 
     if (path === "/extended/v2/blocks") {

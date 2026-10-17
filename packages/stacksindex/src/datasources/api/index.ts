@@ -57,13 +57,8 @@ type GetBlockTransactionsQuery =
 type GetContractLogsQuery =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["parameters"]["query"];
 
-type GetTransactionQuery = paths["/extended/v3/transactions/{tx_id}"]["get"]["parameters"]["query"];
-
 type TransactionsBatchResponse =
   paths["/extended/v3/transactions/batch"]["get"]["responses"]["200"]["content"]["application/json"];
-
-type GetPrincipalTransactionsQuery =
-  paths["/extended/v3/principals/{principal}/transactions"]["get"]["parameters"]["query"];
 
 type GetTransactionEventsQuery =
   paths["/extended/v3/transactions/{tx_id}/events"]["get"]["parameters"]["query"];
@@ -71,15 +66,10 @@ type GetTransactionEventsQuery =
 export type TransactionEventsResponse =
   paths["/extended/v3/transactions/{tx_id}/events"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type TransactionApiResponse = Extract<
-  paths["/extended/v3/transactions/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
-  { block: unknown }
->;
-
 /**
- * Minimal transaction shape required for storage.
- * Satisfied by both the full `GET /extended/v3/transactions/{tx_id}` response
- * and the `GET /extended/v3/transactions/batch` summaries.
+ * Minimal transaction shape required for storage. Satisfied by the
+ * `GET /extended/v3/transactions/batch` and
+ * `GET /extended/v3/blocks/{height_or_hash}/transactions` summaries.
  */
 export interface StorableTransaction {
   tx_id: string;
@@ -104,12 +94,6 @@ export interface StorableBlock {
   burn_block_height: number;
 }
 
-export type PrincipalTransactionsResponse =
-  paths["/extended/v3/principals/{principal}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
-
-type ContractApiResponse =
-  paths["/extended/v3/smart-contracts/{contract_id}"]["get"]["responses"]["200"]["content"]["application/json"];
-
 export type ContractLogsResponse =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["responses"]["200"]["content"]["application/json"];
 
@@ -121,9 +105,7 @@ type V1TransactionApiResponse = Extract<
   { block_height: number }
 >;
 
-type MinedV1Transaction = V1TransactionApiResponse;
-
-type ContractEvent = MinedV1Transaction["events"][number];
+type ContractEvent = V1TransactionApiResponse["events"][number];
 
 export type SmartContractLogEvent = Extract<ContractEvent, { event_type: "smart_contract_log" }>;
 
@@ -157,13 +139,6 @@ export interface StacksClientService {
     heightOrHash: string | number,
     options?: GetBlockTransactionsQuery,
   ) => Effect.Effect<BlockTransactionsApiResponse, StacksHttpError>;
-  readonly getTransaction: (
-    txId: string,
-    options?: GetTransactionQuery,
-  ) => Effect.Effect<TransactionApiResponse, StacksHttpError>;
-  readonly getV1Transaction: (
-    txId: string,
-  ) => Effect.Effect<V1TransactionApiResponse, StacksHttpError>;
   readonly getTransactionsBatch: (
     txIds: string[],
   ) => Effect.Effect<TransactionsBatchResponse, StacksHttpError>;
@@ -171,11 +146,6 @@ export interface StacksClientService {
     txId: string,
     options?: GetTransactionEventsQuery,
   ) => Effect.Effect<TransactionEventsResponse, StacksHttpError>;
-  readonly getPrincipalTransactions: (
-    principal: string,
-    options?: GetPrincipalTransactionsQuery,
-  ) => Effect.Effect<PrincipalTransactionsResponse, StacksHttpError>;
-  readonly getContract: (contractId: string) => Effect.Effect<ContractApiResponse, StacksHttpError>;
   readonly getContractLogs: (
     contractId: string,
     options?: GetContractLogsQuery,
@@ -425,22 +395,6 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
             `/extended/v3/blocks/${heightOrHash}/transactions`,
             options,
           ),
-        getTransaction: (txId, options = {}) => {
-          const { include } = options;
-
-          const query =
-            include !== null && include !== undefined && include.length > 0
-              ? { include: include.join(",") }
-              : undefined;
-
-          return get<TransactionApiResponse>(
-            "getTransaction",
-            `/extended/v3/transactions/${txId}`,
-            query,
-          );
-        },
-        getV1Transaction: (txId) =>
-          get<V1TransactionApiResponse>("getV1Transaction", `/extended/v1/tx/${txId}`),
         getTransactionsBatch: (txIds) =>
           txIds.length === 0
             ? Effect.succeed<TransactionsBatchResponse>({ results: [] })
@@ -458,17 +412,6 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
             { limit, cursor, ...rest },
           );
         },
-        getPrincipalTransactions: (principal, options = {}) => {
-          const { limit = 50, cursor, ...rest } = options;
-
-          return get<PrincipalTransactionsResponse>(
-            "getPrincipalTransactions",
-            `/extended/v3/principals/${principal}/transactions`,
-            { limit, cursor, ...rest },
-          );
-        },
-        getContract: (contractId) =>
-          get<ContractApiResponse>("getContract", `/extended/v3/smart-contracts/${contractId}`),
         getContractLogs: (contractId, options = {}) => {
           const { limit = 100, cursor, ...rest } = options;
 
