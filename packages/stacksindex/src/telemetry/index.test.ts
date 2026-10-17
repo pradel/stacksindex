@@ -40,6 +40,20 @@ describe("telemetry", () => {
     expect(requests).toStrictEqual([{ url: "http://collector.test/v1/metrics", method: "POST" }]);
   });
 
+  test("keeps the base URL's query parameters after the /v1/metrics path", async () => {
+    const indexer = await createIndexer({
+      database: { kind: "pglite" },
+      logLevel: "None",
+      telemetry: { otlp: { baseUrl: "http://collector.test/otlp/?tenant=a" } },
+    });
+
+    await indexer.close();
+
+    expect(requests).toStrictEqual([
+      { url: "http://collector.test/otlp/v1/metrics?tenant=a", method: "POST" },
+    ]);
+  });
+
   test("rejects an otlp option without baseUrl", async () => {
     await expect(
       createIndexer({

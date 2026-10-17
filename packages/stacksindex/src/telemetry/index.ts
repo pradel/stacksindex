@@ -81,8 +81,11 @@ export const telemetryLayer = (
           return Layer.empty;
         }
 
-        // Strip trailing slashes so `/v1/metrics` is not appended after `//`.
-        const url = `${otlp.baseUrl.replace(/\/+$/u, "")}/v1/metrics`;
+        // Append to the pathname so query parameters stay in place; strip
+        // Trailing slashes so `/v1/metrics` is not appended after `//`.
+        const endpoint = new URL(otlp.baseUrl);
+        endpoint.pathname = `${endpoint.pathname.replace(/\/+$/u, "")}/v1/metrics`;
+        const url = endpoint.href;
         const exportInterval = otlp.exportInterval ?? DEFAULT_EXPORT_INTERVAL;
         const temporality = otlp.temporality ?? "cumulative";
         const serviceName = otlp.resource?.serviceName ?? DEFAULT_SERVICE_NAME;
