@@ -4,14 +4,9 @@ exports[`e2E: Multi-contract fair scheduling scenario > delivers globally ordere
 {
   "endpoints": {
     "GET /extended": 1,
-    "GET /extended/v1/tx/:tx_id": 2,
-    "GET /extended/v2/smart-contracts/:contract_id/logs": 4,
-    "GET /extended/v3/principals/:principal/transactions": 2,
-    "GET /extended/v3/smart-contracts/:contract_id": 2,
-    "GET /extended/v3/transactions/:tx_id": 2,
-    "GET /extended/v3/transactions/:tx_id/events": 2,
-    "GET /extended/v3/transactions/batch": 6,
+    "GET /extended/v2/smart-contracts/:contract_id/logs": 32,
+    "GET /extended/v3/transactions/batch": 3,
   },
-  "totalCalls": 21,
+  "totalCalls": 36,
 }
 `;

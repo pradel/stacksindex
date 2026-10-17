@@ -17,7 +17,7 @@ Two entrypoints ship with the package:
 ## Features
 
 - **Simple & Open-Source**: Focused on developer simplicity with zero unnecessary abstractions.
-- **Reliable Historical Backfill**: Automatically discovers contract deployment blocks and initial event cursors to paginate backwards or forwards seamlessly.
+- **Reliable Historical Backfill**: Finds where to start from the contract's own event logs, including events emitted through calls made by other contracts, then paginates forwards and catches up from the newest events.
 - **Live Sync**: After the backfill, follow new blocks by polling the API or over its websocket, fetching each block's events or each contract's newest logs, whichever costs fewer requests.
 - **Embedded or External Database**: First-class support for embedded [PGlite](https://pglite.electric-sql.com/) (zero configuration) or production PostgreSQL via [Drizzle ORM](https://orm.drizzle.team/).
 - **Time-Travel Read-Only Calls**: Query contract state (`client.callReadOnly`) automatically pinned to the exact block height of the event being processed.

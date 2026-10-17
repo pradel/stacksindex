@@ -129,7 +129,7 @@ describe("aPI DataSource", () => {
     test("returns data on 200", async () => {
       mockHandler.mockResolvedValue(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const result = await runRequest((client) => client.getTransaction("0xabc123"));
+      const result = await runRequest((client) => client.getBlock("0xabc123"));
 
       expect(result).toStrictEqual({ hash: "0xabc123", block_height: 123_456 });
     });
@@ -137,11 +137,11 @@ describe("aPI DataSource", () => {
     test("returns the response status error on 404", async () => {
       mockHandler.mockResolvedValue(jsonResponse({ error: "Not found" }, 404));
 
-      const exit = await runRequestExit((client) => client.getTransaction("404"));
+      const exit = await runRequestExit((client) => client.getBlock("404"));
 
       await expectStatusError(exit, {
         status: 404,
-        path: "/extended/v3/transactions/404",
+        path: "/extended/v2/blocks/404",
         body: { error: "Not found" },
       });
     });
@@ -149,11 +149,11 @@ describe("aPI DataSource", () => {
     test("returns the response status error on 500", async () => {
       mockHandler.mockResolvedValue(jsonResponse({ error: "Bad request" }, 400));
 
-      const exit = await runRequestExit((client) => client.getTransaction("500"));
+      const exit = await runRequestExit((client) => client.getBlock("500"));
 
       await expectStatusError(exit, {
         status: 400,
-        path: "/extended/v3/transactions/500",
+        path: "/extended/v2/blocks/500",
         body: { error: "Bad request" },
       });
     });
@@ -167,10 +167,10 @@ describe("aPI DataSource", () => {
         }),
       );
 
-      const exit = await runRequestExit((client) => client.getTransaction("parse-error"));
+      const exit = await runRequestExit((client) => client.getBlock("parse-error"));
 
       const reason = expectDecodeError(exit, {
-        path: "/extended/v3/transactions/parse-error",
+        path: "/extended/v2/blocks/parse-error",
       });
 
       expect(reason.cause).toBeInstanceOf(SyntaxError);
@@ -185,11 +185,11 @@ describe("aPI DataSource", () => {
         }),
       );
 
-      const exit = await runRequestExit((client) => client.getTransaction("500"));
+      const exit = await runRequestExit((client) => client.getBlock("500"));
 
       await expectStatusError(exit, {
         status: 400,
-        path: "/extended/v3/transactions/500",
+        path: "/extended/v2/blocks/500",
         body: "Bad Request",
       });
     });
@@ -205,11 +205,11 @@ describe("aPI DataSource", () => {
 
       mockHandler.mockResolvedValue(mockBrokenResponse);
 
-      const exit = await runRequestExit((client) => client.getTransaction("500"));
+      const exit = await runRequestExit((client) => client.getBlock("500"));
 
       await expectStatusError(exit, {
         status: 400,
-        path: "/extended/v3/transactions/500",
+        path: "/extended/v2/blocks/500",
       });
     });
 
@@ -217,14 +217,14 @@ describe("aPI DataSource", () => {
       vi.useFakeTimers();
       mockHandler.mockRejectedValue(new Error("Network error"));
 
-      const promise = runRequestExit((client) => client.getTransaction("network-error"));
+      const promise = runRequestExit((client) => client.getBlock("network-error"));
 
       await vi.runAllTimersAsync();
 
       const exit = await promise;
 
       expectTransportError(exit, {
-        path: "/extended/v3/transactions/network-error",
+        path: "/extended/v2/blocks/network-error",
         causeMessage: "Network error",
       });
       expect(mockHandler).toHaveBeenCalledTimes(4);
@@ -238,7 +238,7 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "2" }))
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest((client) => client.getTransaction("0xabc123"));
+      const promise = runRequest((client) => client.getBlock("0xabc123"));
 
       await vi.runAllTimersAsync();
 
@@ -256,7 +256,7 @@ describe("aPI DataSource", () => {
         jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "1" }),
       );
 
-      const promise = runRequestExit((client) => client.getTransaction("0xabc123"));
+      const promise = runRequestExit((client) => client.getBlock("0xabc123"));
 
       await vi.runAllTimersAsync();
 
@@ -264,7 +264,7 @@ describe("aPI DataSource", () => {
 
       const response = await expectStatusError(exit, {
         status: 429,
-        path: "/extended/v3/transactions/0xabc123",
+        path: "/extended/v2/blocks/0xabc123",
         body: { error: "Rate limited" },
       });
 
@@ -280,7 +280,7 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Rate limited" }, 429, { "retry-after": "0" }))
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest((client) => client.getTransaction("0xabc123"));
+      const promise = runRequest((client) => client.getBlock("0xabc123"));
 
       await vi.runAllTimersAsync();
 
@@ -301,7 +301,7 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest((client) => client.getTransaction("0xabc123"));
+      const promise = runRequest((client) => client.getBlock("0xabc123"));
 
       await vi.runAllTimersAsync();
 
@@ -321,7 +321,7 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest((client) => client.getTransaction("0xabc123"));
+      const promise = runRequest((client) => client.getBlock("0xabc123"));
 
       await vi.runAllTimersAsync();
 
@@ -342,7 +342,7 @@ describe("aPI DataSource", () => {
         )
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest((client) => client.getTransaction("0xabc123"));
+      const promise = runRequest((client) => client.getBlock("0xabc123"));
 
       await vi.runAllTimersAsync();
 
@@ -361,7 +361,7 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Bad gateway" }, 502))
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest((client) => client.getTransaction("0xabc123"));
+      const promise = runRequest((client) => client.getBlock("0xabc123"));
 
       await vi.runAllTimersAsync();
 
@@ -381,7 +381,7 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Down" }, 503))
         .mockResolvedValueOnce(jsonResponse({ error: "Down" }, 503));
 
-      const promise = runRequestExit((client) => client.getTransaction("0xabc123"));
+      const promise = runRequestExit((client) => client.getBlock("0xabc123"));
 
       await vi.runAllTimersAsync();
 
@@ -389,7 +389,7 @@ describe("aPI DataSource", () => {
 
       await expectStatusError(exit, {
         status: 503,
-        path: "/extended/v3/transactions/0xabc123",
+        path: "/extended/v2/blocks/0xabc123",
         body: { error: "Down" },
       });
       expect(mockHandler).toHaveBeenCalledTimes(4);
@@ -404,7 +404,7 @@ describe("aPI DataSource", () => {
         .mockResolvedValueOnce(jsonResponse({ error: "Gateway timeout" }, 504))
         .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
 
-      const promise = runRequest((client) => client.getTransaction("0xabc123"));
+      const promise = runRequest((client) => client.getBlock("0xabc123"));
 
       await vi.runAllTimersAsync();
 
@@ -442,7 +442,7 @@ describe("aPI DataSource", () => {
         new Response("", { status: 200, headers: { "content-type": "application/json" } }),
       );
 
-      const result = await runRequest((client) => client.getTransaction("0xabc123"));
+      const result = await runRequest((client) => client.getBlock("0xabc123"));
 
       expect(result).toBeNull();
     });
@@ -451,14 +451,14 @@ describe("aPI DataSource", () => {
       vi.useFakeTimers();
       mockHandler.mockRejectedValue(new DOMException("The operation was aborted", "AbortError"));
 
-      const promise = runRequestExit((client) => client.getTransaction("0xabc123"));
+      const promise = runRequestExit((client) => client.getBlock("0xabc123"));
 
       await vi.runAllTimersAsync();
 
       const exit = await promise;
 
       expectTransportError(exit, {
-        path: "/extended/v3/transactions/0xabc123",
+        path: "/extended/v2/blocks/0xabc123",
         causeMessage: "The operation was aborted",
       });
       expect(mockHandler).toHaveBeenCalledTimes(4);
@@ -470,12 +470,10 @@ describe("aPI DataSource", () => {
   describe("metrics", () => {
     const readMetrics = Effect.gen(function* () {
       const responses = (status: string) =>
-        Metric.value(Metric.withAttributes(apiResponses, { endpoint: "getTransaction", status }));
+        Metric.value(Metric.withAttributes(apiResponses, { endpoint: "getBlock", status }));
 
       const durations = (outcome: string) =>
-        Metric.value(
-          Metric.withAttributes(apiRequestDuration, { endpoint: "getTransaction", outcome }),
-        );
+        Metric.value(Metric.withAttributes(apiRequestDuration, { endpoint: "getBlock", outcome }));
 
       return {
         "2xx": (yield* responses("2xx")).count,
@@ -488,7 +486,7 @@ describe("aPI DataSource", () => {
 
     const runMeasured = () =>
       Effect.runPromise(
-        withClient((client) => client.getTransaction("0xabc123")).pipe(
+        withClient((client) => client.getBlock("0xabc123")).pipe(
           Effect.andThen(readMetrics),
           Effect.provideService(Metric.MetricRegistry, new Map()),
           Effect.provideService(References.MinimumLogLevel, "None"),
@@ -651,71 +649,6 @@ describe("aPI DataSource", () => {
     });
   });
 
-  describe("getTransaction", () => {
-    test("returns transaction data on 200", async () => {
-      const mockTx = {
-        tx_id: "0xtx123",
-        type: "contract_call",
-        status: "success",
-        fee_rate: "1000",
-        sender: { address: "SP123", nonce: 1 },
-        block: { hash: "0xblock", height: 123_456, time: 1000, tx_index: 0 },
-      };
-
-      mockHandler.mockImplementation((request) => {
-        expect(toUrlString(request)).toBe("https://api.hiro.so/extended/v3/transactions/0xtx123");
-
-        return Promise.resolve(jsonResponse(mockTx));
-      });
-
-      const result = await runRequest((client) => client.getTransaction("0xtx123"));
-
-      expect(result).toStrictEqual(mockTx);
-    });
-
-    test("includes optional fields when requested", async () => {
-      mockHandler.mockImplementation((request) => {
-        expect(toUrlString(request)).toBe(
-          "https://api.hiro.so/extended/v3/transactions/0xtx123?include=result%2Cpost_conditions",
-        );
-
-        return Promise.resolve(jsonResponse({ tx_id: "0xtx123" }));
-      });
-
-      const result = await runRequest((client) =>
-        client.getTransaction("0xtx123", {
-          include: ["result", "post_conditions"],
-        }),
-      );
-
-      expect(result).toStrictEqual({ tx_id: "0xtx123" });
-    });
-  });
-
-  describe("getV1Transaction", () => {
-    test("returns v1 transaction data on 200", async () => {
-      const mockV1Tx = {
-        tx_id: "0xtx123",
-        tx_type: "contract_call",
-        tx_status: "success",
-        block_height: 123_456,
-        tx_index: 6,
-        microblock_sequence: 2147483647,
-        microblock_hash: "0x",
-      };
-
-      mockHandler.mockImplementation((request) => {
-        expect(toUrlString(request)).toBe("https://api.hiro.so/extended/v1/tx/0xtx123");
-
-        return Promise.resolve(jsonResponse(mockV1Tx));
-      });
-
-      const result = await runRequest((client) => client.getV1Transaction("0xtx123"));
-
-      expect(result).toStrictEqual(mockV1Tx);
-    });
-  });
-
   describe("getTransactionsBatch", () => {
     test("returns batch data on 200 with repeated tx_id params", async () => {
       const mockResponse = {
@@ -806,83 +739,6 @@ describe("aPI DataSource", () => {
     });
   });
 
-  describe("getPrincipalTransactions", () => {
-    test("returns principal transactions on 200 with cursor", async () => {
-      const principal = "SP123.token";
-
-      const mockResponse = {
-        limit: 50,
-        total: 200,
-        cursor: { next: "next_cursor_1", previous: null, current: "curr_1" },
-        results: [
-          {
-            transaction: {
-              tx_id: "0xtx123",
-              type: "contract_call",
-              status: "success",
-              fee_rate: "1000",
-              sender: { address: principal, nonce: 0 },
-              block: { hash: "0xblock", height: 123_456, time: 1000, tx_index: 0 },
-            },
-            involvement: "sender",
-          },
-        ],
-      };
-
-      mockHandler.mockImplementation((request) => {
-        expect(toUrlString(request)).toBe(
-          `https://api.hiro.so/extended/v3/principals/${principal}/transactions?limit=50&cursor=curr_1`,
-        );
-
-        return Promise.resolve(jsonResponse(mockResponse));
-      });
-
-      const result = await runRequest((client) =>
-        client.getPrincipalTransactions(principal, {
-          limit: 50,
-          cursor: "curr_1",
-        }),
-      );
-
-      expect(result).toStrictEqual(mockResponse);
-    });
-  });
-
-  describe("getContract", () => {
-    test("returns contract info on 200", async () => {
-      const contractId = "SP123.token";
-
-      const mockContract = {
-        tx_id: "0xtx123",
-        contract_id: contractId,
-        block: {
-          height: 123_456,
-          hash: "0xhash",
-          index_hash: "0xindex",
-          time: 1_600_000_000,
-          tx_index: 0,
-        },
-        bitcoin_block: {
-          height: 100_000,
-          time: 1_600_000_000,
-        },
-        clarity_version: 2,
-        source_code: "(define-data-var x int 0)",
-      };
-
-      mockHandler.mockImplementation((request) => {
-        expect(toUrlString(request)).toBe(
-          `https://api.hiro.so/extended/v3/smart-contracts/${contractId}`,
-        );
-
-        return Promise.resolve(jsonResponse(mockContract));
-      });
-
-      const result = await runRequest((client) => client.getContract(contractId));
-      expect(result).toStrictEqual(mockContract);
-    });
-  });
-
   describe("getContractLogs", () => {
     test("returns contract logs on 200", async () => {
       const contractId = "SP123.token";
@@ -940,13 +796,13 @@ describe("aPI DataSource", () => {
 
       mockHandler.mockImplementation((request) => {
         expect(toUrlString(request)).toBe(
-          "https://custom-stacks-node.example.com/extended/v3/transactions/0xtx123",
+          "https://custom-stacks-node.example.com/extended/v2/blocks/0xtx123",
         );
 
         return Promise.resolve(jsonResponse({ tx_id: "0xtx123", block: { height: 123_456 } }));
       });
 
-      const result = await runRequest((client) => client.getTransaction("0xtx123"), customContext);
+      const result = await runRequest((client) => client.getBlock("0xtx123"), customContext);
 
       expect(result).toStrictEqual({ tx_id: "0xtx123", block: { height: 123_456 } });
     });
@@ -958,13 +814,13 @@ describe("aPI DataSource", () => {
       };
 
       mockHandler.mockImplementation((request) => {
-        expect(toUrlString(request)).toBe("https://api.hiro.so/extended/v3/transactions/0xtx123");
+        expect(toUrlString(request)).toBe("https://api.hiro.so/extended/v2/blocks/0xtx123");
         expect(request.headers["x-api-key"]).toBe("my-test-api-key");
 
         return Promise.resolve(jsonResponse({ tx_id: "0xtx123", block: { height: 123_456 } }));
       });
 
-      const result = await runRequest((client) => client.getTransaction("0xtx123"), apiKeyContext);
+      const result = await runRequest((client) => client.getBlock("0xtx123"), apiKeyContext);
 
       expect(result).toStrictEqual({ tx_id: "0xtx123", block: { height: 123_456 } });
     });
@@ -976,7 +832,7 @@ describe("aPI DataSource", () => {
         return Promise.resolve(jsonResponse({ tx_id: "0xtx123", block: { height: 123_456 } }));
       });
 
-      const result = await runRequest((client) => client.getTransaction("0xtx123"));
+      const result = await runRequest((client) => client.getBlock("0xtx123"));
 
       expect(result).toStrictEqual({ tx_id: "0xtx123", block: { height: 123_456 } });
     });

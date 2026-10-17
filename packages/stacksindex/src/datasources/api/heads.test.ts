@@ -106,12 +106,8 @@ const makeClient = (getBlocks: StacksClientService["getBlocks"]): StacksClientSe
   getBlocks,
   getBlock: notUsed,
   getBlockTransactions: notUsed,
-  getTransaction: notUsed,
-  getV1Transaction: notUsed,
   getTransactionsBatch: notUsed,
   getTransactionEvents: notUsed,
-  getPrincipalTransactions: notUsed,
-  getContract: notUsed,
   getContractLogs: notUsed,
   callReadFunction: notUsed,
 });

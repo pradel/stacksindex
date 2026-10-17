@@ -128,16 +128,14 @@ Key differences from EVM:
 ```
 1. SYNC PHASE (Historical)
 
-   Step A: Initial Cursor Discovery (Genesis Bootstrap)
+   Step A: Find the backfill cursor (first sync only)
    ┌──────────────────────────────────────────────────────────┐
-   │ 1. GET /extended/v3/smart-contracts/{contract_id}        │
-   │    -> Get deployment block height                        │
-   │ 2. GET /extended/v3/principals/{principal}/transactions  │
-   │    ?cursor={startBlock}:0:0                              │
-   │ 3. GET /extended/v3/transactions/{tx_id}/events          │
-   │    -> Find first matching smart_contract_log             │
-   │ 4. Construct 4-part cursor                               │
-   │    (block_height:microblock_sequence:tx_index:event_index│
+   │ GET /extended/v2/smart-contracts/{contract_id}/logs      │
+   │     ?cursor={startBlock-1}:2147483647:32767:2147483647   │
+   │ -> its next_cursor starts at the first event >= start    │
+   │ No events below startBlock (404): binary search block    │
+   │ heights for the first block with events                  │
+   │ Less than a page of events: skip to Step C               │
    └────────────────────────┬─────────────────────────────────┘
                             │
                             ▼
@@ -204,18 +202,16 @@ The logs endpoint returns events newest first, limited to the canonical chain. A
 - `next_cursor` is the event one full page newer. It is `null` whenever fewer than `limit` newer events exist, so following `next_cursor` alone never reaches the newest events.
 - `prev_cursor` is the newest event of the next older page.
 
-#### Why Cursor Discovery is Required
+#### Finding the Backfill Cursor
 
-Because a cursor selects events at or below it, paging forward from `startBlock` requires the cursor of the first event at or above it. Synthesized cursors such as `${startBlock}:0:0:0` select older events instead, and older API versions reject cursors that do not match an existing event.
+Because a cursor selects events at or below it, forward pagination from `startBlock` needs a cursor whose page holds the first event at or above it. Cursors need not match an existing event, so `findBackfillCursor` (`sync/cursor.ts`) asks the logs endpoint itself:
 
-To resolve the initial cursor:
+1. Request the page at or below `startBlock - 1` (`{startBlock - 1}:2147483647:32767:2147483647`; `tx_index` is a `smallint`). Its `next_cursor`, one full page newer than the newest event below `startBlock`, is the backfill cursor: its page starts right above that event. One request. A `null` `next_cursor` means less than a page of events remains, which the catch-up from the newest page fetches.
+2. When nothing lies below `startBlock` (`404 Cursor not found`), binary search block heights between `startBlock` and the newest event for the first block holding events, then follow `prev_cursor` to that block's oldest page. Its `cursor` is the backfill cursor. About `log2(blocks)` requests, on a contract's first sync only.
 
-1. Fetch contract metadata via `GET /extended/v3/smart-contracts/{contract_id}` to obtain its deployment `block.height`.
-2. Jump straight to the deployment or requested `startBlock` using `GET /extended/v3/principals/{principal}/transactions?cursor=${startBlock}:0:0`.
-3. Scan transactions in chronological order and query `GET /extended/v3/transactions/{tx_id}/events` to locate the first `smart_contract_log` for that contract.
-4. Construct the exact 4-part cursor (`block_height:0:tx_index:event_index`) to begin forward pagination with `/logs`.
+Only the contract's own logs are read, so events emitted through calls made by other contracts are found as well. An API that rejects cursors not matching an existing event (older stacks-blockchain-api versions) fails with `InvalidCursorError`.
 
-Discovery runs only for a contract's first sync, and as a fallback when a catch-up backlog exceeds 10 pages.
+The search runs for a contract's first sync, and as a fallback when a catch-up backlog exceeds 10 pages.
 
 ## Sync Modes
 
@@ -229,7 +225,7 @@ Start Block ──────────────────────�
                             │                                  │
                        (next cursor)                     (prev cursor)
 
-- Discover initial cursor at startBlock / deployment block
+- Find the backfill cursor at startBlock (or block 1)
 - Use "next_cursor" from response to paginate forward through history
 - When "next_cursor" is null, fetch the newest page and follow "prev_cursor"
   back to syncedBlockHeight, then store those pages oldest first
@@ -240,7 +236,7 @@ Start Block ──────────────────────�
 - Save cursor and syncedBlockHeight to sync_progress to enable resume after restart
 ```
 
-`sync_progress.syncedBlockHeight` guarantees every event of the contract at or below it is stored. A run for a caught-up contract fetches only the newest page; when its newest event is at or below `syncedBlockHeight`, the contract is up to date after a single request. A contract that finished on its newest page, read after the tip, has all its events up to the tip stored, so the pass raises its `syncedBlockHeight` to the tip. A contract whose first-event discovery found nothing keeps its height and is caught up by the next pass, since discovery only sees transactions involving the contract's principal.
+`sync_progress.syncedBlockHeight` guarantees every event of the contract at or below it is stored. A run for a caught-up contract fetches only the newest page; when its newest event is at or below `syncedBlockHeight`, the contract is up to date after a single request. A contract that finished on its newest page, read after the tip, has all its events up to the tip stored, so the pass raises its `syncedBlockHeight` to the tip.
 
 Indexing within a run is capped at the chain tip read before syncing starts. Contracts are checked one after another, so events above that tip may still be missing for contracts checked earlier; they are indexed by the next run, which keeps handler order chronological.
 

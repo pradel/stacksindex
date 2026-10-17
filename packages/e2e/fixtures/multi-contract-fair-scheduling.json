@@ -1,786 +1,33 @@
 {
-  "GET https://api.hiro.so/extended/v3/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles": {
+  "GET https://api.hiro.so/extended": {
     "statusCode": 200,
     "body": {
-      "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-      "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
-      "clarity_version": 1,
-      "block": {
-        "height": 47486
+      "server_version": "stacks-blockchain-api v9.6.0 (HEAD:ee0c0ac)",
+      "status": "ready",
+      "chain_tip": {
+        "block_height": 9234989,
+        "block_hash": "0x3a8da87f3ae805d574c23611b3f2ec40408915cbaf15be72d88cb16655fbbab5"
       }
     }
   },
-  "GET https://api.hiro.so/extended/v3/principals/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/transactions?cursor=47784:0:0&limit=50": {
-    "statusCode": 200,
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47783:2147483647:32767:2147483647&limit=100": {
+    "statusCode": 404,
     "body": {
-      "total": 3611,
-      "limit": 50,
-      "cursor": {
-        "next": null,
-        "previous": "47807:0:64",
-        "current": "47784:0:48"
-      },
-      "results": [
-        {
-          "transaction": {
-            "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
-            "block": {
-              "height": 47784,
-              "tx_index": 48
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
-            "block": {
-              "height": 47784,
-              "tx_index": 34
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-            "block": {
-              "height": 47784,
-              "tx_index": 28
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x551cb8f8512081b09438564d0883f65c65cf3c5b1fc595e84072ca7354894ea7",
-            "block": {
-              "height": 47499,
-              "tx_index": 6
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xa3b71ffc99ffa9d2e136ce2f3f52e674ee2b4bf40b620c9ef29de9515458e610",
-            "block": {
-              "height": 47498,
-              "tx_index": 51
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x0b2f643ad48ac0eede31a71cf631725a282be60152e8546e5fe80d493d171122",
-            "block": {
-              "height": 47495,
-              "tx_index": 27
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xdfb34d373c5abfdae150a67e00d6e4654d3eec07b93840629abb6fcbbbda4ac7",
-            "block": {
-              "height": 47490,
-              "tx_index": 9
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xbefd1dd1ccdec2de01c5be4cb1c9a63fb732261a472ae41d7fbe64c92f6ae494",
-            "block": {
-              "height": 47489,
-              "tx_index": 31
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
-            "block": {
-              "height": 47486,
-              "tx_index": 13
-            }
-          }
-        }
-      ]
+      "statusCode": 404,
+      "error": "Not Found",
+      "message": "Cursor not found"
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-      "event_count": 1,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "300000",
-      "sender": {
-        "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-        "nonce": 294
-      },
-      "block": {
-        "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "height": 47784,
-        "tx_index": 28
-      },
-      "bitcoin_block": {
-        "height": 722076,
-        "time": 1644169830
-      }
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d/events?limit=50": {
-    "statusCode": 200,
-    "body": {
-      "total": 1,
-      "limit": 50,
-      "cursor": {
-        "next": null,
-        "previous": null,
-        "current": "0"
-      },
-      "results": [
-        {
-          "event_index": 0,
-          "type": "contract_log",
-          "contract_log": {
-            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-            "topic": "print",
-            "value": {
-              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000d6b057072696365010000000000000000000000003b9aca00",
-              "repr": "(tuple (a \"list-in-ustx\") (commission 'SP2KAF9RF86PVX3NEE27DFV1CQX0T4WGR41X3S45C.byzantion-satoshibles-commission) (id u3435) (price u1000000000))"
-            }
-          }
-        }
-      ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v1/tx/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-      "block_height": 47784,
-      "tx_index": 28,
-      "microblock_sequence": 0
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles": {
-    "statusCode": 200,
-    "body": {
-      "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles",
-      "tx_id": "0xd787e13242a06f4a1623e7f9a49d620b85114cd1080dec088d6661eff8b1ac02",
-      "clarity_version": 1,
-      "block": {
-        "height": 47488
-      }
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/principals/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles/transactions?cursor=47784:0:0&limit=50": {
-    "statusCode": 200,
-    "body": {
-      "total": 621,
-      "limit": 50,
-      "cursor": {
-        "next": "47693:2147483647:14",
-        "previous": "47834:2147483647:18",
-        "current": "47784:2147483647:8"
-      },
-      "results": [
-        {
-          "transaction": {
-            "tx_id": "0x1ad6dafaca875df5283fb9b64cbb5c3e0e15a2d06dc180d2c6fd29db8292939f",
-            "block": {
-              "height": 47784,
-              "tx_index": 8
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x1f6b9707a4c39af8e62d394be25ca689dabc029b00fc512e1333e7a9e7805e9c",
-            "block": {
-              "height": 47784,
-              "tx_index": 7
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xc3b6019fd4c1afc3b3ac0f30efcb6e19701d797d1b479df721736cd45ec13ee4",
-            "block": {
-              "height": 47784,
-              "tx_index": 6
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x3aa1adbc56f8ce2665e10d36ab9bc29c7abb3fe3dd53c729ce36d755ea42434f",
-            "block": {
-              "height": 47784,
-              "tx_index": 5
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xc9d4f94da65a02bd40d620d3bf12fece656d08927ddc9ff6bd75cbcb54b81f09",
-            "block": {
-              "height": 47784,
-              "tx_index": 4
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x4d2489d8e0e8cab63ae31a404f82a9d74cc44e1e55fc16a7b4286edc70e6f87e",
-            "block": {
-              "height": 47784,
-              "tx_index": 33
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xfa2ba903f1012dd590dfeae07dd36896ab95c93f824583a56f85aca3a35dcd9a",
-            "block": {
-              "height": 47784,
-              "tx_index": 32
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x57231862a83de9ed0993152958e17e1a46ee24457962106ee90edf15f732a956",
-            "block": {
-              "height": 47784,
-              "tx_index": 31
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x08cecc2f6cae33a667f5f64caf7dfb67ecf65f461db167ea6d86d6c57ee3ba96",
-            "block": {
-              "height": 47784,
-              "tx_index": 30
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
-            "block": {
-              "height": 47784,
-              "tx_index": 29
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x18f15323fdb5f2fca0cf5f34a0efb3e0bb57ee09799575a1e2c402e36234e825",
-            "block": {
-              "height": 47783,
-              "tx_index": 19
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xf337a39cf246317a4511a24e6712578905361b1df152d09ab178b14b3aca267e",
-            "block": {
-              "height": 47783,
-              "tx_index": 18
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xfadf996352080751cff3e639f66e381368b86b7d1cfd5f7ed1f1597b09f71759",
-            "block": {
-              "height": 47783,
-              "tx_index": 17
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x62da84177a510e98da397014a57f4f2a1c9d284868fadc998913d4e76e7f3d7b",
-            "block": {
-              "height": 47783,
-              "tx_index": 16
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xabdbff7b1821824ab748f2189cef46103420b5d306d47ad6ae27d5c810cbb3bc",
-            "block": {
-              "height": 47783,
-              "tx_index": 15
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x8d9d849e7a680e297e89d281afbfb9bf52c3b9697143dcac1e629ad2223c6f00",
-            "block": {
-              "height": 47783,
-              "tx_index": 14
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xf4a7c034b0c4ff4e7c5da0dad07e06aa1e0cfbf12117c801d739179af3cf1ebb",
-            "block": {
-              "height": 47783,
-              "tx_index": 12
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xf8ebba8c166f82aeb301338b39c9d551db0de62d4ac054eb166f2a3b7fe0b699",
-            "block": {
-              "height": 47783,
-              "tx_index": 11
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x051b185758e75290e762f902be646c6ec64d336536d333ab1de4b200e3c59563",
-            "block": {
-              "height": 47783,
-              "tx_index": 10
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x238bf342f89be119084c37f3c4da83763d7c488e474ae5814abd31b4cd785683",
-            "block": {
-              "height": 47783,
-              "tx_index": 9
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xd0a402b634b98bc367681d6f2394ad3e1b922cb940aecdd01411cc9559b75fdf",
-            "block": {
-              "height": 47783,
-              "tx_index": 8
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xc7338ffc59860770644d3adb66a6a7ff9b6da2bb0895eefe81e3ccca7ac82738",
-            "block": {
-              "height": 47779,
-              "tx_index": 86
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x0de37f03bcd0002be579168712459186301707417cc003ee6d1703d8b1b3cd96",
-            "block": {
-              "height": 47779,
-              "tx_index": 85
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x68adf2f36fe328a1fbc46f8f57f642fd6c4ac0ac5cf99cfc33be29d9ce832323",
-            "block": {
-              "height": 47779,
-              "tx_index": 84
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xb124e15ee71741e687c85c4b3e83934999a8ba4ca61b903299a96d2d9854c38a",
-            "block": {
-              "height": 47773,
-              "tx_index": 2
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x9058bd2aa08eaa843fcdca1a9333ab6b5ea852060a9264b649abb1aa8b01cda2",
-            "block": {
-              "height": 47771,
-              "tx_index": 27
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xa35e3d14a47719d65c10180b896856dc6e819c0a9de52ed8798b10d72279e3ba",
-            "block": {
-              "height": 47771,
-              "tx_index": 26
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xa6071dd9e42692b2653d6a1502b94ae8a64931b3597db11bdabbf55e84d2c1d8",
-            "block": {
-              "height": 47771,
-              "tx_index": 25
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x4ebf9478ca14171e967167a982755a3da70596f696cd1ce2f0efb295941bd161",
-            "block": {
-              "height": 47771,
-              "tx_index": 24
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xe749b36e8d6bf539471b2b74bef71102de509ed1c1979354fd71237219b47ece",
-            "block": {
-              "height": 47767,
-              "tx_index": 34
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x1c5f918ddbd8b3551d7725bfa20efe35f6ba9d410f5e11c06635dbae9766c9b5",
-            "block": {
-              "height": 47733,
-              "tx_index": 20
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x85d51cd173f96c6fd28d649fd5c11406c66a3a562142bd6914c7e041fd53914c",
-            "block": {
-              "height": 47733,
-              "tx_index": 19
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x316557fa24ec75e7149564ce6597fc5e1e4a773bd2e7eb12ea66f91aa78fd036",
-            "block": {
-              "height": 47731,
-              "tx_index": 44
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xa1ee4b7c4e1617931b600e19c8e3b99a33b01fe2b94bf7b9cad26c0b64c0ecac",
-            "block": {
-              "height": 47729,
-              "tx_index": 17
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x0dcdcbcfd58292c05cd4567f17376cc8408fadec770b763b4816da15126b577f",
-            "block": {
-              "height": 47729,
-              "tx_index": 16
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xa7f3d139bef56cd8c6e6d89f12f205c3761a30651bf0cd6f86b05a4872ec369c",
-            "block": {
-              "height": 47713,
-              "tx_index": 2
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xe1ff4fbd3a4345e3ed44fcf72d24c85534f5da1fec57e884480c3ac660fe6bd4",
-            "block": {
-              "height": 47711,
-              "tx_index": 52
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xc212c33455361c2bef3b30f21782df902475ef9dea7571cf145722719df0b416",
-            "block": {
-              "height": 47711,
-              "tx_index": 51
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x469825e4999564b51108ac0847a9b9822a9be0758c6c828b6fa395ee7eb6cc88",
-            "block": {
-              "height": 47711,
-              "tx_index": 50
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x91f2c12caffde25fc83193fb6fa6d7c6af2e88014cc69318700e7c4d51aec7be",
-            "block": {
-              "height": 47711,
-              "tx_index": 49
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xaa086a56241c7e2a064814fea850704a3a233bafc859e6a32e531dd31fcc558e",
-            "block": {
-              "height": 47711,
-              "tx_index": 48
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x84cfb45451e46f0d936a5ca58cbba74c5e5079cf9cf778cd4deb81d96b47f0f6",
-            "block": {
-              "height": 47708,
-              "tx_index": 26
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xc2ff8909ea5224c33ce4621ca959db89b277ebc5c167229cc1ddf53e941e2e61",
-            "block": {
-              "height": 47706,
-              "tx_index": 6
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x4bb460c55df5d9af74c2958c41dd912d887d6adccadd0391af181e61f55ea54a",
-            "block": {
-              "height": 47698,
-              "tx_index": 64
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x2072b4996a8e45fe5cf122a052c27c70949faf389de9f8d422bb178db062f312",
-            "block": {
-              "height": 47698,
-              "tx_index": 63
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x22c092180c472f2b97460e23d292356075deb7d545a2b560b30adb053f118d60",
-            "block": {
-              "height": 47698,
-              "tx_index": 62
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0xa9b312bdfb517e3f2fe62a9307102ac439efb31167b3036769fc0b2b2b1683ea",
-            "block": {
-              "height": 47698,
-              "tx_index": 61
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x29f888f33187b54ba77b38d0b8e64c3441c947f75e02d5a71d80fd4ef95735f5",
-            "block": {
-              "height": 47697,
-              "tx_index": 32
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x97d6d2fc0e17acc44dc52b4bd56f44031e8fa1883e9269282debd661589c7825",
-            "block": {
-              "height": 47695,
-              "tx_index": 4
-            }
-          }
-        },
-        {
-          "transaction": {
-            "tx_id": "0x5ebe299c11c5d5e296b85b4c6321d1cd2390c29f64182eac42f8b1bfa6117c9a",
-            "block": {
-              "height": 47693,
-              "tx_index": 15
-            }
-          }
-        }
-      ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
-      "event_count": 2,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "176269",
-      "sender": {
-        "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-        "nonce": 43
-      },
-      "block": {
-        "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "height": 47784,
-        "tx_index": 29
-      },
-      "bitcoin_block": {
-        "height": 722076,
-        "time": 1644169830
-      }
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222/events?limit=50": {
-    "statusCode": 200,
-    "body": {
-      "total": 2,
-      "limit": 50,
-      "cursor": {
-        "next": null,
-        "previous": null,
-        "current": "0"
-      },
-      "results": [
-        {
-          "event_index": 0,
-          "type": "nft_asset",
-          "nft_asset": {
-            "type": "transfer",
-            "asset_identifier": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles::Satoshibles",
-            "sender": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles",
-            "recipient": "SPGKD75JXD79Z204ZGJSBNC5BTD4P0Q2F81WEM9A",
-            "value": {
-              "hex": "0x0100000000000000000000000000000b2e",
-              "repr": "u2862"
-            }
-          }
-        },
-        {
-          "event_index": 1,
-          "type": "contract_log",
-          "contract_log": {
-            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles",
-            "topic": "print",
-            "value": {
-              "hex": "0x0c0000000306616374696f6e0d0000000772656c656173650761646472657373051621369cb2eb4e9f8804fc2595d5855e9a4b02e27a0269640100000000000000000000000000000b2e",
-              "repr": "(tuple (action \"release\") (address 'SPGKD75JXD79Z204ZGJSBNC5BTD4P0Q2F81WEM9A) (id u2862))"
-            }
-          }
-        }
-      ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v1/tx/0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
-      "block_height": 47784,
-      "tx_index": 29,
-      "microblock_sequence": 0
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47784:0:28:0&limit=100": {
-    "statusCode": 200,
-    "body": {
-      "limit": 100,
-      "offset": 0,
-      "total": 3091,
-      "next_cursor": "47884:2147483647:26:0",
-      "results": [
-        {
-          "event_index": 0,
-          "event_type": "smart_contract_log",
-          "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-          "contract_log": {
-            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-            "topic": "print",
-            "value": {
-              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000d6b057072696365010000000000000000000000003b9aca00",
-              "repr": ""
-            }
-          }
-        }
-      ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
-    "statusCode": 200,
-    "body": {
-      "results": [
-        {
-          "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "300000",
-          "sender": {
-            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-            "nonce": 294
-          },
-          "block": {
-            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-            "height": 47784,
-            "tx_index": 28
-          },
-          "bitcoin_block": {
-            "height": 722076,
-            "time": 1644169830
-          }
-        }
-      ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles/logs?cursor=47784:0:29:1&limit=100": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles/logs?cursor=47783:2147483647:32767:2147483647&limit=100": {
     "statusCode": 200,
     "body": {
       "limit": 100,
       "offset": 0,
       "total": 746,
-      "next_cursor": "47894:2147483647:60:1",
+      "cursor": "47783:2147483647:19:1",
+      "next_cursor": "47894:2147483647:59:1",
+      "prev_cursor": null,
       "results": [
-        {
-          "event_index": 1,
-          "event_type": "smart_contract_log",
-          "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
-          "contract_log": {
-            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles",
-            "topic": "print",
-            "value": {
-              "hex": "0x0c0000000306616374696f6e0d0000000772656c656173650761646472657373051621369cb2eb4e9f8804fc2595d5855e9a4b02e27a0269640100000000000000000000000000000b2e",
-              "repr": ""
-            }
-          }
-        },
         {
           "event_index": 1,
           "event_type": "smart_contract_log",
@@ -1538,797 +785,803 @@
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0x593a82d41b2779835e55b31e57ff1f020f279cb8a0aaee74da2b16cfd497af79&tx_id=0x083f101dcc2e999ae5151f697b0c14a721ccba579ecdb3d071d0ea561d0cfcf6&tx_id=0x5a3a4224ce640de06157f9bf6caa167161415b2f948bf957a5c0558b51eee472&tx_id=0xea8353eb07e00e29032f3df90ec13b165836ddcf20a2fbd9b3215c25c2f531d3&tx_id=0xf71a5e45a7c43f1958895478ea1d142d4b45784a5d1287a638bd1b01c70c36f2&tx_id=0x3e3840aa0e7baebe40728d7b566c098de2c82882990e88bf036b0f0ff90e8cdb&tx_id=0x460c5b3025de8e3aca3ab0a57c3f9195cdf56995128c3420ae7150499e0435c0&tx_id=0x3ac7cdcd14ffc2884569f7d5ba45f70a2175a07cf36e8120014b92a33ee6de1c&tx_id=0x6e57b6ec904fcf71b11bad8dcf27507707be264734bbc2c93a15bd4218ec903a&tx_id=0xde74a2bdd27f3bfd3c84d76faf86e1a1729e36fcba585f86692d6cbc23141710&tx_id=0x707731c0cc707a24ebafa4d5278e03daeec553bcf3c7f948f1a2f9c2920e7b99&tx_id=0x5ebe299c11c5d5e296b85b4c6321d1cd2390c29f64182eac42f8b1bfa6117c9a&tx_id=0x97d6d2fc0e17acc44dc52b4bd56f44031e8fa1883e9269282debd661589c7825&tx_id=0x29f888f33187b54ba77b38d0b8e64c3441c947f75e02d5a71d80fd4ef95735f5&tx_id=0xa9b312bdfb517e3f2fe62a9307102ac439efb31167b3036769fc0b2b2b1683ea&tx_id=0x22c092180c472f2b97460e23d292356075deb7d545a2b560b30adb053f118d60&tx_id=0x2072b4996a8e45fe5cf122a052c27c70949faf389de9f8d422bb178db062f312&tx_id=0x4bb460c55df5d9af74c2958c41dd912d887d6adccadd0391af181e61f55ea54a&tx_id=0xc2ff8909ea5224c33ce4621ca959db89b277ebc5c167229cc1ddf53e941e2e61&tx_id=0x84cfb45451e46f0d936a5ca58cbba74c5e5079cf9cf778cd4deb81d96b47f0f6": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?limit=1": {
     "statusCode": 200,
     "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "9099431:2147483647:2:0",
+      "next_cursor": null,
+      "prev_cursor": "8817273:2147483647:2:0",
       "results": [
         {
-          "tx_id": "0x84cfb45451e46f0d936a5ca58cbba74c5e5079cf9cf778cd4deb81d96b47f0f6",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "750000",
-          "sender": {
-            "address": "SP3KCAE82ZYFB5DMJE9TW9K9ZQPJYCD9Q02PFB2C8",
-            "nonce": 3
-          },
-          "block": {
-            "hash": "0x6d191475ad08c6b7bfca9b9a5c112a0f371c897319ad87402318bf8088f4353b",
-            "height": 47708,
-            "tx_index": 26
-          },
-          "bitcoin_block": {
-            "height": 721982,
-            "time": 1644117508
-          }
-        },
-        {
-          "tx_id": "0xc2ff8909ea5224c33ce4621ca959db89b277ebc5c167229cc1ddf53e941e2e61",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "751000",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 15
-          },
-          "block": {
-            "hash": "0x957bf4205e579bed1398bd7f9411695b998d5d9eab3ff0f5130c8e12558ff736",
-            "height": 47706,
-            "tx_index": 6
-          },
-          "bitcoin_block": {
-            "height": 721978,
-            "time": 1644116311
-          }
-        },
-        {
-          "tx_id": "0x4bb460c55df5d9af74c2958c41dd912d887d6adccadd0391af181e61f55ea54a",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "3847",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 14
-          },
-          "block": {
-            "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
-            "height": 47698,
-            "tx_index": 64
-          },
-          "bitcoin_block": {
-            "height": 721970,
-            "time": 1644110589
-          }
-        },
-        {
-          "tx_id": "0x2072b4996a8e45fe5cf122a052c27c70949faf389de9f8d422bb178db062f312",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "3847",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 13
-          },
-          "block": {
-            "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
-            "height": 47698,
-            "tx_index": 63
-          },
-          "bitcoin_block": {
-            "height": 721970,
-            "time": 1644110589
-          }
-        },
-        {
-          "tx_id": "0x22c092180c472f2b97460e23d292356075deb7d545a2b560b30adb053f118d60",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "3847",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 12
-          },
-          "block": {
-            "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
-            "height": 47698,
-            "tx_index": 62
-          },
-          "bitcoin_block": {
-            "height": 721970,
-            "time": 1644110589
-          }
-        },
-        {
-          "tx_id": "0xa9b312bdfb517e3f2fe62a9307102ac439efb31167b3036769fc0b2b2b1683ea",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "3847",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 11
-          },
-          "block": {
-            "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
-            "height": 47698,
-            "tx_index": 61
-          },
-          "bitcoin_block": {
-            "height": 721970,
-            "time": 1644110589
-          }
-        },
-        {
-          "tx_id": "0x29f888f33187b54ba77b38d0b8e64c3441c947f75e02d5a71d80fd4ef95735f5",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "7425",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 10
-          },
-          "block": {
-            "hash": "0xa72643144c181abd3d530c7b304967124f01783ef8bd656b885856ae1ea298aa",
-            "height": 47697,
-            "tx_index": 32
-          },
-          "bitcoin_block": {
-            "height": 721969,
-            "time": 1644109617
-          }
-        },
-        {
-          "tx_id": "0x97d6d2fc0e17acc44dc52b4bd56f44031e8fa1883e9269282debd661589c7825",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "441778",
-          "sender": {
-            "address": "SP1JCPNPAMAQJ364AFHPTW3HY7X0HYZ3TJ0ZDGWZH",
-            "nonce": 51
-          },
-          "block": {
-            "hash": "0xebd756c34da693b4d85d303b29f3699f607f57951f1f04bca0cba919c2010ab4",
-            "height": 47695,
-            "tx_index": 4
-          },
-          "bitcoin_block": {
-            "height": 721967,
-            "time": 1644108535
-          }
-        },
-        {
-          "tx_id": "0x5ebe299c11c5d5e296b85b4c6321d1cd2390c29f64182eac42f8b1bfa6117c9a",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "46056",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 9
-          },
-          "block": {
-            "hash": "0x9c6c3ec77222d8a8ad73997f666bd241f8f8c3f283cb6d4fdb437341baeca161",
-            "height": 47693,
-            "tx_index": 15
-          },
-          "bitcoin_block": {
-            "height": 721965,
-            "time": 1644106841
-          }
-        },
-        {
-          "tx_id": "0x707731c0cc707a24ebafa4d5278e03daeec553bcf3c7f948f1a2f9c2920e7b99",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "23080",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 8
-          },
-          "block": {
-            "hash": "0x9c6c3ec77222d8a8ad73997f666bd241f8f8c3f283cb6d4fdb437341baeca161",
-            "height": 47693,
-            "tx_index": 14
-          },
-          "bitcoin_block": {
-            "height": 721965,
-            "time": 1644106841
-          }
-        },
-        {
-          "tx_id": "0xde74a2bdd27f3bfd3c84d76faf86e1a1729e36fcba585f86692d6cbc23141710",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "205200",
-          "sender": {
-            "address": "SP1JCPNPAMAQJ364AFHPTW3HY7X0HYZ3TJ0ZDGWZH",
-            "nonce": 49
-          },
-          "block": {
-            "hash": "0x4bf826b0ad630092c7340ca62ea6ee17a734a37f20746225599b7a92811cf6e1",
-            "height": 47690,
-            "tx_index": 134
-          },
-          "bitcoin_block": {
-            "height": 721960,
-            "time": 1644105404
-          }
-        },
-        {
-          "tx_id": "0x6e57b6ec904fcf71b11bad8dcf27507707be264734bbc2c93a15bd4218ec903a",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "50792",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 7
-          },
-          "block": {
-            "hash": "0xfadb064f71c7b3bc087cfe993efd2a4dd686024b3e78788f6e4d355c8b6c3685",
-            "height": 47681,
-            "tx_index": 51
-          },
-          "bitcoin_block": {
-            "height": 721950,
-            "time": 1644097642
-          }
-        },
-        {
-          "tx_id": "0x3ac7cdcd14ffc2884569f7d5ba45f70a2175a07cf36e8120014b92a33ee6de1c",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "50800",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 6
-          },
-          "block": {
-            "hash": "0xfadb064f71c7b3bc087cfe993efd2a4dd686024b3e78788f6e4d355c8b6c3685",
-            "height": 47681,
-            "tx_index": 45
-          },
-          "bitcoin_block": {
-            "height": 721950,
-            "time": 1644097642
-          }
-        },
-        {
-          "tx_id": "0x460c5b3025de8e3aca3ab0a57c3f9195cdf56995128c3420ae7150499e0435c0",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "205200",
-          "sender": {
-            "address": "SP1JCPNPAMAQJ364AFHPTW3HY7X0HYZ3TJ0ZDGWZH",
-            "nonce": 48
-          },
-          "block": {
-            "hash": "0x30afd4ef111a6c227e7571fa22ad5e3a8e3bf5e70ac0116b37aecb0b492e1f20",
-            "height": 47678,
-            "tx_index": 21
-          },
-          "bitcoin_block": {
-            "height": 721945,
-            "time": 1644093836
-          }
-        },
-        {
-          "tx_id": "0x3e3840aa0e7baebe40728d7b566c098de2c82882990e88bf036b0f0ff90e8cdb",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "8591",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 5
-          },
-          "block": {
-            "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
-            "height": 47675,
-            "tx_index": 29
-          },
-          "bitcoin_block": {
-            "height": 721942,
-            "time": 1644092395
-          }
-        },
-        {
-          "tx_id": "0xf71a5e45a7c43f1958895478ea1d142d4b45784a5d1287a638bd1b01c70c36f2",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "8606",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 4
-          },
-          "block": {
-            "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
-            "height": 47675,
-            "tx_index": 28
-          },
-          "bitcoin_block": {
-            "height": 721942,
-            "time": 1644092395
-          }
-        },
-        {
-          "tx_id": "0xea8353eb07e00e29032f3df90ec13b165836ddcf20a2fbd9b3215c25c2f531d3",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "8591",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 3
-          },
-          "block": {
-            "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
-            "height": 47675,
-            "tx_index": 27
-          },
-          "bitcoin_block": {
-            "height": 721942,
-            "time": 1644092395
-          }
-        },
-        {
-          "tx_id": "0x5a3a4224ce640de06157f9bf6caa167161415b2f948bf957a5c0558b51eee472",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "8591",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 2
-          },
-          "block": {
-            "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
-            "height": 47675,
-            "tx_index": 26
-          },
-          "bitcoin_block": {
-            "height": 721942,
-            "time": 1644092395
-          }
-        },
-        {
-          "tx_id": "0x083f101dcc2e999ae5151f697b0c14a721ccba579ecdb3d071d0ea561d0cfcf6",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "8606",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 1
-          },
-          "block": {
-            "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
-            "height": 47675,
-            "tx_index": 25
-          },
-          "bitcoin_block": {
-            "height": 721942,
-            "time": 1644092395
-          }
-        },
-        {
-          "tx_id": "0x593a82d41b2779835e55b31e57ff1f020f279cb8a0aaee74da2b16cfd497af79",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "751000",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 0
-          },
-          "block": {
-            "hash": "0xb22217119dfe71df36013a201c4adbfb9a5b7f4f194dac82bdba5cc1a4cdbc0f",
-            "height": 47669,
-            "tx_index": 93
-          },
-          "bitcoin_block": {
-            "height": 721935,
-            "time": 1644087509
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xbb83953f88c802324966e9b583b92d5ebb46ef42475c6f86f9356585a24ff2a2",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000e3005707269636501000000000000000000000000062f7591",
+              "repr": ""
+            }
           }
         }
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xaa086a56241c7e2a064814fea850704a3a233bafc859e6a32e531dd31fcc558e&tx_id=0x91f2c12caffde25fc83193fb6fa6d7c6af2e88014cc69318700e7c4d51aec7be&tx_id=0x469825e4999564b51108ac0847a9b9822a9be0758c6c828b6fa395ee7eb6cc88&tx_id=0xc212c33455361c2bef3b30f21782df902475ef9dea7571cf145722719df0b416&tx_id=0xe1ff4fbd3a4345e3ed44fcf72d24c85534f5da1fec57e884480c3ac660fe6bd4&tx_id=0xa7f3d139bef56cd8c6e6d89f12f205c3761a30651bf0cd6f86b05a4872ec369c&tx_id=0x0dcdcbcfd58292c05cd4567f17376cc8408fadec770b763b4816da15126b577f&tx_id=0xa1ee4b7c4e1617931b600e19c8e3b99a33b01fe2b94bf7b9cad26c0b64c0ecac&tx_id=0x316557fa24ec75e7149564ce6597fc5e1e4a773bd2e7eb12ea66f91aa78fd036&tx_id=0x85d51cd173f96c6fd28d649fd5c11406c66a3a562142bd6914c7e041fd53914c&tx_id=0x1c5f918ddbd8b3551d7725bfa20efe35f6ba9d410f5e11c06635dbae9766c9b5&tx_id=0xe749b36e8d6bf539471b2b74bef71102de509ed1c1979354fd71237219b47ece&tx_id=0x4ebf9478ca14171e967167a982755a3da70596f696cd1ce2f0efb295941bd161&tx_id=0xa6071dd9e42692b2653d6a1502b94ae8a64931b3597db11bdabbf55e84d2c1d8&tx_id=0xa35e3d14a47719d65c10180b896856dc6e819c0a9de52ed8798b10d72279e3ba&tx_id=0x9058bd2aa08eaa843fcdca1a9333ab6b5ea852060a9264b649abb1aa8b01cda2&tx_id=0xb124e15ee71741e687c85c4b3e83934999a8ba4ca61b903299a96d2d9854c38a&tx_id=0x68adf2f36fe328a1fbc46f8f57f642fd6c4ac0ac5cf99cfc33be29d9ce832323&tx_id=0x0de37f03bcd0002be579168712459186301707417cc003ee6d1703d8b1b3cd96&tx_id=0xc7338ffc59860770644d3adb66a6a7ff9b6da2bb0895eefe81e3ccca7ac82738": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=9099431:2147483647:32767:2147483647&limit=1": {
     "statusCode": 200,
     "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "9099431:2147483647:2:0",
+      "next_cursor": null,
+      "prev_cursor": "8817273:2147483647:2:0",
       "results": [
         {
-          "tx_id": "0xc7338ffc59860770644d3adb66a6a7ff9b6da2bb0895eefe81e3ccca7ac82738",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "240",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 31
-          },
-          "block": {
-            "hash": "0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc",
-            "height": 47779,
-            "tx_index": 86
-          },
-          "bitcoin_block": {
-            "height": 722070,
-            "time": 1644165533
-          }
-        },
-        {
-          "tx_id": "0x0de37f03bcd0002be579168712459186301707417cc003ee6d1703d8b1b3cd96",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "242",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 30
-          },
-          "block": {
-            "hash": "0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc",
-            "height": 47779,
-            "tx_index": 85
-          },
-          "bitcoin_block": {
-            "height": 722070,
-            "time": 1644165533
-          }
-        },
-        {
-          "tx_id": "0x68adf2f36fe328a1fbc46f8f57f642fd6c4ac0ac5cf99cfc33be29d9ce832323",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "240",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 29
-          },
-          "block": {
-            "hash": "0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc",
-            "height": 47779,
-            "tx_index": 84
-          },
-          "bitcoin_block": {
-            "height": 722070,
-            "time": 1644165533
-          }
-        },
-        {
-          "tx_id": "0xb124e15ee71741e687c85c4b3e83934999a8ba4ca61b903299a96d2d9854c38a",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "2000000",
-          "sender": {
-            "address": "SP1JCPNPAMAQJ364AFHPTW3HY7X0HYZ3TJ0ZDGWZH",
-            "nonce": 53
-          },
-          "block": {
-            "hash": "0xa6309e1d63d9d90c00a1eb5e780fa3eb0739bb758e2678524868c11ffcc22acf",
-            "height": 47773,
-            "tx_index": 2
-          },
-          "bitcoin_block": {
-            "height": 722062,
-            "time": 1644161536
-          }
-        },
-        {
-          "tx_id": "0x9058bd2aa08eaa843fcdca1a9333ab6b5ea852060a9264b649abb1aa8b01cda2",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "292",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 28
-          },
-          "block": {
-            "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
-            "height": 47771,
-            "tx_index": 27
-          },
-          "bitcoin_block": {
-            "height": 722060,
-            "time": 1644160582
-          }
-        },
-        {
-          "tx_id": "0xa35e3d14a47719d65c10180b896856dc6e819c0a9de52ed8798b10d72279e3ba",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "249",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 27
-          },
-          "block": {
-            "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
-            "height": 47771,
-            "tx_index": 26
-          },
-          "bitcoin_block": {
-            "height": 722060,
-            "time": 1644160582
-          }
-        },
-        {
-          "tx_id": "0xa6071dd9e42692b2653d6a1502b94ae8a64931b3597db11bdabbf55e84d2c1d8",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "249",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 26
-          },
-          "block": {
-            "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
-            "height": 47771,
-            "tx_index": 25
-          },
-          "bitcoin_block": {
-            "height": 722060,
-            "time": 1644160582
-          }
-        },
-        {
-          "tx_id": "0x4ebf9478ca14171e967167a982755a3da70596f696cd1ce2f0efb295941bd161",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "213",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 25
-          },
-          "block": {
-            "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
-            "height": 47771,
-            "tx_index": 24
-          },
-          "bitcoin_block": {
-            "height": 722060,
-            "time": 1644160582
-          }
-        },
-        {
-          "tx_id": "0xe749b36e8d6bf539471b2b74bef71102de509ed1c1979354fd71237219b47ece",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "750000",
-          "sender": {
-            "address": "SP3KCAE82ZYFB5DMJE9TW9K9ZQPJYCD9Q02PFB2C8",
-            "nonce": 5
-          },
-          "block": {
-            "hash": "0xbef5aefa7ccabcd377bbc87e708e3a3b0f0e9d9f5c1710694ecf1c300300408b",
-            "height": 47767,
-            "tx_index": 34
-          },
-          "bitcoin_block": {
-            "height": 722056,
-            "time": 1644157613
-          }
-        },
-        {
-          "tx_id": "0x1c5f918ddbd8b3551d7725bfa20efe35f6ba9d410f5e11c06635dbae9766c9b5",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "751000",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 24
-          },
-          "block": {
-            "hash": "0xd2a97573df33ba1d2074addc008225bf9a18db59e24ef0f1e0734c08e382b2ba",
-            "height": 47733,
-            "tx_index": 20
-          },
-          "bitcoin_block": {
-            "height": 722012,
-            "time": 1644130873
-          }
-        },
-        {
-          "tx_id": "0x85d51cd173f96c6fd28d649fd5c11406c66a3a562142bd6914c7e041fd53914c",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "751000",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 23
-          },
-          "block": {
-            "hash": "0xd2a97573df33ba1d2074addc008225bf9a18db59e24ef0f1e0734c08e382b2ba",
-            "height": 47733,
-            "tx_index": 19
-          },
-          "bitcoin_block": {
-            "height": 722012,
-            "time": 1644130873
-          }
-        },
-        {
-          "tx_id": "0x316557fa24ec75e7149564ce6597fc5e1e4a773bd2e7eb12ea66f91aa78fd036",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "750000",
-          "sender": {
-            "address": "SP3KCAE82ZYFB5DMJE9TW9K9ZQPJYCD9Q02PFB2C8",
-            "nonce": 4
-          },
-          "block": {
-            "hash": "0x8113e28f66f217836970fb03189680d120b0ce156a996b7a56f06982dac1dc29",
-            "height": 47731,
-            "tx_index": 44
-          },
-          "bitcoin_block": {
-            "height": 722009,
-            "time": 1644127736
-          }
-        },
-        {
-          "tx_id": "0xa1ee4b7c4e1617931b600e19c8e3b99a33b01fe2b94bf7b9cad26c0b64c0ecac",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "545744",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 22
-          },
-          "block": {
-            "hash": "0xf6acea0b585785d09e9adfe3530a24a0f1f58a54e2ee1f3e6e9f3b9e573e27b2",
-            "height": 47729,
-            "tx_index": 17
-          },
-          "bitcoin_block": {
-            "height": 722007,
-            "time": 1644126318
-          }
-        },
-        {
-          "tx_id": "0x0dcdcbcfd58292c05cd4567f17376cc8408fadec770b763b4816da15126b577f",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "545744",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 21
-          },
-          "block": {
-            "hash": "0xf6acea0b585785d09e9adfe3530a24a0f1f58a54e2ee1f3e6e9f3b9e573e27b2",
-            "height": 47729,
-            "tx_index": 16
-          },
-          "bitcoin_block": {
-            "height": 722007,
-            "time": 1644126318
-          }
-        },
-        {
-          "tx_id": "0xa7f3d139bef56cd8c6e6d89f12f205c3761a30651bf0cd6f86b05a4872ec369c",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "751000",
-          "sender": {
-            "address": "SP1JCPNPAMAQJ364AFHPTW3HY7X0HYZ3TJ0ZDGWZH",
-            "nonce": 52
-          },
-          "block": {
-            "hash": "0x07a9d79a0f3d38cc3848e74307bef4d30928e565f2e38450f4da8fe70de8038a",
-            "height": 47713,
-            "tx_index": 2
-          },
-          "bitcoin_block": {
-            "height": 721988,
-            "time": 1644118757
-          }
-        },
-        {
-          "tx_id": "0xe1ff4fbd3a4345e3ed44fcf72d24c85534f5da1fec57e884480c3ac660fe6bd4",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "424203",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 20
-          },
-          "block": {
-            "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
-            "height": 47711,
-            "tx_index": 52
-          },
-          "bitcoin_block": {
-            "height": 721985,
-            "time": 1644118065
-          }
-        },
-        {
-          "tx_id": "0xc212c33455361c2bef3b30f21782df902475ef9dea7571cf145722719df0b416",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "424203",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 19
-          },
-          "block": {
-            "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
-            "height": 47711,
-            "tx_index": 51
-          },
-          "bitcoin_block": {
-            "height": 721985,
-            "time": 1644118065
-          }
-        },
-        {
-          "tx_id": "0x469825e4999564b51108ac0847a9b9822a9be0758c6c828b6fa395ee7eb6cc88",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "424203",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 18
-          },
-          "block": {
-            "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
-            "height": 47711,
-            "tx_index": 50
-          },
-          "bitcoin_block": {
-            "height": 721985,
-            "time": 1644118065
-          }
-        },
-        {
-          "tx_id": "0x91f2c12caffde25fc83193fb6fa6d7c6af2e88014cc69318700e7c4d51aec7be",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "424203",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 17
-          },
-          "block": {
-            "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
-            "height": 47711,
-            "tx_index": 49
-          },
-          "bitcoin_block": {
-            "height": 721985,
-            "time": 1644118065
-          }
-        },
-        {
-          "tx_id": "0xaa086a56241c7e2a064814fea850704a3a233bafc859e6a32e531dd31fcc558e",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "424203",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 16
-          },
-          "block": {
-            "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
-            "height": 47711,
-            "tx_index": 48
-          },
-          "bitcoin_block": {
-            "height": 721985,
-            "time": 1644118065
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xbb83953f88c802324966e9b583b92d5ebb46ef42475c6f86f9356585a24ff2a2",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000e3005707269636501000000000000000000000000062f7591",
+              "repr": ""
+            }
           }
         }
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xd0a402b634b98bc367681d6f2394ad3e1b922cb940aecdd01411cc9559b75fdf&tx_id=0x238bf342f89be119084c37f3c4da83763d7c488e474ae5814abd31b4cd785683&tx_id=0x051b185758e75290e762f902be646c6ec64d336536d333ab1de4b200e3c59563&tx_id=0xf8ebba8c166f82aeb301338b39c9d551db0de62d4ac054eb166f2a3b7fe0b699&tx_id=0xf4a7c034b0c4ff4e7c5da0dad07e06aa1e0cfbf12117c801d739179af3cf1ebb&tx_id=0x8d9d849e7a680e297e89d281afbfb9bf52c3b9697143dcac1e629ad2223c6f00&tx_id=0xabdbff7b1821824ab748f2189cef46103420b5d306d47ad6ae27d5c810cbb3bc&tx_id=0x62da84177a510e98da397014a57f4f2a1c9d284868fadc998913d4e76e7f3d7b&tx_id=0xfadf996352080751cff3e639f66e381368b86b7d1cfd5f7ed1f1597b09f71759&tx_id=0xf337a39cf246317a4511a24e6712578905361b1df152d09ab178b14b3aca267e&tx_id=0x18f15323fdb5f2fca0cf5f34a0efb3e0bb57ee09799575a1e2c402e36234e825&tx_id=0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=4573607:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "4557952:2147483647:1:0",
+      "next_cursor": "4977190:2147483647:0:0",
+      "prev_cursor": "4557944:2147483647:0:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xf07608272d952d8d62c47babacfc946bd95017956f253f3813e6c07e61540657",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d757374780269640100000000000000000000000000001007",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=2310695:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "2210161:2147483647:0:0",
+      "next_cursor": "2358209:2147483647:0:0",
+      "prev_cursor": "2199257:2147483647:1:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x70a84ffb19b51cf689d0655c41347d0e207aaa120289a88ca1c2bd59a4e1d7e6",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e026964010000000000000000000000000000088c05707269636501000000000000000000000000275c8f0f",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=1179239:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "1009692:2147483647:0:4",
+      "next_cursor": "2197402:2147483647:0:0",
+      "prev_cursor": "981636:2147483647:2:4",
+      "results": [
+        {
+          "event_index": 4,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x22ac0daccd0a23a60293e6a253496e1002e0ef03dfef75476e29c99c2880d161",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000b6275792d696e2d7573747802696401000000000000000000000000000000af",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=613511:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "602585:2147483647:0:0",
+      "next_cursor": "619461:2147483647:0:0",
+      "prev_cursor": "517243:2147483647:0:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x9d7311e8c5905e6fb78d3296ec11518e6ddb5e58d6e0e7ea1d2a33f69bc6fa00",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e026964010000000000000000000000000000052b057072696365010000000000000000000000000ceede8d",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=330647:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "317786:2147483647:64:0",
+      "next_cursor": "333230:2147483647:0:0",
+      "prev_cursor": "317786:2147483647:63:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x97223334a926ae751ed1f7e209a34c0a5a1997110f97cabf07f73e5eb50997f7",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d7573747802696401000000000000000000000000000007db",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=189215:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "188302:2147483647:19:4",
+      "next_cursor": "191459:2147483647:5:0",
+      "prev_cursor": "178440:2147483647:0:0",
+      "results": [
+        {
+          "event_index": 4,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xd93d8bb9453434c725d752f8b80a3462ca548ac041ea23fbe1af960e2a72735b",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000b6275792d696e2d75737478026964010000000000000000000000000000113e",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=118499:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "117500:2147483647:3:0",
+      "next_cursor": "119136:2147483647:7:0",
+      "prev_cursor": "117500:2147483647:2:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x9fe3aee6ea27cf43594419be31544164cae241774dedc6d7a18838bf4edd6599",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d757374780269640100000000000000000000000000000ce2",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=83141:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "83044:0:13:0",
+      "next_cursor": "83201:2147483647:1:0",
+      "prev_cursor": "83007:1:39:4",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x7a89707b3c88c38248506262e1944ba1748c4bfe3f3c2622ff880895675b9ddc",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000e756e6c6973742d696e2d757374780269640100000000000000000000000000001260",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=65462:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "65397:2147483647:2:4",
+      "next_cursor": "65852:2147483647:20:0",
+      "prev_cursor": "65239:0:4:0",
+      "results": [
+        {
+          "event_index": 4,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x3a502220ffcc2a8baa86dc44b99c58d04e7237b5037a8639639963e4c222816e",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000206616374696f6e0d0000000b6275792d696e2d757374780269640100000000000000000000000000000318",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=56623:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "56623:1:117:0",
+      "next_cursor": "56624:2147483647:12:0",
+      "prev_cursor": "56516:1:23:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xf2993f84690ae15c688654c6144c1faf53467eb9073cfbd841fb3b0d233b3025",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e026964010000000000000000000000000000133e0570726963650100000000000000000000000025500080",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=52203:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "52106:2147483647:30:0",
+      "next_cursor": "52236:2147483647:5:0",
+      "prev_cursor": "52077:2147483647:9:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x2b705f6a4771850cf4e1acb55f56d6a083e78015a4a93bc429f56f9029637ff4",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000e57057072696365010000000000000000000000001dcd6500",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=49993:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "49982:2147483647:7:0",
+      "next_cursor": "50026:2147483647:10:0",
+      "prev_cursor": "49945:2147483647:17:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xf54a18731ba0fb6f8d7d5dd96fbfcd30effa9b8204415b82b9653fb64a3e8fe6",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000e5705707269636501000000000000000000000000498d5880",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=48888:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "48856:1:21:0",
+      "next_cursor": "48894:0:67:0",
+      "prev_cursor": "48848:0:68:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xa4b5d7322ff76dc40c89de07291a575b258e182fe3b9ca685732ee39324246f4",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e026964010000000000000000000000000000100205707269636501000000000000000000000000566d3e80",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=48336:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "48332:1:28:0",
+      "next_cursor": "48337:2147483647:7:0",
+      "prev_cursor": "48332:1:27:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x94481527aa6494b8677b62b5dd55fff6d727612b4ac71ef58cf71b8fcd1427b8",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000003e20570726963650100000000000000000000000035a4e900",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=48060:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "48054:2147483647:28:0",
+      "next_cursor": "48062:2147483647:2:0",
+      "prev_cursor": "48054:2147483647:27:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x81549d3ad784b4da33fb99a0272bf78dda817190c6c28401e57dabf2ea42c084",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000c69057072696365010000000000000000000000024e160300",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47922:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47922:6:82:0",
+      "next_cursor": "47923:0:46:0",
+      "prev_cursor": "47922:5:79:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x064b872e82a9597c74bb492e887dd63879569587223be9f946c4dd8879f3fe02",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000012600570726963650100000000000000000000000076046700",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47853:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47848:2147483647:5:0",
+      "next_cursor": "47859:3:85:0",
+      "prev_cursor": "47848:2147483647:4:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x3565621eaa43f4c224a2432f1a3dfc11191792ffa0291ded17775580fc7cd869",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000006aa057072696365010000000000000000000000004d7c6d00",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47818:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47817:0:3:0",
+      "next_cursor": "47819:0:5:0",
+      "prev_cursor": "47815:2147483647:3:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xf0c0e57b631eb9a6da953e7e24bdb5446ddf343a7cce13360e2fc7467bd968b0",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000010480570726963650100000000000000000000000077359400",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47801:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47800:2147483647:4:0",
+      "next_cursor": "47802:1:48:0",
+      "prev_cursor": "47800:2147483647:3:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xf5897ebc85a69338d7375104e7bb9d57034ccdc7da1d5505d190d83a765add45",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e026964010000000000000000000000000000085f057072696365010000000000000000000000006553f100",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47792:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47792:7:57:0",
+      "next_cursor": "47794:2147483647:5:0",
+      "prev_cursor": "47792:6:49:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xf92d9ee72e0d527a96b2326f9c00af51d28d8375fc148c0ebe6306e15d969cdf",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e026964010000000000000000000000000000102a057072696365010000000000000000000000003dda97aa",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47788:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47786:2147483647:4:0",
+      "next_cursor": "47789:2147483647:3:0",
+      "prev_cursor": "47786:2147483647:3:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009c8057072696365010000000000000000000000022d4dad80",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47786:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47786:2147483647:4:0",
+      "next_cursor": "47789:2147483647:3:0",
+      "prev_cursor": "47786:2147483647:3:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009c8057072696365010000000000000000000000022d4dad80",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47785:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47784:0:48:0",
+      "next_cursor": "47786:1:58:0",
+      "prev_cursor": "47784:0:34:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009e1057072696365010000000000000000000000004190ab00",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47784:2147483647:32767:2147483647&limit=1": {
+    "statusCode": 200,
+    "body": {
+      "limit": 1,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47784:0:48:0",
+      "next_cursor": "47786:1:58:0",
+      "prev_cursor": "47784:0:34:0",
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009e1057072696365010000000000000000000000004190ab00",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47784:2147483647:32767:2147483647&limit=100": {
+    "statusCode": 200,
+    "body": {
+      "limit": 100,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47784:0:48:0",
+      "next_cursor": "47884:2147483647:28:0",
+      "prev_cursor": null,
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009e1057072696365010000000000000000000000004190ab00",
+              "repr": ""
+            }
+          }
+        },
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000be905707269636501000000000000000000000000ee6b2800",
+              "repr": ""
+            }
+          }
+        },
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000d6b057072696365010000000000000000000000003b9aca00",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47784:0:48:0&limit=100": {
+    "statusCode": 200,
+    "body": {
+      "limit": 100,
+      "offset": 0,
+      "total": 3092,
+      "cursor": "47784:0:48:0",
+      "next_cursor": "47884:2147483647:28:0",
+      "prev_cursor": null,
+      "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009e1057072696365010000000000000000000000004190ab00",
+              "repr": ""
+            }
+          }
+        },
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000be905707269636501000000000000000000000000ee6b2800",
+              "repr": ""
+            }
+          }
+        },
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000d6b057072696365010000000000000000000000003b9aca00",
+              "repr": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d&tx_id=0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11&tx_id=0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae": {
     "statusCode": 200,
     "body": {
       "results": [
         {
-          "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
+          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
           "type": "contract_call",
           "status": "success",
-          "fee_rate": "176269",
+          "fee_rate": "102000",
           "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 43
+            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
+            "nonce": 296
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
             "height": 47784,
-            "tx_index": 29
+            "tx_index": 48
           },
           "bitcoin_block": {
             "height": 722076,
@@ -2336,225 +1589,82 @@
           }
         },
         {
-          "tx_id": "0x18f15323fdb5f2fca0cf5f34a0efb3e0bb57ee09799575a1e2c402e36234e825",
+          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
           "type": "contract_call",
           "status": "success",
-          "fee_rate": "351789",
+          "fee_rate": "102000",
           "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 42
+            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
+            "nonce": 295
           },
           "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 19
+            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "height": 47784,
+            "tx_index": 34
           },
           "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
+            "height": 722076,
+            "time": 1644169830
           }
         },
         {
-          "tx_id": "0xf337a39cf246317a4511a24e6712578905361b1df152d09ab178b14b3aca267e",
+          "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
           "type": "contract_call",
           "status": "success",
-          "fee_rate": "351789",
+          "fee_rate": "300000",
           "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 41
+            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
+            "nonce": 294
           },
           "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 18
+            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "height": 47784,
+            "tx_index": 28
           },
           "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
-          }
-        },
-        {
-          "tx_id": "0xfadf996352080751cff3e639f66e381368b86b7d1cfd5f7ed1f1597b09f71759",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "351789",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 40
-          },
-          "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 17
-          },
-          "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
-          }
-        },
-        {
-          "tx_id": "0x62da84177a510e98da397014a57f4f2a1c9d284868fadc998913d4e76e7f3d7b",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "351789",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 39
-          },
-          "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 16
-          },
-          "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
-          }
-        },
-        {
-          "tx_id": "0xabdbff7b1821824ab748f2189cef46103420b5d306d47ad6ae27d5c810cbb3bc",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "351789",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 38
-          },
-          "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 15
-          },
-          "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
-          }
-        },
-        {
-          "tx_id": "0x8d9d849e7a680e297e89d281afbfb9bf52c3b9697143dcac1e629ad2223c6f00",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "351789",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 37
-          },
-          "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 14
-          },
-          "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
-          }
-        },
-        {
-          "tx_id": "0xf4a7c034b0c4ff4e7c5da0dad07e06aa1e0cfbf12117c801d739179af3cf1ebb",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "351789",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 36
-          },
-          "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 12
-          },
-          "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
-          }
-        },
-        {
-          "tx_id": "0xf8ebba8c166f82aeb301338b39c9d551db0de62d4ac054eb166f2a3b7fe0b699",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "351789",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 35
-          },
-          "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 11
-          },
-          "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
-          }
-        },
-        {
-          "tx_id": "0x051b185758e75290e762f902be646c6ec64d336536d333ab1de4b200e3c59563",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "351789",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 34
-          },
-          "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 10
-          },
-          "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
-          }
-        },
-        {
-          "tx_id": "0x238bf342f89be119084c37f3c4da83763d7c488e474ae5814abd31b4cd785683",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "351789",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 33
-          },
-          "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 9
-          },
-          "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
-          }
-        },
-        {
-          "tx_id": "0xd0a402b634b98bc367681d6f2394ad3e1b922cb940aecdd01411cc9559b75fdf",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "351789",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 32
-          },
-          "block": {
-            "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
-            "height": 47783,
-            "tx_index": 8
-          },
-          "bitcoin_block": {
-            "height": 722075,
-            "time": 1644169369
+            "height": 722076,
+            "time": 1644169830
           }
         }
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47884:2147483647:26:0&limit=100": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/logs?cursor=47884:2147483647:28:0&limit=100": {
     "statusCode": 200,
     "body": {
       "limit": 100,
       "offset": 0,
-      "total": 3091,
-      "next_cursor": "47988:2147483647:30:0",
+      "total": 3092,
+      "cursor": "47884:2147483647:28:0",
+      "next_cursor": "47994:2147483647:12:0",
+      "prev_cursor": "47784:0:48:0",
       "results": [
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x938e1d262985b705b5c6f8fcf57b3a36c8bc37a518c0bb3707540ad6bf9eb839",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009cd05707269636501000000000000000000000000383b1583",
+              "repr": ""
+            }
+          }
+        },
+        {
+          "event_index": 0,
+          "event_type": "smart_contract_log",
+          "tx_id": "0xba93be7bad9e4d5ea94677ce89ef3264f2b714bfc1cc002c5eacfcaa0b621594",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e06162bcf9762d5b90bc36dc1b4759b1727690f92ddd31d7374786e66742d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000a1905707269636501000000000000000000000000383b1583",
+              "repr": ""
+            }
+          }
+        },
         {
           "event_index": 0,
           "event_type": "smart_contract_log",
@@ -3828,40 +2938,52 @@
               "repr": ""
             }
           }
-        },
-        {
-          "event_index": 0,
-          "event_type": "smart_contract_log",
-          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
-          "contract_log": {
-            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-            "topic": "print",
-            "value": {
-              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e02696401000000000000000000000000000009e1057072696365010000000000000000000000004190ab00",
-              "repr": ""
-            }
-          }
-        },
-        {
-          "event_index": 0,
-          "event_type": "smart_contract_log",
-          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
-          "contract_log": {
-            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-            "topic": "print",
-            "value": {
-              "hex": "0x0c0000000401610d0000000c6c6973742d696e2d757374780a636f6d6d697373696f6e0616a6a7a70f41adbe8eae708ed7ec2cbf41a27218202062797a616e74696f6e2d7361746f736869626c65732d636f6d6d697373696f6e0269640100000000000000000000000000000be905707269636501000000000000000000000000ee6b2800",
-              "repr": ""
-            }
-          }
         }
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11&tx_id=0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae&tx_id=0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494&tx_id=0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a&tx_id=0x3c1593a34589e64780c8d6a0bff94d91187efabbd93a4e5dc082c9a7bbac27ed&tx_id=0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d&tx_id=0xb5118ef0d83825321026f45626e60c3f7f9164ea4e64f8147289ad11dccf4b1e&tx_id=0xbd7aa1a7910be36de2d2761c123eb8c990d31f2c1e7d8f8f67bdcb4e077e9bca&tx_id=0x8b7e4f295feff48c5a9868bbacc6125cb001ed6db66e9ad1b41395157337eb3c&tx_id=0xf50b716fe552d9aee13f2700dd7cc3ec3aa4e22142c4c0184e993269d6122f2f&tx_id=0x1c58de0de71e7865635d966c0fb10d21b41de6c8cd6636dd5a166d30ef9c0184&tx_id=0x2e1589f13aabb8782e70aa27d914fba122863cfe3f264a5c23c328fa08c8ede1&tx_id=0x099ecbb6a96f634f7645b5c02f4ed13ca7d40c1dac869c696168f7024212b4ef&tx_id=0xad61848410739e33bfc869780a3e9587cf635d26e88ca4f01cc5c7cd71d84439&tx_id=0x4bb2c0aace86499c3b72d3f8e2c72e8b08682941cb0a0a12cee8abdca1c38f91&tx_id=0x694b3c4e7b2e436924eb26182ea9110c6adc2b78544f739e1f29825cd3664879&tx_id=0x7e9ec594559208d81887e5d6829d94d9044201f0c5eb357ea85f9c723cfc0891&tx_id=0x2cc5e29e64a87b127d957cae99990f64c511203f2e5d32ecbcd1aa8ead632911&tx_id=0xfbbf2a2ac38ed12b493efac1781324d169a674a2c73d868377ca5402884d1c9e&tx_id=0x4970101b4f4400bbf28061194b08a4ef891568d8d72085249d26a236fbc9b474": {
+  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0x7548822d0b75342d39a7f1c7f0e19d921c74454f36edc382642ad9f1ca81d494&tx_id=0xae5ed73dc2456694e5d7e46c9e6ae8cff4a0f659d56bc9afdf95bb2fe207b47a&tx_id=0x3c1593a34589e64780c8d6a0bff94d91187efabbd93a4e5dc082c9a7bbac27ed&tx_id=0xb5a3b51429b6aeec2487bf244e663128524ab155ca910c56d8b7cad21e0ed50d&tx_id=0xb5118ef0d83825321026f45626e60c3f7f9164ea4e64f8147289ad11dccf4b1e&tx_id=0xbd7aa1a7910be36de2d2761c123eb8c990d31f2c1e7d8f8f67bdcb4e077e9bca&tx_id=0x8b7e4f295feff48c5a9868bbacc6125cb001ed6db66e9ad1b41395157337eb3c&tx_id=0xf50b716fe552d9aee13f2700dd7cc3ec3aa4e22142c4c0184e993269d6122f2f&tx_id=0x1c58de0de71e7865635d966c0fb10d21b41de6c8cd6636dd5a166d30ef9c0184&tx_id=0x2e1589f13aabb8782e70aa27d914fba122863cfe3f264a5c23c328fa08c8ede1&tx_id=0x099ecbb6a96f634f7645b5c02f4ed13ca7d40c1dac869c696168f7024212b4ef&tx_id=0xad61848410739e33bfc869780a3e9587cf635d26e88ca4f01cc5c7cd71d84439&tx_id=0x4bb2c0aace86499c3b72d3f8e2c72e8b08682941cb0a0a12cee8abdca1c38f91&tx_id=0x694b3c4e7b2e436924eb26182ea9110c6adc2b78544f739e1f29825cd3664879&tx_id=0x7e9ec594559208d81887e5d6829d94d9044201f0c5eb357ea85f9c723cfc0891&tx_id=0x2cc5e29e64a87b127d957cae99990f64c511203f2e5d32ecbcd1aa8ead632911&tx_id=0xfbbf2a2ac38ed12b493efac1781324d169a674a2c73d868377ca5402884d1c9e&tx_id=0x4970101b4f4400bbf28061194b08a4ef891568d8d72085249d26a236fbc9b474&tx_id=0xfa657172d2f01ad897c4c86476cea93ac2202dafc1822050b117aeb01f648e37&tx_id=0x0b31c725c94244f787e6c3a2eea9e032bde43039a631add21a0efa0998878e23": {
     "statusCode": 200,
     "body": {
       "results": [
+        {
+          "tx_id": "0x0b31c725c94244f787e6c3a2eea9e032bde43039a631add21a0efa0998878e23",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "214996",
+          "sender": {
+            "address": "SP1YW2GJ40TKBJZ55NVTGXCJ49N6BVM556F6308D5",
+            "nonce": 5
+          },
+          "block": {
+            "hash": "0xb3bafb36f523a7b9971544ce7568477a48312189b5633866b0e5a8113a9398c0",
+            "height": 47792,
+            "tx_index": 34
+          },
+          "bitcoin_block": {
+            "height": 722087,
+            "time": 1644174305
+          }
+        },
+        {
+          "tx_id": "0xfa657172d2f01ad897c4c86476cea93ac2202dafc1822050b117aeb01f648e37",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "214996",
+          "sender": {
+            "address": "SP1YW2GJ40TKBJZ55NVTGXCJ49N6BVM556F6308D5",
+            "nonce": 4
+          },
+          "block": {
+            "hash": "0xb3bafb36f523a7b9971544ce7568477a48312189b5633866b0e5a8113a9398c0",
+            "height": 47792,
+            "tx_index": 18
+          },
+          "bitcoin_block": {
+            "height": 722087,
+            "time": 1644174305
+          }
+        },
         {
           "tx_id": "0x4970101b4f4400bbf28061194b08a4ef891568d8d72085249d26a236fbc9b474",
           "type": "contract_call",
@@ -4203,69 +3325,20 @@
             "height": 722078,
             "time": 1644171646
           }
-        },
-        {
-          "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "102000",
-          "sender": {
-            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-            "nonce": 296
-          },
-          "block": {
-            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-            "height": 47784,
-            "tx_index": 48
-          },
-          "bitcoin_block": {
-            "height": 722076,
-            "time": 1644169830
-          }
-        },
-        {
-          "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "102000",
-          "sender": {
-            "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-            "nonce": 295
-          },
-          "block": {
-            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-            "height": 47784,
-            "tx_index": 34
-          },
-          "bitcoin_block": {
-            "height": 722076,
-            "time": 1644169830
-          }
         }
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles/logs?cursor=47894:2147483647:60:1&limit=100": {
+  "GET https://api.hiro.so/extended/v2/smart-contracts/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles/logs?cursor=47894:2147483647:59:1&limit=100": {
     "statusCode": 200,
     "body": {
       "limit": 100,
       "offset": 0,
       "total": 746,
-      "next_cursor": "48214:2147483647:17:1",
+      "cursor": "47894:2147483647:59:1",
+      "next_cursor": "48214:2147483647:16:1",
+      "prev_cursor": "47783:2147483647:19:1",
       "results": [
-        {
-          "event_index": 1,
-          "event_type": "smart_contract_log",
-          "tx_id": "0x1f99372c2a966ecd66b962de148f06b96487fd785be09d29a923b7ff027cf5b1",
-          "contract_log": {
-            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles",
-            "topic": "print",
-            "value": {
-              "hex": "0x0c0000000306616374696f6e0d0000000772656c65617365076164647265737305160b0e9ad7dc3d79adea1b92ee7376a18b9a97e0eb02696401000000000000000000000000000011ed",
-              "repr": ""
-            }
-          }
-        },
         {
           "event_index": 1,
           "event_type": "smart_contract_log",
@@ -5552,33 +4625,27 @@
               "repr": ""
             }
           }
+        },
+        {
+          "event_index": 1,
+          "event_type": "smart_contract_log",
+          "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
+          "contract_log": {
+            "contract_id": "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.stacksbridge-satoshibles",
+            "topic": "print",
+            "value": {
+              "hex": "0x0c0000000306616374696f6e0d0000000772656c656173650761646472657373051621369cb2eb4e9f8804fc2595d5855e9a4b02e27a0269640100000000000000000000000000000b2e",
+              "repr": ""
+            }
+          }
         }
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0x08cecc2f6cae33a667f5f64caf7dfb67ecf65f461db167ea6d86d6c57ee3ba96&tx_id=0x57231862a83de9ed0993152958e17e1a46ee24457962106ee90edf15f732a956&tx_id=0xfa2ba903f1012dd590dfeae07dd36896ab95c93f824583a56f85aca3a35dcd9a&tx_id=0x4d2489d8e0e8cab63ae31a404f82a9d74cc44e1e55fc16a7b4286edc70e6f87e&tx_id=0xc9d4f94da65a02bd40d620d3bf12fece656d08927ddc9ff6bd75cbcb54b81f09&tx_id=0x3aa1adbc56f8ce2665e10d36ab9bc29c7abb3fe3dd53c729ce36d755ea42434f&tx_id=0xc3b6019fd4c1afc3b3ac0f30efcb6e19701d797d1b479df721736cd45ec13ee4&tx_id=0x1f6b9707a4c39af8e62d394be25ca689dabc029b00fc512e1333e7a9e7805e9c&tx_id=0x1ad6dafaca875df5283fb9b64cbb5c3e0e15a2d06dc180d2c6fd29db8292939f&tx_id=0x730644e98cfaa5d794f374e90614cd88bf61313d06a996259b97ad1f8dab21ab&tx_id=0xc5936f0c7fa99be07c9d235ecf81e8773b95dea69b22209f0b434401abaffc47&tx_id=0x98cc5ac782c5faf31dcfceb1f01515c05e31f9482605cacadd4066c48cbe8d30&tx_id=0x97a44c3a35c8920e837ee4becac8e16b32578a58ed2f8e52e09a66119bbf070c&tx_id=0xfd0c2cfb3d89353e81df7afd2dc975fc1067653b68f93a3a0719f7bf07f9accb&tx_id=0x4280b63ed7da7ee0465ec5c86773c8b950ccdbdf6f9e3b780ab2199066887b77&tx_id=0x44f98830dd4bb6259f1362795404a683c54e172c31b9e2ab295b9a377d671172&tx_id=0xa8a7105802eebeeb754f122957d5306f12cf6c2114443ee0ecdbfac8460df875&tx_id=0x89245af43c7c7efbb9c3e0e81a98bc8129ceb8b1a1749fc55ab0f26bef7c846a&tx_id=0x1e408e1282732fa745f7ef28691762489b6aa1741f18a3130548185063718849&tx_id=0xf2b522e93efa8548585b9f359aa21803ebaa4ca615cd39c8ff58597bf9caa07f": {
+  "GET https://api.hiro.so/extended/v3/transactions/batch?tx_id=0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222&tx_id=0x08cecc2f6cae33a667f5f64caf7dfb67ecf65f461db167ea6d86d6c57ee3ba96&tx_id=0x57231862a83de9ed0993152958e17e1a46ee24457962106ee90edf15f732a956&tx_id=0xfa2ba903f1012dd590dfeae07dd36896ab95c93f824583a56f85aca3a35dcd9a&tx_id=0x4d2489d8e0e8cab63ae31a404f82a9d74cc44e1e55fc16a7b4286edc70e6f87e&tx_id=0xc9d4f94da65a02bd40d620d3bf12fece656d08927ddc9ff6bd75cbcb54b81f09&tx_id=0x3aa1adbc56f8ce2665e10d36ab9bc29c7abb3fe3dd53c729ce36d755ea42434f&tx_id=0xc3b6019fd4c1afc3b3ac0f30efcb6e19701d797d1b479df721736cd45ec13ee4&tx_id=0x1f6b9707a4c39af8e62d394be25ca689dabc029b00fc512e1333e7a9e7805e9c&tx_id=0x1ad6dafaca875df5283fb9b64cbb5c3e0e15a2d06dc180d2c6fd29db8292939f&tx_id=0x730644e98cfaa5d794f374e90614cd88bf61313d06a996259b97ad1f8dab21ab&tx_id=0xc5936f0c7fa99be07c9d235ecf81e8773b95dea69b22209f0b434401abaffc47&tx_id=0x98cc5ac782c5faf31dcfceb1f01515c05e31f9482605cacadd4066c48cbe8d30&tx_id=0x97a44c3a35c8920e837ee4becac8e16b32578a58ed2f8e52e09a66119bbf070c&tx_id=0xfd0c2cfb3d89353e81df7afd2dc975fc1067653b68f93a3a0719f7bf07f9accb&tx_id=0x4280b63ed7da7ee0465ec5c86773c8b950ccdbdf6f9e3b780ab2199066887b77&tx_id=0x44f98830dd4bb6259f1362795404a683c54e172c31b9e2ab295b9a377d671172&tx_id=0xa8a7105802eebeeb754f122957d5306f12cf6c2114443ee0ecdbfac8460df875&tx_id=0x89245af43c7c7efbb9c3e0e81a98bc8129ceb8b1a1749fc55ab0f26bef7c846a&tx_id=0x1e408e1282732fa745f7ef28691762489b6aa1741f18a3130548185063718849": {
     "statusCode": 200,
     "body": {
       "results": [
-        {
-          "tx_id": "0xf2b522e93efa8548585b9f359aa21803ebaa4ca615cd39c8ff58597bf9caa07f",
-          "type": "contract_call",
-          "status": "success",
-          "fee_rate": "26992",
-          "sender": {
-            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-            "nonce": 63
-          },
-          "block": {
-            "hash": "0x62941557f979bf68bf479e49409072091469f6b706f0b5e1e3d66341426952d9",
-            "height": 47794,
-            "tx_index": 12
-          },
-          "bitcoin_block": {
-            "height": 722090,
-            "time": 1644175084
-          }
-        },
         {
           "tx_id": "0x1e408e1282732fa745f7ef28691762489b6aa1741f18a3130548185063718849",
           "type": "contract_call",
@@ -5939,19 +5006,27 @@
             "height": 722076,
             "time": 1644169830
           }
+        },
+        {
+          "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
+          "type": "contract_call",
+          "status": "success",
+          "fee_rate": "176269",
+          "sender": {
+            "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
+            "nonce": 43
+          },
+          "block": {
+            "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "height": 47784,
+            "tx_index": 29
+          },
+          "bitcoin_block": {
+            "height": 722076,
+            "time": 1644169830
+          }
         }
       ]
-    }
-  },
-  "GET https://api.hiro.so/extended": {
-    "statusCode": 200,
-    "body": {
-      "server_version": "stacks-blockchain-api v9.6.0 (HEAD:ee0c0ac)",
-      "status": "ready",
-      "chain_tip": {
-        "block_height": 9207456,
-        "block_hash": "0x7c5ab1cfbdeb318b9be2d994f59e6d88467aec38eec570e066ae98ce12f2479a"
-      }
     }
   }
 }
