@@ -1,5 +1,19 @@
 # stacksindex
 
+## 0.1.0
+
+### Minor Changes
+
+- [#67](https://github.com/pradel/stacksindex/pull/67) [`28ef595`](https://github.com/pradel/stacksindex/commit/28ef595b82c26e3158973f11f7589b300c728770) Thanks [@pradel](https://github.com/pradel)! - Add live sync: `indexer.live(filters)` runs the historical sync, then indexes new blocks as they arrive, detected by polling (default) or the API websocket (`live.transport`). Breaking: `createHistoricalRuntime` and `HistoricalRuntime` are renamed to `createIndexer` and `Indexer`, `finality` defaults to `6`, and Node.js 22 or later is required.
+
+- [#68](https://github.com/pradel/stacksindex/pull/68) [`bf35ef6`](https://github.com/pradel/stacksindex/commit/bf35ef68f8f4a5f7f9a926d30fc5cb324882a632) Thanks [@pradel](https://github.com/pradel)! - Add monitoring: `telemetry.otlp` pushes metrics for the Stacks API, sync, indexing, live sync and reorgs over OTLP, and `indexer.status()` reports the phase, readiness and progress. Breaking: `stacksindex.index.batch_duration` is renamed to `stacksindex.indexing.batch.duration`, and every metric now carries a `chain_id` attribute.
+
+### Patch Changes
+
+- [#64](https://github.com/pradel/stacksindex/pull/64) [`7d0a03d`](https://github.com/pradel/stacksindex/commit/7d0a03dab5a022469700743939f88ca31b7820ed) Thanks [@pradel](https://github.com/pradel)! - Fix historical sync missing up to 99 of a contract's newest events by finishing each contract from its newest logs page. A caught-up contract is now checked with a single request instead of re-running first-event discovery. Re-sync from an empty indexer database to recover events skipped by previous versions.
+
+- [#66](https://github.com/pradel/stacksindex/pull/66) [`1744ff0`](https://github.com/pradel/stacksindex/commit/1744ff02cc7341643e267fd861502b0d489bb03e) Thanks [@pradel](https://github.com/pradel)! - Detect reorgs by checking the previous run's chain tip against the canonical chain instead of replaying the finality window on every run. Only a reorged range is refetched and replayed, and a reorg that replaces a finalized block now fails with `ReorgError`.
+
 ## 0.0.8
 
 ### Patch Changes
