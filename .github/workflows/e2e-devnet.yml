@@ -37,14 +37,29 @@ jobs:
           clarinet --version
 
       - name: Run devnet e2e tests
-        run: vp run test:devnet
+        run: |
+          # DEBUG: capture container state/logs before clarinet removes them.
+          mkdir -p /tmp/devnet-debug
+          ( while true; do
+              for c in $(docker ps -aq --filter name=stacksindex-e2e-devnet); do
+                n=$(docker inspect -f '{{.Name}}' "$c" | tr -d /)
+                docker logs "$c" > "/tmp/devnet-debug/$n.log" 2>&1 || true
+                docker inspect "$c" > "/tmp/devnet-debug/$n.inspect.json" 2>&1 || true
+              done
+              ls -laR packages/e2e-devnet/clarinet/.cache > /tmp/devnet-debug/cache-ls.txt 2>&1 || true
+              sleep 1
+            done ) &
+          id
+          vp run test:devnet
 
       - name: Upload devnet logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: devnet-logs
+          include-hidden-files: true
           path: |
             packages/e2e-devnet/clarinet/.cache/devnet.log
             packages/e2e-devnet/clarinet/.cache/stacks-devnet-*/devnet.log
+            /tmp/devnet-debug
           if-no-files-found: ignore
