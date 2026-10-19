@@ -16,19 +16,36 @@ import { createDevnetIndexer, tracedFilters, waitForPhase } from "../indexer.ts"
 
 /**
  * Live sync fetches a new block per block only when that costs fewer requests
- * than one logs page per syncing contract: a block holding one transaction
- * costs 2. The contracts past `LEDGER_CONTRACT` are watched to raise the
- * per-contract cost; the scenario never calls them.
+ * than one logs page per syncing contract: a block costs its transaction count
+ * plus one. Right after boot, Clarinet's sBTC funding mines a block of 10
+ * deposits (cost 11) that a scenario's transactions may share. The contracts
+ * past `LEDGER_CONTRACT` are watched only to raise the per-contract cost above
+ * that; the scenario never calls them.
  */
+const BOOT_CONTRACTS = [
+  "pox",
+  "pox-2",
+  "pox-3",
+  "pox-4",
+  "bns",
+  "costs",
+  "costs-2",
+  "costs-3",
+  "cost-voting",
+  "lockup",
+  "genesis",
+  "signers",
+  "signers-voting",
+  "sip-031",
+].map((name) => `ST000000000000000000002AMW42H.${name}`);
+
 const WATCHED_CONTRACTS = [
   EVENTS_CONTRACT,
   LEDGER_CONTRACT,
   `${DEPLOYER_ADDRESS}.sbtc-token`,
   `${DEPLOYER_ADDRESS}.sbtc-registry`,
   `${DEPLOYER_ADDRESS}.sbtc-deposit`,
-  "ST000000000000000000002AMW42H.bns",
-  "ST000000000000000000002AMW42H.costs-3",
-  "ST000000000000000000002AMW42H.lockup",
+  ...BOOT_CONTRACTS,
 ];
 
 /** Records the path of every request while passing it through to the real `fetch`. */
