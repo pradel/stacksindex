@@ -59,7 +59,6 @@ jobs:
           name: devnet-logs
           include-hidden-files: true
           path: |
-            packages/e2e-devnet/clarinet/.cache/devnet.log
-            packages/e2e-devnet/clarinet/.cache/stacks-devnet-*/devnet.log
+            packages/e2e-devnet/clarinet/.cache
             /tmp/devnet-debug
           if-no-files-found: ignore
