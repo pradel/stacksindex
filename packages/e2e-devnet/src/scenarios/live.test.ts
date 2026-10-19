@@ -59,7 +59,10 @@ describe.each<NonNullable<LiveOptions["transport"]>>(["polling", "websocket"])(
 
 describe("live sync with an endBlock", () => {
   test("resolves once the chain reaches endBlock", async () => {
-    const endBlock = (await chainTip()) + 1;
+    // Two blocks ahead: an idle devnet mines blocks slowly (3 took ~170s), so
+    // The backfill ends below it and `live` must follow new heads. Each
+    // Transaction then gets the next block mined within seconds.
+    const endBlock = (await chainTip()) + 2;
     const trace = createTraceCollector();
     await using indexer = await createDevnetIndexer({ pollingInterval: POLLING_INTERVAL });
 
@@ -67,10 +70,14 @@ describe("live sync with an endBlock", () => {
       tracedFilters(trace, [{ contractId: EVENTS_CONTRACT, startBlock: endBlock, endBlock }]),
     );
 
-    // An idle devnet mines Stacks blocks slowly (3 blocks took ~170s); a
-    // Transaction gets the next block mined within seconds.
-    await Promise.race([live, waitForPhase(indexer, "live")]);
-    await callContract(RUNTIME_SENDER, EVENTS_CONTRACT, "set-value", [Cl.uint(30)]);
+    await Promise.race([
+      live.then(() => {
+        throw new Error("live() reached endBlock before following new heads");
+      }),
+      waitForPhase(indexer, "live"),
+    ]);
+    await submitContractCall(RUNTIME_SENDER, EVENTS_CONTRACT, "set-value", [Cl.uint(30)]);
+    await callContract(RUNTIME_SENDER, EVENTS_CONTRACT, "set-value", [Cl.uint(31)]);
     await live;
 
     const status = await indexer.status();

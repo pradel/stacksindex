@@ -4,7 +4,7 @@ import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { DEVNET_API_URL, readChainTip, waitUntil } from "./chain.ts";
+import { DEVNET_API_URL, LOCAL_DEVNET_API_URL, readChainTip, waitUntil } from "./chain.ts";
 import { readSeedHistory } from "./seed.ts";
 
 const CLARINET_VERSION = "3.25.0";
@@ -63,6 +63,11 @@ export default async function setup(): Promise<(() => Promise<void>) | undefined
     () => true,
     () => false,
   );
+
+  // Only the local URL can be served by the devnet started below.
+  if (!reachable && DEVNET_API_URL !== LOCAL_DEVNET_API_URL) {
+    throw new Error(`STACKS_DEVNET_API_URL ${DEVNET_API_URL} is unreachable`);
+  }
 
   if (reachable || devnetContainersRunning()) {
     console.info(`[devnet] reusing the devnet at ${DEVNET_API_URL}`);

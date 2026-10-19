@@ -8,8 +8,10 @@ import {
   type ClarityValue,
 } from "@stacks/transactions";
 
-/** Stacks-blockchain-api of the Clarinet devnet (see `clarinet/settings/Devnet.toml`). */
-export const DEVNET_API_URL = process.env.STACKS_DEVNET_API_URL ?? "http://localhost:3999";
+/** Stacks-blockchain-api URL of the local Clarinet devnet (see `clarinet/settings/Devnet.toml`). */
+export const LOCAL_DEVNET_API_URL = "http://localhost:3999";
+
+export const DEVNET_API_URL = process.env.STACKS_DEVNET_API_URL ?? LOCAL_DEVNET_API_URL;
 
 export const DEPLOYER_ADDRESS = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
 
