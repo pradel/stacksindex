@@ -48,8 +48,17 @@ jobs:
           timeout 120 sh -c 'until grep -q "Embedded snapshot extracted successfully" /tmp/snapshot.log; do sleep 0.2; done'
           kill -INT "$pid"
           wait "$pid" || true
-          docker ps -aq --filter name=.stacksindex-e2e-devnet.devnet | xargs -r docker rm -f
-          docker network rm stacksindex-e2e-devnet.devnet 2>/dev/null || true
+          # Clarinet's own teardown may still be removing containers: retry until
+          # none are left, then drop the network they were attached to.
+          timeout 120 sh -c '
+            while [ -n "$(docker ps -aq --filter name=.stacksindex-e2e-devnet.devnet)" ]; do
+              docker ps -aq --filter name=.stacksindex-e2e-devnet.devnet | xargs -r docker rm -f > /dev/null 2>&1 || true
+              sleep 1
+            done
+            while docker network inspect stacksindex-e2e-devnet.devnet > /dev/null 2>&1; do
+              docker network rm stacksindex-e2e-devnet.devnet > /dev/null 2>&1 || true
+              sleep 1
+            done'
           chmod -R a+rwX ~/.clarinet/cache/devnet
 
       - name: Run devnet e2e tests
