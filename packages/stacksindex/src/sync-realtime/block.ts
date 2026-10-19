@@ -181,6 +181,7 @@ export function syncBlock(options: {
               {
                 height: block.height,
                 hash: block.hash,
+                index_block_hash: first.transaction.block.index_hash,
                 burn_block_time: first.transaction.bitcoin_block.time,
                 burn_block_height: first.transaction.bitcoin_block.height,
               },

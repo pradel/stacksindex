@@ -16,6 +16,7 @@ export const StoredEventSchema = Schema.Struct({
   valueRepr: Schema.String,
   blockHeight: Schema.BigInt,
   blockTime: Schema.BigInt,
+  indexBlockHash: Schema.String,
   txIndex: Schema.Int,
   senderAddress: Schema.String,
 });
@@ -38,6 +39,7 @@ export const storedEventToHandlerEvent = (event: StoredEvent): HandlerEvent => (
   },
   block_height: Number(event.blockHeight),
   block_time: Number(event.blockTime),
+  index_block_hash: event.indexBlockHash,
   tx_index: event.txIndex,
   sender_address: event.senderAddress,
 });

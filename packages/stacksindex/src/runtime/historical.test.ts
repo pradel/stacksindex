@@ -207,7 +207,7 @@ const standardTx = (txId: string, height: number, hash: string, txIndex = 0) => 
   fee_rate: "1000",
   sender: { address: "SP sender", nonce: 0 },
   sponsor: null,
-  block: { hash, height, time: 1000, tx_index: txIndex },
+  block: { hash, height, time: 1000, tx_index: txIndex, index_hash: `index-${hash}` },
   bitcoin_block: { height, time: 1000 },
 });
 
@@ -233,6 +233,7 @@ const handledEventBlock = (event: HandlerEvent, context: HandlerContext) =>
       chainId: 1n,
       height: handledEventBlockHeight(event),
       hash: `handled-${event.block_height}-${event.event_index}`,
+      indexBlockHash: `index-handled-${event.block_height}-${event.event_index}`,
       blockTime: 0n,
       tenureHeight: 0n,
     })
@@ -275,6 +276,7 @@ const seedCompleteContract = async (
       chainId: 1n,
       height: BigInt(height),
       hash: `block-${height}`,
+      indexBlockHash: `index-block-${height}`,
       blockTime: BigInt(height * 10),
       tenureHeight: BigInt(height),
     })),
@@ -340,7 +342,13 @@ describe("historical runtime", () => {
         fee_rate: "1000",
         sender: { address: "SP sender", nonce: 0 },
         sponsor: null,
-        block: { hash: "block-1", height: 100, time: 1000, tx_index: 0 },
+        block: {
+          hash: "block-1",
+          height: 100,
+          time: 1000,
+          tx_index: 0,
+          index_hash: "index-block-1",
+        },
         bitcoin_block: { height: 100, time: 1000 },
       },
       "tx-2": {
@@ -351,7 +359,13 @@ describe("historical runtime", () => {
         fee_rate: "1000",
         sender: { address: "SP sender", nonce: 0 },
         sponsor: null,
-        block: { hash: "block-2", height: 200, time: 2000, tx_index: 0 },
+        block: {
+          hash: "block-2",
+          height: 200,
+          time: 2000,
+          tx_index: 0,
+          index_hash: "index-block-2",
+        },
         bitcoin_block: { height: 200, time: 2000 },
       },
     };
@@ -425,6 +439,7 @@ describe("historical runtime", () => {
             sponsor: null,
             block: {
               hash: "block-1",
+              index_hash: "index-block-1",
               height: 100,
               time: 1000,
               tx_index: 0,
@@ -518,6 +533,7 @@ describe("historical runtime", () => {
             sponsor: null,
             block: {
               hash: "block-2",
+              index_hash: "index-block-2",
               height: 200,
               time: 2000,
               tx_index: 0,
@@ -639,6 +655,7 @@ describe("historical runtime", () => {
       sponsor: null,
       block: {
         hash: blockHash,
+        index_hash: `index-${blockHash}`,
         height: blockHeight,
         time: blockHeight * 10,
         tx_index: 0,
@@ -982,7 +999,13 @@ describe("historical runtime", () => {
         fee_rate: "1000",
         sender: { address: "SP sender", nonce: 0 },
         sponsor: null,
-        block: { hash: "block-1", height: 100, time: 1000, tx_index: 0 },
+        block: {
+          hash: "block-1",
+          height: 100,
+          time: 1000,
+          tx_index: 0,
+          index_hash: "index-block-1",
+        },
         bitcoin_block: { height: 100, time: 1000 },
       },
     };
@@ -1040,6 +1063,7 @@ describe("historical runtime", () => {
             sponsor: null,
             block: {
               hash: "block-1",
+              index_hash: "index-block-1",
               height: 100,
               time: 1000,
               tx_index: 0,
@@ -1128,6 +1152,7 @@ describe("historical runtime", () => {
       chainId: 1n,
       height: 100n,
       hash: "block-1",
+      indexBlockHash: "index-block-1",
       blockTime: 1n,
       tenureHeight: 1n,
     });
@@ -1267,6 +1292,7 @@ describe("historical runtime", () => {
             sponsor: null,
             block: {
               hash: "block-1",
+              index_hash: "index-block-1",
               height: 100,
               time: 1000,
               tx_index: 0,
@@ -1366,7 +1392,13 @@ describe("historical runtime", () => {
         fee_rate: "1000",
         sender: { address: "SP sender", nonce: 0 },
         sponsor: null,
-        block: { hash: "block-1", height: 100, time: 1000, tx_index: 0 },
+        block: {
+          hash: "block-1",
+          height: 100,
+          time: 1000,
+          tx_index: 0,
+          index_hash: "index-block-1",
+        },
         bitcoin_block: { height: 100, time: 1000 },
       },
     };
@@ -1444,6 +1476,7 @@ describe("historical runtime", () => {
             sponsor: null,
             block: {
               hash: "block-1",
+              index_hash: "index-block-1",
               height: 100,
               time: 1000,
               tx_index: 0,
@@ -1643,6 +1676,7 @@ describe("historical runtime with handlers", () => {
       sponsor: null,
       block: {
         hash: blockHash,
+        index_hash: `index-${blockHash}`,
         height: blockHeight,
         time: blockHeight * 10,
         tx_index: 0,
@@ -1975,6 +2009,7 @@ describe("historical runtime with handlers", () => {
             sponsor: null,
             block: {
               hash: "block-1",
+              index_hash: "index-block-1",
               height: 100,
               time: 1000,
               tx_index: 0,
@@ -2102,6 +2137,7 @@ describe("historical runtime with handlers", () => {
       chainId: 1n,
       height: 100n,
       hash: "block-1",
+      indexBlockHash: "index-block-1",
       blockTime: 1000n,
       tenureHeight: 100n,
     });
@@ -2179,8 +2215,22 @@ describe("historical runtime with handlers", () => {
     // Block 100 holds 1000 events (the maximum batch size) and block 200 holds
     // 500, so indexing splits into one batch per block.
     await testDb.db.insert(blocksTable).values([
-      { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
-      { chainId: 1n, height: 200n, hash: "block-200", blockTime: 2000n, tenureHeight: 200n },
+      {
+        chainId: 1n,
+        height: 100n,
+        hash: "block-100",
+        indexBlockHash: "index-block-100",
+        blockTime: 1000n,
+        tenureHeight: 100n,
+      },
+      {
+        chainId: 1n,
+        height: 200n,
+        hash: "block-200",
+        indexBlockHash: "index-block-200",
+        blockTime: 2000n,
+        tenureHeight: 200n,
+      },
     ]);
     await testDb.db.insert(transactionsTable).values([
       {
@@ -2526,8 +2576,22 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
 
     await testDb.db.insert(blocksTable).values([
-      { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
-      { chainId: 1n, height: 300n, hash: "block-300", blockTime: 3000n, tenureHeight: 300n },
+      {
+        chainId: 1n,
+        height: 100n,
+        hash: "block-100",
+        indexBlockHash: "index-block-100",
+        blockTime: 1000n,
+        tenureHeight: 100n,
+      },
+      {
+        chainId: 1n,
+        height: 300n,
+        hash: "block-300",
+        indexBlockHash: "index-block-300",
+        blockTime: 3000n,
+        tenureHeight: 300n,
+      },
     ]);
     await testDb.db.insert(transactionsTable).values([
       {
@@ -2636,8 +2700,22 @@ describe("historical runtime with handlers", () => {
     // Block 100 holds 1000 events and block 200 holds 1, so indexing runs as
     // Two batches: [block 100], then [block 200].
     await testDb.db.insert(blocksTable).values([
-      { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
-      { chainId: 1n, height: 200n, hash: "block-200", blockTime: 2000n, tenureHeight: 200n },
+      {
+        chainId: 1n,
+        height: 100n,
+        hash: "block-100",
+        indexBlockHash: "index-block-100",
+        blockTime: 1000n,
+        tenureHeight: 100n,
+      },
+      {
+        chainId: 1n,
+        height: 200n,
+        hash: "block-200",
+        indexBlockHash: "index-block-200",
+        blockTime: 2000n,
+        tenureHeight: 200n,
+      },
     ]);
     await testDb.db.insert(transactionsTable).values([
       {
@@ -2790,6 +2868,7 @@ describe("historical runtime with handlers", () => {
             sponsor: null,
             block: {
               hash: "block-1",
+              index_hash: "index-block-1",
               height: 100,
               time: 1000,
               tx_index: 0,
@@ -2954,7 +3033,7 @@ describe("historical runtime with handlers", () => {
     expect(mockRequest).toHaveBeenCalledTimes(3);
   });
 
-  test("provides IndexingClient to handler with current block height tip and runtime api options", async () => {
+  test("provides IndexingClient to handler with event index block hash tip and runtime api options", async () => {
     const contractId = "SP123.token";
     const customBaseUrl = "https://custom-stacks.example.com";
     const customApiKey = "test-api-key-123";
@@ -2985,7 +3064,13 @@ describe("historical runtime with handlers", () => {
                     fee_rate: "1000",
                     sender: { address: "SP sender", nonce: 0 },
                     sponsor: null,
-                    block: { hash: "block-1", height: 1234, time: 1000, tx_index: 0 },
+                    block: {
+                      hash: "block-1",
+                      height: 1234,
+                      time: 1000,
+                      tx_index: 0,
+                      index_hash: "0xindex1234",
+                    },
                     bitcoin_block: { height: 1234, time: 1000 },
                   }
                 : standardTxById[id],
@@ -3053,6 +3138,7 @@ describe("historical runtime with handlers", () => {
               sponsor: null,
               block: {
                 hash: "block-1",
+                index_hash: "0xindex1234",
                 height: 1234,
                 time: 1000,
                 tx_index: 0,
@@ -3111,7 +3197,7 @@ describe("historical runtime with handlers", () => {
               block_time: 1000,
               block_time_iso: "",
               tenure_height: 1234,
-              index_block_hash: "",
+              index_block_hash: "0xindex1234",
               parent_block_hash: "",
               parent_index_block_hash: "",
               burn_block_time: 1000,
@@ -3173,8 +3259,9 @@ describe("historical runtime with handlers", () => {
     expect(result).toBeDefined();
     expect(handlerCalled).toBe(true);
     expect(callReadOnlySuccess).toBe(true);
+    // The node pins reads by index block hash; a height would read the chain head.
     expect(callReadOnlyUrl).toBe(
-      `${customBaseUrl}/v2/contracts/call-read/SP123/token/get-total-supply?tip=1234`,
+      `${customBaseUrl}/v2/contracts/call-read/SP123/token/get-total-supply?tip=index1234`,
     );
     expect(callReadOnlyApiKey).toBe(customApiKey);
   });
@@ -3300,6 +3387,7 @@ describe("historical runtime with handlers", () => {
             sponsor: null,
             block: {
               hash: "block-100",
+              index_hash: "index-block-100",
               height: 100,
               time: 1000,
               tx_index: 0,
@@ -3470,6 +3558,7 @@ describe("historical runtime with handlers", () => {
             sponsor: null,
             block: {
               hash: "block-100",
+              index_hash: "index-block-100",
               height: 100,
               time: 1000,
               tx_index: 0,
@@ -3563,6 +3652,7 @@ describe("historical runtime with handlers", () => {
             sponsor: null,
             block: {
               hash: "block-150",
+              index_hash: "index-block-150",
               height: 150,
               time: 1500,
               tx_index: 0,
@@ -3848,6 +3938,7 @@ describe("historical runtime with handlers", () => {
             sponsor: null,
             block: {
               hash: "block-100",
+              index_hash: "index-block-100",
               height: 100,
               time: 1000,
               tx_index: 0,
@@ -3884,6 +3975,7 @@ describe("historical runtime with handlers", () => {
             sponsor: null,
             block: {
               hash: "block-200",
+              index_hash: "index-block-200",
               height: 200,
               time: 2000,
               tx_index: 0,
@@ -4149,6 +4241,7 @@ describe("historical runtime with handlers", () => {
             sponsor: null,
             block: {
               hash: "block-100",
+              index_hash: "index-block-100",
               height: 100,
               time: 1000,
               tx_index: 0,
@@ -4347,6 +4440,7 @@ describe("historical runtime with handlers", () => {
             sponsor: null,
             block: {
               hash: "block-150",
+              index_hash: "index-block-150",
               height: 150,
               time: 1500,
               tx_index: 0,
@@ -4493,6 +4587,7 @@ describe("historical runtime with handlers", () => {
             sponsor: null,
             block: {
               hash: "block-150",
+              index_hash: "index-block-150",
               height: 150,
               time: 1500,
               tx_index: 0,
@@ -4622,6 +4717,7 @@ describe("historical runtime with handlers", () => {
       chainId: 1n,
       height: 100n,
       hash: "block-100",
+      indexBlockHash: "index-block-100",
       blockTime: 1000n,
       tenureHeight: 100n,
     });
@@ -4727,6 +4823,7 @@ describe("historical runtime with handlers", () => {
       sponsor: null,
       block: {
         hash: `block-${blockHeight}`,
+        index_hash: `index-block-${blockHeight}`,
         height: blockHeight,
         time: 1000,
         tx_index: txIndex,
@@ -4978,6 +5075,7 @@ describe("historical runtime with handlers", () => {
       sponsor: null,
       block: {
         hash: `block-${blockHeight}`,
+        index_hash: `index-block-${blockHeight}`,
         height: blockHeight,
         time: 1000,
         tx_index: txIndex,
@@ -5280,7 +5378,12 @@ describe("historical runtime with handlers", () => {
             id === "tx-1"
               ? {
                   tx_id: "tx-1",
-                  block: { height: 50, hash: "block-50", tx_index: 0 },
+                  block: {
+                    height: 50,
+                    hash: "block-50",
+                    tx_index: 0,
+                    index_hash: "index-block-50",
+                  },
                   bitcoin_block: { height: 50, time: 1000 },
                   type: "contract_call",
                   sender: { address: "SP_SENDER", nonce: 1 },
@@ -5367,7 +5470,7 @@ describe("historical runtime with handlers", () => {
           statusCode: 200,
           body: mockBody({
             tx_id: "tx-1",
-            block: { height: 50, hash: "block-50", tx_index: 0 },
+            block: { height: 50, hash: "block-50", tx_index: 0, index_hash: "index-block-50" },
             type: "contract_call",
             sender: { address: "SP_SENDER", nonce: 1 },
             fee_rate: 100,
@@ -5534,7 +5637,7 @@ describe("historical runtime with handlers", () => {
       fee_rate: "1000",
       sender: { address: "SP sender", nonce: 0 },
       sponsor: null,
-      block: { hash, height, time: 1000, tx_index: 0 },
+      block: { hash, height, time: 1000, tx_index: 0, index_hash: `index-${hash}` },
       bitcoin_block: { height, time: 1000 },
     });
 
@@ -5701,7 +5804,7 @@ describe("historical runtime with handlers", () => {
       fee_rate: "1000",
       sender: { address: "SP sender", nonce: 0 },
       sponsor: null,
-      block: { hash: "block-1", height: 100, time: 1000, tx_index: 0 },
+      block: { hash: "block-1", height: 100, time: 1000, tx_index: 0, index_hash: "index-block-1" },
       bitcoin_block: { height: 100, time: 1000 },
     };
 
@@ -5858,7 +5961,13 @@ describe("historical runtime with handlers", () => {
             fee_rate: "1000",
             sender: { address: "SP sender", nonce: 0 },
             sponsor: null,
-            block: { hash: "block-1", height: 100, time: 1000, tx_index: 0 },
+            block: {
+              hash: "block-1",
+              height: 100,
+              time: 1000,
+              tx_index: 0,
+              index_hash: "index-block-1",
+            },
             bitcoin_block: { height: 100, time: 1000 },
             events: [],
           }),
@@ -5928,6 +6037,7 @@ describe("historical runtime with handlers", () => {
       chainId: 1n,
       height: 100n,
       hash: "block-100",
+      indexBlockHash: "index-block-100",
       blockTime: 1000n,
       tenureHeight: 100n,
     });

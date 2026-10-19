@@ -15,6 +15,7 @@ export const encodeBlock = ({
   chainId: BigInt(chainId),
   height: BigInt(block.height),
   hash: block.hash,
+  indexBlockHash: block.index_block_hash,
   blockTime: BigInt(block.burn_block_time),
   tenureHeight: BigInt(block.burn_block_height),
 });

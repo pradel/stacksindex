@@ -69,6 +69,7 @@ const createMockEvent = (overrides: Partial<HandlerEvent> = {}): HandlerEvent =>
   },
   block_height: 100,
   block_time: 1000,
+  index_block_hash: "0xindex-100",
   tx_index: 0,
   sender_address: "SP sender",
   ...overrides,
@@ -113,16 +114,17 @@ describe("indexing engine", () => {
     );
   });
 
-  test("client.callReadOnly injects event block_height as tip", async () => {
+  test("client.callReadOnly pins calls to the event's index block hash", async () => {
     const callReadFunction = vi
       .fn()
       .mockReturnValue(
         Effect.succeed({ okay: true, result: "0x0100000000000000000000000000000001" }),
       );
 
+    // `getBlock` stays `notUsed`: the tip comes from the event, not a block lookup.
     const handler = vi.fn().mockImplementation((_event, ctx: HandlerContext) =>
       Effect.gen(function* () {
-        // Call without explicit tip - should inject event.block_height
+        // Without a tip: the event's block.
         yield* ctx.client.callReadOnly({
           contractId: "SP123.contract",
           functionName: "get-something",
@@ -130,17 +132,11 @@ describe("indexing engine", () => {
           senderAddress: "ST123",
         });
 
-        // Call with explicit options.tip - should use explicit tip
+        // An explicit tip overrides the event's index block hash.
         yield* ctx.client.callReadOnly({
           contractId: "SP123.contract",
           functionName: "get-something",
-          tip: 99999,
-        });
-
-        // Call without options tip - should default tip to event.block_height
-        yield* ctx.client.callReadOnly({
-          contractId: "SP123.contract",
-          functionName: "get-something",
+          tip: "0xexplicit",
         });
       }),
     );
@@ -149,34 +145,37 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const event = createMockEvent({ block_height: 54321 });
     const stacksClient = makeStacksClient({ callReadFunction });
     const indexing = createIndexing({ handlers, client: stacksClient });
 
-    await runBatch(indexing, [event], mockDb);
+    await runBatch(
+      indexing,
+      [
+        createMockEvent({ block_height: 54321, index_block_hash: "0xindex-54321", event_index: 0 }),
+        createMockEvent({ block_height: 54321, index_block_hash: "0xindex-54321", event_index: 1 }),
+      ],
+      mockDb,
+    );
 
-    expect(handler).toHaveBeenCalledTimes(1);
-
-    expect(callReadFunction).toHaveBeenNthCalledWith(1, "SP123.contract", "get-something", {
-      args: ["0x01"],
-      sender: "ST123",
-      tip: 54321,
-    });
-
-    expect(callReadFunction).toHaveBeenNthCalledWith(2, "SP123.contract", "get-something", {
-      args: [],
-      sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
-      tip: 99999,
-    });
-
-    expect(callReadFunction).toHaveBeenNthCalledWith(3, "SP123.contract", "get-something", {
-      args: [],
-      sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
-      tip: 54321,
-    });
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(callReadFunction.mock.calls.slice(0, 2)).toStrictEqual([
+      [
+        "SP123.contract",
+        "get-something",
+        { args: ["0x01"], sender: "ST123", tip: "0xindex-54321" },
+      ],
+      [
+        "SP123.contract",
+        "get-something",
+        { args: [], sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip: "0xexplicit" },
+      ],
+    ]);
+    expect(callReadFunction.mock.calls.slice(2)).toStrictEqual(
+      callReadFunction.mock.calls.slice(0, 2),
+    );
   });
 
-  test("client.callReadOnly supports typed ABI options and injects event block_height as tip", async () => {
+  test("client.callReadOnly supports typed ABI options and pins them to the event's index block hash", async () => {
     const callReadFunction = vi.fn().mockReturnValue(
       Effect.succeed({
         okay: true,
@@ -185,6 +184,7 @@ describe("indexing engine", () => {
       }),
     );
 
+    // `getBlock` stays `notUsed`: the tip comes from the event, not a block lookup.
     let handlerResult: unknown;
 
     const handler = vi.fn().mockImplementation((_event, ctx: HandlerContext) =>
@@ -201,7 +201,7 @@ describe("indexing engine", () => {
       "SP123.token": handler,
     };
 
-    const event = createMockEvent({ block_height: 77777 });
+    const event = createMockEvent({ block_height: 77777, index_block_hash: "0xindex-77777" });
     const stacksClient = makeStacksClient({ callReadFunction });
     const indexing = createIndexing({ handlers, client: stacksClient });
 
@@ -213,7 +213,7 @@ describe("indexing engine", () => {
     expect(callReadFunction).toHaveBeenCalledWith("SP123.contract", "get-decimals", {
       args: [],
       sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
-      tip: 77777,
+      tip: "0xindex-77777",
     });
   });
 
@@ -313,6 +313,7 @@ describe("transactional event handlers", () => {
         chainId: 1n,
         height: 100n,
         hash: "0x0000000000000000000000000000000000000000000000000000000000000001",
+        indexBlockHash: "0x0000000000000000000000000000000000000000000000000000000000000002",
         blockTime: 1000n,
         tenureHeight: 1n,
       })

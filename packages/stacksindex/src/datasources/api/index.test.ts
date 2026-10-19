@@ -588,6 +588,26 @@ describe("aPI DataSource", () => {
     });
   });
 
+  describe("callReadFunction", () => {
+    test("sends the index block hash tip without its 0x prefix", async () => {
+      const urls: string[] = [];
+
+      mockHandler.mockImplementation((request) => {
+        urls.push(toUrlString(request));
+
+        return Promise.resolve(jsonResponse({ okay: true, result: "0x01" }));
+      });
+
+      await runRequest((client) =>
+        client.callReadFunction("SP123.contract", "my-function", { tip: "0xindex123456" }),
+      );
+
+      expect(urls).toStrictEqual([
+        "https://api.hiro.so/v2/contracts/call-read/SP123/contract/my-function?tip=index123456",
+      ]);
+    });
+  });
+
   describe("getBlockTransactions", () => {
     test("returns block transactions on 200 with cursor and limit", async () => {
       const mockResponse = {
@@ -659,7 +679,13 @@ describe("aPI DataSource", () => {
         status: "success",
         fee_rate: "1000",
         sender: { address: "SP123", nonce: 1 },
-        block: { hash: "0xblock", height: 123_456, time: 1000, tx_index: 0 },
+        block: {
+          hash: "0xblock",
+          height: 123_456,
+          time: 1000,
+          tx_index: 0,
+          index_hash: "index-0xblock",
+        },
       };
 
       mockHandler.mockImplementation((request) => {
@@ -726,7 +752,13 @@ describe("aPI DataSource", () => {
             status: "success",
             fee_rate: "1000",
             sender: { address: "SP123", nonce: 1 },
-            block: { hash: "0xblock2", height: 2, time: 2000, tx_index: 0 },
+            block: {
+              hash: "0xblock2",
+              height: 2,
+              time: 2000,
+              tx_index: 0,
+              index_hash: "index-0xblock2",
+            },
           },
           {
             tx_id: "0xtx1",
@@ -734,7 +766,13 @@ describe("aPI DataSource", () => {
             status: "success",
             fee_rate: "1000",
             sender: { address: "SP123", nonce: 0 },
-            block: { hash: "0xblock1", height: 1, time: 1000, tx_index: 0 },
+            block: {
+              hash: "0xblock1",
+              height: 1,
+              time: 1000,
+              tx_index: 0,
+              index_hash: "index-0xblock1",
+            },
           },
         ],
       };
@@ -822,7 +860,13 @@ describe("aPI DataSource", () => {
               status: "success",
               fee_rate: "1000",
               sender: { address: principal, nonce: 0 },
-              block: { hash: "0xblock", height: 123_456, time: 1000, tx_index: 0 },
+              block: {
+                hash: "0xblock",
+                height: 123_456,
+                time: 1000,
+                tx_index: 0,
+                index_hash: "index-0xblock",
+              },
             },
             involvement: "sender",
           },

@@ -149,7 +149,7 @@ describe("readOnly", () => {
         contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.test-token",
         functionName: "get-decimals",
         senderAddress: "SP12345SENDER",
-        tip: 100500,
+        tip: "0xindex100500",
       }),
     );
 
@@ -161,7 +161,7 @@ describe("readOnly", () => {
       {
         args: [],
         sender: "SP12345SENDER",
-        tip: 100500,
+        tip: "0xindex100500",
       },
     );
   });
