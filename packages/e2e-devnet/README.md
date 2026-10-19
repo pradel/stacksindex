@@ -22,7 +22,7 @@ The suite is opt-in: `vp run test` does not run it.
 
 ## Layout
 
-- `clarinet/contracts`: `events.clar` prints every Clarity value type, batches of 50 events, value updates and an aborting call; `ledger.clar` interleaves its prints with a call into `events.clar`.
+- `clarinet/contracts`: `events.clar` prints every Clarity value type, batches of 50 events, value updates and an aborting call; `ledger.clar` interleaves its prints with a call into `events.clar`; `relayed.clar` prints only when `relay.clar` calls it, so its events never appear in its own address history.
 - `clarinet/deployments/default.devnet-plan.yaml`: deploys both contracts, then sends the fixed seed history (156 print events). It is edited by hand, so never regenerate it with `clarinet deployments generate`. Seed scenarios assert exact counts from it, so keep `src/seed.ts` in sync when changing the plan.
 - `clarinet/requirements`: sources of the sBTC contracts Clarinet adds to every devnet plan, committed so a fresh checkout boots without filling `.cache/`.
 - `clarinet/settings/Devnet.toml`: pins every Docker image. The stacks-blockchain-api version decides which endpoints the indexer can use.
