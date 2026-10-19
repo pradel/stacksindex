@@ -1,0 +1,78 @@
+name: E2E devnet
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CLARINET_VERSION: 3.25.0
+  CLARINET_SHA256: ffe7deaf620b66c4cac999fcfb93eef91b9be9b2fd0af6d0c1e24d5d0745358f
+
+jobs:
+  e2e-devnet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: vite-plus setup
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: ".node-version"
+          cache: true
+
+      - name: Install Clarinet
+        run: |
+          curl -fsSL -o clarinet.tar.gz "https://github.com/stx-labs/clarinet/releases/download/v${CLARINET_VERSION}/clarinet-linux-x64-glibc.tar.gz"
+          echo "${CLARINET_SHA256}  clarinet.tar.gz" | sha256sum --check
+          sudo tar -xzf clarinet.tar.gz -C /usr/local/bin clarinet
+          rm clarinet.tar.gz
+          clarinet --version
+
+      # Clarinet copies its devnet snapshot (0600 files, owned by the runner's
+      # uid 1001) into a data dir that the bitcoind container reads as uid 1000,
+      # so bitcoind never starts serving RPC. Extract the snapshot once, without
+      # booting a devnet, and open its permissions before the tests copy it.
+      - name: Prepare Clarinet devnet snapshot
+        working-directory: packages/e2e-devnet/clarinet
+        run: |
+          clarinet devnet start --no-dashboard --use-on-disk-deployment-plan > /tmp/snapshot.log 2>&1 &
+          pid=$!
+          timeout 120 sh -c 'until grep -q "Embedded snapshot extracted successfully" /tmp/snapshot.log; do sleep 0.2; done'
+          kill -INT "$pid"
+          wait "$pid" || true
+          # Clarinet's own teardown may still be removing containers: retry until
+          # none are left, then drop the network they were attached to.
+          timeout 120 sh -c '
+            while [ -n "$(docker ps -aq --filter name=.stacksindex-e2e-devnet.devnet)" ]; do
+              docker ps -aq --filter name=.stacksindex-e2e-devnet.devnet | xargs -r docker rm -f > /dev/null 2>&1 || true
+              sleep 1
+            done
+            while docker network inspect stacksindex-e2e-devnet.devnet > /dev/null 2>&1; do
+              docker network rm stacksindex-e2e-devnet.devnet > /dev/null 2>&1 || true
+              sleep 1
+            done'
+          chmod -R a+rwX ~/.clarinet/cache/devnet
+
+      - name: Run devnet e2e tests
+        run: vp run test:devnet
+
+      - name: Upload devnet logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devnet-logs
+          include-hidden-files: true
+          path: |
+            packages/e2e-devnet/clarinet/.cache/devnet.log
+            packages/e2e-devnet/clarinet/.cache/stacks-devnet-*/devnet.log
+          if-no-files-found: ignore
