@@ -1,0 +1,48 @@
+name: E2E devnet
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CLARINET_VERSION: 3.25.0
+  CLARINET_SHA256: ffe7deaf620b66c4cac999fcfb93eef91b9be9b2fd0af6d0c1e24d5d0745358f
+
+jobs:
+  e2e-devnet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: vite-plus setup
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: ".node-version"
+          cache: true
+
+      - name: Install Clarinet
+        run: |
+          curl -fsSL -o clarinet.tar.gz "https://github.com/stx-labs/clarinet/releases/download/v${CLARINET_VERSION}/clarinet-linux-x64-glibc.tar.gz"
+          echo "${CLARINET_SHA256}  clarinet.tar.gz" | sha256sum --check
+          sudo tar -xzf clarinet.tar.gz -C /usr/local/bin clarinet
+          rm clarinet.tar.gz
+          clarinet --version
+
+      - name: Run devnet e2e tests
+        run: vp run test:devnet
+
+      - name: Upload devnet logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devnet-logs
+          path: packages/e2e-devnet/clarinet/.cache/devnet.log
+          if-no-files-found: ignore

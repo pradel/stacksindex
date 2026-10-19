@@ -10,6 +10,7 @@
     "readme:sync": "./scripts/sync-readme.sh",
     "readme:check": "./scripts/sync-readme.sh --check",
     "test": "vp run -r test",
+    "test:devnet": "vp run -r test:devnet",
     "build": "vp run -r build",
     "prepare": "vp config && effect-tsgo patch --typescript --oxlint",
     "changeset": "changeset",

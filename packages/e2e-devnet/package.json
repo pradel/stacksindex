@@ -1,0 +1,22 @@
+{
+  "name": "indexer-e2e-devnet",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:devnet": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@stacks/transactions": "7.6.0",
+    "indexer-e2e": "workspace:*",
+    "stacksindex": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "typescript": "7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
+  }
+}

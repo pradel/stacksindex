@@ -1,0 +1,120 @@
+id: 0
+name: Devnet deployment
+network: devnet
+stacks-node: http://localhost:20443
+bitcoin-node: http://devnet:devnet@localhost:18443
+plan:
+  batches:
+    # Clarinet adds the sBTC requirements to every devnet plan. Their sources
+    # are committed under requirements/: `--use-on-disk-deployment-plan` does not
+    # download them into .cache/, so a fresh checkout would fail to boot.
+    - id: 0
+      transactions:
+        - transaction-type: requirement-publish
+          contract-id: SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-registry
+          remap-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+          remap-principals:
+            SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+          cost: 112740
+          path: requirements/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-registry.clar
+          clarity-version: 3
+        - transaction-type: requirement-publish
+          contract-id: SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token
+          remap-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+          remap-principals:
+            SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+          cost: 47600
+          path: requirements/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token.clar
+          clarity-version: 3
+        - transaction-type: requirement-publish
+          contract-id: SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-deposit
+          remap-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+          remap-principals:
+            SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+          cost: 41510
+          path: requirements/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-deposit.clar
+          clarity-version: 3
+      epoch: "3.0"
+    - id: 1
+      transactions:
+        - transaction-type: contract-publish
+          contract-name: events
+          expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+          cost: 17470
+          path: contracts/events.clar
+          anchor-block-only: true
+          clarity-version: 4
+        - transaction-type: contract-publish
+          contract-name: ledger
+          expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+          cost: 3740
+          path: contracts/ledger.clar
+          anchor-block-only: true
+          clarity-version: 4
+      epoch: "4.0"
+    # Seed history read by the e2e suite. Keep the totals in sync with
+    # src/seed.ts: 154 events from `events`, 2 from `ledger`.
+    - id: 2
+      transactions:
+        - transaction-type: contract-call
+          contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.events
+          expected-sender: ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5
+          method: emit-all-types
+          parameters: []
+          cost: 10000
+          anchor-block-only: true
+        - transaction-type: contract-call
+          contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.events
+          expected-sender: ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG
+          method: set-value
+          parameters:
+            - u1
+          cost: 10000
+          anchor-block-only: true
+      epoch: "4.0"
+    - id: 3
+      transactions:
+        - transaction-type: contract-call
+          contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.ledger
+          expected-sender: ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5
+          method: record
+          parameters:
+            - u2
+          cost: 10000
+          anchor-block-only: true
+        - transaction-type: contract-call
+          contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.events
+          expected-sender: ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG
+          method: emit-batch
+          parameters:
+            - u1
+          cost: 10000
+          anchor-block-only: true
+        - transaction-type: contract-call
+          contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.events
+          expected-sender: ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC
+          method: emit-batch
+          parameters:
+            - u2
+          cost: 10000
+          anchor-block-only: true
+      epoch: "4.0"
+    - id: 4
+      transactions:
+        - transaction-type: contract-call
+          contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.events
+          expected-sender: ST2NEB84ASENDXKYGJPQW86YXQCEFEX2ZQPG87ND
+          method: emit-batch
+          parameters:
+            - u3
+          cost: 10000
+          anchor-block-only: true
+        - transaction-type: contract-call
+          contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.events
+          expected-sender: ST2REHHS5J3CERCRBEPMGH7921Q6PYKAADT7JP2VB
+          method: set-value
+          parameters:
+            - u3
+          cost: 10000
+          anchor-block-only: true
+      epoch: "4.0"

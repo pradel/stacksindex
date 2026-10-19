@@ -1,0 +1,17 @@
+[project]
+name = "stacksindex-e2e-devnet"
+description = "Contracts deployed to a Clarinet devnet for the stacksindex e2e suite"
+authors = []
+telemetry = false
+cache_dir = "./.cache"
+
+[contracts.events]
+path = "contracts/events.clar"
+clarity_version = 4
+epoch = "latest"
+
+[contracts.ledger]
+path = "contracts/ledger.clar"
+clarity_version = 4
+epoch = "latest"
+
