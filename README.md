@@ -154,11 +154,11 @@ await Effect.runPromise(
 
 ## Time-Travel Read-Only Contract Calls
 
-Inside your event handlers, you can perform read-only contract calls that are automatically pinned to the event's `block_height`. Both typed calls (using a Clarity ABI) and untyped calls are supported, and both return decoded Clarity values:
+Inside your event handlers, you can perform read-only contract calls that are automatically pinned to the block of the event being processed, so they see the contract state as of that block. Both typed calls (using a Clarity ABI) and untyped calls are supported, and both return decoded Clarity values:
 
 ```ts
 const handler = async (event, { client }) => {
-  // Pinned read-only contract call (automatically passes tip: event.block_height)
+  // Reads the contract state as of the event's block
   const supply = await client.callReadOnly({
     abi: myContractAbi,
     contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.my-token",
@@ -173,6 +173,8 @@ const handler = async (event, { client }) => {
 ```
 
 Clarity-level failures (`okay: false`) reject with `ReadOnlyCallError`.
+
+Pass `tip` to read at another block. It takes the block's index block hash (`index_block_hash` in the Stacks API), the only form the node pins reads to; `event.index_block_hash` holds the one of the event's block.
 
 ---
 

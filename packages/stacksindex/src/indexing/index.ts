@@ -77,13 +77,13 @@ export const createIndexing = ({
     const { handler } = contractHandler;
 
     return Effect.gen(function* executeEvent() {
-      // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event height unless overridden.
+      // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event's block unless overridden.
       const client: IndexingClient = {
         // oxlint-disable-next-line typescript/no-explicit-any
         callReadOnly: ((options: any) =>
           readOnly(stacksClient.callReadFunction, {
             ...options,
-            tip: options.tip ?? event.block_height,
+            tip: options.tip ?? event.index_block_hash,
           })) as IndexingClient["callReadOnly"],
       };
 

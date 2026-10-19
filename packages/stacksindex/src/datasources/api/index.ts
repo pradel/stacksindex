@@ -85,7 +85,7 @@ export interface StorableTransaction {
   tx_id: string;
   sender: { address: string; nonce: number };
   fee_rate: string;
-  block: { height: number; hash: string; tx_index: number; time?: number };
+  block: { height: number; hash: string; index_hash: string; tx_index: number; time?: number };
   bitcoin_block: { height: number; time: number };
   status: string;
   type: string;
@@ -100,6 +100,7 @@ export interface StorableTransaction {
 export interface StorableBlock {
   height: number;
   hash: string;
+  index_block_hash: string;
   burn_block_time: number;
   burn_block_height: number;
 }
@@ -180,10 +181,14 @@ export interface StacksClientService {
     contractId: string,
     options?: GetContractLogsQuery,
   ) => Effect.Effect<ContractLogsResponse, StacksHttpError>;
+  /**
+   * Calls a read-only function. `tip` pins the call to a block by its index
+   * block hash; the node reads the chain tip when it is omitted.
+   */
   readonly callReadFunction: (
     contractId: string,
     functionName: string,
-    options?: { args?: string[]; sender?: string; tip?: number },
+    options?: { args?: string[]; sender?: string; tip?: string },
   ) => Effect.Effect<CallReadResponse, StacksHttpError>;
 }
 
@@ -490,7 +495,7 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
           return post<CallReadResponse>(
             "callReadFunction",
             path,
-            tip === undefined ? undefined : { tip },
+            tip === undefined ? undefined : { tip: tip.replace(/^0x/u, "") },
             { sender, arguments: args },
           );
         },
