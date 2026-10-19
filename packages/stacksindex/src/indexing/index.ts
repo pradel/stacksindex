@@ -1,4 +1,4 @@
-import { Cause, Context, Duration, Effect, Layer, Metric, Predicate } from "effect";
+import { Cause, Context, Duration, Effect, Layer, Metric } from "effect";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
 import { type IndexerDb, IndexerDatabase } from "../database/index.ts";
@@ -56,11 +56,12 @@ export const createIndexing = ({
   }
 
   /**
-   * The node pins read-only calls by index block hash. Heights are resolved
-   * once per batch: a batch indexes blocks from a single pass, and a reorg found
-   * by a later pass replays the batch with fresh lookups.
+   * The node pins read-only calls by index block hash, and events only carry
+   * their block height. Heights are resolved once per batch: a batch indexes
+   * blocks from a single pass, and a reorg found by a later pass replays the
+   * batch with fresh lookups.
    */
-  const resolveIndexBlockHash = (height: number, indexBlockHashes: Map<number, string>) => {
+  const eventIndexBlockHash = (height: number, indexBlockHashes: Map<number, string>) => {
     const cached = indexBlockHashes.get(height);
 
     return cached === undefined
@@ -99,14 +100,10 @@ export const createIndexing = ({
         // oxlint-disable-next-line typescript/no-explicit-any
         callReadOnly: ((options: any) =>
           Effect.gen(function* () {
-            const tip: number | string = options.tip ?? event.block_height;
+            const tip: string =
+              options.tip ?? (yield* eventIndexBlockHash(event.block_height, indexBlockHashes));
 
-            return yield* readOnly(stacksClient.callReadFunction, {
-              ...options,
-              tip: Predicate.isNumber(tip)
-                ? yield* resolveIndexBlockHash(tip, indexBlockHashes)
-                : tip,
-            });
+            return yield* readOnly(stacksClient.callReadFunction, { ...options, tip });
           })) as IndexingClient["callReadOnly"],
       };
 

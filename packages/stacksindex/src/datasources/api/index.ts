@@ -181,14 +181,13 @@ export interface StacksClientService {
     options?: GetContractLogsQuery,
   ) => Effect.Effect<ContractLogsResponse, StacksHttpError>;
   /**
-   * Calls a read-only function. `tip` pins the call to a block: an index block
-   * hash, or a block height that is first resolved to its canonical index block
-   * hash (one extra request).
+   * Calls a read-only function. `tip` pins the call to a block by its index
+   * block hash; the node reads the chain tip when it is omitted.
    */
   readonly callReadFunction: (
     contractId: string,
     functionName: string,
-    options?: { args?: string[]; sender?: string; tip?: number | string },
+    options?: { args?: string[]; sender?: string; tip?: string },
   ) => Effect.Effect<CallReadResponse, StacksHttpError>;
 }
 
@@ -419,13 +418,11 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
           return yield* execute<A>(client, endpoint, request);
         });
 
-      const getBlock = (heightOrHash: string | number, options?: GetBlockQuery) =>
-        get<BlockApiResponse>("getBlock", `/extended/v2/blocks/${heightOrHash}`, options);
-
       return StacksClient.of({
         getStatus: () => get<ApiStatusResponse>("getStatus", "/extended"),
         getBlocks: (options) => get<BlocksApiResponse>("getBlocks", "/extended/v2/blocks", options),
-        getBlock,
+        getBlock: (heightOrHash, options) =>
+          get<BlockApiResponse>("getBlock", `/extended/v2/blocks/${heightOrHash}`, options),
         getBlockTransactions: (heightOrHash, options) =>
           get<BlockTransactionsApiResponse>(
             "getBlockTransactions",
@@ -485,31 +482,22 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
             { limit, cursor, ...rest },
           );
         },
-        callReadFunction: (contractId, functionName, options = {}) =>
-          Effect.gen(function* () {
-            const { args = [], sender = DEFAULT_SENDER, tip } = options;
-            const [contractAddress, contractName] = contractId.split(".");
+        callReadFunction: (contractId, functionName, options = {}) => {
+          const { args = [], sender = DEFAULT_SENDER, tip } = options;
+          const [contractAddress, contractName] = contractId.split(".");
 
-            const path =
-              contractAddress && contractName
-                ? `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`
-                : `/v2/contracts/call-read/${contractId}/${functionName}`;
+          const path =
+            contractAddress && contractName
+              ? `/v2/contracts/call-read/${contractAddress}/${contractName}/${functionName}`
+              : `/v2/contracts/call-read/${contractId}/${functionName}`;
 
-            // The node pins `tip` by index block hash only; anything else, such
-            // As a block height, silently reads the chain head.
-            const indexBlockHash = Predicate.isNumber(tip)
-              ? (yield* getBlock(tip)).index_block_hash
-              : tip;
-
-            return yield* post<CallReadResponse>(
-              "callReadFunction",
-              path,
-              indexBlockHash === undefined
-                ? undefined
-                : { tip: indexBlockHash.replace(/^0x/u, "") },
-              { sender, arguments: args },
-            );
-          }),
+          return post<CallReadResponse>(
+            "callReadFunction",
+            path,
+            tip === undefined ? undefined : { tip: tip.replace(/^0x/u, "") },
+            { sender, arguments: args },
+          );
+        },
       });
     });
 

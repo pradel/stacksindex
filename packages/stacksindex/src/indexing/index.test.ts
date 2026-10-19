@@ -139,14 +139,7 @@ describe("indexing engine", () => {
           senderAddress: "ST123",
         });
 
-        // A height tip is resolved to that block's index block hash.
-        yield* ctx.client.callReadOnly({
-          contractId: "SP123.contract",
-          functionName: "get-something",
-          tip: 99999,
-        });
-
-        // An index block hash tip is used as is.
+        // An index block hash tip is used as is, without a block lookup.
         yield* ctx.client.callReadOnly({
           contractId: "SP123.contract",
           functionName: "get-something",
@@ -172,9 +165,9 @@ describe("indexing engine", () => {
     );
 
     expect(handler).toHaveBeenCalledTimes(2);
-    // Each height is resolved once per batch.
-    expect(getBlock.mock.calls).toStrictEqual([[54321], [99999]]);
-    expect(callReadFunction.mock.calls.slice(0, 3)).toStrictEqual([
+    // The event's block is resolved once per batch.
+    expect(getBlock.mock.calls).toStrictEqual([[54321]]);
+    expect(callReadFunction.mock.calls.slice(0, 2)).toStrictEqual([
       [
         "SP123.contract",
         "get-something",
@@ -183,22 +176,17 @@ describe("indexing engine", () => {
       [
         "SP123.contract",
         "get-something",
-        { args: [], sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip: "0xindex-99999" },
-      ],
-      [
-        "SP123.contract",
-        "get-something",
         { args: [], sender: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM", tip: "0xexplicit" },
       ],
     ]);
-    expect(callReadFunction.mock.calls.slice(3)).toStrictEqual(
-      callReadFunction.mock.calls.slice(0, 3),
+    expect(callReadFunction.mock.calls.slice(2)).toStrictEqual(
+      callReadFunction.mock.calls.slice(0, 2),
     );
 
-    // A later batch, such as a replay after a reorg, looks the blocks up again.
+    // A later batch, such as a replay after a reorg, looks the block up again.
     await runBatch(indexing, [createMockEvent({ block_height: 54321 })], mockDb);
 
-    expect(getBlock.mock.calls).toStrictEqual([[54321], [99999], [54321], [99999]]);
+    expect(getBlock.mock.calls).toStrictEqual([[54321], [54321]]);
   });
 
   test("client.callReadOnly supports typed ABI options and pins them to the event's block", async () => {
