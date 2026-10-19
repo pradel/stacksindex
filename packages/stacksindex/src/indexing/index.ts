@@ -55,27 +55,9 @@ export const createIndexing = ({
     }
   }
 
-  /**
-   * The node pins read-only calls by index block hash, and events only carry
-   * their block height. Heights are resolved once per batch: a batch indexes
-   * blocks from a single pass, and a reorg found by a later pass replays the
-   * batch with fresh lookups.
-   */
-  const eventIndexBlockHash = (height: number, indexBlockHashes: Map<number, string>) => {
-    const cached = indexBlockHashes.get(height);
-
-    return cached === undefined
-      ? stacksClient.getBlock(height).pipe(
-          Effect.map((block) => block.index_block_hash),
-          Effect.tap((hash) => Effect.sync(() => indexBlockHashes.set(height, hash))),
-        )
-      : Effect.succeed(cached);
-  };
-
   const executeEvent = (
     event: HandlerEvent,
     db: IndexerDb,
-    indexBlockHashes: Map<number, string>,
   ): Effect.Effect<void, HandlerExecutionError> => {
     const contractHandler = contractHandlers.get(event.contract_log.contract_id);
 
@@ -99,11 +81,9 @@ export const createIndexing = ({
       const client: IndexingClient = {
         // oxlint-disable-next-line typescript/no-explicit-any
         callReadOnly: ((options: any) =>
-          Effect.gen(function* () {
-            const tip: string =
-              options.tip ?? (yield* eventIndexBlockHash(event.block_height, indexBlockHashes));
-
-            return yield* readOnly(stacksClient.callReadFunction, { ...options, tip });
+          readOnly(stacksClient.callReadFunction, {
+            ...options,
+            tip: options.tip ?? event.index_block_hash,
           })) as IndexingClient["callReadOnly"],
       };
 
@@ -178,10 +158,9 @@ export const createIndexing = ({
     executeBatch(events) {
       return Effect.gen(function* () {
         const db = yield* IndexerDatabase;
-        const indexBlockHashes = new Map<number, string>();
 
         for (const event of events) {
-          yield* executeEvent(event, db, indexBlockHashes);
+          yield* executeEvent(event, db);
         }
 
         return events.length;

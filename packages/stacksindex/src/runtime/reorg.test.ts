@@ -80,6 +80,7 @@ describe("canonical chain reconciliation", () => {
         chainId: 1n,
         height: BigInt(height),
         hash: `old-${height}`,
+        indexBlockHash: `index-old-${height}`,
         blockTime: BigInt(height * 10),
         tenureHeight: BigInt(height),
       })),

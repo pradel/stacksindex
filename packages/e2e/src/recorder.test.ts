@@ -151,7 +151,7 @@ describe("scenario recorder", () => {
           status: "success",
           fee_rate: "100",
           sender: { address: "SP123", nonce: 1 },
-          block: { hash: "0xblock", height: 10, tx_index: 2 },
+          block: { hash: "0xblock", index_hash: "0xidx", height: 10, tx_index: 2 },
         },
       ],
     });
@@ -190,7 +190,13 @@ describe("scenario recorder", () => {
       status: "success",
       fee_rate: "100",
       sender: { address: "SP123", nonce: 0 },
-      block: { hash: `block-${height}`, height, time: 1000, tx_index: 0 },
+      block: {
+        hash: `block-${height}`,
+        index_hash: `index-${height}`,
+        height,
+        time: 1000,
+        tx_index: 0,
+      },
     });
 
     fs.writeFileSync(
@@ -219,7 +225,7 @@ describe("scenario recorder", () => {
           status: "success",
           fee_rate: "100",
           sender: { address: "SP123", nonce: 0 },
-          block: { hash: "block-10", height: 10, tx_index: 0 },
+          block: { hash: "block-10", index_hash: "index-10", height: 10, tx_index: 0 },
         },
         {
           tx_id: "0xbbb",
@@ -227,7 +233,7 @@ describe("scenario recorder", () => {
           status: "success",
           fee_rate: "100",
           sender: { address: "SP123", nonce: 0 },
-          block: { hash: "block-20", height: 20, tx_index: 0 },
+          block: { hash: "block-20", index_hash: "index-20", height: 20, tx_index: 0 },
         },
       ],
     });

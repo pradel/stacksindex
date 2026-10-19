@@ -115,6 +115,7 @@ describe("syncStore", () => {
           chainId: 1n,
           hash: "0xa7a68bdbb6048b0b614733c9c49410956a8df3e6bc6b55b336a4020b8d6770ee",
           height: 7443118n,
+          indexBlockHash: "0x9ff38d3c314e8b60fa2c1e556339b7c4e650bb134f52e262b67112ba32ca302c",
           tenureHeight: 943342n,
         },
       ]);
@@ -135,6 +136,7 @@ describe("syncStore", () => {
           chainId: 2147483648n,
           hash: "0xa7a68bdbb6048b0b614733c9c49410956a8df3e6bc6b55b336a4020b8d6770ee",
           height: 7443118n,
+          indexBlockHash: "0x9ff38d3c314e8b60fa2c1e556339b7c4e650bb134f52e262b67112ba32ca302c",
           tenureHeight: 943342n,
         },
       ]);
@@ -345,6 +347,7 @@ describe("syncStore", () => {
         chainId: 1n,
         height: 100n,
         hash: "block-1",
+        indexBlockHash: "index-block-1",
         blockTime: 1n,
         tenureHeight: 1n,
       });
@@ -459,6 +462,7 @@ describe("syncStore", () => {
         chainId: 1n,
         height: 100n,
         hash: "block-100",
+        indexBlockHash: "index-block-100",
         blockTime: 1000n,
         tenureHeight: 100n,
       });
@@ -466,6 +470,7 @@ describe("syncStore", () => {
         chainId: 1n,
         height: 200n,
         hash: "block-200",
+        indexBlockHash: "index-block-200",
         blockTime: 2000n,
         tenureHeight: 200n,
       });
@@ -560,6 +565,7 @@ describe("syncStore", () => {
         chainId: 1n,
         height: 100n,
         hash: "block-100",
+        indexBlockHash: "index-block-100",
         blockTime: 1000n,
         tenureHeight: 100n,
       });
@@ -700,9 +706,30 @@ describe("syncStore", () => {
 
     test("discards data above the height and resets affected progress", async () => {
       await testDb.db.insert(blocksTable).values([
-        { chainId: 1n, height: 100n, hash: "block-100", blockTime: 1000n, tenureHeight: 100n },
-        { chainId: 1n, height: 200n, hash: "block-200", blockTime: 2000n, tenureHeight: 200n },
-        { chainId: 1n, height: 300n, hash: "block-300", blockTime: 3000n, tenureHeight: 300n },
+        {
+          chainId: 1n,
+          height: 100n,
+          hash: "block-100",
+          indexBlockHash: "index-block-100",
+          blockTime: 1000n,
+          tenureHeight: 100n,
+        },
+        {
+          chainId: 1n,
+          height: 200n,
+          hash: "block-200",
+          indexBlockHash: "index-block-200",
+          blockTime: 2000n,
+          tenureHeight: 200n,
+        },
+        {
+          chainId: 1n,
+          height: 300n,
+          hash: "block-300",
+          indexBlockHash: "index-block-300",
+          blockTime: 3000n,
+          tenureHeight: 300n,
+        },
       ]);
       await testDb.db.insert(transactionsTable).values([
         {

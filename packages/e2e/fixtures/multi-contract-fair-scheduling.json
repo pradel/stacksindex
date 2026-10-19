@@ -13,7 +13,7 @@
   "GET https://api.hiro.so/extended/v3/principals/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/transactions?cursor=47784:0:0&limit=50": {
     "statusCode": 200,
     "body": {
-      "total": 3611,
+      "total": 3615,
       "limit": 50,
       "cursor": {
         "next": null,
@@ -119,6 +119,7 @@
       },
       "block": {
         "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
         "height": 47784,
         "tx_index": 28
       },
@@ -652,6 +653,7 @@
       },
       "block": {
         "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
         "height": 47784,
         "tx_index": 29
       },
@@ -715,7 +717,7 @@
     "body": {
       "limit": 100,
       "offset": 0,
-      "total": 3091,
+      "total": 3094,
       "next_cursor": "47884:2147483647:26:0",
       "results": [
         {
@@ -749,6 +751,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 28
           },
@@ -1553,6 +1556,7 @@
           },
           "block": {
             "hash": "0x6d191475ad08c6b7bfca9b9a5c112a0f371c897319ad87402318bf8088f4353b",
+            "index_hash": "0x6e1b5663e464b406e9f2dea1ddfbf48a09d076f017d9b95c96b2b50e1a41d7e7",
             "height": 47708,
             "tx_index": 26
           },
@@ -1572,6 +1576,7 @@
           },
           "block": {
             "hash": "0x957bf4205e579bed1398bd7f9411695b998d5d9eab3ff0f5130c8e12558ff736",
+            "index_hash": "0x752ad5b6e504a740f5963d1f673b8296957d365d8f27c4157e9fb044697a0010",
             "height": 47706,
             "tx_index": 6
           },
@@ -1591,6 +1596,7 @@
           },
           "block": {
             "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
+            "index_hash": "0x8c805b65163d87afd21b86a50de79649be32b63ad228374e9e586b3282807632",
             "height": 47698,
             "tx_index": 64
           },
@@ -1610,6 +1616,7 @@
           },
           "block": {
             "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
+            "index_hash": "0x8c805b65163d87afd21b86a50de79649be32b63ad228374e9e586b3282807632",
             "height": 47698,
             "tx_index": 63
           },
@@ -1629,6 +1636,7 @@
           },
           "block": {
             "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
+            "index_hash": "0x8c805b65163d87afd21b86a50de79649be32b63ad228374e9e586b3282807632",
             "height": 47698,
             "tx_index": 62
           },
@@ -1648,6 +1656,7 @@
           },
           "block": {
             "hash": "0x3358b5a2159925921ca9d62996689d1ee85a7bea85cb9d4ca9656b8e733731aa",
+            "index_hash": "0x8c805b65163d87afd21b86a50de79649be32b63ad228374e9e586b3282807632",
             "height": 47698,
             "tx_index": 61
           },
@@ -1667,6 +1676,7 @@
           },
           "block": {
             "hash": "0xa72643144c181abd3d530c7b304967124f01783ef8bd656b885856ae1ea298aa",
+            "index_hash": "0xe4584115ae9a0d320d00e77ba91e1a696d9f5c4058082f1b00f89fd1262303e3",
             "height": 47697,
             "tx_index": 32
           },
@@ -1686,6 +1696,7 @@
           },
           "block": {
             "hash": "0xebd756c34da693b4d85d303b29f3699f607f57951f1f04bca0cba919c2010ab4",
+            "index_hash": "0xf0915d413ebd04493c941375df07a662ed9fb73a8d815528ecef3b6fb1c79104",
             "height": 47695,
             "tx_index": 4
           },
@@ -1705,6 +1716,7 @@
           },
           "block": {
             "hash": "0x9c6c3ec77222d8a8ad73997f666bd241f8f8c3f283cb6d4fdb437341baeca161",
+            "index_hash": "0x426eed95953a1311214feaa59ccc20aaad85be88d614127b4ea48b75db157fb5",
             "height": 47693,
             "tx_index": 15
           },
@@ -1724,6 +1736,7 @@
           },
           "block": {
             "hash": "0x9c6c3ec77222d8a8ad73997f666bd241f8f8c3f283cb6d4fdb437341baeca161",
+            "index_hash": "0x426eed95953a1311214feaa59ccc20aaad85be88d614127b4ea48b75db157fb5",
             "height": 47693,
             "tx_index": 14
           },
@@ -1743,6 +1756,7 @@
           },
           "block": {
             "hash": "0x4bf826b0ad630092c7340ca62ea6ee17a734a37f20746225599b7a92811cf6e1",
+            "index_hash": "0xefebb336658f954c2bee157d0e629e75b74dd480b7b2666ec5e556f2818fb3fa",
             "height": 47690,
             "tx_index": 134
           },
@@ -1762,6 +1776,7 @@
           },
           "block": {
             "hash": "0xfadb064f71c7b3bc087cfe993efd2a4dd686024b3e78788f6e4d355c8b6c3685",
+            "index_hash": "0x5db034476d5db6ef7c6e183c4f25b1a5e5108dffc468f6099dcf351cc1bad6de",
             "height": 47681,
             "tx_index": 51
           },
@@ -1781,6 +1796,7 @@
           },
           "block": {
             "hash": "0xfadb064f71c7b3bc087cfe993efd2a4dd686024b3e78788f6e4d355c8b6c3685",
+            "index_hash": "0x5db034476d5db6ef7c6e183c4f25b1a5e5108dffc468f6099dcf351cc1bad6de",
             "height": 47681,
             "tx_index": 45
           },
@@ -1800,6 +1816,7 @@
           },
           "block": {
             "hash": "0x30afd4ef111a6c227e7571fa22ad5e3a8e3bf5e70ac0116b37aecb0b492e1f20",
+            "index_hash": "0xa827d2cd6482ac1175915981d3a97c7a4093bbfcd541ee6737523f5db9b6cf55",
             "height": 47678,
             "tx_index": 21
           },
@@ -1819,6 +1836,7 @@
           },
           "block": {
             "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
+            "index_hash": "0x590b6db93fc9515ac74bfaeaff2ab9521f8782ade6c8cae794ed24616e92848f",
             "height": 47675,
             "tx_index": 29
           },
@@ -1838,6 +1856,7 @@
           },
           "block": {
             "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
+            "index_hash": "0x590b6db93fc9515ac74bfaeaff2ab9521f8782ade6c8cae794ed24616e92848f",
             "height": 47675,
             "tx_index": 28
           },
@@ -1857,6 +1876,7 @@
           },
           "block": {
             "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
+            "index_hash": "0x590b6db93fc9515ac74bfaeaff2ab9521f8782ade6c8cae794ed24616e92848f",
             "height": 47675,
             "tx_index": 27
           },
@@ -1876,6 +1896,7 @@
           },
           "block": {
             "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
+            "index_hash": "0x590b6db93fc9515ac74bfaeaff2ab9521f8782ade6c8cae794ed24616e92848f",
             "height": 47675,
             "tx_index": 26
           },
@@ -1895,6 +1916,7 @@
           },
           "block": {
             "hash": "0xd024ed867713909e5b23c148f8d75f1fdd9a7f1a9ac12a04535a4d5103d54b4b",
+            "index_hash": "0x590b6db93fc9515ac74bfaeaff2ab9521f8782ade6c8cae794ed24616e92848f",
             "height": 47675,
             "tx_index": 25
           },
@@ -1914,6 +1936,7 @@
           },
           "block": {
             "hash": "0xb22217119dfe71df36013a201c4adbfb9a5b7f4f194dac82bdba5cc1a4cdbc0f",
+            "index_hash": "0x406236e841f71261fc965c79ce9f16d8967a63c06dd1db4de990f0d405cf5b99",
             "height": 47669,
             "tx_index": 93
           },
@@ -1940,6 +1963,7 @@
           },
           "block": {
             "hash": "0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc",
+            "index_hash": "0xd3035129457a110da44b52c6b499bf46ccd5d8c37150f7f20934273e94772f35",
             "height": 47779,
             "tx_index": 86
           },
@@ -1959,6 +1983,7 @@
           },
           "block": {
             "hash": "0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc",
+            "index_hash": "0xd3035129457a110da44b52c6b499bf46ccd5d8c37150f7f20934273e94772f35",
             "height": 47779,
             "tx_index": 85
           },
@@ -1978,6 +2003,7 @@
           },
           "block": {
             "hash": "0xb4b56eb5df20ed791d49de69900b8f5653e054f45647ab465e1881a06d94cbcc",
+            "index_hash": "0xd3035129457a110da44b52c6b499bf46ccd5d8c37150f7f20934273e94772f35",
             "height": 47779,
             "tx_index": 84
           },
@@ -1997,6 +2023,7 @@
           },
           "block": {
             "hash": "0xa6309e1d63d9d90c00a1eb5e780fa3eb0739bb758e2678524868c11ffcc22acf",
+            "index_hash": "0x76832d27d5c1cbf19123ddd09379703ea4f5a8a6661858c73ab87c48dce7d4e3",
             "height": 47773,
             "tx_index": 2
           },
@@ -2016,6 +2043,7 @@
           },
           "block": {
             "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
+            "index_hash": "0xf18b79ddbc8a9211e9b2e78f236c027fe8c7ee9e084fa513ca32654faff1fde0",
             "height": 47771,
             "tx_index": 27
           },
@@ -2035,6 +2063,7 @@
           },
           "block": {
             "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
+            "index_hash": "0xf18b79ddbc8a9211e9b2e78f236c027fe8c7ee9e084fa513ca32654faff1fde0",
             "height": 47771,
             "tx_index": 26
           },
@@ -2054,6 +2083,7 @@
           },
           "block": {
             "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
+            "index_hash": "0xf18b79ddbc8a9211e9b2e78f236c027fe8c7ee9e084fa513ca32654faff1fde0",
             "height": 47771,
             "tx_index": 25
           },
@@ -2073,6 +2103,7 @@
           },
           "block": {
             "hash": "0xf3c97735acb044e0c681323cd57bf6abbc001eb5e935e5b0ee41e905e125476f",
+            "index_hash": "0xf18b79ddbc8a9211e9b2e78f236c027fe8c7ee9e084fa513ca32654faff1fde0",
             "height": 47771,
             "tx_index": 24
           },
@@ -2092,6 +2123,7 @@
           },
           "block": {
             "hash": "0xbef5aefa7ccabcd377bbc87e708e3a3b0f0e9d9f5c1710694ecf1c300300408b",
+            "index_hash": "0xa435d3bf504ab5b90db740fffb951878a58ce68b54ab05990141c7d70604522e",
             "height": 47767,
             "tx_index": 34
           },
@@ -2111,6 +2143,7 @@
           },
           "block": {
             "hash": "0xd2a97573df33ba1d2074addc008225bf9a18db59e24ef0f1e0734c08e382b2ba",
+            "index_hash": "0xcbd1381d624a51040a42e8e61bc90572f16d4f2add2ca620f555acfcbed5d380",
             "height": 47733,
             "tx_index": 20
           },
@@ -2130,6 +2163,7 @@
           },
           "block": {
             "hash": "0xd2a97573df33ba1d2074addc008225bf9a18db59e24ef0f1e0734c08e382b2ba",
+            "index_hash": "0xcbd1381d624a51040a42e8e61bc90572f16d4f2add2ca620f555acfcbed5d380",
             "height": 47733,
             "tx_index": 19
           },
@@ -2149,6 +2183,7 @@
           },
           "block": {
             "hash": "0x8113e28f66f217836970fb03189680d120b0ce156a996b7a56f06982dac1dc29",
+            "index_hash": "0x11dc8d5be029c27aadb77872c1fc334d5a2204a8f922444ab275118518ec302d",
             "height": 47731,
             "tx_index": 44
           },
@@ -2168,6 +2203,7 @@
           },
           "block": {
             "hash": "0xf6acea0b585785d09e9adfe3530a24a0f1f58a54e2ee1f3e6e9f3b9e573e27b2",
+            "index_hash": "0xc20aafa09e2d542a7203eed063d610ea9eb235b143e84300b7bbcbbe2742ed50",
             "height": 47729,
             "tx_index": 17
           },
@@ -2187,6 +2223,7 @@
           },
           "block": {
             "hash": "0xf6acea0b585785d09e9adfe3530a24a0f1f58a54e2ee1f3e6e9f3b9e573e27b2",
+            "index_hash": "0xc20aafa09e2d542a7203eed063d610ea9eb235b143e84300b7bbcbbe2742ed50",
             "height": 47729,
             "tx_index": 16
           },
@@ -2206,6 +2243,7 @@
           },
           "block": {
             "hash": "0x07a9d79a0f3d38cc3848e74307bef4d30928e565f2e38450f4da8fe70de8038a",
+            "index_hash": "0xf971c234ae60ee1929b3f3c62dda6a0a9e6f40f302ab6277c8d5f98894bcd00d",
             "height": 47713,
             "tx_index": 2
           },
@@ -2225,6 +2263,7 @@
           },
           "block": {
             "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
+            "index_hash": "0x70abdb9f21ab73ddc23501a39f094fa4ddbcbf1ba015b54f44252d6e9f9db355",
             "height": 47711,
             "tx_index": 52
           },
@@ -2244,6 +2283,7 @@
           },
           "block": {
             "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
+            "index_hash": "0x70abdb9f21ab73ddc23501a39f094fa4ddbcbf1ba015b54f44252d6e9f9db355",
             "height": 47711,
             "tx_index": 51
           },
@@ -2263,6 +2303,7 @@
           },
           "block": {
             "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
+            "index_hash": "0x70abdb9f21ab73ddc23501a39f094fa4ddbcbf1ba015b54f44252d6e9f9db355",
             "height": 47711,
             "tx_index": 50
           },
@@ -2282,6 +2323,7 @@
           },
           "block": {
             "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
+            "index_hash": "0x70abdb9f21ab73ddc23501a39f094fa4ddbcbf1ba015b54f44252d6e9f9db355",
             "height": 47711,
             "tx_index": 49
           },
@@ -2301,6 +2343,7 @@
           },
           "block": {
             "hash": "0xfb641468e004bf5dc70941db6d49e5276dd87687bbe762425c25d722e26e2689",
+            "index_hash": "0x70abdb9f21ab73ddc23501a39f094fa4ddbcbf1ba015b54f44252d6e9f9db355",
             "height": 47711,
             "tx_index": 48
           },
@@ -2327,6 +2370,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 29
           },
@@ -2346,6 +2390,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 19
           },
@@ -2365,6 +2410,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 18
           },
@@ -2384,6 +2430,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 17
           },
@@ -2403,6 +2450,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 16
           },
@@ -2422,6 +2470,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 15
           },
@@ -2441,6 +2490,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 14
           },
@@ -2460,6 +2510,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 12
           },
@@ -2479,6 +2530,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 11
           },
@@ -2498,6 +2550,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 10
           },
@@ -2517,6 +2570,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 9
           },
@@ -2536,6 +2590,7 @@
           },
           "block": {
             "hash": "0xc6dc3c195f57e01143b654f9463b3d82d63ed4b60c61687f1f771868d364975d",
+            "index_hash": "0x10dfea31a2d154f1f1e62e9aab89a035417a842935007937997e9a8e66498329",
             "height": 47783,
             "tx_index": 8
           },
@@ -2552,7 +2607,7 @@
     "body": {
       "limit": 100,
       "offset": 0,
-      "total": 3091,
+      "total": 3094,
       "next_cursor": "47988:2147483647:30:0",
       "results": [
         {
@@ -3873,6 +3928,7 @@
           },
           "block": {
             "hash": "0x52b6972203afc7edc99b409f164aa2d7fe8b63057961c3984590dab6c99c77f7",
+            "index_hash": "0x93bb73f61896354977efe59205cd5cf264f57ffdb68916f26c4b7b3d07e414e4",
             "height": 47791,
             "tx_index": 39
           },
@@ -3892,6 +3948,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 23
           },
@@ -3911,6 +3968,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 17
           },
@@ -3930,6 +3988,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 16
           },
@@ -3949,6 +4008,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 15
           },
@@ -3968,6 +4028,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 14
           },
@@ -3987,6 +4048,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 13
           },
@@ -4006,6 +4068,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 12
           },
@@ -4025,6 +4088,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 10
           },
@@ -4044,6 +4108,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 9
           },
@@ -4063,6 +4128,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 7
           },
@@ -4082,6 +4148,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 6
           },
@@ -4101,6 +4168,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 5
           },
@@ -4120,6 +4188,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 3
           },
@@ -4139,6 +4208,7 @@
           },
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
             "height": 47786,
             "tx_index": 4
           },
@@ -4158,6 +4228,7 @@
           },
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
             "height": 47786,
             "tx_index": 3
           },
@@ -4177,6 +4248,7 @@
           },
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
             "height": 47786,
             "tx_index": 66
           },
@@ -4196,6 +4268,7 @@
           },
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
             "height": 47786,
             "tx_index": 58
           },
@@ -4215,6 +4288,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 48
           },
@@ -4234,6 +4308,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 34
           },
@@ -5571,6 +5646,7 @@
           },
           "block": {
             "hash": "0x62941557f979bf68bf479e49409072091469f6b706f0b5e1e3d66341426952d9",
+            "index_hash": "0x6cd7fd5ad31d6345eea63be5d8261fb160f748d297524a9817727ba9fbd5a696",
             "height": 47794,
             "tx_index": 12
           },
@@ -5590,6 +5666,7 @@
           },
           "block": {
             "hash": "0x62941557f979bf68bf479e49409072091469f6b706f0b5e1e3d66341426952d9",
+            "index_hash": "0x6cd7fd5ad31d6345eea63be5d8261fb160f748d297524a9817727ba9fbd5a696",
             "height": 47794,
             "tx_index": 11
           },
@@ -5609,6 +5686,7 @@
           },
           "block": {
             "hash": "0x62941557f979bf68bf479e49409072091469f6b706f0b5e1e3d66341426952d9",
+            "index_hash": "0x6cd7fd5ad31d6345eea63be5d8261fb160f748d297524a9817727ba9fbd5a696",
             "height": 47794,
             "tx_index": 10
           },
@@ -5628,6 +5706,7 @@
           },
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
             "height": 47786,
             "tx_index": 36
           },
@@ -5647,6 +5726,7 @@
           },
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
             "height": 47786,
             "tx_index": 31
           },
@@ -5666,6 +5746,7 @@
           },
           "block": {
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
+            "index_hash": "0x0a9454d3988ac88b31eb309678097d630caeb5049de0e548fc8883771c7002f2",
             "height": 47785,
             "tx_index": 16
           },
@@ -5685,6 +5766,7 @@
           },
           "block": {
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
+            "index_hash": "0x0a9454d3988ac88b31eb309678097d630caeb5049de0e548fc8883771c7002f2",
             "height": 47785,
             "tx_index": 15
           },
@@ -5704,6 +5786,7 @@
           },
           "block": {
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
+            "index_hash": "0x0a9454d3988ac88b31eb309678097d630caeb5049de0e548fc8883771c7002f2",
             "height": 47785,
             "tx_index": 14
           },
@@ -5723,6 +5806,7 @@
           },
           "block": {
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
+            "index_hash": "0x0a9454d3988ac88b31eb309678097d630caeb5049de0e548fc8883771c7002f2",
             "height": 47785,
             "tx_index": 13
           },
@@ -5742,6 +5826,7 @@
           },
           "block": {
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
+            "index_hash": "0x0a9454d3988ac88b31eb309678097d630caeb5049de0e548fc8883771c7002f2",
             "height": 47785,
             "tx_index": 12
           },
@@ -5761,6 +5846,7 @@
           },
           "block": {
             "hash": "0x2f769f45e7f504c859c1f2f6ea90c1b6aa658d6eaccf931cc3ed3022033f2068",
+            "index_hash": "0x0a9454d3988ac88b31eb309678097d630caeb5049de0e548fc8883771c7002f2",
             "height": 47785,
             "tx_index": 11
           },
@@ -5780,6 +5866,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 8
           },
@@ -5799,6 +5886,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 7
           },
@@ -5818,6 +5906,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 6
           },
@@ -5837,6 +5926,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 5
           },
@@ -5856,6 +5946,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 4
           },
@@ -5875,6 +5966,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 33
           },
@@ -5894,6 +5986,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 32
           },
@@ -5913,6 +6006,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 31
           },
@@ -5932,6 +6026,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 30
           },
@@ -5949,8 +6044,8 @@
       "server_version": "stacks-blockchain-api v9.6.0 (HEAD:ee0c0ac)",
       "status": "ready",
       "chain_tip": {
-        "block_height": 9207456,
-        "block_hash": "0x7c5ab1cfbdeb318b9be2d994f59e6d88467aec38eec570e066ae98ce12f2479a"
+        "block_height": 9253609,
+        "block_hash": "0xbc814ddf923effd99919e7a72314d37eb4d0e96c358be1ecb143aab8b8ba1ffa"
       }
     }
   }

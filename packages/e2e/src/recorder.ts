@@ -232,6 +232,7 @@ const sanitizeTransactionSummary = (tx: JsonObject): JsonValue => {
   if (isJsonObject(block)) {
     sanitized.block = {
       hash: block.hash,
+      index_hash: block.index_hash,
       height: block.height,
       tx_index: block.tx_index,
     };
@@ -277,6 +278,7 @@ const sanitizeTransaction = (body: JsonObject): JsonValue => {
   if (isJsonObject(block)) {
     sanitized.block = {
       hash: block.hash,
+      index_hash: block.index_hash,
       height: block.height,
       tx_index: block.tx_index,
     };

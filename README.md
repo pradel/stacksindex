@@ -174,7 +174,7 @@ const handler = async (event, { client }) => {
 
 Clarity-level failures (`okay: false`) reject with `ReadOnlyCallError`.
 
-Pass `tip` to read at another block. It takes the block's index block hash (`index_block_hash` in the Stacks API), the only form the node pins reads to. Pinning to the event's block costs one block lookup per height, shared by every call in the same indexing batch.
+Pass `tip` to read at another block. It takes the block's index block hash (`index_block_hash` in the Stacks API), the only form the node pins reads to; `event.index_block_hash` holds the one of the event's block.
 
 ---
 

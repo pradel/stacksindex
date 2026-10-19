@@ -94,7 +94,7 @@ Define transformation logic:
 - Receives the raw event (`HandlerEvent`)
 - Receives `HandlerContext` with:
   - `db`: Database instance to write to user tables
-  - `client`: Provides `callReadOnly(options)` pinned to the event's block for time-travel contract state lookups (supports both typed with `abi` and untyped calls). The node pins reads by index block hash only, so the event's block height is resolved through `GET /extended/v2/blocks/{height}`, once per height per indexing batch; an explicit `tip` must be an index block hash
+  - `client`: Provides `callReadOnly(options)` pinned to the event's block for time-travel contract state lookups (supports both typed with `abi` and untyped calls). The node pins reads by index block hash only, so `tip` defaults to the event's `index_block_hash`, stored with its block during sync; an explicit `tip` must be an index block hash
 
 ## Stacks Event Structure
 
@@ -315,6 +315,7 @@ HandlerEvent {
     // Context (from transaction and block)
     block_height: number
     block_time: number
+    index_block_hash: string     // Pins read-only calls (`tip`) to this block
     tx_index: number
     sender_address: string
 }

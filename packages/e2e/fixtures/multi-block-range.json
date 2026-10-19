@@ -13,7 +13,7 @@
   "GET https://api.hiro.so/extended/v3/principals/SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles/transactions?cursor=47784:0:0&limit=50": {
     "statusCode": 200,
     "body": {
-      "total": 3611,
+      "total": 3615,
       "limit": 50,
       "cursor": {
         "next": null,
@@ -119,6 +119,7 @@
       },
       "block": {
         "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
         "height": 47784,
         "tx_index": 28
       },
@@ -168,7 +169,7 @@
     "body": {
       "limit": 100,
       "offset": 0,
-      "total": 3091,
+      "total": 3094,
       "next_cursor": "47884:2147483647:26:0",
       "results": [
         {
@@ -202,6 +203,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 28
           },
@@ -218,7 +220,7 @@
     "body": {
       "limit": 100,
       "offset": 0,
-      "total": 3091,
+      "total": 3094,
       "next_cursor": "47988:2147483647:30:0",
       "results": [
         {
@@ -1539,6 +1541,7 @@
           },
           "block": {
             "hash": "0x52b6972203afc7edc99b409f164aa2d7fe8b63057961c3984590dab6c99c77f7",
+            "index_hash": "0x93bb73f61896354977efe59205cd5cf264f57ffdb68916f26c4b7b3d07e414e4",
             "height": 47791,
             "tx_index": 39
           },
@@ -1558,6 +1561,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 23
           },
@@ -1577,6 +1581,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 17
           },
@@ -1596,6 +1601,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 16
           },
@@ -1615,6 +1621,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 15
           },
@@ -1634,6 +1641,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 14
           },
@@ -1653,6 +1661,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 13
           },
@@ -1672,6 +1681,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 12
           },
@@ -1691,6 +1701,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 10
           },
@@ -1710,6 +1721,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 9
           },
@@ -1729,6 +1741,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 7
           },
@@ -1748,6 +1761,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 6
           },
@@ -1767,6 +1781,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 5
           },
@@ -1786,6 +1801,7 @@
           },
           "block": {
             "hash": "0x0758d390f7c547f24da967822350e6d5e3cc6a3a86743de148b8253fa9e3b8b9",
+            "index_hash": "0xd25560325ea7ea8a8b967b42c19df787788fc86033d44dd5bb36b63267aaf5a7",
             "height": 47789,
             "tx_index": 3
           },
@@ -1805,6 +1821,7 @@
           },
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
             "height": 47786,
             "tx_index": 4
           },
@@ -1824,6 +1841,7 @@
           },
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
             "height": 47786,
             "tx_index": 3
           },
@@ -1843,6 +1861,7 @@
           },
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
             "height": 47786,
             "tx_index": 66
           },
@@ -1862,6 +1881,7 @@
           },
           "block": {
             "hash": "0x56f3d720a2a4bce5d74f99868044049ce2fb04b1704f166f58823b637ea38794",
+            "index_hash": "0xf6546e8ed5330fbdd462a7f90ce4736dbc9b6f6b32dfa49790014f6528453cdb",
             "height": 47786,
             "tx_index": 58
           },
@@ -1881,6 +1901,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 48
           },
@@ -1900,6 +1921,7 @@
           },
           "block": {
             "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
+            "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
             "height": 47784,
             "tx_index": 34
           },
@@ -1917,8 +1939,8 @@
       "server_version": "stacks-blockchain-api v9.6.0 (HEAD:ee0c0ac)",
       "status": "ready",
       "chain_tip": {
-        "block_height": 9207456,
-        "block_hash": "0x7c5ab1cfbdeb318b9be2d994f59e6d88467aec38eec570e066ae98ce12f2479a"
+        "block_height": 9253609,
+        "block_hash": "0xbc814ddf923effd99919e7a72314d37eb4d0e96c358be1ecb143aab8b8ba1ffa"
       }
     }
   },
@@ -1929,6 +1951,15 @@
       "hash": "0x7c5ab1cfbdeb318b9be2d994f59e6d88467aec38eec570e066ae98ce12f2479a",
       "burn_block_time": 1791989916,
       "burn_block_height": 971415
+    }
+  },
+  "GET https://api.hiro.so/extended/v2/blocks/9253609": {
+    "statusCode": 200,
+    "body": {
+      "height": 9253609,
+      "hash": "0xbc814ddf923effd99919e7a72314d37eb4d0e96c358be1ecb143aab8b8ba1ffa",
+      "burn_block_time": 1792427867,
+      "burn_block_height": 972183
     }
   }
 }

@@ -6,6 +6,8 @@ export const blocksTable = pgTable(
     chainId: table.bigint({ mode: "bigint" }).notNull(),
     height: table.bigint({ mode: "bigint" }).notNull(),
     hash: table.varchar({ length: 66 }).notNull(),
+    /** Identifies the block for `call-read` `tip`, which accepts no other block id. */
+    indexBlockHash: table.varchar({ length: 66 }).notNull(),
     blockTime: table.bigint({ mode: "bigint" }).notNull(),
     tenureHeight: table.bigint({ mode: "bigint" }).notNull(),
   }),

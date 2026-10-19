@@ -638,6 +638,7 @@ function extractBlocksFromTransactions(transactions: StorableTransaction[]): Sto
       byHash.set(transaction.block.hash, {
         height: transaction.block.height,
         hash: transaction.block.hash,
+        index_block_hash: transaction.block.index_hash,
         burn_block_time: transaction.bitcoin_block.time,
         burn_block_height: transaction.bitcoin_block.height,
       });

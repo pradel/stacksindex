@@ -24,6 +24,8 @@ export type Event = LogEvent;
 export type HandlerEvent = SmartContractLogEvent & {
   block_height: number;
   block_time: number;
+  /** Index block hash of the event's block: pass it as `tip` to read contract state at this block. */
+  index_block_hash: string;
   tx_index: number;
   sender_address: string;
 };
