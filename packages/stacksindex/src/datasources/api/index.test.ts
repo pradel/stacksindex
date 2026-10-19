@@ -588,6 +588,55 @@ describe("aPI DataSource", () => {
     });
   });
 
+  describe("callReadFunction", () => {
+    test("resolves a height tip to the block's index block hash", async () => {
+      const urls: string[] = [];
+
+      mockHandler
+        .mockImplementationOnce((request) => {
+          urls.push(toUrlString(request));
+
+          return Promise.resolve(
+            jsonResponse({ height: 123_456, index_block_hash: "0xindex123456" }),
+          );
+        })
+        .mockImplementationOnce((request) => {
+          urls.push(toUrlString(request));
+
+          return Promise.resolve(jsonResponse({ okay: true, result: "0x01" }));
+        });
+
+      const result = await runRequest((client) =>
+        client.callReadFunction("SP123.contract", "my-function", { tip: 123_456 }),
+      );
+
+      expect(result).toStrictEqual({ okay: true, result: "0x01" });
+      // The node reads the chain head for any tip that is not an index block hash.
+      expect(urls).toStrictEqual([
+        "https://api.hiro.so/extended/v2/blocks/123456",
+        "https://api.hiro.so/v2/contracts/call-read/SP123/contract/my-function?tip=index123456",
+      ]);
+    });
+
+    test("sends an index block hash tip without a block lookup", async () => {
+      const urls: string[] = [];
+
+      mockHandler.mockImplementation((request) => {
+        urls.push(toUrlString(request));
+
+        return Promise.resolve(jsonResponse({ okay: true, result: "0x01" }));
+      });
+
+      await runRequest((client) =>
+        client.callReadFunction("SP123.contract", "my-function", { tip: "0xindex123456" }),
+      );
+
+      expect(urls).toStrictEqual([
+        "https://api.hiro.so/v2/contracts/call-read/SP123/contract/my-function?tip=index123456",
+      ]);
+    });
+  });
+
   describe("getBlockTransactions", () => {
     test("returns block transactions on 200 with cursor and limit", async () => {
       const mockResponse = {

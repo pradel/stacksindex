@@ -1,4 +1,4 @@
-import { Cause, Context, Duration, Effect, Layer, Metric } from "effect";
+import { Cause, Context, Duration, Effect, Layer, Metric, Predicate } from "effect";
 
 import { decodeClarityWithSchema } from "../codec/index.ts";
 import { type IndexerDb, IndexerDatabase } from "../database/index.ts";
@@ -55,9 +55,26 @@ export const createIndexing = ({
     }
   }
 
+  /**
+   * The node pins read-only calls by index block hash. Heights are resolved
+   * once per batch: a batch indexes blocks from a single pass, and a reorg found
+   * by a later pass replays the batch with fresh lookups.
+   */
+  const resolveIndexBlockHash = (height: number, indexBlockHashes: Map<number, string>) => {
+    const cached = indexBlockHashes.get(height);
+
+    return cached === undefined
+      ? stacksClient.getBlock(height).pipe(
+          Effect.map((block) => block.index_block_hash),
+          Effect.tap((hash) => Effect.sync(() => indexBlockHashes.set(height, hash))),
+        )
+      : Effect.succeed(cached);
+  };
+
   const executeEvent = (
     event: HandlerEvent,
     db: IndexerDb,
+    indexBlockHashes: Map<number, string>,
   ): Effect.Effect<void, HandlerExecutionError> => {
     const contractHandler = contractHandlers.get(event.contract_log.contract_id);
 
@@ -77,13 +94,19 @@ export const createIndexing = ({
     const { handler } = contractHandler;
 
     return Effect.gen(function* executeEvent() {
-      // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event height unless overridden.
+      // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event's block unless overridden.
       const client: IndexingClient = {
         // oxlint-disable-next-line typescript/no-explicit-any
         callReadOnly: ((options: any) =>
-          readOnly(stacksClient.callReadFunction, {
-            ...options,
-            tip: options.tip ?? event.block_height,
+          Effect.gen(function* () {
+            const tip: number | string = options.tip ?? event.block_height;
+
+            return yield* readOnly(stacksClient.callReadFunction, {
+              ...options,
+              tip: Predicate.isNumber(tip)
+                ? yield* resolveIndexBlockHash(tip, indexBlockHashes)
+                : tip,
+            });
           })) as IndexingClient["callReadOnly"],
       };
 
@@ -158,9 +181,10 @@ export const createIndexing = ({
     executeBatch(events) {
       return Effect.gen(function* () {
         const db = yield* IndexerDatabase;
+        const indexBlockHashes = new Map<number, string>();
 
         for (const event of events) {
-          yield* executeEvent(event, db);
+          yield* executeEvent(event, db, indexBlockHashes);
         }
 
         return events.length;

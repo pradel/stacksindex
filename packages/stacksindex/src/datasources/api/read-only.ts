@@ -47,8 +47,8 @@ export interface UntypedCallReadOnlyFunctionParameters {
   args?: string[];
   /** The sender address for the simulated call */
   senderAddress?: string;
-  /** Block height tip to pin the read-only execution */
-  tip?: number;
+  /** Block to read at: a block height or an index block hash. Defaults to the chain tip. */
+  tip?: number | string;
 }
 
 /**
@@ -77,8 +77,8 @@ export type TypedCallReadOnlyFunctionParameters<
       | (TFunctionName extends ContractFunctionName<TAbi, "read_only"> ? TFunctionName : never);
     /** The sender address for the simulated call */
     senderAddress?: string;
-    /** Block height tip to pin the read-only execution */
-    tip?: number;
+    /** Block to read at: a block height or an index block hash. Defaults to the chain tip. */
+    tip?: number | string;
   } & (readonly [] extends TArgs
     ? {
         /** Function arguments (optional when function takes no arguments) */

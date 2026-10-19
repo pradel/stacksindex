@@ -3129,6 +3129,13 @@ describe("historical runtime with handlers", () => {
           };
         }
 
+        if (url.endsWith("/extended/v2/blocks/1234")) {
+          return {
+            statusCode: 200,
+            body: mockBody({ height: 1234, index_block_hash: "0xindex1234" }),
+          };
+        }
+
         if (url.includes("/v2/contracts/call-read/SP123/token/get-total-supply")) {
           callReadOnlyUrl = url;
           callReadOnlyApiKey = init?.headers?.["x-api-key"];
@@ -3173,8 +3180,9 @@ describe("historical runtime with handlers", () => {
     expect(result).toBeDefined();
     expect(handlerCalled).toBe(true);
     expect(callReadOnlySuccess).toBe(true);
+    // The node pins reads by index block hash; a height would read the chain head.
     expect(callReadOnlyUrl).toBe(
-      `${customBaseUrl}/v2/contracts/call-read/SP123/token/get-total-supply?tip=1234`,
+      `${customBaseUrl}/v2/contracts/call-read/SP123/token/get-total-supply?tip=index1234`,
     );
     expect(callReadOnlyApiKey).toBe(customApiKey);
   });
