@@ -137,6 +137,12 @@ export async function contractDeployHeight(contractId: string): Promise<number> 
   return contract.block.height;
 }
 
+export async function blockHash(height: number): Promise<string> {
+  const block = await getJson<{ hash: string }>(`/extended/v2/blocks/${height}`);
+
+  return block.hash;
+}
+
 /**
  * Most recent anchored transaction sent by `address`, if any. The address
  * history also lists transfers it received (devnet funds every wallet with
