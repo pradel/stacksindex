@@ -6,6 +6,7 @@ End-to-end tests that run stacksindex against a local [Clarinet](https://github.
 
 - Docker, running.
 - Clarinet `3.25.0` on `PATH` ([releases](https://github.com/stx-labs/clarinet/releases/tag/v3.25.0)). The suite checks the version before starting a devnet.
+- On Linux, when your uid is not 1000: Clarinet copies its devnet snapshot (`~/.clarinet/cache/devnet`, `0600` files) into a directory that bitcoind reads as uid 1000, so bitcoind never serves RPC. After a first `clarinet devnet start` has extracted the snapshot, run `chmod -R a+rwX ~/.clarinet/cache/devnet`. CI does this in `.github/workflows/e2e-devnet.yml`.
 
 ## Run
 
