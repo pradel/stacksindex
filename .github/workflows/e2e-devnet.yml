@@ -36,21 +36,24 @@ jobs:
           rm clarinet.tar.gz
           clarinet --version
 
-      - name: Run devnet e2e tests
+      # Clarinet copies its devnet snapshot (0600 files, owned by the runner's
+      # uid 1001) into a data dir that the bitcoind container reads as uid 1000,
+      # so bitcoind never starts serving RPC. Extract the snapshot once, without
+      # booting a devnet, and open its permissions before the tests copy it.
+      - name: Prepare Clarinet devnet snapshot
+        working-directory: packages/e2e-devnet/clarinet
         run: |
-          # DEBUG: capture container state/logs before clarinet removes them.
-          mkdir -p /tmp/devnet-debug
-          ( while true; do
-              for c in $(docker ps -aq --filter name=stacksindex-e2e-devnet); do
-                n=$(docker inspect -f '{{.Name}}' "$c" | tr -d /)
-                docker logs "$c" > "/tmp/devnet-debug/$n.log" 2>&1 || true
-                docker inspect "$c" > "/tmp/devnet-debug/$n.inspect.json" 2>&1 || true
-              done
-              ls -laR packages/e2e-devnet/clarinet/.cache > /tmp/devnet-debug/cache-ls.txt 2>&1 || true
-              sleep 1
-            done ) &
-          id
-          vp run test:devnet
+          clarinet devnet start --no-dashboard --use-on-disk-deployment-plan > /tmp/snapshot.log 2>&1 &
+          pid=$!
+          timeout 120 sh -c 'until grep -q "Embedded snapshot extracted successfully" /tmp/snapshot.log; do sleep 0.2; done'
+          kill -INT "$pid"
+          wait "$pid" || true
+          docker ps -aq --filter name=.stacksindex-e2e-devnet.devnet | xargs -r docker rm -f
+          docker network rm stacksindex-e2e-devnet.devnet 2>/dev/null || true
+          chmod -R a+rwX ~/.clarinet/cache/devnet
+
+      - name: Run devnet e2e tests
+        run: vp run test:devnet
 
       - name: Upload devnet logs
         if: failure()
@@ -59,6 +62,6 @@ jobs:
           name: devnet-logs
           include-hidden-files: true
           path: |
-            packages/e2e-devnet/clarinet/.cache
-            /tmp/devnet-debug
+            packages/e2e-devnet/clarinet/.cache/devnet.log
+            packages/e2e-devnet/clarinet/.cache/stacks-devnet-*/devnet.log
           if-no-files-found: ignore
