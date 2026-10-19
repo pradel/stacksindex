@@ -44,5 +44,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: devnet-logs
-          path: packages/e2e-devnet/clarinet/.cache/devnet.log
+          path: |
+            packages/e2e-devnet/clarinet/.cache/devnet.log
+            packages/e2e-devnet/clarinet/.cache/stacks-devnet-*/devnet.log
           if-no-files-found: ignore

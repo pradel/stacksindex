@@ -81,9 +81,13 @@ export default async function setup(): Promise<(() => Promise<void>) | undefined
 
   const logFd = openSync(LOG_FILE, "w");
 
+  // Clarinet bind-mounts per-run data directories into its containers, and
+  // Bitcoind runs as uid 1000 in its image. On Linux it cannot write them when
+  // They belong to another user (uid 1001 on GitHub runners), so create them
+  // World-writable. `exec` keeps clarinet as the process that receives SIGINT.
   const devnet = spawn(
-    "clarinet",
-    ["devnet", "start", "--no-dashboard", "--use-on-disk-deployment-plan"],
+    "sh",
+    ["-c", "umask 0000 && exec clarinet devnet start --no-dashboard --use-on-disk-deployment-plan"],
     { cwd: PROJECT_DIR, stdio: ["ignore", logFd, logFd] },
   );
 
