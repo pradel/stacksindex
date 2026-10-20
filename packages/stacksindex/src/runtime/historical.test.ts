@@ -3305,6 +3305,92 @@ describe("historical runtime with handlers", () => {
     await runtime.close();
   });
 
+  describe("promise handlers writing through context.db", () => {
+    const contractId = "SP123.token";
+
+    const seedPromiseIndexer = async () => {
+      const indexer = await createIndexer({ database: { kind: "pglite" }, logLevel: "None" });
+
+      await indexer.migrate();
+
+      await seedCompleteContract(
+        {
+          db: indexer.db,
+          run: (effect) =>
+            Effect.runPromise(effect.pipe(Effect.provideService(IndexerDatabase, indexer.db))),
+          cleanup: () => Promise.resolve(),
+          close: () => indexer.close(),
+        },
+        contractId,
+        [100, 200],
+      );
+
+      return indexer;
+    };
+
+    const handledRows = async (db: IndexerDb) =>
+      (await db.select().from(blocksTable)).filter((row) => Number(row.height) >= 100_000);
+
+    const insertHandledBlock = async (
+      event: { block_height: number; event_index: number },
+      db: IndexerDb,
+    ) => {
+      await db.insert(blocksTable).values({
+        chainId: 1n,
+        height: BigInt(100_000 + event.block_height),
+        hash: `handled-${event.block_height}-${event.event_index}`,
+        indexBlockHash: `index-handled-${event.block_height}-${event.event_index}`,
+        blockTime: 0n,
+        tenureHeight: 0n,
+      });
+    };
+
+    test("commits awaited writes with the batch checkpoint", async () => {
+      await using indexer = await seedPromiseIndexer();
+
+      const result = await indexer.run({
+        contractId,
+        endBlock: 200,
+        handler: async (event, context) => {
+          await insertHandledBlock(event, context.db);
+          // Reads inside the handler see the batch's uncommitted writes.
+          await expect(handledRows(context.db)).resolves.toHaveLength(
+            event.block_height === 100 ? 1 : 2,
+          );
+        },
+      });
+
+      expect(result.eventsProcessed).toBe(2);
+      await expect(handledRows(indexer.db)).resolves.toHaveLength(2);
+      const [checkpoint] = await indexer.db.select().from(checkpointsTable);
+      expect(Number(checkpoint.blockHeight)).toBe(200);
+    });
+
+    test("rolls back awaited writes when a later handler in the batch throws", async () => {
+      await using indexer = await seedPromiseIndexer();
+
+      const failure = new Error("Handler failed");
+
+      const run = indexer.run({
+        contractId,
+        endBlock: 200,
+        handler: async (event, context) => {
+          await insertHandledBlock(event, context.db);
+
+          if (event.block_height === 200) {
+            throw failure;
+          }
+        },
+      });
+
+      await expect(run).rejects.toBeInstanceOf(HandlerExecutionError);
+      await expect(run).rejects.toMatchObject({ contractId, cause: failure });
+
+      await expect(handledRows(indexer.db)).resolves.toHaveLength(0);
+      await expect(indexer.db.select().from(checkpointsTable)).resolves.toHaveLength(0);
+    });
+  });
+
   test("filters events and starts synchronization at startBlock", async () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];

@@ -1,5 +1,6 @@
 // oxlint-disable typescript/method-signature-style
 import type { ClarityAbi } from "clarity-abitype";
+import type { PgQueryResultKind } from "drizzle-orm/pg-core";
 import {
   Cause,
   Context,
@@ -36,6 +37,8 @@ import {
 } from "../runtime/index.ts";
 import { toThenable } from "./thenable.ts";
 
+// The promise API wraps database handles with `toThenable`, so every query
+// Builder can be awaited directly; these augmentations expose that to TypeScript.
 declare module "drizzle-orm/pg-core/effect/select" {
   interface PgEffectSelectBase<
     TTableName,
@@ -48,6 +51,63 @@ declare module "drizzle-orm/pg-core/effect/select" {
     TSelectedFields,
     TEffectHKT,
   > extends PromiseLike<TResult> {}
+}
+
+declare module "drizzle-orm/pg-core/effect/insert" {
+  interface PgEffectInsertBase<
+    TTable,
+    TQueryResult,
+    TSelectedFields,
+    TReturning,
+    TDynamic,
+    TExcludedMethods,
+    TEffectHKT,
+  > extends PromiseLike<
+    TReturning extends undefined ? PgQueryResultKind<TQueryResult, never> : TReturning[]
+  > {}
+}
+
+declare module "drizzle-orm/pg-core/effect/update" {
+  interface PgEffectUpdateBase<
+    TTable,
+    TQueryResult,
+    TFrom,
+    TSelectedFields,
+    TReturning,
+    TNullabilityMap,
+    TJoins,
+    TDynamic,
+    TExcludedMethods,
+    TEffectHKT,
+  > extends PromiseLike<
+    TReturning extends undefined ? PgQueryResultKind<TQueryResult, never> : TReturning[]
+  > {}
+}
+
+declare module "drizzle-orm/pg-core/effect/delete" {
+  interface PgEffectDeleteBase<
+    TTable,
+    TQueryResult,
+    TSelectedFields,
+    TReturning,
+    TDynamic,
+    TExcludedMethods,
+    TEffectHKT,
+  > extends PromiseLike<
+    TReturning extends undefined ? PgQueryResultKind<TQueryResult, never> : TReturning[]
+  > {}
+}
+
+declare module "drizzle-orm/pg-core/effect/raw" {
+  interface PgEffectRaw<TResult, TEffectHKT> extends PromiseLike<TResult> {}
+}
+
+declare module "drizzle-orm/pg-core/effect/query" {
+  interface PgEffectRelationalQuery<TResult, TEffectHKT> extends PromiseLike<TResult> {}
+}
+
+declare module "drizzle-orm/pg-core/effect/count" {
+  interface PgEffectCountBuilder<TEffectHKT> extends PromiseLike<number> {}
 }
 
 export type LogValue = string | number | boolean | bigint | null | undefined;
@@ -165,23 +225,28 @@ const makeLogger = (runSync: (effect: Effect.Effect<void>) => void): Logger => {
 
 const toEffectHandler =
   (handler: EventHandler, logger: Logger): EffectEventHandler =>
-  (event, context) => {
-    const thenableClient: unknown = toThenable(context.client);
-    // SAFETY: toThenable wraps the Effect client so every method returns a thenable at run time.
-    const client = thenableClient as IndexingClient;
+  (event, context) =>
+    Effect.gen(function* () {
+      // Awaited queries must run with the batch fiber's services: `context.db` is
+      // The transaction handle, and the open connection lives in those services.
+      const services = yield* Effect.context();
+      const run = Effect.runPromiseWith(services);
+      const thenableClient: unknown = toThenable(context.client, run);
+      // SAFETY: toThenable wraps the Effect client so every method returns a thenable at run time.
+      const client = thenableClient as IndexingClient;
 
-    return Effect.tryPromise({
-      try: () =>
-        Promise.resolve(
-          handler(event, {
-            db: toThenable(context.db),
-            client,
-            logger,
-          }),
-        ),
-      catch: (err) => err,
+      yield* Effect.tryPromise({
+        try: () =>
+          Promise.resolve(
+            handler(event, {
+              db: toThenable(context.db, run),
+              client,
+              logger,
+            }),
+          ),
+        catch: (err) => err,
+      });
     });
-  };
 
 /**
  * Creates a promise-native indexer from a database and network configuration.
