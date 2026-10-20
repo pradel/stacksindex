@@ -26,7 +26,7 @@ import {
   syncTransactions,
 } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
-import { getContractEventsFirstCursor, parseLogsCursor } from "./cursor.ts";
+import { findBackfillCursor, parseLogsCursor } from "./cursor.ts";
 
 /**
  * Max transaction ids per `GET /extended/v3/transactions/batch` call.
@@ -359,65 +359,30 @@ function fetchNewPages(
 }
 
 /**
- * Starts forward pagination from a cursor found by first-event discovery, or
- * marks the contract done when discovery found no event above its synced
- * height (or only events past `endBlock`).
+ * Starts forward pagination from the cursor found by `findBackfillCursor`.
+ * Its first page holds the events right above `syncedBlockHeight`, so the
+ * synced height only moves once that page is stored. Without a cursor, fewer
+ * than a page of new events exists and the next step catches up from the
+ * newest events instead.
  */
 function beginBackfill(
   state: ContractSyncState,
   cursor: string | null,
   chainId: number,
-): Effect.Effect<void, InvalidCursorError | SyncStoreError, IndexerDatabase> {
+): Effect.Effect<void> {
   return Effect.gen(function* () {
-    const { endBlock } = state;
+    state.cursor = cursor;
 
-    if (cursor === null) {
-      yield* Effect.logInfo(`No events found for ${state.contractId}, skipping`).pipe(
-        Effect.annotateLogs({ chainId, contractId: state.contractId, phase: "init" }),
-      );
-
-      if (endBlock === undefined) {
-        state.done = true;
-        yield* persistProgress(state, chainId);
-
-        return;
-      }
-
-      yield* completeAtEndBlock(state, endBlock, chainId);
-
-      return;
-    }
-
-    const cursorHeight = (yield* parseLogsCursor(cursor)).blockHeight;
-
-    if (endBlock !== undefined && cursorHeight > endBlock) {
-      yield* Effect.logInfo(
-        `First event for ${state.contractId} at block ${cursorHeight} exceeds endBlock ${endBlock}, skipping`,
-      ).pipe(
-        Effect.annotateLogs({
-          chainId,
-          contractId: state.contractId,
-          phase: "init",
-          block: cursorHeight,
-        }),
-      );
-      yield* completeAtEndBlock(state, endBlock, chainId);
-
-      return;
-    }
-
-    yield* Effect.logInfo(`Starting sync for ${state.contractId} from block ${cursorHeight}`).pipe(
+    yield* Effect.logInfo(
+      `Starting sync for ${state.contractId} from block ${state.syncedBlockHeight + 1}`,
+    ).pipe(
       Effect.annotateLogs({
         chainId,
         contractId: state.contractId,
         phase: "init",
-        block: cursorHeight,
+        block: state.syncedBlockHeight + 1,
       }),
     );
-
-    state.cursor = cursor;
-    // The discovered cursor is the first event at or above its height.
-    state.syncedBlockHeight = Math.max(state.syncedBlockHeight, cursorHeight - 1);
   });
 }
 
@@ -444,9 +409,7 @@ function catchUp(
         }),
       );
 
-      const cursor = yield* getContractEventsFirstCursor(state.contractId, {
-        startBlock: Math.max(state.startBlock ?? 0, state.syncedBlockHeight + 1),
-      });
+      const cursor = yield* findBackfillCursor(state.contractId, state.syncedBlockHeight + 1);
 
       yield* beginBackfill(state, cursor, chainId);
 
@@ -470,12 +433,20 @@ function initContractFromScratch(
 ): Effect.Effect<ContractSyncState, InitError, InitRequirements> {
   return Effect.gen(function* () {
     const state = makeContractSyncState(filter, Math.max((filter.startBlock ?? 0) - 1, 0));
-
-    const cursor = yield* getContractEventsFirstCursor(filter.contractId, {
-      startBlock: filter.startBlock,
-    });
+    const cursor = yield* findBackfillCursor(filter.contractId, state.syncedBlockHeight + 1);
 
     yield* beginBackfill(state, cursor, chainId);
+
+    // Fewer than a page of events: the newest page holds them, or there are none.
+    if (cursor === null) {
+      yield* catchUp(state, chainId);
+
+      // Without events nothing else saves progress, and the next run would
+      // Search for the backfill cursor again instead of checking the head.
+      if (state.done) {
+        yield* persistProgress(state, chainId);
+      }
+    }
 
     state.doneAtStart = state.done;
 

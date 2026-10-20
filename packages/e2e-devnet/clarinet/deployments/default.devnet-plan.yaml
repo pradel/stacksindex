@@ -51,6 +51,20 @@ plan:
           path: contracts/ledger.clar
           anchor-block-only: true
           clarity-version: 4
+        - transaction-type: contract-publish
+          contract-name: relayed
+          expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+          cost: 3740
+          path: contracts/relayed.clar
+          anchor-block-only: true
+          clarity-version: 4
+        - transaction-type: contract-publish
+          contract-name: relay
+          expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+          cost: 3740
+          path: contracts/relay.clar
+          anchor-block-only: true
+          clarity-version: 4
       epoch: "4.0"
     # Seed history read by the e2e suite. Keep the totals in sync with
     # src/seed.ts: 154 events from `events`, 2 from `ledger`.

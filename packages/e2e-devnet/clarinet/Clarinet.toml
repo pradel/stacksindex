@@ -15,3 +15,13 @@ path = "contracts/ledger.clar"
 clarity_version = 4
 epoch = "latest"
 
+[contracts.relayed]
+path = "contracts/relayed.clar"
+clarity_version = 4
+epoch = "latest"
+
+[contracts.relay]
+path = "contracts/relay.clar"
+clarity_version = 4
+epoch = "latest"
+

@@ -116,57 +116,6 @@ export function normalizeKey(method: string, rawUrl: string): string {
   }
 }
 
-const sanitizeContract = (body: JsonObject): JsonValue => {
-  const sanitized: JsonObject = {
-    contract_id: body.contract_id,
-    tx_id: body.tx_id,
-    clarity_version: body.clarity_version ?? null,
-  };
-
-  const { block } = body;
-
-  if (isJsonObject(block)) {
-    sanitized.block = { height: block.height };
-  }
-
-  return sanitized;
-};
-
-const sanitizePrincipalTransactions = (body: JsonObject): JsonValue => {
-  const results = Array.isArray(body.results)
-    ? body.results.map((item) => {
-        if (!isJsonObject(item)) {
-          return item;
-        }
-
-        const { transaction: tx } = item;
-
-        if (!isJsonObject(tx)) {
-          return item;
-        }
-
-        const { block } = tx;
-        const transaction: JsonObject = { tx_id: tx.tx_id };
-
-        if (isJsonObject(block)) {
-          transaction.block = {
-            height: block.height,
-            tx_index: block.tx_index,
-          };
-        }
-
-        return { transaction };
-      })
-    : body.results;
-
-  return {
-    total: body.total,
-    limit: body.limit,
-    cursor: body.cursor,
-    results,
-  };
-};
-
 const sanitizeTransactionEvents = (body: JsonObject): JsonValue => ({
   total: body.total,
   limit: body.limit,
@@ -175,37 +124,42 @@ const sanitizeTransactionEvents = (body: JsonObject): JsonValue => ({
 });
 
 const sanitizeContractLogs = (body: JsonObject): JsonValue => {
-  // Only `next_cursor` is consumed (forward pagination). The human-readable
-  // `repr` is dropped: handlers decode `hex`, and the events table accepts an
-  // Empty `value_repr`.
-  const results = Array.isArray(body.results)
-    ? body.results.map((item) => {
-        if (!isJsonObject(item)) {
-          return item;
-        }
+  // Error bodies (`404 Cursor not found`) are kept as is.
+  if (!Array.isArray(body.results)) {
+    return body;
+  }
 
-        const { contract_log: contractLog } = item;
+  // The human-readable `repr` is dropped: handlers decode `hex`, and the
+  // Events table accepts an empty `value_repr`. All cursors are kept: the sync
+  // Pages forward with `next_cursor` and backward with `cursor`/`prev_cursor`.
+  const results = body.results.map((item) => {
+    if (!isJsonObject(item)) {
+      return item;
+    }
 
-        if (!isJsonObject(contractLog)) {
-          return item;
-        }
+    const { contract_log: contractLog } = item;
 
-        const { value } = contractLog;
-        const sanitizedLog: JsonObject = { ...contractLog };
+    if (!isJsonObject(contractLog)) {
+      return item;
+    }
 
-        if (isJsonObject(value)) {
-          sanitizedLog.value = { hex: value.hex, repr: "" };
-        }
+    const { value } = contractLog;
+    const sanitizedLog: JsonObject = { ...contractLog };
 
-        return { ...item, contract_log: sanitizedLog };
-      })
-    : body.results;
+    if (isJsonObject(value)) {
+      sanitizedLog.value = { hex: value.hex, repr: "" };
+    }
+
+    return { ...item, contract_log: sanitizedLog };
+  });
 
   return {
     limit: body.limit,
     offset: body.offset,
     total: body.total,
+    cursor: body.cursor ?? null,
     next_cursor: body.next_cursor ?? null,
+    prev_cursor: body.prev_cursor ?? null,
     results,
   };
 };
@@ -256,44 +210,6 @@ const sanitizeTransactionsBatch = (body: JsonObject): JsonValue => {
   return { results };
 };
 
-const sanitizeTransaction = (body: JsonObject): JsonValue => {
-  const sanitized: JsonObject = {
-    tx_id: body.tx_id,
-    event_count: body.event_count,
-    type: body.type,
-    status: body.status,
-    fee_rate: body.fee_rate,
-    events: body.events,
-  };
-
-  const { sender, block, bitcoin_block: bitcoinBlock } = body;
-
-  if (isJsonObject(sender)) {
-    sanitized.sender = {
-      address: sender.address,
-      nonce: sender.nonce,
-    };
-  }
-
-  if (isJsonObject(block)) {
-    sanitized.block = {
-      hash: block.hash,
-      index_hash: block.index_hash,
-      height: block.height,
-      tx_index: block.tx_index,
-    };
-  }
-
-  if (isJsonObject(bitcoinBlock)) {
-    sanitized.bitcoin_block = {
-      height: bitcoinBlock.height,
-      time: bitcoinBlock.time,
-    };
-  }
-
-  return sanitized;
-};
-
 // Only the fields consumed by encodeBlock are kept (blockTime and
 // TenureHeight are derived from the burn block, not the Stacks block).
 const sanitizeBlock = (body: JsonObject): JsonValue => ({
@@ -319,30 +235,9 @@ const sanitizeStatus = (body: JsonObject): JsonValue => {
   return sanitized;
 };
 
-// Only the fields consumed by checkTransactionForMatchingEvent to construct
-// The first log cursor are kept (microblock_sequence, block_height, tx_index).
-const sanitizeV1Transaction = (body: JsonObject): JsonValue => ({
-  tx_id: body.tx_id,
-  block_height: body.block_height,
-  tx_index: body.tx_index,
-  microblock_sequence: body.microblock_sequence,
-});
-
 export function sanitizePayload(rawUrl: string, body: JsonValue): JsonValue {
   if (!isJsonObject(body)) {
     return body;
-  }
-
-  if (rawUrl.includes("/extended/v3/smart-contracts/")) {
-    return sanitizeContract(body);
-  }
-
-  if (rawUrl.includes("/extended/v1/tx/")) {
-    return sanitizeV1Transaction(body);
-  }
-
-  if (rawUrl.includes("/extended/v3/principals/") && rawUrl.includes("/transactions")) {
-    return sanitizePrincipalTransactions(body);
   }
 
   if (rawUrl.includes("/extended/v3/transactions/batch")) {
@@ -355,10 +250,6 @@ export function sanitizePayload(rawUrl: string, body: JsonValue): JsonValue {
 
   if (rawUrl.includes("/extended/v2/smart-contracts/") && rawUrl.includes("/logs")) {
     return sanitizeContractLogs(body);
-  }
-
-  if (rawUrl.includes("/extended/v3/transactions/")) {
-    return sanitizeTransaction(body);
   }
 
   if (rawUrl.includes("/extended/v2/blocks/")) {

@@ -19,6 +19,11 @@ export const EVENTS_CONTRACT = `${DEPLOYER_ADDRESS}.events`;
 
 export const LEDGER_CONTRACT = `${DEPLOYER_ADDRESS}.ledger`;
 
+/** Only `RELAY_CONTRACT` calls it, so no transaction involves it directly. */
+export const RELAYED_CONTRACT = `${DEPLOYER_ADDRESS}.relayed`;
+
+export const RELAY_CONTRACT = `${DEPLOYER_ADDRESS}.relay`;
+
 export interface DevnetAccount {
   address: string;
   privateKey: string;
