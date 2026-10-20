@@ -6,14 +6,25 @@ function isProxyable<T>(target: T): target is T & object {
 
 type PromiseThenParameters = Parameters<Promise<unknown>["then"]>;
 
+/** Runs an awaited Effect; defaults to `Effect.runPromise` with an empty context. */
+export type ThenableRunner = <A, E>(effect: Effect.Effect<A, E>) => Promise<A>;
+
+const runWithoutServices: ThenableRunner = (effect) => Effect.runPromise(effect);
+
 /**
  * Wraps an Effect so it can also be awaited as a Promise.
+ *
+ * `run` executes awaited Effects. Pass `Effect.runPromiseWith(services)` to
+ * keep the caller's services, e.g. the open transaction connection.
  */
-export function toThenable<A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> & PromiseLike<A>;
+export function toThenable<A, E>(
+  effect: Effect.Effect<A, E>,
+  run?: ThenableRunner,
+): Effect.Effect<A, E> & PromiseLike<A>;
 
-export function toThenable<T>(target: T): T;
+export function toThenable<T>(target: T, run?: ThenableRunner): T;
 
-export function toThenable<T>(target: T): T {
+export function toThenable<T>(target: T, run: ThenableRunner = runWithoutServices): T {
   if (!isProxyable(target)) {
     return target;
   }
@@ -21,11 +32,11 @@ export function toThenable<T>(target: T): T {
   return new Proxy(target, {
     get(t, prop, receiver) {
       if (prop === "then" && Effect.isEffect(t)) {
-        // SAFETY: Effects reachable through toThenable are self-contained, so they carry no remaining requirements at run time.
+        // SAFETY: Effects reachable through toThenable are self-contained or need only the services `run` provides.
         const runnable = t as Effect.Effect<unknown, unknown>;
 
         return (resolve: PromiseThenParameters[0], reject: PromiseThenParameters[1]) =>
-          Effect.runPromise(runnable).then(resolve, reject);
+          run(runnable).then(resolve, reject);
       }
 
       // SAFETY: The Proxy get trap receives the property key being read from the target `t`.
@@ -36,7 +47,7 @@ export function toThenable<T>(target: T): T {
         return function get(this: any, ...args: any[]) {
           const res = orig.apply(this === receiver ? t : this, args);
 
-          return toThenable(res);
+          return toThenable(res, run);
         };
       }
 
