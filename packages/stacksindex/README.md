@@ -148,7 +148,7 @@ await Effect.runPromise(
 );
 ```
 
-`Indexer.layerWithDatabase` provides `Indexer`, `IndexerDatabase`, Effect's pretty console logger and, with `telemetry.otlp`, the metrics exporter from a single config. For advanced composition, use the granular building blocks: `Indexer.layer(options)` (requires `IndexerDatabase`), `IndexerDatabase.layer(config)`, `IndexerDatabase.transaction`, `makeDatabase`, `migrate`, `loggerLayer`, `StacksClient` and `readOnly`. Interrupting the `live` fiber stops live sync. `indexer.status` reads the current [`IndexerStatus`](#indexerstatus).
+`Indexer.layerWithDatabase` provides `Indexer`, `IndexerDatabase`, Effect's pretty console logger and, with `telemetry.otlp`, the metrics exporter from a single config. For advanced composition, use the granular building blocks: `Indexer.layer(options)` (requires `IndexerDatabase`), `IndexerDatabase.layer(config)` (opens the database and creates the indexer's tables), `IndexerDatabase.transaction`, `migrate({ migrationsFolder })` (applies your migrations), `loggerLayer`, `StacksClient` and `readOnly`. Interrupting the `live` fiber stops live sync. `indexer.status` reads the current [`IndexerStatus`](#indexerstatus).
 
 ---
 
@@ -180,7 +180,7 @@ Pass `tip` to read at another block. It takes the block's index block hash (`ind
 
 ## Crash Recovery & Reorgs
 
-Checkpoints and per-contract sync progress live in the indexer database, so `run` and `live` resume where they left off.
+Checkpoints and per-contract sync progress live in the indexer database, so `run` and `live` resume where they left off. The indexer's tables live in the `stacksindex` Postgres schema and are created when the indexer opens the database; `public` is left to your tables.
 
 Re-running on a schedule is cheap: a contract that is already synced costs a single request to the newest page of its logs, plus two requests per run (the chain tip and the reorg check). Events mined while a run is in progress are indexed by the next run, so handlers always see events in chain order.
 
@@ -288,9 +288,6 @@ Names follow OpenTelemetry conventions. Prometheus renders dots as underscores a
 ```ts
 import { createServer } from "node:http";
 
-// `status()` reads the indexer tables, so create them before accepting probes.
-await indexer.migrate();
-
 createServer(async (_request, response) => {
   try {
     const status = await indexer.status();
@@ -339,7 +336,7 @@ The exporter logs its target once at `Info` when the indexer starts. Failed expo
 | `run(filters)`          | Syncs and indexes a single filter or an array up to the current chain tip; resolves with a `RunResult`.                           |
 | `live(filters)`         | Runs `run`, then follows new blocks. Resolves when every filter reached its `endBlock` or on `close()`; rejects on a fatal error. |
 | `db`                    | Indexer database handle for inspecting sync progress and cached data.                                                             |
-| `migrate(options?)`     | Applies pending migrations to the indexer database.                                                                               |
+| `migrate(options)`      | Applies your drizzle-kit migrations from `options.migrationsFolder`. The indexer's own tables are created by `createIndexer`.     |
 | `status()`              | Resolves with the current [`IndexerStatus`](#indexerstatus).                                                                      |
 | `close()`               | Stops live sync, flushes pending metrics and releases database and runtime resources. Safe to call multiple times.                |
 | `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                        |

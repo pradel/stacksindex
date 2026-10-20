@@ -110,7 +110,7 @@ export async function expectProgress(
     isComplete: boolean;
   }>(
     database,
-    sql`select "cursor", "syncedBlockHeight", "is_complete" as "isComplete" from "sync_progress" where "contract_id" = ${contractId}`,
+    sql`select "cursor", "syncedBlockHeight", "is_complete" as "isComplete" from "stacksindex"."sync_progress" where "contract_id" = ${contractId}`,
   );
 
   expect(rows).toHaveLength(1);
@@ -125,7 +125,7 @@ export async function expectCheckpoint(
 ): Promise<void> {
   const rows = await selectRows<{ blockHeight: string | number | bigint }>(
     database,
-    sql`select "blockHeight" from "checkpoints"`,
+    sql`select "blockHeight" from "stacksindex"."checkpoints"`,
   );
 
   expect(rows).toHaveLength(1);
@@ -133,11 +133,11 @@ export async function expectCheckpoint(
 }
 
 const TABLE_COUNT_QUERIES = {
-  blocks: sql`select count(*) as "count" from "blocks"`,
-  checkpoints: sql`select count(*) as "count" from "checkpoints"`,
-  events: sql`select count(*) as "count" from "events"`,
-  sync_progress: sql`select count(*) as "count" from "sync_progress"`,
-  transactions: sql`select count(*) as "count" from "transactions"`,
+  blocks: sql`select count(*) as "count" from "stacksindex"."blocks"`,
+  checkpoints: sql`select count(*) as "count" from "stacksindex"."checkpoints"`,
+  events: sql`select count(*) as "count" from "stacksindex"."events"`,
+  sync_progress: sql`select count(*) as "count" from "stacksindex"."sync_progress"`,
+  transactions: sql`select count(*) as "count" from "stacksindex"."transactions"`,
 };
 
 export type SyncTableName = keyof typeof TABLE_COUNT_QUERIES;
@@ -161,7 +161,7 @@ export async function expectStoredBlockHeights(
 ): Promise<void> {
   const rows = await selectRows<{ height: string | number | bigint }>(
     database,
-    sql`select "height" from "blocks"`,
+    sql`select "height" from "stacksindex"."blocks"`,
   );
 
   expect(

@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { Context, Effect, Exit, Layer, Scope } from "effect";
 
-import { IndexerDatabase, migrate as migrateDatabase, type IndexerDb } from "../database/index.ts";
+import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import { toThenable } from "../promise/thenable.ts";
 
 export interface TestDatabase {
@@ -21,8 +21,6 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   const rawDb = Context.get(context, IndexerDatabase);
   const db = toThenable(rawDb);
 
-  await Effect.runPromise(migrateDatabase().pipe(Effect.provideService(IndexerDatabase, rawDb)));
-
   return {
     db,
 
@@ -32,7 +30,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     async cleanup() {
       await Effect.runPromise(
         db.execute(
-          sql`truncate table "transactions", "blocks", "sync_progress", "events", "checkpoints", "sync_anchors" cascade`,
+          sql`truncate table "stacksindex"."transactions", "stacksindex"."blocks", "stacksindex"."sync_progress", "stacksindex"."events", "stacksindex"."checkpoints", "stacksindex"."sync_anchors" cascade`,
         ),
       );
     },

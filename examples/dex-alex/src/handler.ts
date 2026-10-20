@@ -1,13 +1,18 @@
 import { eq } from "drizzle-orm";
-import type { PgliteDatabase } from "drizzle-orm/pglite";
-import { decodeHex, type EventHandler, type IndexingClient, type Logger } from "stacksindex";
+import {
+  decodeHex,
+  type EventHandler,
+  type IndexerDb,
+  type IndexingClient,
+  type Logger,
+} from "stacksindex";
 import { z } from "zod";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
 import { poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
 
-// oxlint-disable-next-line typescript/no-explicit-any
-export type AppDatabase = PgliteDatabase<any>;
+/** `context.db`: the indexer database, scoped to the batch transaction. */
+export type AppDatabase = IndexerDb;
 
 export const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
 
@@ -271,17 +276,21 @@ async function upsertPoolBalances({
 }
 
 export interface CreatePoolHandlerOptions {
-  db: AppDatabase;
   chainId?: bigint;
   poolContract?: string;
 }
 
+/**
+ * Writes go through `context.db`, so they commit atomically with the indexer
+ * checkpoint. A rewind (chain reorg, or a restart without a sync anchor)
+ * re-runs handlers for unfinalized blocks without undoing their writes, so
+ * every write is an upsert or insert-if-absent keyed by primary key.
+ */
 export function createPoolHandler({
-  db,
   chainId = CHAIN_ID,
   poolContract = POOL_CONTRACT,
-}: CreatePoolHandlerOptions): EventHandler {
-  return async (event, { client, logger }) => {
+}: CreatePoolHandlerOptions = {}): EventHandler {
+  return async (event, { client, logger, db }) => {
     const decoded = decodeHex(event.contract_log.value.hex);
     const parsed = poolLogSchema.safeParse(decoded);
 

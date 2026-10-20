@@ -14,9 +14,11 @@ import {
   type EffectPgDatabase as PgEffectPgDatabase,
   makeWithDefaults as makePgWithDefaults,
 } from "drizzle-orm/effect-postgres";
+import type { MigrationConfig } from "drizzle-orm/migrator";
 import { Context, Effect, Layer, Redacted, type Scope } from "effect";
 
 import { DatabaseError, MigrationError } from "../lib/errors.ts";
+import { STACKSINDEX_SCHEMA } from "../sync-store/schema.ts";
 
 export type IndexerDb<TRelations extends AnyRelations = AnyRelations> =
   | PgliteEffectPgDatabase<TRelations>
@@ -32,7 +34,8 @@ export type DatabaseConfig =
       connectionString: string;
     };
 
-export function getMigrationsFolder(): string {
+/** The indexer's own migrations, shipped next to the build output. */
+function internalMigrationsFolder(): string {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
   const candidate1 = path.resolve(currentDir, "../../drizzle");
 
@@ -49,21 +52,59 @@ export function getMigrationsFolder(): string {
   return candidate1;
 }
 
-export function migrate(options?: {
-  migrationsFolder?: string;
+const runMigrations = (
+  db: IndexerDb,
+  config: MigrationConfig,
+): Effect.Effect<void, MigrationError> =>
+  // SAFETY: Both IndexerDb variants expose the same migrator session surface.
+  migratePglite(db as PgliteEffectPgDatabase, config).pipe(
+    Effect.asVoid,
+    Effect.mapError((cause) => new MigrationError({ cause })),
+  );
+
+/**
+ * Creates or upgrades the indexer's own tables. Their bookkeeping lives in
+ * `stacksindex.__drizzle_migrations`, apart from the user's migrations.
+ */
+const migrateInternal = (db: IndexerDb): Effect.Effect<void, MigrationError> =>
+  runMigrations(db, {
+    migrationsFolder: internalMigrationsFolder(),
+    migrationsSchema: STACKSINDEX_SCHEMA,
+  });
+
+/**
+ * Applies the user's drizzle-kit migrations from `migrationsFolder`, tracked in
+ * drizzle's default `drizzle.__drizzle_migrations` table. The indexer's own
+ * tables are migrated when the database is opened.
+ */
+export function migrate(options: {
+  migrationsFolder: string;
 }): Effect.Effect<void, MigrationError, IndexerDatabase> {
-  const migrationsFolder = options?.migrationsFolder ?? getMigrationsFolder();
-
   return Effect.gen(function* () {
-    const indexerDb = yield* IndexerDatabase;
+    const db = yield* IndexerDatabase;
 
-    // SAFETY: Both IndexerDb variants expose the same migrator session surface.
-    yield* migratePglite(indexerDb as PgliteEffectPgDatabase, { migrationsFolder }).pipe(
-      Effect.asVoid,
-      Effect.mapError((cause) => new MigrationError({ cause })),
-    );
+    yield* runMigrations(db, { migrationsFolder: options.migrationsFolder });
   });
 }
+
+const connect = (config: DatabaseConfig): Effect.Effect<IndexerDb, DatabaseError, Scope.Scope> =>
+  Effect.gen(function* () {
+    if (config.kind === "pglite") {
+      const clientContext = yield* Layer.build(
+        PgliteClient.layer(config.directory ? { dataDir: config.directory } : {}),
+      ).pipe(Effect.mapError((cause) => new DatabaseError({ operation: "connect", cause })));
+
+      return yield* makePgliteWithDefaults().pipe(Effect.provide(clientContext));
+    }
+
+    const clientContext = yield* Layer.build(
+      PgClient.layer({
+        url: Redacted.make(config.connectionString),
+      }),
+    ).pipe(Effect.mapError((cause) => new DatabaseError({ operation: "connect", cause })));
+
+    return yield* makePgWithDefaults().pipe(Effect.provide(clientContext));
+  });
 
 export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>()(
   "stacksindex/database/IndexerDatabase",
@@ -71,47 +112,11 @@ export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>
     make: Effect.die("IndexerDatabase must be provided via IndexerDatabase.layer"),
   },
 ) {
-  static readonly layer = (config: DatabaseConfig): Layer.Layer<IndexerDatabase, DatabaseError> => {
-    if (config.kind === "pglite") {
-      return Layer.unwrap(
-        Effect.gen(function* () {
-          const clientContext = yield* Layer.build(
-            PgliteClient.layer(config.directory ? { dataDir: config.directory } : {}),
-          ).pipe(Effect.mapError((cause) => new DatabaseError({ operation: "connect", cause })));
-
-          return Layer.effect(
-            IndexerDatabase,
-            Effect.gen(function* dbLayer() {
-              const db = yield* makePgliteWithDefaults();
-
-              // SAFETY: makePgliteWithDefaults resolves a pglite Effect database, a member of IndexerDb.
-              return db as IndexerDb;
-            }).pipe(Effect.provide(clientContext)),
-          );
-        }),
-      );
-    }
-
-    return Layer.unwrap(
-      Effect.gen(function* () {
-        const clientContext = yield* Layer.build(
-          PgClient.layer({
-            url: Redacted.make(config.connectionString),
-          }),
-        ).pipe(Effect.mapError((cause) => new DatabaseError({ operation: "connect", cause })));
-
-        return Layer.effect(
-          IndexerDatabase,
-          Effect.gen(function* dbLayer() {
-            const db = yield* makePgWithDefaults();
-
-            // SAFETY: makePgWithDefaults resolves a postgres Effect database, a member of IndexerDb.
-            return db as IndexerDb;
-          }).pipe(Effect.provide(clientContext)),
-        );
-      }),
-    );
-  };
+  /** Opens the database and creates or upgrades the indexer's own tables. */
+  static readonly layer = (
+    config: DatabaseConfig,
+  ): Layer.Layer<IndexerDatabase, DatabaseError | MigrationError> =>
+    Layer.effect(IndexerDatabase, connect(config).pipe(Effect.tap(migrateInternal)));
 
   static readonly transaction = <A, E, R>(
     f: (db: IndexerDb) => Effect.Effect<A, E, R>,
@@ -135,43 +140,4 @@ export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>
           ),
         );
     });
-}
-
-export function makeDatabase(config: DatabaseConfig): Effect.Effect<
-  {
-    db: IndexerDb;
-    migrate: (options?: { migrationsFolder?: string }) => Effect.Effect<void, MigrationError>;
-  },
-  DatabaseError,
-  Scope.Scope
-> {
-  return Effect.gen(function* () {
-    if (config.kind === "pglite") {
-      const clientContext = yield* Layer.build(
-        PgliteClient.layer(config.directory ? { dataDir: config.directory } : {}),
-      ).pipe(Effect.mapError((cause) => new DatabaseError({ operation: "connect", cause })));
-
-      const db = yield* makePgliteWithDefaults().pipe(Effect.provide(clientContext));
-
-      return {
-        db,
-        migrate: (options?: { migrationsFolder?: string }) =>
-          migrate(options).pipe(Effect.provideService(IndexerDatabase, db)),
-      };
-    }
-
-    const clientContext = yield* Layer.build(
-      PgClient.layer({
-        url: Redacted.make(config.connectionString),
-      }),
-    ).pipe(Effect.mapError((cause) => new DatabaseError({ operation: "connect", cause })));
-
-    const db = yield* makePgWithDefaults().pipe(Effect.provide(clientContext));
-
-    return {
-      db,
-      migrate: (options?: { migrationsFolder?: string }) =>
-        migrate(options).pipe(Effect.provideService(IndexerDatabase, db)),
-    };
-  });
 }

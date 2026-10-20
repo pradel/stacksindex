@@ -1,44 +1,44 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "4d5a5c7f-4211-4134-9fdb-059013650028",
-  "prevIds": ["0c108529-7bf5-4a1f-ad7b-0e490c2d44bd"],
+  "id": "bf8ada57-217e-4ea7-8bbb-6b36be8cf51e",
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "ddl": [
     {
       "isRlsEnabled": false,
       "name": "blocks",
       "entityType": "tables",
-      "schema": "public"
+      "schema": "stacksindex"
     },
     {
       "isRlsEnabled": false,
       "name": "checkpoints",
       "entityType": "tables",
-      "schema": "public"
+      "schema": "stacksindex"
     },
     {
       "isRlsEnabled": false,
       "name": "events",
       "entityType": "tables",
-      "schema": "public"
+      "schema": "stacksindex"
     },
     {
       "isRlsEnabled": false,
       "name": "sync_anchors",
       "entityType": "tables",
-      "schema": "public"
+      "schema": "stacksindex"
     },
     {
       "isRlsEnabled": false,
       "name": "sync_progress",
       "entityType": "tables",
-      "schema": "public"
+      "schema": "stacksindex"
     },
     {
       "isRlsEnabled": false,
       "name": "transactions",
       "entityType": "tables",
-      "schema": "public"
+      "schema": "stacksindex"
     },
     {
       "type": "bigint",
@@ -50,7 +50,7 @@
       "identity": null,
       "name": "chainId",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "blocks"
     },
     {
@@ -63,7 +63,7 @@
       "identity": null,
       "name": "height",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "blocks"
     },
     {
@@ -76,7 +76,7 @@
       "identity": null,
       "name": "hash",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "blocks"
     },
     {
@@ -89,7 +89,7 @@
       "identity": null,
       "name": "indexBlockHash",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "blocks"
     },
     {
@@ -102,7 +102,7 @@
       "identity": null,
       "name": "blockTime",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "blocks"
     },
     {
@@ -115,7 +115,7 @@
       "identity": null,
       "name": "tenureHeight",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "blocks"
     },
     {
@@ -128,7 +128,7 @@
       "identity": null,
       "name": "chainId",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "checkpoints"
     },
     {
@@ -141,7 +141,7 @@
       "identity": null,
       "name": "blockHeight",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "checkpoints"
     },
     {
@@ -154,7 +154,7 @@
       "identity": null,
       "name": "blockTime",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "checkpoints"
     },
     {
@@ -167,7 +167,7 @@
       "identity": null,
       "name": "finalizedBlockHeight",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "checkpoints"
     },
     {
@@ -180,7 +180,7 @@
       "identity": null,
       "name": "finalizedBlockTime",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "checkpoints"
     },
     {
@@ -193,7 +193,7 @@
       "identity": null,
       "name": "chainId",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -206,7 +206,7 @@
       "identity": null,
       "name": "contract_id",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -219,7 +219,7 @@
       "identity": null,
       "name": "tx_id",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -232,7 +232,7 @@
       "identity": null,
       "name": "event_index",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -245,7 +245,7 @@
       "identity": null,
       "name": "event_type",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -258,7 +258,7 @@
       "identity": null,
       "name": "topic",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -271,7 +271,7 @@
       "identity": null,
       "name": "value_hex",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -284,7 +284,7 @@
       "identity": null,
       "name": "value_repr",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -297,7 +297,7 @@
       "identity": null,
       "name": "blockHeight",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -310,7 +310,7 @@
       "identity": null,
       "name": "chainId",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "sync_anchors"
     },
     {
@@ -323,7 +323,7 @@
       "identity": null,
       "name": "blockHeight",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "sync_anchors"
     },
     {
@@ -336,7 +336,7 @@
       "identity": null,
       "name": "blockHash",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "sync_anchors"
     },
     {
@@ -349,7 +349,7 @@
       "identity": null,
       "name": "chainId",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "sync_progress"
     },
     {
@@ -362,7 +362,7 @@
       "identity": null,
       "name": "contract_id",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "sync_progress"
     },
     {
@@ -375,7 +375,7 @@
       "identity": null,
       "name": "cursor",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "sync_progress"
     },
     {
@@ -388,7 +388,7 @@
       "identity": null,
       "name": "syncedBlockHeight",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "sync_progress"
     },
     {
@@ -401,7 +401,7 @@
       "identity": null,
       "name": "is_complete",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "sync_progress"
     },
     {
@@ -414,7 +414,7 @@
       "identity": null,
       "name": "chainId",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     },
     {
@@ -427,7 +427,7 @@
       "identity": null,
       "name": "tx_id",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     },
     {
@@ -440,7 +440,7 @@
       "identity": null,
       "name": "blockHeight",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     },
     {
@@ -453,7 +453,7 @@
       "identity": null,
       "name": "block_hash",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     },
     {
@@ -466,7 +466,7 @@
       "identity": null,
       "name": "tx_index",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     },
     {
@@ -479,7 +479,7 @@
       "identity": null,
       "name": "tx_type",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     },
     {
@@ -492,7 +492,7 @@
       "identity": null,
       "name": "sender_address",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     },
     {
@@ -505,7 +505,7 @@
       "identity": null,
       "name": "fee_rate",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     },
     {
@@ -518,7 +518,7 @@
       "identity": null,
       "name": "nonce",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     },
     {
@@ -531,7 +531,7 @@
       "identity": null,
       "name": "tx_status",
       "entityType": "columns",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     },
     {
@@ -559,7 +559,7 @@
       "concurrently": false,
       "name": "blocks_chain_id_hash_idx",
       "entityType": "indexes",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "blocks"
     },
     {
@@ -587,7 +587,7 @@
       "concurrently": false,
       "name": "events_chain_id_block_height_idx",
       "entityType": "indexes",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -595,7 +595,7 @@
       "nameExplicit": true,
       "name": "blocks_pkey",
       "entityType": "pks",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "blocks"
     },
     {
@@ -603,7 +603,7 @@
       "nameExplicit": true,
       "name": "checkpoints_pkey",
       "entityType": "pks",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "checkpoints"
     },
     {
@@ -611,7 +611,7 @@
       "nameExplicit": true,
       "name": "events_pkey",
       "entityType": "pks",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "events"
     },
     {
@@ -619,7 +619,7 @@
       "nameExplicit": true,
       "name": "sync_anchors_pkey",
       "entityType": "pks",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "sync_anchors"
     },
     {
@@ -627,7 +627,7 @@
       "nameExplicit": true,
       "name": "sync_progress_pkey",
       "entityType": "pks",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "sync_progress"
     },
     {
@@ -635,7 +635,7 @@
       "nameExplicit": true,
       "name": "transactions_pkey",
       "entityType": "pks",
-      "schema": "public",
+      "schema": "stacksindex",
       "table": "transactions"
     }
   ],

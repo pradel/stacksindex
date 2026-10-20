@@ -853,7 +853,7 @@ describe("syncStore", () => {
 
   describe("error handling", () => {
     test("wraps database failures in SyncStoreError", async () => {
-      await testDb.db.execute(sql`drop table "blocks"`);
+      await testDb.db.execute(sql`drop table "stacksindex"."blocks"`);
 
       const promise = testDb.run(syncStore.insertBlocks({ blocks: [block], chainId: 1 }));
 

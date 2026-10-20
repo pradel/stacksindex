@@ -1,13 +1,12 @@
 import { Clock, Duration, Effect, Match, Metric, Ref, Schedule, Stream } from "effect";
 
-import { IndexerDatabase, migrate } from "../database/index.ts";
+import { IndexerDatabase } from "../database/index.ts";
 import { type StacksApiError, StacksClient } from "../datasources/api/index.ts";
 import { Indexing } from "../indexing/index.ts";
 import type {
   DatabaseError,
   FilterValidationError,
   HandlerExecutionError,
-  MigrationError,
   SyncStoreError,
 } from "../lib/errors.ts";
 import { SLOW_OPERATION_MILLIS } from "../lib/logging.ts";
@@ -466,18 +465,12 @@ export interface PreparedFilters {
   readonly syncFilters: readonly SyncFilter[];
 }
 
-/** Validates filters, resolves `"latest"` end blocks and applies pending migrations. */
+/** Validates filters and resolves `"latest"` end blocks. */
 export function prepareFilters(
   filters: Filter[],
-): Effect.Effect<
-  PreparedFilters,
-  StacksApiError | FilterValidationError | MigrationError,
-  StacksClient | IndexerDatabase
-> {
+): Effect.Effect<PreparedFilters, StacksApiError | FilterValidationError, StacksClient> {
   return Effect.gen(function* () {
     const resolvedFilters = yield* validateAndResolveFilters(filters);
-
-    yield* migrate();
 
     const handlers: Record<string, EventHandler | undefined> = {};
 

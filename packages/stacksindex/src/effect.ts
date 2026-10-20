@@ -4,7 +4,7 @@ export { loggerLayer } from "./logger/index.ts";
 
 export type { LoggerLayerOptions } from "./logger/index.ts";
 
-export { getMigrationsFolder, IndexerDatabase, makeDatabase, migrate } from "./database/index.ts";
+export { IndexerDatabase, migrate } from "./database/index.ts";
 
 export type { DatabaseConfig, IndexerDb } from "./database/index.ts";
 

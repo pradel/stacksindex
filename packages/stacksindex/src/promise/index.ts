@@ -160,7 +160,7 @@ export interface Filter {
 export type LogLevel = EffectLogLevel.LogLevel;
 
 export interface IndexerOptions {
-  /** Database used for sync storage and checkpoints. */
+  /** Database for sync storage, checkpoints and your own tables. */
   database: DatabaseConfig;
   /** Which chain to index. Defaults to `"mainnet"`. */
   network?: NetworkOption;
@@ -190,8 +190,11 @@ export interface IndexerOptions {
 export interface Indexer {
   /** Indexer database handle, useful to inspect sync progress and cached data. */
   readonly db: IndexerDb;
-  /** Run pending migrations on the indexer database. */
-  migrate: (options?: { migrationsFolder?: string }) => Promise<void>;
+  /**
+   * Applies your drizzle-kit migrations from `migrationsFolder`. The indexer's
+   * own tables live in the `stacksindex` schema and are migrated by `createIndexer`.
+   */
+  migrate: (options: { migrationsFolder: string }) => Promise<void>;
   /** Syncs and indexes one or more contracts up to the current chain tip. */
   run: (filters: Filter | Filter[]) => Promise<RunResult>;
   /**
@@ -250,7 +253,8 @@ const toEffectHandler =
 
 /**
  * Creates a promise-native indexer from a database and network configuration.
- * The indexer is ready once the returned promise resolves.
+ * The indexer is ready once the returned promise resolves: the database is
+ * open and the indexer's own tables exist.
  */
 export async function createIndexer(options: IndexerOptions): Promise<Indexer> {
   const runtime = ManagedRuntime.make(
@@ -265,7 +269,7 @@ export async function createIndexer(options: IndexerOptions): Promise<Indexer> {
     }),
   );
 
-  // Build the layer eagerly so configuration and connection errors reject here.
+  // Build the layer eagerly so configuration, connection and migration errors reject here.
   let context: Awaited<ReturnType<typeof runtime.context>>;
 
   try {

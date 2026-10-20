@@ -3311,8 +3311,6 @@ describe("historical runtime with handlers", () => {
     const seedPromiseIndexer = async () => {
       const indexer = await createIndexer({ database: { kind: "pglite" }, logLevel: "None" });
 
-      await indexer.migrate();
-
       await seedCompleteContract(
         {
           db: indexer.db,
@@ -6321,7 +6319,7 @@ describe("historical runtime with handlers", () => {
     });
 
     // Force the next sync-store read to fail.
-    await testDb.db.execute(sql`drop table "sync_progress"`);
+    await testDb.db.execute(sql`drop table "stacksindex"."sync_progress"`);
 
     const runtime = makeRuntime({ db: testDb.db });
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
