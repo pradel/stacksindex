@@ -7,6 +7,7 @@ An end-to-end example demonstrating how to index ALEX DEX pool events using the 
 - **Historical Event Sync**: Indexes pool creation, swaps, and liquidity changes.
 - **Typed Read-Only Calls**: Uses Clarity ABIs to fetch pool tokens and decimals at the exact event block height.
 - **Atomic Writes**: Handlers write the `pool`, `swap` and `token` tables through `context.db`, in the same PGlite database as the indexer, so each batch of writes commits with the indexer checkpoint.
+- **Typed Relational Queries**: `relations` from `defineRelations` types `context.db.query` through `EventHandler<typeof relations>`.
 - **Zod Validation**: Parses decoded contract logs with Zod schemas.
 
 ## Running the Example

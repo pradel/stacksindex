@@ -9,10 +9,10 @@ import {
 import { z } from "zod";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
-import { poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
+import { poolTable, type relations, swapTable, type Token, tokenTable } from "./schema.ts";
 
-/** `context.db`: the indexer database, scoped to the batch transaction. */
-export type AppDatabase = IndexerDb;
+/** `context.db`: the indexer database, scoped to the batch transaction and typed with `relations`. */
+export type AppDatabase = IndexerDb<typeof relations>;
 
 export const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
 
@@ -117,14 +117,10 @@ export async function insertTokenIfNotExists({
   chainId,
   tokenAddress,
 }: InsertTokenIfNotExistsParams): Promise<Token> {
-  const existingCheck = await db
-    .select()
-    .from(tokenTable)
-    .where(eq(tokenTable.address, tokenAddress))
-    .limit(1);
+  const existing = await db.query.token.findFirst({ where: { address: tokenAddress } });
 
-  if (existingCheck.length > 0) {
-    return existingCheck[0];
+  if (existing) {
+    return existing;
   }
 
   if (!tokenAddress.includes(".")) {
@@ -289,7 +285,7 @@ export interface CreatePoolHandlerOptions {
 export function createPoolHandler({
   chainId = CHAIN_ID,
   poolContract = POOL_CONTRACT,
-}: CreatePoolHandlerOptions = {}): EventHandler {
+}: CreatePoolHandlerOptions = {}): EventHandler<typeof relations> {
   return async (event, { client, logger, db }) => {
     const decoded = decodeHex(event.contract_log.value.hex);
     const parsed = poolLogSchema.safeParse(decoded);
@@ -336,16 +332,11 @@ export function createPoolHandler({
 
       logger.debug("Pool created", { pool: log.poolToken });
     } else if (log.action === "swap-x-for-y" || log.action === "swap-y-for-x") {
-      const [pool] = await db
-        .select()
-        .from(poolTable)
-        .where(eq(poolTable.address, log.poolToken))
-        .limit(1);
+      const pool = await db.query.pool.findFirst({ where: { address: log.poolToken } });
 
       let amountIn = 0n;
       let amountOut = 0n;
 
-      // oxlint-disable-next-line typescript/no-unnecessary-condition
       if (pool) {
         if (log.action === "swap-x-for-y") {
           amountIn = log.balanceX - pool.balanceX;
@@ -389,7 +380,6 @@ export function createPoolHandler({
         blockTime: event.block_time,
       });
 
-      // oxlint-disable-next-line typescript/no-unnecessary-condition
       if (pool && (!pool.tokenX || !pool.tokenY)) {
         await syncPoolTokens({
           client,

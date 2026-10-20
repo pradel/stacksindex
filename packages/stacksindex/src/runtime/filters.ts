@@ -1,12 +1,13 @@
+import type { AnyRelations } from "drizzle-orm";
 import { Effect, Predicate, Schema } from "effect";
 
 import { type StacksApiError, StacksClient } from "../datasources/api/index.ts";
 import { FilterValidationError } from "../lib/errors.ts";
 import type { EventHandler } from "../lib/types.ts";
 
-export interface Filter {
+export interface Filter<TRelations extends AnyRelations = AnyRelations> {
   contractId: string;
-  handler: EventHandler;
+  handler: EventHandler<TRelations>;
   startBlock?: number;
   endBlock?: number | "latest";
 }

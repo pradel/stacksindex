@@ -6,7 +6,8 @@
 // oxlint-disable vitest/prefer-called-once
 import { URL } from "node:url";
 
-import { sql } from "drizzle-orm";
+import { defineRelations, sql } from "drizzle-orm";
+import { integer, pgTable, text } from "drizzle-orm/pg-core";
 import {
   Deferred,
   Effect,
@@ -20,7 +21,16 @@ import {
   type Schema,
 } from "effect";
 import { TestClock } from "effect/testing";
-import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  expectTypeOf,
+  test,
+  vi,
+} from "vite-plus/test";
 
 import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import {
@@ -32,7 +42,7 @@ import {
   TransactionBatchError,
 } from "../lib/errors.ts";
 import { indexingBatchDuration, indexingBlock, indexingEvents } from "../lib/metrics.ts";
-import type { HandlerContext, HandlerEvent } from "../lib/types.ts";
+import type { EventHandler, HandlerContext, HandlerEvent } from "../lib/types.ts";
 import { createIndexer } from "../promise/index.ts";
 import { toThenable } from "../promise/thenable.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -45,7 +55,13 @@ import {
 import { parseLogsCursor, parseTransactionCursor } from "../sync/cursor.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
-import { Indexer, type Filter, type IndexerOptions } from "./index.ts";
+import {
+  Indexer,
+  type Filter,
+  type IndexerError,
+  type IndexerOptions,
+  type RunResult,
+} from "./index.ts";
 
 const makeRuntime = (input: { db: IndexerDb } & IndexerOptions) => {
   const layer = Indexer.layer({
@@ -3308,20 +3324,23 @@ describe("historical runtime with handlers", () => {
   describe("promise handlers writing through context.db", () => {
     const contractId = "SP123.token";
 
-    const seedPromiseIndexer = async () => {
-      const indexer = await createIndexer({ database: { kind: "pglite" }, logLevel: "None" });
-
-      await seedCompleteContract(
+    const seedContract = (db: IndexerDb) =>
+      seedCompleteContract(
         {
-          db: indexer.db,
+          db,
           run: (effect) =>
-            Effect.runPromise(effect.pipe(Effect.provideService(IndexerDatabase, indexer.db))),
+            Effect.runPromise(effect.pipe(Effect.provideService(IndexerDatabase, db))),
           cleanup: () => Promise.resolve(),
-          close: () => indexer.close(),
+          close: () => Promise.resolve(),
         },
         contractId,
         [100, 200],
       );
+
+    const seedPromiseIndexer = async () => {
+      const indexer = await createIndexer({ database: { kind: "pglite" }, logLevel: "None" });
+
+      await seedContract(indexer.db);
 
       return indexer;
     };
@@ -3386,6 +3405,82 @@ describe("historical runtime with handlers", () => {
 
       await expect(handledRows(indexer.db)).resolves.toHaveLength(0);
       await expect(indexer.db.select().from(checkpointsTable)).resolves.toHaveLength(0);
+    });
+
+    const handledTable = pgTable("handled", {
+      id: text().primaryKey(),
+      blockHeight: integer("block_height").notNull(),
+    });
+
+    const handledRelations = defineRelations({ handledTable });
+
+    test("serves typed context.db.query from the indexer's relations", async () => {
+      await using indexer = await createIndexer({
+        database: { kind: "pglite" },
+        logLevel: "None",
+        relations: handledRelations,
+      });
+
+      await seedContract(indexer.db);
+      await indexer.db.execute(
+        sql`create table "handled" ("id" text primary key, "block_height" integer not null)`,
+      );
+
+      const seenInBatch: number[] = [];
+
+      await indexer.run({
+        contractId,
+        endBlock: 200,
+        handler: async (event, context) => {
+          await context.db
+            .insert(handledTable)
+            .values({ id: `${event.tx_id}:${event.event_index}`, blockHeight: event.block_height });
+
+          const rows = await context.db.query.handledTable.findMany();
+
+          expectTypeOf(rows).toEqualTypeOf<{ id: string; blockHeight: number }[]>();
+          seenInBatch.push(rows.length);
+        },
+      });
+
+      expect(seenInBatch).toStrictEqual([1, 2]);
+      await expect(
+        indexer.db.query.handledTable.findMany({
+          columns: { blockHeight: true },
+          orderBy: { blockHeight: "asc" },
+        }),
+      ).resolves.toStrictEqual([{ blockHeight: 100 }, { blockHeight: 200 }]);
+    });
+
+    test("types Effect handlers' context.db.query from the same relations", () => {
+      const handler: EventHandler<typeof handledRelations> = (_event, context) =>
+        Effect.gen(function* () {
+          const rows = yield* context.db.query.handledTable.findMany();
+
+          expectTypeOf(rows).toEqualTypeOf<{ id: string; blockHeight: number }[]>();
+        });
+
+      const program = Effect.gen(function* () {
+        const indexer = yield* Indexer;
+
+        return yield* indexer.run([{ contractId, handler }]);
+      });
+
+      expectTypeOf(program).toEqualTypeOf<Effect.Effect<RunResult, IndexerError, Indexer>>();
+    });
+
+    test("types db.query only for a promise indexer created with relations", () => {
+      // Type-level only: never called, so no database is opened.
+      const typeCheck = async () => {
+        const plain = await createIndexer({ database: { kind: "pglite" } });
+
+        expectTypeOf<keyof typeof plain.db.query>().toEqualTypeOf<never>();
+
+        // @ts-expect-error -- a relations-typed indexer must be given its `relations`
+        await createIndexer<typeof handledRelations>({ database: { kind: "pglite" } });
+      };
+
+      expectTypeOf(typeCheck).returns.resolves.toBeVoid();
     });
   });
 

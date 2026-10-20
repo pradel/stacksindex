@@ -1,3 +1,4 @@
+import { defineRelations } from "drizzle-orm";
 import { pgTable, primaryKey } from "drizzle-orm/pg-core";
 
 export const tokenTable = pgTable(
@@ -58,4 +59,34 @@ export const swapTable = pgTable(
       columns: [table.txId, table.chainId, table.eventIndex],
     }),
   ],
+);
+
+/**
+ * Enables `db.query.<table>`, typed through `EventHandler<typeof relations>`.
+ * Rows are keyed by address and chain, so every join matches both.
+ */
+export const relations = defineRelations(
+  { token: tokenTable, pool: poolTable, swap: swapTable },
+  (r) => ({
+    pool: {
+      xToken: r.one.token({
+        from: [r.pool.tokenX, r.pool.chainId],
+        to: [r.token.address, r.token.chainId],
+      }),
+      yToken: r.one.token({
+        from: [r.pool.tokenY, r.pool.chainId],
+        to: [r.token.address, r.token.chainId],
+      }),
+      swaps: r.many.swap({
+        from: [r.pool.address, r.pool.chainId],
+        to: [r.swap.poolAddress, r.swap.chainId],
+      }),
+    },
+    swap: {
+      pool: r.one.pool({
+        from: [r.swap.poolAddress, r.swap.chainId],
+        to: [r.pool.address, r.pool.chainId],
+      }),
+    },
+  }),
 );

@@ -6,7 +6,7 @@ export type { LoggerLayerOptions } from "./logger/index.ts";
 
 export { IndexerDatabase, migrate } from "./database/index.ts";
 
-export type { DatabaseConfig, IndexerDb } from "./database/index.ts";
+export type { DatabaseConfig, DatabaseOptions, IndexerDb } from "./database/index.ts";
 
 export { Indexer } from "./runtime/index.ts";
 
