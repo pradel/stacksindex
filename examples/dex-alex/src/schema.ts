@@ -1,3 +1,4 @@
+import { defineRelations } from "drizzle-orm";
 import { pgTable, primaryKey } from "drizzle-orm/pg-core";
 
 export const tokenTable = pgTable(
@@ -58,4 +59,19 @@ export const swapTable = pgTable(
       columns: [table.txId, table.chainId, table.eventIndex],
     }),
   ],
+);
+
+/** Enables `db.query.<table>`, typed through `EventHandler<typeof relations>`. */
+export const relations = defineRelations(
+  { token: tokenTable, pool: poolTable, swap: swapTable },
+  (r) => ({
+    pool: {
+      xToken: r.one.token({ from: r.pool.tokenX, to: r.token.address }),
+      yToken: r.one.token({ from: r.pool.tokenY, to: r.token.address }),
+      swaps: r.many.swap(),
+    },
+    swap: {
+      pool: r.one.pool({ from: r.swap.poolAddress, to: r.pool.address }),
+    },
+  }),
 );

@@ -87,14 +87,27 @@ export function migrate(options: {
   });
 }
 
-const connect = (config: DatabaseConfig): Effect.Effect<IndexerDb, DatabaseError, Scope.Scope> =>
+export interface DatabaseOptions {
+  /**
+   * Drizzle relations from `defineRelations`, enabling `db.query` on the
+   * database handle. Type handlers with the same value: `HandlerContext<typeof relations>`.
+   */
+  relations?: AnyRelations;
+}
+
+const connect = (
+  config: DatabaseConfig,
+  options?: DatabaseOptions,
+): Effect.Effect<IndexerDb, DatabaseError, Scope.Scope> =>
   Effect.gen(function* () {
+    const drizzleConfig = { relations: options?.relations };
+
     if (config.kind === "pglite") {
       const clientContext = yield* Layer.build(
         PgliteClient.layer(config.directory ? { dataDir: config.directory } : {}),
       ).pipe(Effect.mapError((cause) => new DatabaseError({ operation: "connect", cause })));
 
-      return yield* makePgliteWithDefaults().pipe(Effect.provide(clientContext));
+      return yield* makePgliteWithDefaults(drizzleConfig).pipe(Effect.provide(clientContext));
     }
 
     const clientContext = yield* Layer.build(
@@ -103,7 +116,7 @@ const connect = (config: DatabaseConfig): Effect.Effect<IndexerDb, DatabaseError
       }),
     ).pipe(Effect.mapError((cause) => new DatabaseError({ operation: "connect", cause })));
 
-    return yield* makePgWithDefaults().pipe(Effect.provide(clientContext));
+    return yield* makePgWithDefaults(drizzleConfig).pipe(Effect.provide(clientContext));
   });
 
 export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>()(
@@ -115,8 +128,9 @@ export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>
   /** Opens the database and creates or upgrades the indexer's own tables. */
   static readonly layer = (
     config: DatabaseConfig,
+    options?: DatabaseOptions,
   ): Layer.Layer<IndexerDatabase, DatabaseError | MigrationError> =>
-    Layer.effect(IndexerDatabase, connect(config).pipe(Effect.tap(migrateInternal)));
+    Layer.effect(IndexerDatabase, connect(config, options).pipe(Effect.tap(migrateInternal)));
 
   static readonly transaction = <A, E, R>(
     f: (db: IndexerDb) => Effect.Effect<A, E, R>,

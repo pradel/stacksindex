@@ -1,5 +1,6 @@
 // oxlint-disable typescript/method-signature-style
 import type { ClarityAbi } from "clarity-abitype";
+import type { AnyRelations } from "drizzle-orm";
 import type { PgQueryResultKind } from "drizzle-orm/pg-core";
 import {
   Cause,
@@ -135,22 +136,32 @@ export interface IndexingClient {
   callReadOnly(options: UntypedCallReadOnlyFunctionParameters): Promise<ClarityJsonValue>;
 }
 
-export interface HandlerContext {
-  /** Transactional indexer database handle for the event being processed. */
-  db: IndexerDb;
+/**
+ * Context passed to a handler. `TRelations` types `db.query`: pass
+ * `typeof relations` when the indexer was created with `relations`.
+ */
+export interface HandlerContext<TRelations extends AnyRelations = AnyRelations> {
+  /**
+   * Indexer database scoped to the batch transaction: writes commit together
+   * with the indexing checkpoint, or roll back with it.
+   */
+  db: IndexerDb<TRelations>;
   /** Read-only contract client pinned to the event's block height. */
   client: IndexingClient;
   /** Console logger configured with the runtime's log level. */
   logger: Logger;
 }
 
-export type EventHandler = (event: HandlerEvent, context: HandlerContext) => Promise<void> | void;
+export type EventHandler<TRelations extends AnyRelations = AnyRelations> = (
+  event: HandlerEvent,
+  context: HandlerContext<TRelations>,
+) => Promise<void> | void;
 
-export interface Filter {
+export interface Filter<TRelations extends AnyRelations = AnyRelations> {
   /** Fully qualified contract identifier (e.g. `SP...contract-name`). */
   contractId: string;
   /** Async function called for every matching smart contract event. */
-  handler: EventHandler;
+  handler: EventHandler<TRelations>;
   /** Start indexing from this block height. Defaults to the deployment block. */
   startBlock?: number;
   /** Stop at this block height, or `"latest"` for the current chain tip. */
@@ -159,9 +170,14 @@ export interface Filter {
 
 export type LogLevel = EffectLogLevel.LogLevel;
 
-export interface IndexerOptions {
+export interface IndexerOptions<TRelations extends AnyRelations = AnyRelations> {
   /** Database for sync storage, checkpoints and your own tables. */
   database: DatabaseConfig;
+  /**
+   * Drizzle relations from `defineRelations`, enabling `db.query` on
+   * `indexer.db` and `context.db`.
+   */
+  relations?: TRelations;
   /** Which chain to index. Defaults to `"mainnet"`. */
   network?: NetworkOption;
   api?: {
@@ -187,22 +203,25 @@ export interface IndexerOptions {
  * Promise-native indexer. Owns the indexer database and the Stacks API
  * runtime; call `close()` (or use `await using`) when done.
  */
-export interface Indexer {
-  /** Indexer database handle, useful to inspect sync progress and cached data. */
-  readonly db: IndexerDb;
+export interface Indexer<TRelations extends AnyRelations = AnyRelations> {
+  /**
+   * Database handle outside any batch, to query your tables (API, reads) and
+   * the indexer's. On PGlite, queries wait for the batch in progress.
+   */
+  readonly db: IndexerDb<TRelations>;
   /**
    * Applies your drizzle-kit migrations from `migrationsFolder`. The indexer's
    * own tables live in the `stacksindex` schema and are migrated by `createIndexer`.
    */
   migrate: (options: { migrationsFolder: string }) => Promise<void>;
   /** Syncs and indexes one or more contracts up to the current chain tip. */
-  run: (filters: Filter | Filter[]) => Promise<RunResult>;
+  run: (filters: Filter<TRelations> | Filter<TRelations>[]) => Promise<RunResult>;
   /**
    * Runs `run`, then follows new blocks and indexes them as they arrive.
    * Resolves once every filter reached its `endBlock`, or when `close()` is
    * called; rejects on a fatal error.
    */
-  live: (filters: Filter | Filter[]) => Promise<void>;
+  live: (filters: Filter<TRelations> | Filter<TRelations>[]) => Promise<void>;
   /** Current phase plus the stored checkpoint, anchor and per-contract sync progress. */
   status: () => Promise<IndexerStatus>;
   /** Flush pending metrics and release the database and runtime. Safe to call multiple times. */
@@ -227,26 +246,24 @@ const makeLogger = (runSync: (effect: Effect.Effect<void>) => void): Logger => {
 };
 
 const toEffectHandler =
-  (handler: EventHandler, logger: Logger): EffectEventHandler =>
+  <TRelations extends AnyRelations>(
+    handler: EventHandler<TRelations>,
+    logger: Logger,
+  ): EffectEventHandler =>
   (event, context) =>
     Effect.gen(function* () {
-      // Awaited queries must run with the batch fiber's services: `context.db` is
-      // The transaction handle, and the open connection lives in those services.
+      // `context.db` is the transaction handle and its connection lives in the
+      // Batch fiber's services, so awaited queries must run with them.
       const services = yield* Effect.context();
       const run = Effect.runPromiseWith(services);
       const thenableClient: unknown = toThenable(context.client, run);
       // SAFETY: toThenable wraps the Effect client so every method returns a thenable at run time.
       const client = thenableClient as IndexingClient;
+      // SAFETY: The database was opened with the `relations` the handlers are typed with.
+      const db = toThenable(context.db, run) as IndexerDb<TRelations>;
 
       yield* Effect.tryPromise({
-        try: () =>
-          Promise.resolve(
-            handler(event, {
-              db: toThenable(context.db, run),
-              client,
-              logger,
-            }),
-          ),
+        try: () => Promise.resolve(handler(event, { db, client, logger })),
         catch: (err) => err,
       });
     });
@@ -256,10 +273,13 @@ const toEffectHandler =
  * The indexer is ready once the returned promise resolves: the database is
  * open and the indexer's own tables exist.
  */
-export async function createIndexer(options: IndexerOptions): Promise<Indexer> {
+export async function createIndexer<TRelations extends AnyRelations = AnyRelations>(
+  options: IndexerOptions<TRelations>,
+): Promise<Indexer<TRelations>> {
   const runtime = ManagedRuntime.make(
     IndexerService.layerWithDatabase({
       database: options.database,
+      relations: options.relations,
       network: options.network,
       api: options.api,
       finality: options.finality,
@@ -280,7 +300,8 @@ export async function createIndexer(options: IndexerOptions): Promise<Indexer> {
   }
 
   const service = Context.get(context, IndexerService);
-  const db = toThenable(Context.get(context, IndexerDatabase));
+  // SAFETY: The database was opened with `options.relations`, typed as `TRelations`.
+  const db = toThenable(Context.get(context, IndexerDatabase)) as IndexerDb<TRelations>;
   const logger = makeLogger((effect) => runtime.runSync(effect));
   let closed = false;
   const liveFibers = new Set<Fiber.Fiber<void, unknown>>();
@@ -301,7 +322,7 @@ export async function createIndexer(options: IndexerOptions): Promise<Indexer> {
     }
   };
 
-  const toEffectFilters = (filters: Filter | Filter[]): EffectFilter[] =>
+  const toEffectFilters = (filters: Filter<TRelations> | Filter<TRelations>[]): EffectFilter[] =>
     (Array.isArray(filters) ? filters : [filters]).map((filter) => ({
       contractId: filter.contractId,
       handler: toEffectHandler(filter.handler, logger),

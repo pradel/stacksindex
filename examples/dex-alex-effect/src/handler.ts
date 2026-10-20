@@ -8,10 +8,10 @@ import {
 } from "stacksindex/effect";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
-import { poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
+import { poolTable, type relations, swapTable, type Token, tokenTable } from "./schema.ts";
 
-/** `context.db`: the indexer database, scoped to the batch transaction. */
-export type AppDatabase = IndexerDb;
+/** `context.db`: the indexer database, scoped to the batch transaction and typed with `relations`. */
+export type AppDatabase = IndexerDb<typeof relations>;
 
 export const POOL_CONTRACT = "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.fixed-weight-pool-v1-01";
 
@@ -83,14 +83,10 @@ export const insertTokenIfNotExists = ({
   tokenAddress,
 }: InsertTokenIfNotExistsParams) =>
   Effect.gen(function* () {
-    const existingCheck = yield* db
-      .select()
-      .from(tokenTable)
-      .where(eq(tokenTable.address, tokenAddress))
-      .limit(1);
+    const existing = yield* db.query.token.findFirst({ where: { address: tokenAddress } });
 
-    if (existingCheck.length > 0) {
-      return existingCheck[0];
+    if (existing) {
+      return existing;
     }
 
     if (!tokenAddress.includes(".")) {
@@ -260,7 +256,7 @@ export interface CreatePoolHandlerOptions {
 export function createPoolHandler({
   chainId = CHAIN_ID,
   poolContract = POOL_CONTRACT,
-}: CreatePoolHandlerOptions = {}): EventHandler {
+}: CreatePoolHandlerOptions = {}): EventHandler<typeof relations> {
   return (event, { client, db }) =>
     Effect.gen(function* () {
       const decoded = decodeHex(event.contract_log.value.hex);
@@ -317,16 +313,11 @@ export function createPoolHandler({
       } else if (log.action === "swap-x-for-y" || log.action === "swap-y-for-x") {
         const { data } = log;
 
-        const [pool] = yield* db
-          .select()
-          .from(poolTable)
-          .where(eq(poolTable.address, data["pool-token"]))
-          .limit(1);
+        const pool = yield* db.query.pool.findFirst({ where: { address: data["pool-token"] } });
 
         let amountIn = 0n;
         let amountOut = 0n;
 
-        // oxlint-disable-next-line typescript/no-unnecessary-condition
         if (pool) {
           if (log.action === "swap-x-for-y") {
             amountIn = data["balance-x"] - pool.balanceX;
@@ -372,7 +363,6 @@ export function createPoolHandler({
           blockTime: event.block_time,
         });
 
-        // oxlint-disable-next-line typescript/no-unnecessary-condition
         if (pool && (!pool.tokenX || !pool.tokenY)) {
           yield* syncPoolTokens({
             client,

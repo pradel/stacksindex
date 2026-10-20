@@ -1,3 +1,4 @@
+import type { AnyRelations } from "drizzle-orm";
 import { Effect, type LogLevel, Schema } from "effect";
 
 import type { DatabaseConfig } from "../database/index.ts";
@@ -66,8 +67,13 @@ export interface IndexerOptions {
 }
 
 export interface IndexerWithDatabaseOptions extends IndexerOptions {
-  /** Database used for sync storage and checkpoints. */
+  /** Database for sync storage, checkpoints and your own tables. */
   database: DatabaseConfig;
+  /**
+   * Drizzle relations from `defineRelations`, enabling `context.db.query`.
+   * Type handlers with the same value: `EventHandler<typeof relations>`.
+   */
+  relations?: AnyRelations;
   /** Minimum log level for the pretty console logger. Defaults to `"Info"`. */
   logLevel?: LogLevel.LogLevel;
   /** Pushes metrics over OTLP. Unset: metrics are recorded but not exported. */

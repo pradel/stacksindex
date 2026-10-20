@@ -311,6 +311,9 @@ importers:
       '@stacks/transactions':
         specifier: 7.6.0
         version: 7.6.0
+      drizzle-orm:
+        specifier: 1.0.0-rc.5-5935859
+        version: 1.0.0-rc.5-5935859(@effect/sql-pg@4.0.2(effect@4.0.2))(@effect/sql-pglite@4.0.2(effect@4.0.2))(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(effect@4.0.2)(pg@8.23.1)(zod@4.6.5)
       indexer-e2e:
         specifier: workspace:*
         version: link:../e2e

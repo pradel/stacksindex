@@ -93,7 +93,7 @@ Define transformation logic:
 - One handler function per contract
 - Receives the raw event (`HandlerEvent`)
 - Receives `HandlerContext` with:
-  - `db`: Database instance to write to user tables
+  - `db`: the indexer database scoped to the batch transaction, which also stores the checkpoint; typed with the user's Drizzle `relations` (`HandlerContext<typeof relations>`)
   - `client`: Provides `callReadOnly(options)` pinned to the event's block for time-travel contract state lookups (supports both typed with `abi` and untyped calls). The node pins reads by index block hash only, so `tip` defaults to the event's `index_block_hash`, stored with its block during sync; an explicit `tip` must be an index block hash
 
 ## Stacks Event Structure
@@ -326,8 +326,8 @@ HandlerEvent {
 Context passed to handler execution:
 
 ```typescript
-HandlerContext {
-    db: IndexerDb                 // Transaction-scoped database handle
+HandlerContext<TRelations> {
+    db: IndexerDb<TRelations>     // Transaction-scoped database handle, typed with the user's relations
     client: {
         callReadOnly: (options) => Effect<Result<...>>
         // Supports typed calls (with abi) and untyped calls (with raw args), pinned to the index block hash of the event's block
@@ -336,7 +336,9 @@ HandlerContext {
 }
 ```
 
-The core handler contract is Effect-only. The promise entrypoint (`stacksindex`) is an adapter that exposes the same context with `client.callReadOnly` returning a `Promise`, plus a `logger` bound to the configured Effect logger. The Effect entrypoint (`stacksindex/effect`) exposes the raw services, layers, and clients.
+The core handler contract is Effect-only. The promise entrypoint (`stacksindex`) is an adapter that exposes the same context with `client.callReadOnly` returning a `Promise`, plus a `logger` bound to the configured Effect logger. Its awaited queries run with the batch fiber's services, so they use the open transaction. The Effect entrypoint (`stacksindex/effect`) exposes the raw services, layers, and clients.
+
+`relations` (from `defineRelations`) is passed to `createIndexer` or `Indexer.layerWithDatabase` and reaches drizzle when the database is opened, enabling `db.query`. The runtime itself is not generic: `Indexer.run`/`live` take `Filter<TRelations>[]` and drop the type parameter, since `context.db` is the database opened with those relations.
 
 ### Entrypoints
 
@@ -420,10 +422,11 @@ read in the previous run) stored data cannot be verified, so everything above
 The catch-up refetches from the canonical chain: the logs endpoint only returns
 canonical events, and the catch-up follows cursors returned by the same walk.
 
-Handler writes are not rolled back when a range is replayed, so handlers must
-be idempotent: upsert by primary key, or delete-then-insert, so re-executing an
-event produces the same final state. Writes for events that disappear in a
-reorg are not undone.
+Handler writes through `context.db` commit in the same transaction as the
+checkpoint, so a crash or a failed batch never applies an event twice. A rewind
+re-runs handlers for the replayed range without undoing their writes, so writes
+must be replay-safe for the unfinalized window (upsert or insert-if-absent by
+primary key). Writes for events that disappear in a reorg are not undone.
 
 ```
 ┌─────────────────────────────────────────────────────────┐

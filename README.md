@@ -23,6 +23,7 @@ Two entrypoints ship with the package:
 - **Time-Travel Read-Only Calls**: Query contract state (`client.callReadOnly`) automatically pinned to the exact block height of the event being processed.
 - **Clarity Codec Built-in**: Easily decode raw Clarity hex values to plain JavaScript objects (`decodeHex`, `cvToJSON`).
 - **Crash Recovery**: Checkpointing and resume progress stored directly in the database so sync resumes where it left off. Unfinalized data is replayed after a restart, so reorgs are handled automatically.
+- **Atomic Handler Writes**: Handler writes through `context.db` commit in the same transaction as the indexing checkpoint, so a crash or a failed batch never applies an event twice.
 - **Monitoring**: Sync, indexing, live sync, reorg and API metrics pushed over OTLP to Prometheus or any OpenTelemetry backend, plus a status call for readiness probes.
 
 ---
@@ -40,11 +41,23 @@ _(or via `npm install` / `yarn add` / `bun add`)_
 ## Quickstart (Promise)
 
 ```ts
+import { defineRelations } from "drizzle-orm";
+import { integer, pgTable, text } from "drizzle-orm/pg-core";
 import { createIndexer, decodeHex } from "stacksindex";
 
-// 1. Create the indexer: it owns the indexer database and the Stacks API client
+// Your tables live in the indexer database, next to the indexer's own tables.
+const mints = pgTable("mints", {
+  id: text().primaryKey(), // `${txId}:${eventIndex}`
+  blockHeight: integer("block_height").notNull(),
+});
+
+// Optional: enables typed `db.query.mints.findMany()` in handlers.
+const relations = defineRelations({ mints });
+
+// 1. Create the indexer: it owns the database and the Stacks API client
 await using indexer = await createIndexer({
   database: { kind: "pglite", directory: "./indexer.db" },
+  relations,
   network: "mainnet",
   api: {
     apiKey: process.env.HIRO_API_KEY, // Optional: Stacks / Hiro API key for higher rate limits
@@ -52,22 +65,25 @@ await using indexer = await createIndexer({
   logLevel: "Info",
 });
 
-// 2. Sync and index one or more contracts up to the current chain tip
+// 2. Create your tables from the migrations drizzle-kit generated for them
+await indexer.migrate({ migrationsFolder: "./drizzle" });
+
+// 3. Sync and index one or more contracts up to the current chain tip
 const result = await indexer.run({
   contractId: "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
   startBlock: 47784, // optional: start indexing from this block height
   endBlock: "latest", // optional: stop at a specific height or 'latest'
-  async handler(event, { logger }) {
+  async handler(event, { db, logger }) {
     // Decode Clarity event data
     const data = decodeHex(event.contract_log.value.hex);
 
-    logger.info("Received event", {
-      block: event.block_height,
-      txId: event.tx_id,
-    });
+    logger.info("Received event", { block: event.block_height, txId: event.tx_id });
 
-    // Write to your application database tables:
-    // await appDb.insert(myTable).values({ ... });
+    // Commits together with the indexer checkpoint
+    await db
+      .insert(mints)
+      .values({ id: `${event.tx_id}:${event.event_index}`, blockHeight: event.block_height })
+      .onConflictDoNothing();
   },
 });
 
@@ -75,6 +91,17 @@ console.log(`Indexed ${result.eventsProcessed} events`);
 ```
 
 `createIndexer` owns the database lifecycle. Call `indexer.close()` (or use `await using` as above) to release resources. Pass an array of filters to `run` to index multiple contracts in one pass.
+
+---
+
+## Writing Data
+
+Put your tables in the indexer database and write them through `context.db` in your handlers. `context.db` is scoped to the transaction that also stores the indexing checkpoint, so a batch's writes and its progress commit together or not at all. See [Crash Recovery & Reorgs](#crash-recovery--reorgs) for what this guarantees.
+
+- **Layout**: the indexer's tables live in the `stacksindex` Postgres schema; `public` is yours. Point drizzle-kit at the same database with `schemaFilter: ["public"]` so it ignores the indexer's tables.
+- **Migrations**: generate them with `drizzle-kit generate` and apply them with `indexer.migrate({ migrationsFolder })` (`migrate` from `stacksindex/effect`). They are tracked in drizzle's default `drizzle.__drizzle_migrations`, apart from the indexer's.
+- **Typed queries**: pass `relations` from `defineRelations` to `createIndexer` (or `Indexer.layerWithDatabase`) to enable `db.query`. Handlers defined inline infer it; type the others with `EventHandler<typeof relations>`.
+- **Reads**: `indexer.db` (the `IndexerDatabase` service with the Effect API) queries the same database outside any batch, e.g. from an API. PGlite runs one query at a time, so on PGlite reads wait for the batch in progress; on Postgres they don't.
 
 ---
 
@@ -115,22 +142,28 @@ The same indexer can be composed entirely with Effect services and layers from `
 
 ```ts
 import { Effect } from "effect";
-import { Indexer } from "stacksindex/effect";
+import { type EventHandler, Indexer, migrate } from "stacksindex/effect";
+
+import { mints, relations } from "./schema.ts";
 
 const apiKey = process.env.HIRO_API_KEY;
 
+// Writes through `context.db` commit together with the indexer checkpoint.
+const handler: EventHandler<typeof relations> = (event, { db }) =>
+  db
+    .insert(mints)
+    .values({ id: `${event.tx_id}:${event.event_index}`, blockHeight: event.block_height })
+    .onConflictDoNothing()
+    .pipe(Effect.asVoid);
+
 const program = Effect.gen(function* () {
+  yield* migrate({ migrationsFolder: "./drizzle" });
+
   const indexer = yield* Indexer;
 
   // `indexer.live(filters)` follows new blocks after the historical pass.
   yield* indexer.run([
-    {
-      contractId: "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
-      handler: (event) =>
-        Effect.logInfo("Received event").pipe(
-          Effect.annotateLogs({ block: event.block_height, txId: event.tx_id }),
-        ),
-    },
+    { contractId: "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles", handler },
   ]);
 });
 
@@ -139,6 +172,7 @@ await Effect.runPromise(
     Effect.provide(
       Indexer.layerWithDatabase({
         database: { kind: "pglite", directory: "./indexer.db" },
+        relations,
         network: "mainnet",
         api: { apiKey },
         logLevel: "Info",
@@ -188,7 +222,7 @@ Every run, and every new head in live sync, checks for reorgs: it compares the h
 
 Set `finality` to the deepest reorg you want handled automatically (default `6`). A reorg that replaces a block at or below `finalizedBlockHeight` fails with `ReorgError` instead of silently changing data reported as final; re-sync from an empty indexer database to recover. With `finality: 0`, any reorg that reaches indexed blocks fails this way.
 
-Handler writes are **not** rolled back when a range is replayed. Write idempotent handlers (upsert by primary key, or delete-then-insert) so re-executing an event produces the same final state. Writes for events that disappear in a reorg are not undone.
+Handler writes through `context.db` commit in the same transaction as the checkpoint, so a crash or a failed batch never applies an event twice. A rewind (a chain reorg, or a start without a sync anchor) re-runs handlers for the unfinalized blocks it replays without undoing their writes: keep writes replay-safe (upsert or insert-if-absent by primary key) for that window. Writes to other systems (another database, an HTTP call) are at-least-once.
 
 ---
 
@@ -315,6 +349,7 @@ The exporter logs its target once at `Info` when the indexer starts. Failed expo
 | Option                          | Type                                             | Default                          | Description                                                                                                                                      |
 | ------------------------------- | ------------------------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `database`                      | `DatabaseConfig`                                 | _Required_                       | Indexer storage. `{ kind: "pglite", directory? }` or `{ kind: "postgres", connectionString }`.                                                   |
+| `relations`                     | `Relations` from `defineRelations`               | `undefined`                      | Drizzle relations enabling typed `db.query` on `indexer.db` and `context.db`.                                                                    |
 | `network`                       | `"mainnet" \| "testnet" \| number`               | `"mainnet"`                      | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                                 |
 | `finality`                      | `number`                                         | `6`                              | Depth, in blocks, of reorgs handled by replaying; deeper reorgs fail with `ReorgError`.                                                          |
 | `api.baseUrl`                   | `string`                                         | _Network default_                | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the network default. |
@@ -331,15 +366,15 @@ The exporter logs its target once at `Info` when the indexer starts. Failed expo
 
 ### `Indexer` (Promise)
 
-| Member                  | Description                                                                                                                       |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `run(filters)`          | Syncs and indexes a single filter or an array up to the current chain tip; resolves with a `RunResult`.                           |
-| `live(filters)`         | Runs `run`, then follows new blocks. Resolves when every filter reached its `endBlock` or on `close()`; rejects on a fatal error. |
-| `db`                    | Indexer database handle for inspecting sync progress and cached data.                                                             |
-| `migrate(options)`      | Applies your drizzle-kit migrations from `options.migrationsFolder`. The indexer's own tables are created by `createIndexer`.     |
-| `status()`              | Resolves with the current [`IndexerStatus`](#indexerstatus).                                                                      |
-| `close()`               | Stops live sync, flushes pending metrics and releases database and runtime resources. Safe to call multiple times.                |
-| `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                        |
+| Member                  | Description                                                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `run(filters)`          | Syncs and indexes a single filter or an array up to the current chain tip; resolves with a `RunResult`.                                          |
+| `live(filters)`         | Runs `run`, then follows new blocks. Resolves when every filter reached its `endBlock` or on `close()`; rejects on a fatal error.                |
+| `db`                    | Database handle outside any batch, to query your tables (e.g. from an API) and the indexer's. On PGlite, queries wait for the batch in progress. |
+| `migrate(options)`      | Applies your drizzle-kit migrations from `options.migrationsFolder`. The indexer's own tables are created by `createIndexer`.                    |
+| `status()`              | Resolves with the current [`IndexerStatus`](#indexerstatus).                                                                                     |
+| `close()`               | Stops live sync, flushes pending metrics and releases database and runtime resources. Safe to call multiple times.                               |
+| `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                                       |
 
 ### Filter
 

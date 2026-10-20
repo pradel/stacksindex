@@ -5,6 +5,7 @@ import { Cause, Effect, Exit, Fiber } from "effect";
 import { Indexer, loggerLayer, migrate } from "stacksindex/effect";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
+import { relations } from "./schema.ts";
 
 const apiKey = process.env.HIRO_API_KEY;
 
@@ -36,6 +37,7 @@ const fiber = Effect.runFork(
       // `context.db` commit with the checkpoint.
       Indexer.layerWithDatabase({
         database: { kind: "pglite", directory: "./data/indexer.db" },
+        relations,
         network: "mainnet",
         api: { apiKey },
         live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },

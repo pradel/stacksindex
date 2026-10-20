@@ -4,6 +4,7 @@ import process from "node:process";
 import { createIndexer, type Indexer } from "stacksindex";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
+import { relations } from "./schema.ts";
 
 const apiKey = process.env.HIRO_API_KEY;
 
@@ -12,7 +13,7 @@ const otlpBaseUrl = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
 fs.mkdirSync("./data", { recursive: true });
 
-let indexer: Indexer | undefined;
+let indexer: Indexer<typeof relations> | undefined;
 
 let isShuttingDown = false;
 
@@ -50,6 +51,7 @@ try {
   // App's tables (`public`), so handler writes commit with the checkpoint.
   indexer = await createIndexer({
     database: { kind: "pglite", directory: "./data/indexer.db" },
+    relations,
     network: "mainnet",
     api: { apiKey },
     live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },

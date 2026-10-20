@@ -1,3 +1,4 @@
+import type { AnyRelations } from "drizzle-orm";
 import { Cause, Context, Effect, Exit, Layer, Metric, Ref } from "effect";
 import { Socket } from "effect/socket";
 
@@ -41,18 +42,31 @@ export type { OtlpOptions, TelemetryOptions } from "../telemetry/index.ts";
 export interface IndexerService {
   /**
    * Syncs and indexes every filter up to the chain tip read at the start of the
-   * call, then returns.
+   * call, then returns. `TRelations` must match the `relations` the
+   * `IndexerDatabase` was opened with.
    */
-  readonly run: (filters: Filter[]) => Effect.Effect<RunResult, IndexerError>;
+  readonly run: <TRelations extends AnyRelations>(
+    filters: Filter<TRelations>[],
+  ) => Effect.Effect<RunResult, IndexerError>;
   /**
    * Runs `run`, then follows new blocks and indexes them as they arrive. Ends
    * once every filter reached its `endBlock`; runs until interrupted when a
    * filter has none.
    */
-  readonly live: (filters: Filter[]) => Effect.Effect<void, IndexerError>;
+  readonly live: <TRelations extends AnyRelations>(
+    filters: Filter<TRelations>[],
+  ) => Effect.Effect<void, IndexerError>;
   /** Current phase plus the stored checkpoint, anchor and per-contract sync progress. */
   readonly status: Effect.Effect<IndexerStatus, SyncStoreError>;
 }
+
+/**
+ * Handlers are typed with the relations of the database they run against;
+ * `context.db` is that database at run time, so the runtime drops the type.
+ */
+const eraseRelations = <TRelations extends AnyRelations>(filters: Filter<TRelations>[]): Filter[] =>
+  // SAFETY: `context.db` is the IndexerDatabase, opened with the relations the handlers are typed with.
+  filters as Filter[];
 
 export class Indexer extends Context.Service<Indexer, IndexerService>()(
   "stacksindex/runtime/Indexer",
@@ -114,14 +128,14 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
               return Indexer.of({
                 run: (filters) =>
                   trackRun(
-                    runHistorical(filters, config, sync).pipe(
+                    runHistorical(eraseRelations(filters), config, sync).pipe(
                       Effect.provideService(StacksClient, client),
                       Effect.provideService(IndexerDatabase, database),
                     ),
                   ),
                 live: (filters) =>
                   trackRun(
-                    runLive(filters, config, sync).pipe(
+                    runLive(eraseRelations(filters), config, sync).pipe(
                       Effect.provideService(StacksClient, client),
                       Effect.provideService(IndexerDatabase, database),
                       Effect.provideService(Socket.WebSocketConstructor, webSocketConstructor),
@@ -162,7 +176,7 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
     }).pipe(
       // Built after the database and released before it, after the indexer.
       Layer.provide(telemetryLayer(options.telemetry)),
-      Layer.provideMerge(IndexerDatabase.layer(options.database)),
+      Layer.provideMerge(IndexerDatabase.layer(options.database, { relations: options.relations })),
       Layer.provideMerge(loggerLayer({ level: options.logLevel })),
     );
 }

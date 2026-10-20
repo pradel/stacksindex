@@ -2,6 +2,7 @@ import type { RecordedTraceEvent, TraceCollector } from "indexer-e2e/src/tracer.
 import {
   createIndexer,
   type ClarityJsonValue,
+  type DatabaseConfig,
   type Filter,
   type Indexer,
   type IndexerPhase,
@@ -10,10 +11,13 @@ import {
 
 import { DEVNET_API_URL, waitUntil } from "./chain.ts";
 
-/** Indexer on a fresh in-memory database, reading the devnet API. */
-export function createDevnetIndexer(live?: LiveOptions): Promise<Indexer> {
+/** Indexer reading the devnet API, on a fresh in-memory database by default. */
+export function createDevnetIndexer(
+  live?: LiveOptions,
+  database: DatabaseConfig = { kind: "pglite" },
+): Promise<Indexer> {
   return createIndexer({
-    database: { kind: "pglite" },
+    database,
     // Clarinet devnet uses the testnet chain id; only the API URL differs.
     network: "testnet",
     api: { baseUrl: DEVNET_API_URL },

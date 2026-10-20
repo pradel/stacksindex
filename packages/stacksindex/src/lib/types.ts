@@ -1,6 +1,7 @@
 // oxlint-disable typescript/method-signature-style
 
 import type { ClarityAbi } from "clarity-abitype";
+import type { AnyRelations } from "drizzle-orm";
 import type { Effect, Schema } from "effect";
 
 import type { ClarityJsonValue } from "../codec/index.ts";
@@ -44,16 +45,23 @@ export interface IndexingClient {
   ): Effect.Effect<ClarityJsonValue, StacksApiError>;
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any
-export interface HandlerContext<_TSchema extends Record<string, unknown> = any> {
-  db: IndexerDb;
+/**
+ * Context passed to a handler. `TRelations` types `db.query`: use the
+ * `relations` the database was opened with (`typeof relations`).
+ */
+export interface HandlerContext<TRelations extends AnyRelations = AnyRelations> {
+  /**
+   * Indexer database scoped to the batch transaction: writes commit together
+   * with the indexing checkpoint, or roll back with it.
+   */
+  db: IndexerDb<TRelations>;
   client: IndexingClient;
   decode: <A>(schema: Schema.Schema<A>, repr: string) => Effect.Effect<A, unknown>;
 }
 
-export type EventHandler = (
+export type EventHandler<TRelations extends AnyRelations = AnyRelations> = (
   event: HandlerEvent,
-  context: HandlerContext,
+  context: HandlerContext<TRelations>,
 ) => Effect.Effect<void, any>;
 
 export type Handlers = Record<string, EventHandler | undefined>;

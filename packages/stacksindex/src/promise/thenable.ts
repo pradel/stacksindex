@@ -12,6 +12,13 @@ export type ThenableRunner = <A, E>(effect: Effect.Effect<A, E>) => Promise<A>;
 const runWithoutServices: ThenableRunner = (effect) => Effect.runPromise(effect);
 
 /**
+ * Drizzle exposes relational query builders as plain properties
+ * (`db.query.<table>.findMany()`), not method results, so this subtree is
+ * wrapped property by property.
+ */
+const RELATIONAL_QUERY_PROPERTY = "query";
+
+/**
  * Wraps an Effect so it can also be awaited as a Promise.
  *
  * `run` executes awaited Effects. Pass `Effect.runPromiseWith(services)` to
@@ -25,6 +32,10 @@ export function toThenable<A, E>(
 export function toThenable<T>(target: T, run?: ThenableRunner): T;
 
 export function toThenable<T>(target: T, run: ThenableRunner = runWithoutServices): T {
+  return wrap(target, run, false);
+}
+
+function wrap<T>(target: T, run: ThenableRunner, wrapProperties: boolean): T {
   if (!isProxyable(target)) {
     return target;
   }
@@ -47,11 +58,22 @@ export function toThenable<T>(target: T, run: ThenableRunner = runWithoutService
         return function get(this: any, ...args: any[]) {
           const res = orig.apply(this === receiver ? t : this, args);
 
-          return toThenable(res, run);
+          return wrap(res, run, false);
         };
       }
 
-      return orig;
+      if (!wrapProperties && prop !== RELATIONAL_QUERY_PROPERTY) {
+        return orig;
+      }
+
+      // A read-only, non-configurable property must be returned as is (Proxy invariant).
+      const descriptor = Reflect.getOwnPropertyDescriptor(t, prop);
+
+      if (descriptor?.configurable === false && descriptor.writable === false) {
+        return orig;
+      }
+
+      return wrap(orig, run, true);
     },
   });
 }
