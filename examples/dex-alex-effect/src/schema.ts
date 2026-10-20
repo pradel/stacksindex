@@ -61,17 +61,32 @@ export const swapTable = pgTable(
   ],
 );
 
-/** Enables `db.query.<table>`, typed through `EventHandler<typeof relations>`. */
+/**
+ * Enables `db.query.<table>`, typed through `EventHandler<typeof relations>`.
+ * Rows are keyed by address and chain, so every join matches both.
+ */
 export const relations = defineRelations(
   { token: tokenTable, pool: poolTable, swap: swapTable },
   (r) => ({
     pool: {
-      xToken: r.one.token({ from: r.pool.tokenX, to: r.token.address }),
-      yToken: r.one.token({ from: r.pool.tokenY, to: r.token.address }),
-      swaps: r.many.swap(),
+      xToken: r.one.token({
+        from: [r.pool.tokenX, r.pool.chainId],
+        to: [r.token.address, r.token.chainId],
+      }),
+      yToken: r.one.token({
+        from: [r.pool.tokenY, r.pool.chainId],
+        to: [r.token.address, r.token.chainId],
+      }),
+      swaps: r.many.swap({
+        from: [r.pool.address, r.pool.chainId],
+        to: [r.swap.poolAddress, r.swap.chainId],
+      }),
     },
     swap: {
-      pool: r.one.pool({ from: r.swap.poolAddress, to: r.pool.address }),
+      pool: r.one.pool({
+        from: [r.swap.poolAddress, r.swap.chainId],
+        to: [r.pool.address, r.pool.chainId],
+      }),
     },
   }),
 );

@@ -1,6 +1,6 @@
 // oxlint-disable typescript/method-signature-style
 import type { ClarityAbi } from "clarity-abitype";
-import type { AnyRelations } from "drizzle-orm";
+import type { AnyRelations, EmptyRelations } from "drizzle-orm";
 import type { PgQueryResultKind } from "drizzle-orm/pg-core";
 import {
   Cause,
@@ -140,7 +140,7 @@ export interface IndexingClient {
  * Context passed to a handler. `TRelations` types `db.query`: pass
  * `typeof relations` when the indexer was created with `relations`.
  */
-export interface HandlerContext<TRelations extends AnyRelations = AnyRelations> {
+export interface HandlerContext<TRelations extends AnyRelations = EmptyRelations> {
   /**
    * Indexer database scoped to the batch transaction: writes commit together
    * with the indexing checkpoint, or roll back with it.
@@ -152,12 +152,12 @@ export interface HandlerContext<TRelations extends AnyRelations = AnyRelations> 
   logger: Logger;
 }
 
-export type EventHandler<TRelations extends AnyRelations = AnyRelations> = (
+export type EventHandler<TRelations extends AnyRelations = EmptyRelations> = (
   event: HandlerEvent,
   context: HandlerContext<TRelations>,
 ) => Promise<void> | void;
 
-export interface Filter<TRelations extends AnyRelations = AnyRelations> {
+export interface Filter<TRelations extends AnyRelations = EmptyRelations> {
   /** Fully qualified contract identifier (e.g. `SP...contract-name`). */
   contractId: string;
   /** Async function called for every matching smart contract event. */
@@ -170,7 +170,7 @@ export interface Filter<TRelations extends AnyRelations = AnyRelations> {
 
 export type LogLevel = EffectLogLevel.LogLevel;
 
-export interface IndexerOptions<TRelations extends AnyRelations = AnyRelations> {
+export interface IndexerOptions<TRelations extends AnyRelations = EmptyRelations> {
   /** Database for sync storage, checkpoints and your own tables. */
   database: DatabaseConfig;
   /**
@@ -203,7 +203,7 @@ export interface IndexerOptions<TRelations extends AnyRelations = AnyRelations> 
  * Promise-native indexer. Owns the indexer database and the Stacks API
  * runtime; call `close()` (or use `await using`) when done.
  */
-export interface Indexer<TRelations extends AnyRelations = AnyRelations> {
+export interface Indexer<TRelations extends AnyRelations = EmptyRelations> {
   /**
    * Database handle outside any batch, to query your tables (API, reads) and
    * the indexer's. On PGlite, queries wait for the batch in progress.
@@ -271,9 +271,16 @@ const toEffectHandler =
 /**
  * Creates a promise-native indexer from a database and network configuration.
  * The indexer is ready once the returned promise resolves: the database is
- * open and the indexer's own tables exist.
+ * open and the indexer's own tables exist. `db.query` is typed only when
+ * `relations` is passed, as drizzle only builds it from them.
  */
-export async function createIndexer<TRelations extends AnyRelations = AnyRelations>(
+export function createIndexer<TRelations extends AnyRelations>(
+  options: IndexerOptions<TRelations> & { relations: TRelations },
+): Promise<Indexer<TRelations>>;
+
+export function createIndexer(options: IndexerOptions): Promise<Indexer>;
+
+export async function createIndexer<TRelations extends AnyRelations>(
   options: IndexerOptions<TRelations>,
 ): Promise<Indexer<TRelations>> {
   const runtime = ManagedRuntime.make(

@@ -3468,6 +3468,20 @@ describe("historical runtime with handlers", () => {
 
       expectTypeOf(program).toEqualTypeOf<Effect.Effect<RunResult, IndexerError, Indexer>>();
     });
+
+    test("types db.query only for a promise indexer created with relations", () => {
+      // Type-level only: never called, so no database is opened.
+      const typeCheck = async () => {
+        const plain = await createIndexer({ database: { kind: "pglite" } });
+
+        expectTypeOf<keyof typeof plain.db.query>().toEqualTypeOf<never>();
+
+        // @ts-expect-error -- a relations-typed indexer must be given its `relations`
+        await createIndexer<typeof handledRelations>({ database: { kind: "pglite" } });
+      };
+
+      expectTypeOf(typeCheck).returns.resolves.toBeVoid();
+    });
   });
 
   test("filters events and starts synchronization at startBlock", async () => {
