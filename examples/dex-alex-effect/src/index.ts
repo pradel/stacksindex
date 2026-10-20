@@ -2,7 +2,7 @@ import fs from "node:fs";
 import process from "node:process";
 
 import { Cause, Effect, Exit, Fiber } from "effect";
-import { Indexer, loggerLayer, makeDatabase } from "stacksindex/effect";
+import { Indexer, loggerLayer, migrate } from "stacksindex/effect";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 
@@ -11,24 +11,18 @@ const apiKey = process.env.HIRO_API_KEY;
 // `pnpm dev --live` keeps following new blocks after the historical sync.
 const isLive = process.argv.includes("--live");
 
+fs.mkdirSync("./data", { recursive: true });
+
 const program = Effect.gen(function* () {
-  yield* Effect.sync(() => {
-    fs.mkdirSync("./data", { recursive: true });
-  });
-
-  const appDatabase = yield* makeDatabase({
-    kind: "pglite",
-    directory: "./data/app.db",
-  });
-
-  yield* appDatabase.migrate({ migrationsFolder: "./drizzle" });
+  // The app's tables live in `public`, next to the indexer's `stacksindex` schema.
+  yield* migrate({ migrationsFolder: "./drizzle" });
 
   const indexer = yield* Indexer;
 
   const filters = [
     {
       contractId: POOL_CONTRACT,
-      handler: createPoolHandler({ db: appDatabase.db }),
+      handler: createPoolHandler(),
     },
   ];
 
@@ -36,8 +30,10 @@ const program = Effect.gen(function* () {
 });
 
 const fiber = Effect.runFork(
-  Effect.scoped(program).pipe(
+  program.pipe(
     Effect.provide(
+      // One database for the indexer and the app, so handler writes through
+      // `context.db` commit with the checkpoint.
       Indexer.layerWithDatabase({
         database: { kind: "pglite", directory: "./data/indexer.db" },
         network: "mainnet",

@@ -1,6 +1,16 @@
-import { bigint, boolean, index, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, pgSchema, primaryKey, text } from "drizzle-orm/pg-core";
 
-export const blocksTable = pgTable(
+/**
+ * Postgres schema that holds every table owned by the indexer, so user tables
+ * in `public` can share the database without name collisions.
+ */
+export const STACKSINDEX_SCHEMA = "stacksindex";
+
+// Not exported, so drizzle-kit emits no `CREATE SCHEMA`: the migrator creates
+// It first because it also holds the internal migrations table.
+const stacksindexSchema = pgSchema(STACKSINDEX_SCHEMA);
+
+export const blocksTable = stacksindexSchema.table(
   "blocks",
   (table) => ({
     chainId: table.bigint({ mode: "bigint" }).notNull(),
@@ -20,7 +30,7 @@ export const blocksTable = pgTable(
   ],
 );
 
-export const transactionsTable = pgTable(
+export const transactionsTable = stacksindexSchema.table(
   "transactions",
   (table) => ({
     chainId: table.bigint({ mode: "bigint" }).notNull(),
@@ -42,7 +52,7 @@ export const transactionsTable = pgTable(
   ],
 );
 
-export const syncProgressTable = pgTable(
+export const syncProgressTable = stacksindexSchema.table(
   "sync_progress",
   (table) => ({
     chainId: table.bigint({ mode: "bigint" }).notNull(),
@@ -60,7 +70,7 @@ export const syncProgressTable = pgTable(
   ],
 );
 
-export const eventsTable = pgTable(
+export const eventsTable = stacksindexSchema.table(
   "events",
   (table) => ({
     chainId: table.bigint({ mode: "bigint" }).notNull(),
@@ -82,7 +92,7 @@ export const eventsTable = pgTable(
   ],
 );
 
-export const checkpointsTable = pgTable(
+export const checkpointsTable = stacksindexSchema.table(
   "checkpoints",
   (table) => ({
     chainId: table.bigint({ mode: "bigint" }).notNull(),
@@ -104,7 +114,7 @@ export const checkpointsTable = pgTable(
  * indexed, and its hash proves at the next run that every stored block at or
  * below it is still canonical.
  */
-export const syncAnchorsTable = pgTable(
+export const syncAnchorsTable = stacksindexSchema.table(
   "sync_anchors",
   (table) => ({
     chainId: table.bigint({ mode: "bigint" }).notNull(),

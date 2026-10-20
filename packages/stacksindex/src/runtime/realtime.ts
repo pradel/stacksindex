@@ -96,7 +96,6 @@ function isTransientError(error: IndexerError): boolean {
     Predicate.isTagged(error, "ReorgError") ||
     Predicate.isTagged(error, "SyncStoreError") ||
     Predicate.isTagged(error, "DatabaseError") ||
-    Predicate.isTagged(error, "MigrationError") ||
     Predicate.isTagged(error, "FilterValidationError") ||
     Predicate.isTagged(error, "InvalidCursorError")
   );

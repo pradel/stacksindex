@@ -1,9 +1,6 @@
 import fs from "node:fs";
 import process from "node:process";
 
-import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import { createIndexer, type Indexer } from "stacksindex";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
@@ -15,14 +12,6 @@ const otlpBaseUrl = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
 fs.mkdirSync("./data", { recursive: true });
 
-const appClient = new PGlite("./data/app.db");
-
-await appClient.waitReady;
-
-const appDb = drizzle({ client: appClient });
-
-await migrate(appDb, { migrationsFolder: "./drizzle" });
-
 let indexer: Indexer | undefined;
 
 let isShuttingDown = false;
@@ -33,12 +22,6 @@ async function shutdown(code: number) {
   }
 
   isShuttingDown = true;
-
-  try {
-    await appClient.close();
-  } catch {
-    // Ignore error on close
-  }
 
   try {
     await indexer?.close();
@@ -63,6 +46,8 @@ process.on("SIGTERM", () => {
 const isLive = process.argv.includes("--live");
 
 try {
+  // One database holds the indexer's tables (`stacksindex` schema) and the
+  // App's tables (`public`), so handler writes commit with the checkpoint.
   indexer = await createIndexer({
     database: { kind: "pglite", directory: "./data/indexer.db" },
     network: "mainnet",
@@ -71,9 +56,11 @@ try {
     telemetry: otlpBaseUrl ? { otlp: { baseUrl: otlpBaseUrl } } : undefined,
   });
 
+  await indexer.migrate({ migrationsFolder: "./drizzle" });
+
   const filter = {
     contractId: POOL_CONTRACT,
-    handler: createPoolHandler({ db: appDb }),
+    handler: createPoolHandler(),
   };
 
   await (isLive ? indexer.live(filter) : indexer.run(filter));

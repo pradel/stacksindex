@@ -472,7 +472,6 @@ describe("live indexing", () => {
       logLevel: "None",
     });
 
-    await indexer.migrate();
     await indexer.db.insert(syncProgressTable).values({
       chainId: 1n,
       contractId: CONTRACT_ID,

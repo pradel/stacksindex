@@ -3,7 +3,12 @@ import { Socket } from "effect/socket";
 
 import { IndexerDatabase } from "../database/index.ts";
 import { StacksClient } from "../datasources/api/index.ts";
-import type { ConfigurationError, DatabaseError, SyncStoreError } from "../lib/errors.ts";
+import type {
+  ConfigurationError,
+  DatabaseError,
+  MigrationError,
+  SyncStoreError,
+} from "../lib/errors.ts";
 import { loggerLayer } from "../logger/index.ts";
 import { Sync } from "../sync/index.ts";
 import { telemetryLayer } from "../telemetry/index.ts";
@@ -143,11 +148,12 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
   /**
    * Batteries-included layer: provides `Indexer`, `IndexerDatabase`, the
    * pretty console logger and, when `telemetry.otlp` is set, the OTLP metrics
-   * exporter from a single config. Closing the layer flushes the exporter.
+   * exporter from a single config. Opening the database creates or upgrades
+   * the indexer's own tables. Closing the layer flushes the exporter.
    */
   static readonly layerWithDatabase = (
     options: IndexerWithDatabaseOptions,
-  ): Layer.Layer<Indexer | IndexerDatabase, ConfigurationError | DatabaseError> =>
+  ): Layer.Layer<Indexer | IndexerDatabase, ConfigurationError | DatabaseError | MigrationError> =>
     Indexer.layer({
       network: options.network,
       api: options.api,

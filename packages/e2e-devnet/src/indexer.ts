@@ -11,8 +11,8 @@ import {
 import { DEVNET_API_URL, waitUntil } from "./chain.ts";
 
 /** Indexer on a fresh in-memory database, reading the devnet API. */
-export async function createDevnetIndexer(live?: LiveOptions): Promise<Indexer> {
-  const indexer = await createIndexer({
+export function createDevnetIndexer(live?: LiveOptions): Promise<Indexer> {
+  return createIndexer({
     database: { kind: "pglite" },
     // Clarinet devnet uses the testnet chain id; only the API URL differs.
     network: "testnet",
@@ -20,11 +20,6 @@ export async function createDevnetIndexer(live?: LiveOptions): Promise<Indexer> 
     live,
     logLevel: "Warn",
   });
-
-  // `status()` reads the indexer tables, so create them before the first run.
-  await indexer.migrate();
-
-  return indexer;
 }
 
 export type ContractRange = Omit<Filter, "handler">;

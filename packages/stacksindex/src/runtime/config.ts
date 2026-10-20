@@ -9,7 +9,6 @@ import {
   type FilterValidationError,
   type HandlerExecutionError,
   type InvalidCursorError,
-  type MigrationError,
   type ReorgError,
   type SyncStoreError,
   type TransactionBatchError,
@@ -95,7 +94,6 @@ export type IndexerError =
   | SyncStoreError
   | TransactionBatchError
   | DatabaseError
-  | MigrationError
   | InvalidCursorError;
 
 const IndexerOptionsSchema = Schema.Struct({
