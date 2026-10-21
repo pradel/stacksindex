@@ -276,7 +276,7 @@ const storedEventRow = (txId: string, blockHeight: number, eventIndex: number) =
   eventIndex,
   eventType: "smart_contract_log",
   topic: "print",
-  valueHex: "0x01",
+  valueHex: "0x0703",
   valueRepr: "(ok true)",
   blockHeight: BigInt(blockHeight),
 });
@@ -434,7 +434,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -471,7 +471,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -493,7 +493,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -523,7 +523,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -684,7 +684,11 @@ describe("historical runtime", () => {
         {
           event_index: 0,
           event_type: "smart_contract_log",
-          contract_log: { contract_id: contractId, topic: "print", value: { hex: "", repr: "" } },
+          contract_log: {
+            contract_id: contractId,
+            topic: "print",
+            value: { hex: "0x0703", repr: "(ok true)" },
+          },
         },
       ],
     });
@@ -869,7 +873,7 @@ describe("historical runtime", () => {
               contract_log: {
                 contract_id: contractA,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -894,7 +898,7 @@ describe("historical runtime", () => {
               contract_log: {
                 contract_id: contractB,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -920,7 +924,7 @@ describe("historical runtime", () => {
               contract_log: {
                 contract_id: contractA,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -946,7 +950,7 @@ describe("historical runtime", () => {
               contract_log: {
                 contract_id: contractB,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -1054,7 +1058,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -1201,7 +1205,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -1287,7 +1291,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -1324,7 +1328,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -1471,7 +1475,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "0x01", repr: "123" },
+                  value: { hex: "0x010000000000000000000000000000007b", repr: "u123" },
                 },
               },
             ],
@@ -1512,7 +1516,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "0x01", repr: "123" },
+                  value: { hex: "0x010000000000000000000000000000007b", repr: "u123" },
                 },
               },
             ],
@@ -1545,7 +1549,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "0x01", repr: "123" },
+                  value: { hex: "0x010000000000000000000000000000007b", repr: "u123" },
                 },
               },
             ],
@@ -1599,8 +1603,8 @@ describe("historical runtime", () => {
       eventType: "smart_contract_log",
       txId: "tx-1",
       eventIndex: 1,
-      valueHex: "0x01",
-      valueRepr: "123",
+      valueHex: "0x010000000000000000000000000000007b",
+      valueRepr: "u123",
     });
   });
 });
@@ -1705,7 +1709,11 @@ describe("historical runtime with handlers", () => {
         {
           event_index: 0,
           event_type: "smart_contract_log",
-          contract_log: { contract_id: contractId, topic: "print", value: { hex: "", repr: "" } },
+          contract_log: {
+            contract_id: contractId,
+            topic: "print",
+            value: { hex: "0x0703", repr: "(ok true)" },
+          },
         },
       ],
     });
@@ -1879,7 +1887,7 @@ describe("historical runtime with handlers", () => {
               contract_log: {
                 contract_id: contractA,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -1905,7 +1913,7 @@ describe("historical runtime with handlers", () => {
               contract_log: {
                 contract_id: contractB,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -2004,7 +2012,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2041,7 +2049,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2066,7 +2074,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2198,7 +2206,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2492,7 +2500,7 @@ describe("historical runtime with handlers", () => {
           contract_log: {
             contract_id: contractId,
             topic: "print",
-            value: { hex: "0x01", repr: "(ok true)" },
+            value: { hex: "0x0703", repr: "(ok true)" },
           },
         },
       ],
@@ -2863,7 +2871,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2900,7 +2908,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2925,7 +2933,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3133,7 +3141,7 @@ describe("historical runtime with handlers", () => {
                   contract_log: {
                     contract_id: contractId,
                     topic: "print",
-                    value: { hex: "", repr: "" },
+                    value: { hex: "0x0703", repr: "(ok true)" },
                   },
                 },
               ],
@@ -3166,7 +3174,7 @@ describe("historical runtime with handlers", () => {
                   contract_log: {
                     contract_id: contractId,
                     topic: "print",
-                    value: { hex: "", repr: "" },
+                    value: { hex: "0x0703", repr: "(ok true)" },
                   },
                 },
               ],
@@ -3191,7 +3199,7 @@ describe("historical runtime with handlers", () => {
                   contract_log: {
                     contract_id: contractId,
                     topic: "print",
-                    value: { hex: "", repr: "" },
+                    value: { hex: "0x0703", repr: "(ok true)" },
                   },
                 },
               ],
@@ -3545,7 +3553,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3582,7 +3590,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3607,7 +3615,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3716,7 +3724,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3753,7 +3761,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3775,7 +3783,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3805,7 +3813,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3847,7 +3855,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3972,7 +3980,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4056,7 +4064,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4081,7 +4089,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
               {
@@ -4091,7 +4099,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4133,7 +4141,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4170,7 +4178,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4369,7 +4377,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4394,7 +4402,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4436,7 +4444,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4592,7 +4600,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4635,7 +4643,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4739,7 +4747,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4782,7 +4790,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4858,7 +4866,7 @@ describe("historical runtime with handlers", () => {
               contract_log: {
                 contract_id: contractId,
                 topic: "print",
-                value: { hex: "0x01", repr: "(ok true)" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -4952,7 +4960,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5018,7 +5026,7 @@ describe("historical runtime with handlers", () => {
           contract_log: {
             contract_id: contractId,
             topic: "print",
-            value: { hex: "", repr: "" },
+            value: { hex: "0x0703", repr: "(ok true)" },
           },
         },
       ],
@@ -5076,7 +5084,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5099,7 +5107,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5127,7 +5135,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
               {
@@ -5137,7 +5145,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
               {
@@ -5147,7 +5155,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5270,7 +5278,7 @@ describe("historical runtime with handlers", () => {
           contract_log: {
             contract_id: contractId,
             topic: "print",
-            value: { hex: "", repr: "" },
+            value: { hex: "0x0703", repr: "(ok true)" },
           },
         },
       ],
@@ -5328,7 +5336,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5351,7 +5359,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5379,7 +5387,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5407,7 +5415,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5435,7 +5443,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5613,7 +5621,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "0x01", repr: "u1" },
+                  value: { hex: "0x0100000000000000000000000000000001", repr: "u1" },
                 },
               },
             ],
@@ -5635,7 +5643,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "0x01", repr: "u1" },
+                  value: { hex: "0x0100000000000000000000000000000001", repr: "u1" },
                 },
               },
             ],
@@ -5878,7 +5886,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5902,7 +5910,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
               {
@@ -5912,7 +5920,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -6023,7 +6031,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -6047,7 +6055,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
               {
@@ -6057,7 +6065,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -6121,7 +6129,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -6165,7 +6173,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
