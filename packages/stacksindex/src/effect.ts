@@ -26,14 +26,14 @@ export type {
 } from "./runtime/index.ts";
 
 export {
-  MAINNET_API_BASE_URL,
+  MAINNET_API_URL,
   MAINNET_CHAIN_ID,
-  TESTNET_API_BASE_URL,
+  TESTNET_API_URL,
   TESTNET_CHAIN_ID,
-  resolveNetwork,
+  resolveChain,
 } from "./lib/network.ts";
 
-export type { NetworkName, NetworkOption, ResolvedNetwork } from "./lib/network.ts";
+export type { ChainOption, ResolvedChain } from "./lib/network.ts";
 
 export { readOnly, ReadOnlyCallError, StacksClient } from "./datasources/api/index.ts";
 

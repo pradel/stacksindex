@@ -65,7 +65,7 @@ import {
 
 const makeRuntime = (input: { db: IndexerDb } & IndexerOptions) => {
   const layer = Indexer.layer({
-    network: input.network,
+    chain: input.chain,
     api: input.api,
     finality: input.finality,
   });
@@ -2991,7 +2991,7 @@ describe("historical runtime with handlers", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  test("uses custom baseUrl and apiKey when provided to runtime", async () => {
+  test("uses custom api.url and apiKey when provided to runtime", async () => {
     const contractId = "SP123.token";
     const customBaseUrl = "https://custom-stacks.example.com";
     const customApiKey = "test-api-key-123";
@@ -3047,7 +3047,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({
       db: testDb.db,
       api: {
-        baseUrl: customBaseUrl,
+        url: customBaseUrl,
         apiKey: customApiKey,
       },
     });
@@ -3256,7 +3256,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({
       db: testDb.db,
       api: {
-        baseUrl: customBaseUrl,
+        url: customBaseUrl,
         apiKey: customApiKey,
       },
     });
@@ -5530,8 +5530,8 @@ describe("historical runtime with handlers", () => {
     });
   });
 
-  test("rejects invalid custom networks", async () => {
-    const invalidNetworks = [
+  test("rejects invalid custom chain ids", async () => {
+    const invalidChainIds = [
       1.5,
       Number.NaN,
       Number.POSITIVE_INFINITY,
@@ -5540,8 +5540,11 @@ describe("historical runtime with handlers", () => {
       Number.MIN_SAFE_INTEGER - 1,
     ];
 
-    for (const network of invalidNetworks) {
-      const runtime = makeRuntime({ db: testDb.db, network });
+    for (const id of invalidChainIds) {
+      const runtime = makeRuntime({
+        db: testDb.db,
+        chain: { id, apiUrl: "https://devnet.example" },
+      });
 
       const error = await Effect.runPromise(
         runtime.run([{ contractId: "SP123.token", handler: noopHandler }]).pipe(Effect.flip),
@@ -5551,7 +5554,7 @@ describe("historical runtime with handlers", () => {
     }
   });
 
-  test("supports custom network in context", async () => {
+  test("supports a custom chain in context", async () => {
     const contractId = "SP123.custom-chain";
     const customChainId = 2147483648;
     const handler = vi.fn().mockReturnValue(Effect.void);
@@ -5683,7 +5686,7 @@ describe("historical runtime with handlers", () => {
 
     const runtime = makeRuntime({
       db: testDb.db,
-      network: customChainId,
+      chain: { id: customChainId, apiUrl: "https://devnet.example" },
     });
 
     const result = await runtime.run([{ contractId, handler }]);
@@ -5709,7 +5712,7 @@ describe("historical runtime with handlers", () => {
     expect(defaultProgress).toBeNull();
   });
 
-  test('network "testnet" uses the testnet chain ID and API', async () => {
+  test('chain "testnet" uses the testnet chain ID and API', async () => {
     const contractId = "SP123.testnet";
     const requestedUrls: string[] = [];
 
@@ -5741,7 +5744,7 @@ describe("historical runtime with handlers", () => {
 
     const runtime = makeRuntime({
       db: testDb.db,
-      network: "testnet",
+      chain: "testnet",
     });
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
@@ -5761,7 +5764,7 @@ describe("historical runtime with handlers", () => {
     expect(progress?.chainId).toBe(2_147_483_648n);
   });
 
-  test("explicit api.baseUrl overrides the network default", async () => {
+  test("explicit api.url overrides the chain default", async () => {
     const contractId = "SP123.override";
     const requestedUrls: string[] = [];
 
@@ -5793,8 +5796,8 @@ describe("historical runtime with handlers", () => {
 
     const runtime = makeRuntime({
       db: testDb.db,
-      network: "testnet",
-      api: { baseUrl: "https://custom.example" },
+      chain: "testnet",
+      api: { url: "https://custom.example" },
     });
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);

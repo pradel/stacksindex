@@ -19,8 +19,8 @@ export function createDevnetIndexer(
   return createIndexer({
     database,
     // Clarinet devnet uses the testnet chain id; only the API URL differs.
-    network: "testnet",
-    api: { baseUrl: DEVNET_API_URL },
+    chain: "testnet",
+    api: { url: DEVNET_API_URL },
     live,
     logLevel: "Warn",
   });

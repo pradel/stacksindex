@@ -14,12 +14,7 @@ import {
   type SyncStoreError,
   type TransactionBatchError,
 } from "../lib/errors.ts";
-import {
-  NetworkOptionSchema,
-  resolveNetwork,
-  type NetworkOption,
-  type ResolvedNetwork,
-} from "../lib/network.ts";
+import { type ChainOption, ChainOptionSchema, resolveChain } from "../lib/network.ts";
 import type { TelemetryOptions } from "../telemetry/index.ts";
 
 /** Default number of blocks kept unfinalized behind the chain tip. */
@@ -50,10 +45,10 @@ export interface LiveOptions {
 
 export interface IndexerOptions {
   /** Which chain to index. Defaults to `"mainnet"`. */
-  network?: NetworkOption;
+  chain?: ChainOption;
   api?: {
-    /** Overrides the network's default API endpoint. */
-    baseUrl?: string;
+    /** Overrides the chain's API URL. */
+    url?: string;
     apiKey?: string;
   };
   /**
@@ -87,7 +82,6 @@ export type ResolvedLiveConfig =
 export interface ResolvedIndexerConfig {
   chainId: number;
   api: { baseUrl: string; apiKey?: string };
-  network: ResolvedNetwork;
   finality: number;
   live: ResolvedLiveConfig;
 }
@@ -103,10 +97,10 @@ export type IndexerError =
   | InvalidCursorError;
 
 const IndexerOptionsSchema = Schema.Struct({
-  network: Schema.optional(NetworkOptionSchema),
+  chain: Schema.optional(ChainOptionSchema),
   api: Schema.optional(
     Schema.Struct({
-      baseUrl: Schema.optional(Schema.String),
+      url: Schema.optional(Schema.String),
       apiKey: Schema.optional(Schema.String),
     }),
   ),
@@ -126,8 +120,8 @@ type DecodedLiveOptions = NonNullable<(typeof IndexerOptionsSchema.Type)["live"]
 
 /**
  * The websocket URL is only resolved for the websocket transport, so a polling
- * indexer never depends on it. A default derived from an unparseable
- * `api.baseUrl` fails as a `ConfigurationError`.
+ * indexer never depends on it. A default derived from an unparseable API URL
+ * fails as a `ConfigurationError`.
  */
 function resolveLiveConfig(
   live: DecodedLiveOptions | undefined,
@@ -151,7 +145,7 @@ function resolveLiveConfig(
     try: () => defaultWebSocketUrl(baseUrl),
     catch: () =>
       new ConfigurationError({
-        message: `Cannot derive a websocket URL from api.baseUrl ${JSON.stringify(baseUrl)}; set live.webSocketUrl.`,
+        message: `Cannot derive a websocket URL from the API URL ${JSON.stringify(baseUrl)}; set live.webSocketUrl.`,
       }),
   }).pipe(
     Effect.map((webSocketUrl) => ({
@@ -168,8 +162,8 @@ export function resolveIndexerConfig(
   return Schema.decodeUnknownEffect(IndexerOptionsSchema)(options ?? {}).pipe(
     Effect.mapError((error) => new ConfigurationError({ message: error.message })),
     Effect.flatMap((decoded) => {
-      const network = resolveNetwork(decoded.network);
-      const baseUrl = decoded.api?.baseUrl ?? network.baseUrl;
+      const chain = resolveChain(decoded.chain);
+      const baseUrl = decoded.api?.url ?? chain.apiUrl;
       const api: ResolvedIndexerConfig["api"] = { baseUrl };
 
       if (decoded.api?.apiKey !== undefined) {
@@ -178,8 +172,7 @@ export function resolveIndexerConfig(
 
       return resolveLiveConfig(decoded.live, baseUrl).pipe(
         Effect.map((live) => ({
-          network,
-          chainId: network.chainId,
+          chainId: chain.chainId,
           api,
           finality: decoded.finality ?? DEFAULT_FINALITY,
           live,

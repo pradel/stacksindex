@@ -26,7 +26,7 @@ import type {
   TypedCallReadOnlyFunctionReturnType,
   UntypedCallReadOnlyFunctionParameters,
 } from "../datasources/api/index.ts";
-import type { NetworkOption } from "../lib/network.ts";
+import type { ChainOption } from "../lib/network.ts";
 import type { EventHandler as EffectEventHandler, HandlerEvent } from "../lib/types.ts";
 import {
   Indexer as IndexerService,
@@ -179,10 +179,10 @@ export interface IndexerOptions<TRelations extends AnyRelations = EmptyRelations
    */
   relations?: TRelations;
   /** Which chain to index. Defaults to `"mainnet"`. */
-  network?: NetworkOption;
+  chain?: ChainOption;
   api?: {
-    /** Overrides the network's default API endpoint. */
-    baseUrl?: string;
+    /** Overrides the chain's API URL. */
+    url?: string;
     apiKey?: string;
   };
   /**
@@ -269,7 +269,7 @@ const toEffectHandler =
     });
 
 /**
- * Creates a promise-native indexer from a database and network configuration.
+ * Creates a promise-native indexer from a database and chain configuration.
  * The indexer is ready once the returned promise resolves: the database is
  * open and the indexer's own tables exist. `db.query` is typed only when
  * `relations` is passed, as drizzle only builds it from them.
@@ -287,7 +287,7 @@ export async function createIndexer<TRelations extends AnyRelations>(
     IndexerService.layerWithDatabase({
       database: options.database,
       relations: options.relations,
-      network: options.network,
+      chain: options.chain,
       api: options.api,
       finality: options.finality,
       live: options.live,
