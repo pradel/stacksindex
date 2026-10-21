@@ -1,9 +1,9 @@
 import { createTraceCollector } from "indexer-e2e/src/tracer.ts";
 import type { Indexer, RunResult } from "stacksindex";
-import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vite-plus/test";
 
 import { EVENTS_CONTRACT, waitUntil, WALLET_1 } from "../chain.ts";
-import { createDevnetIndexer, printName, tracedFilters } from "../indexer.ts";
+import { createDevnetIndexer, contractName, printName } from "../indexer.ts";
 import {
   readSeedHistory,
   SEED_BATCH_SIZE,
@@ -17,14 +17,32 @@ describe("backfill of the seed history from the deployment block", () => {
   let indexer: Indexer;
   let seed: SeedHistory;
   let result: RunResult;
+  let logsPagesFetched = 0;
 
   beforeAll(async () => {
     seed = await waitUntil("the seed history", readSeedHistory);
-    indexer = await createDevnetIndexer();
     // No startBlock: the indexer has to find the first event itself.
-    result = await indexer.run(
-      tracedFilters(trace, [{ contractId: EVENTS_CONTRACT, endBlock: seed.endHeight }]),
-    );
+    indexer = await createDevnetIndexer({
+      trace,
+      contracts: [{ contractId: EVENTS_CONTRACT, endBlock: seed.endHeight }],
+    });
+
+    const realFetch = globalThis.fetch;
+    const logsPath = `/extended/v2/smart-contracts/${EVENTS_CONTRACT}/logs`;
+
+    vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
+      if (new URL(input instanceof Request ? input.url : input).pathname === logsPath) {
+        logsPagesFetched += 1;
+      }
+
+      return realFetch(input, init);
+    });
+
+    try {
+      result = await indexer.run();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   afterAll(async () => {
@@ -35,13 +53,12 @@ describe("backfill of the seed history from the deployment block", () => {
     const events = trace.getEvents();
     const countsByName = Object.groupBy(events, printName);
 
-    expect(result.contracts).toMatchObject([
-      {
-        contractId: EVENTS_CONTRACT,
-        status: "completed",
+    expect(result.contracts).toStrictEqual({
+      [contractName(EVENTS_CONTRACT)]: {
         eventsProcessed: SEED_EVENTS_CONTRACT_EVENTS,
+        blockHeight: seed.endHeight,
       },
-    ]);
+    });
     expect(result.eventsProcessed).toBe(SEED_EVENTS_CONTRACT_EVENTS);
     expect(events).toHaveLength(SEED_EVENTS_CONTRACT_EVENTS);
     expect(
@@ -68,9 +85,9 @@ describe("backfill of the seed history from the deployment block", () => {
     const status = await indexer.status();
 
     expect(status.phase).toBe("done");
-    expect(status.contracts).toStrictEqual([
-      { contractId: EVENTS_CONTRACT, syncedBlockHeight: seed.endHeight, isComplete: true },
-    ]);
+    expect(status.contracts).toStrictEqual({
+      [contractName(EVENTS_CONTRACT)]: { syncedBlockHeight: seed.endHeight, isComplete: true },
+    });
   });
 
   test("follows contract logs across pages without gaps or duplicates", () => {
@@ -78,7 +95,7 @@ describe("backfill of the seed history from the deployment block", () => {
     const batchEvents = events.filter((event) => printName(event) === "batch");
 
     // The logs endpoint returns at most 100 events per page.
-    expect(result.contracts[0].pagesFetched).toBeGreaterThan(1);
+    expect(logsPagesFetched).toBeGreaterThan(1);
     expect(new Set(events.map((event) => `${event.txId}:${event.eventIndex}`)).size).toBe(
       SEED_EVENTS_CONTRACT_EVENTS,
     );

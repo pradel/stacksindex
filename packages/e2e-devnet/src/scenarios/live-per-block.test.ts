@@ -12,7 +12,7 @@ import {
   submitContractCall,
   waitUntil,
 } from "../chain.ts";
-import { createDevnetIndexer, tracedFilters, waitForPhase } from "../indexer.ts";
+import { createDevnetIndexer, waitForPhase } from "../indexer.ts";
 
 /**
  * Live sync fetches a new block per block only when that costs fewer requests
@@ -73,16 +73,12 @@ describe("live sync over the per-block path", () => {
     const trace = createTraceCollector();
 
     await using indexer = await createDevnetIndexer({
-      transport: "polling",
-      pollingInterval: 500,
+      trace,
+      contracts: WATCHED_CONTRACTS.map((contractId) => ({ contractId, startBlock })),
+      live: { transport: "polling", pollingInterval: 500 },
     });
 
-    const live = indexer.live(
-      tracedFilters(
-        trace,
-        WATCHED_CONTRACTS.map((contractId) => ({ contractId, startBlock })),
-      ),
-    );
+    const live = indexer.live();
 
     const endedEarly = live.then(() => {
       throw new Error("live() ended before it was closed");

@@ -3,7 +3,7 @@ import { createTraceCollector } from "indexer-e2e/src/tracer.ts";
 import { describe, expect, test } from "vite-plus/test";
 
 import { chainTip, EVENTS_CONTRACT, RUNTIME_SENDER, submitContractCall } from "../chain.ts";
-import { createDevnetIndexer, printName, tracedFilters } from "../indexer.ts";
+import { createDevnetIndexer, printName } from "../indexer.ts";
 
 describe("aborted transactions", () => {
   test("store no events, even when they printed before aborting", async () => {
@@ -15,16 +15,16 @@ describe("aborted transactions", () => {
     ]);
 
     const trace = createTraceCollector();
-    await using indexer = await createDevnetIndexer();
+
+    await using indexer = await createDevnetIndexer({
+      trace,
+      contracts: [{ contractId: EVENTS_CONTRACT, startBlock, endBlock: succeeded.blockHeight }],
+    });
 
     expect(aborted.status).toBe("abort_by_response");
     expect(succeeded.status).toBe("success");
 
-    await indexer.run(
-      tracedFilters(trace, [
-        { contractId: EVENTS_CONTRACT, startBlock, endBlock: succeeded.blockHeight },
-      ]),
-    );
+    await indexer.run();
 
     expect(
       trace.getEvents().map((event) => [event.txId, printName(event), event.valueRepr]),

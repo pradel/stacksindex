@@ -18,6 +18,7 @@ import {
 } from "../lib/errors.ts";
 import { SLOW_OPERATION_MILLIS } from "../lib/logging.ts";
 import {
+  contractAttributes,
   syncBlock,
   syncComplete,
   syncErrors,
@@ -51,9 +52,10 @@ const MAX_CATCH_UP_PAGES = 10;
 /**
  * Filter resolved by the runtime: `endBlock` is resolved to a concrete height
  * and the handler is stripped because the syncer only needs to know what to
- * fetch.
+ * fetch. `name` is the contract's definition name, used to label metrics.
  */
 export interface SyncFilter {
+  readonly name: string;
   readonly contractId: string;
   readonly startBlock?: number;
   readonly endBlock?: number;
@@ -138,16 +140,18 @@ interface ContractMetrics {
   readonly complete: GaugeSeries;
 }
 
-function makeContractMetrics(contract: string): ContractMetrics {
+function makeContractMetrics(filter: SyncFilter): ContractMetrics {
+  const attributes = contractAttributes(filter.name, filter.contractId);
+
   return {
     pages: {
-      backfill: Metric.withAttributes(syncPages, { contract, kind: "backfill" }),
-      catchup: Metric.withAttributes(syncPages, { contract, kind: "catchup" }),
+      backfill: Metric.withAttributes(syncPages, { ...attributes, kind: "backfill" }),
+      catchup: Metric.withAttributes(syncPages, { ...attributes, kind: "catchup" }),
     },
-    transactions: Metric.withAttributes(syncTransactions, { contract }),
-    events: Metric.withAttributes(syncEvents, { contract, path: "historical" }),
-    block: Metric.withAttributes(syncBlock, { contract }),
-    complete: Metric.withAttributes(syncComplete, { contract }),
+    transactions: Metric.withAttributes(syncTransactions, attributes),
+    events: Metric.withAttributes(syncEvents, { ...attributes, path: "historical" }),
+    block: Metric.withAttributes(syncBlock, attributes),
+    complete: Metric.withAttributes(syncComplete, attributes),
   };
 }
 
@@ -197,7 +201,7 @@ function makeContractSyncState(filter: SyncFilter, syncedBlockHeight: number): C
     done: false,
     doneAtStart: false,
     syncedToHead: false,
-    metrics: makeContractMetrics(filter.contractId),
+    metrics: makeContractMetrics(filter),
   };
 }
 

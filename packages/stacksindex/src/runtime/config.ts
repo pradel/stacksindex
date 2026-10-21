@@ -1,12 +1,12 @@
-import type { AnyRelations } from "drizzle-orm";
 import { Effect, type LogLevel, Schema } from "effect";
 
-import type { DatabaseConfig } from "../database/index.ts";
+import type { Database } from "../database/index.ts";
 import { defaultWebSocketUrl, type HeadsTransport } from "../datasources/api/heads.ts";
 import type { StacksApiError } from "../datasources/api/index.ts";
 import {
   ConfigurationError,
   type DatabaseError,
+  type EventDecodeError,
   type FilterValidationError,
   type HandlerExecutionError,
   type InvalidCursorError,
@@ -14,12 +14,7 @@ import {
   type SyncStoreError,
   type TransactionBatchError,
 } from "../lib/errors.ts";
-import {
-  NetworkOptionSchema,
-  resolveNetwork,
-  type NetworkOption,
-  type ResolvedNetwork,
-} from "../lib/network.ts";
+import { type ChainOption, ChainOptionSchema, resolveChain } from "../lib/network.ts";
 import type { TelemetryOptions } from "../telemetry/index.ts";
 
 /** Default number of blocks kept unfinalized behind the chain tip. */
@@ -48,12 +43,13 @@ export interface LiveOptions {
   webSocketUrl?: string;
 }
 
+/** How the runtime reaches the chain and when it finalizes. */
 export interface IndexerOptions {
   /** Which chain to index. Defaults to `"mainnet"`. */
-  network?: NetworkOption;
+  chain?: ChainOption;
   api?: {
-    /** Overrides the network's default API endpoint. */
-    baseUrl?: string;
+    /** Overrides the chain's API URL. */
+    url?: string;
     apiKey?: string;
   };
   /**
@@ -66,15 +62,16 @@ export interface IndexerOptions {
   live?: LiveOptions;
 }
 
-export interface IndexerWithDatabaseOptions extends IndexerOptions {
-  /** Database for sync storage, checkpoints and your own tables. */
-  database: DatabaseConfig;
+/** Options of `create` (promise) and `layer` (Effect), apart from `handlers`. */
+export interface IndexerRuntimeOptions extends IndexerOptions {
+  /** Database for sync storage, checkpoints and your own tables: `pglite(...)` or `postgres(...)`. */
+  database: Database;
   /**
-   * Drizzle relations from `defineRelations`, enabling `context.db.query`.
-   * Type handlers with the same value: `EventHandler<typeof relations>`.
+   * Folder of your drizzle-kit migrations, applied when the database opens,
+   * after the indexer's own. Tracked in drizzle's default `drizzle.__drizzle_migrations`.
    */
-  relations?: AnyRelations;
-  /** Minimum log level for the pretty console logger. Defaults to `"Info"`. */
+  migrations?: string;
+  /** Minimum log level for the console logger. Defaults to `"Info"`. */
   logLevel?: LogLevel.LogLevel;
   /** Pushes metrics over OTLP. Unset: metrics are recorded but not exported. */
   telemetry?: TelemetryOptions;
@@ -87,14 +84,15 @@ export type ResolvedLiveConfig =
 export interface ResolvedIndexerConfig {
   chainId: number;
   api: { baseUrl: string; apiKey?: string };
-  network: ResolvedNetwork;
   finality: number;
   live: ResolvedLiveConfig;
 }
 
+/** Every failure of `run` and `live`. */
 export type IndexerError =
   | StacksApiError
   | HandlerExecutionError
+  | EventDecodeError
   | ReorgError
   | FilterValidationError
   | SyncStoreError
@@ -103,10 +101,10 @@ export type IndexerError =
   | InvalidCursorError;
 
 const IndexerOptionsSchema = Schema.Struct({
-  network: Schema.optional(NetworkOptionSchema),
+  chain: Schema.optional(ChainOptionSchema),
   api: Schema.optional(
     Schema.Struct({
-      baseUrl: Schema.optional(Schema.String),
+      url: Schema.optional(Schema.String),
       apiKey: Schema.optional(Schema.String),
     }),
   ),
@@ -126,8 +124,8 @@ type DecodedLiveOptions = NonNullable<(typeof IndexerOptionsSchema.Type)["live"]
 
 /**
  * The websocket URL is only resolved for the websocket transport, so a polling
- * indexer never depends on it. A default derived from an unparseable
- * `api.baseUrl` fails as a `ConfigurationError`.
+ * indexer never depends on it. A default derived from an unparseable API URL
+ * fails as a `ConfigurationError`.
  */
 function resolveLiveConfig(
   live: DecodedLiveOptions | undefined,
@@ -151,7 +149,7 @@ function resolveLiveConfig(
     try: () => defaultWebSocketUrl(baseUrl),
     catch: () =>
       new ConfigurationError({
-        message: `Cannot derive a websocket URL from api.baseUrl ${JSON.stringify(baseUrl)}; set live.webSocketUrl.`,
+        message: `Cannot derive a websocket URL from the API URL ${JSON.stringify(baseUrl)}; set live.webSocketUrl.`,
       }),
   }).pipe(
     Effect.map((webSocketUrl) => ({
@@ -168,8 +166,8 @@ export function resolveIndexerConfig(
   return Schema.decodeUnknownEffect(IndexerOptionsSchema)(options ?? {}).pipe(
     Effect.mapError((error) => new ConfigurationError({ message: error.message })),
     Effect.flatMap((decoded) => {
-      const network = resolveNetwork(decoded.network);
-      const baseUrl = decoded.api?.baseUrl ?? network.baseUrl;
+      const chain = resolveChain(decoded.chain);
+      const baseUrl = decoded.api?.url ?? chain.apiUrl;
       const api: ResolvedIndexerConfig["api"] = { baseUrl };
 
       if (decoded.api?.apiKey !== undefined) {
@@ -178,8 +176,7 @@ export function resolveIndexerConfig(
 
       return resolveLiveConfig(decoded.live, baseUrl).pipe(
         Effect.map((live) => ({
-          network,
-          chainId: network.chainId,
+          chainId: chain.chainId,
           api,
           finality: decoded.finality ?? DEFAULT_FINALITY,
           live,

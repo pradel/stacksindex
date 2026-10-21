@@ -3,25 +3,36 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vit
 
 import { IndexerDatabase } from "../database/index.ts";
 import { HandlerExecutionError } from "../lib/errors.ts";
+import type { CoreHandler } from "../lib/types.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { createFakeChain, type FakeChain } from "../test-utils/fake-chain.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
+import type { ContractSpec } from "./contracts.ts";
 import { Indexer, type IndexerService } from "./index.ts";
 
 const CONTRACT_ID = "SP123.token";
 
 const BASE_HEIGHT = 100;
 
+const tokenContract = (handler: CoreHandler, endBlock?: number): ContractSpec => ({
+  name: "token",
+  contractId: CONTRACT_ID,
+  endBlock,
+  onInvalid: "fail",
+  handler,
+});
+
 /** Runs `program` against one `Indexer` layer, so `status` sees the phase its `run` left. */
 const withIndexer = <A, E>(
   testDb: TestDatabase,
+  contracts: readonly ContractSpec[],
   program: (indexer: IndexerService) => Effect.Effect<A, E>,
 ): Promise<A> =>
   Effect.runPromise(
     Effect.gen(function* () {
       return yield* program(yield* Indexer);
     }).pipe(
-      Effect.provide(Indexer.layer({ finality: 0, live: { pollingInterval: 100 } })),
+      Effect.provide(Indexer.layer({ finality: 0, live: { pollingInterval: 100 }, contracts })),
       Effect.provideService(IndexerDatabase, testDb.db),
       Effect.provideService(Metric.MetricRegistry, new Map()),
       Effect.provideService(References.MinimumLogLevel, "None"),
@@ -62,8 +73,15 @@ describe("indexer status", () => {
     await testDb.close();
   });
 
-  test("is idle and not ready before any run", async () => {
-    const status = await withIndexer(testDb, (indexer) => indexer.status);
+  test("is idle and not ready before any run, listing every contract by name", async () => {
+    const status = await withIndexer(
+      testDb,
+      [
+        tokenContract(() => Effect.void),
+        { name: "pool", contractId: "SP123.pool", onInvalid: "fail", handler: () => Effect.void },
+      ],
+      (indexer) => indexer.status,
+    );
 
     expect(status).toStrictEqual({
       chainId: 1,
@@ -71,17 +89,16 @@ describe("indexer status", () => {
       ready: false,
       checkpoint: null,
       anchor: null,
-      contracts: [
-        { contractId: CONTRACT_ID, syncedBlockHeight: BASE_HEIGHT - 1, isComplete: false },
-      ],
+      contracts: {
+        token: { syncedBlockHeight: BASE_HEIGHT - 1, isComplete: false },
+        pool: { syncedBlockHeight: null, isComplete: false },
+      },
     });
   });
 
   test("is done and ready with the stored progress after a run", async () => {
-    const status = await withIndexer(testDb, (indexer) =>
-      indexer
-        .run([{ contractId: CONTRACT_ID, handler: () => Effect.void }])
-        .pipe(Effect.andThen(indexer.status)),
+    const status = await withIndexer(testDb, [tokenContract(() => Effect.void)], (indexer) =>
+      indexer.run.pipe(Effect.andThen(indexer.status)),
     );
 
     const checkpoint = await testDb.run(syncStore.getCheckpoint({ chainId: 1 }));
@@ -97,18 +114,15 @@ describe("indexer status", () => {
         finalizedBlockHeight: Number(checkpoint?.finalizedBlockHeight),
       },
       anchor: { blockHeight: BASE_HEIGHT },
-      contracts: [{ contractId: CONTRACT_ID, syncedBlockHeight: BASE_HEIGHT, isComplete: false }],
+      contracts: { token: { syncedBlockHeight: BASE_HEIGHT, isComplete: false } },
     });
   });
 
   test("is failed and not ready after a failing run", async () => {
-    const [error, status] = await withIndexer(testDb, (indexer) =>
-      Effect.all([
-        Effect.flip(
-          indexer.run([{ contractId: CONTRACT_ID, handler: () => Effect.fail(new Error("boom")) }]),
-        ),
-        indexer.status,
-      ]),
+    const [error, status] = await withIndexer(
+      testDb,
+      [tokenContract(() => Effect.fail(new Error("boom")))],
+      (indexer) => Effect.all([Effect.flip(indexer.run), indexer.status]),
     );
 
     expect(error).toBeInstanceOf(HandlerExecutionError);
@@ -116,29 +130,28 @@ describe("indexer status", () => {
   });
 
   test("a run overlapping live does not end the shared phase", async () => {
-    const filters = [
-      { contractId: CONTRACT_ID, endBlock: BASE_HEIGHT + 1, handler: () => Effect.void },
-    ];
+    const phases = await withIndexer(
+      testDb,
+      [tokenContract(() => Effect.void, BASE_HEIGHT + 1)],
+      (indexer) =>
+        Effect.gen(function* () {
+          const live = yield* Effect.forkChild(indexer.live);
 
-    const phases = await withIndexer(testDb, (indexer) =>
-      Effect.gen(function* () {
-        const live = yield* Effect.forkChild(indexer.live(filters));
+          yield* indexer.status.pipe(
+            Effect.repeat({
+              until: (status) => status.phase === "live",
+              schedule: Schedule.spaced("10 millis"),
+            }),
+          );
+          yield* indexer.run;
 
-        yield* indexer.status.pipe(
-          Effect.repeat({
-            until: (status) => status.phase === "live",
-            schedule: Schedule.spaced("10 millis"),
-          }),
-        );
-        yield* indexer.run(filters);
+          const afterRun = (yield* indexer.status).phase;
 
-        const afterRun = (yield* indexer.status).phase;
+          chain.mine();
+          yield* Fiber.join(live);
 
-        chain.mine();
-        yield* Fiber.join(live);
-
-        return [afterRun, (yield* indexer.status).phase];
-      }),
+          return [afterRun, (yield* indexer.status).phase];
+        }),
     );
 
     expect(phases).toStrictEqual(["live", "done"]);

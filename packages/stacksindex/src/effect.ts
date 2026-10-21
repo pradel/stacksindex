@@ -1,92 +1,57 @@
 // Effect-native entrypoint (`stacksindex/effect`).
 
-export { loggerLayer } from "./logger/index.ts";
+export { defineIndexer } from "./effect-api/index.ts";
 
-export type { LoggerLayerOptions } from "./logger/index.ts";
-
-export { IndexerDatabase, migrate } from "./database/index.ts";
-
-export type { DatabaseConfig, DatabaseOptions, IndexerDb } from "./database/index.ts";
+export type {
+  ContractDefinition,
+  ContractDefinitions,
+  EventHandler,
+  HandlerRequirements,
+  Handlers,
+  IndexerDefinition,
+  LayerOptions,
+  PrintData,
+} from "./effect-api/index.ts";
 
 export { Indexer } from "./runtime/index.ts";
 
 export type {
   ContractRunResult,
-  Filter,
+  ContractStatus,
   IndexerError,
-  IndexerOptions,
   IndexerPhase,
+  IndexerRuntimeOptions,
   IndexerService,
   IndexerStatus,
-  IndexerWithDatabaseOptions,
   LiveOptions,
   OtlpOptions,
   RunResult,
   TelemetryOptions,
 } from "./runtime/index.ts";
 
-export {
-  MAINNET_API_BASE_URL,
-  MAINNET_CHAIN_ID,
-  TESTNET_API_BASE_URL,
-  TESTNET_CHAIN_ID,
-  resolveNetwork,
-} from "./lib/network.ts";
+export { pglite, postgres } from "./database/index.ts";
 
-export type { NetworkName, NetworkOption, ResolvedNetwork } from "./lib/network.ts";
+export type { Database, IndexerDatabase, IndexerDb } from "./database/index.ts";
 
-export { readOnly, ReadOnlyCallError, StacksClient } from "./datasources/api/index.ts";
+export type { HandlerClient } from "./indexing/client.ts";
 
-export type {
-  CallReadFunction,
-  CallReadResponse,
-  ContractFunctionArgs,
-  ContractFunctionName,
-  ContractFunctionReturnType,
-  StacksApiError,
-  StacksClientConfig,
-  StacksClientService,
-  StacksHttpError,
-  TypedCallReadOnlyFunctionParameters,
-  TypedCallReadOnlyFunctionReturnType,
-  UntypedCallReadOnlyFunctionParameters,
-} from "./datasources/api/index.ts";
+export type { IndexingClient, PrintEvent } from "./lib/types.ts";
 
-export type {
-  ClarityAbi,
-  ClarityAbiAccess,
-  ClarityAbiArg,
-  ClarityAbiFunction,
-  ContractFunctionParameters,
-} from "clarity-abitype";
+export type { ChainOption } from "./lib/network.ts";
+
+export type { OnInvalid } from "./runtime/contracts.ts";
 
 export {
   ConfigurationError,
   DatabaseError,
-  FilterValidationError,
+  EventDecodeError,
   HandlerExecutionError,
-  InvalidCursorError,
   MigrationError,
   ReorgError,
-  SyncStoreError,
-  TransactionBatchError,
 } from "./lib/errors.ts";
 
-export {
-  ClarityTypeID,
-  cvToJSON,
-  decodeClarityValue,
-  decodeClarityWithSchema,
-  decodeHex,
-  encodeUint,
-} from "./codec/index.ts";
+export { ReadOnlyCallError } from "./datasources/api/index.ts";
 
-export type { ClarityJsonValue, ClarityValue } from "./codec/index.ts";
+export type { StacksApiError } from "./datasources/api/index.ts";
 
-export type {
-  EventHandler,
-  HandlerContext,
-  HandlerEvent,
-  Handlers,
-  IndexingClient,
-} from "./lib/types.ts";
+export type { ClarityAbi } from "clarity-abitype";

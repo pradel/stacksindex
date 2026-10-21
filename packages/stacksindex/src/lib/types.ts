@@ -1,35 +1,48 @@
 // oxlint-disable typescript/method-signature-style
 
 import type { ClarityAbi } from "clarity-abitype";
-import type { AnyRelations } from "drizzle-orm";
-import type { Effect, Schema } from "effect";
+import type { Effect } from "effect";
 
 import type { ClarityJsonValue } from "../codec/index.ts";
-import type { IndexerDb } from "../database/index.ts";
+import type { IndexerDatabase } from "../database/index.ts";
 import type {
   ContractFunctionArgs,
   ContractFunctionName,
-  SmartContractLogEvent,
   StacksApiError,
   TypedCallReadOnlyFunctionParameters,
   TypedCallReadOnlyFunctionReturnType,
   UntypedCallReadOnlyFunctionParameters,
 } from "../datasources/api/index.ts";
+import type { HandlerClient } from "../indexing/client.ts";
 
-export interface LogEvent {
-  type: "log";
+/** A `print` emitted by an indexed contract, with its decoded value. */
+export interface PrintEvent<TData = ClarityJsonValue> {
+  readonly type: "print";
+  /** Definition name of the contract (the key in `contracts`). */
+  readonly contract: string;
+  readonly contractId: string;
+  readonly txId: string;
+  readonly eventIndex: number;
+  /** The printed value, decoded from Clarity and parsed by the contract's `print` schema. */
+  readonly data: TData;
+  readonly raw: {
+    readonly hex: string;
+    readonly repr: string;
+    readonly topic: string;
+  };
+  readonly block: {
+    readonly height: number;
+    /** Unix seconds. */
+    readonly time: number;
+    readonly hash: string;
+    /** Pass as `tip` to read contract state at this block; `callReadOnly` defaults to it. */
+    readonly indexBlockHash: string;
+  };
+  readonly tx: {
+    readonly index: number;
+    readonly sender: string;
+  };
 }
-
-export type Event = LogEvent;
-
-export type HandlerEvent = SmartContractLogEvent & {
-  block_height: number;
-  block_time: number;
-  /** Index block hash of the event's block: pass it as `tip` to read contract state at this block. */
-  index_block_hash: string;
-  tx_index: number;
-  sender_address: string;
-};
 
 export interface IndexingClient {
   callReadOnly<
@@ -46,22 +59,10 @@ export interface IndexingClient {
 }
 
 /**
- * Context passed to a handler. `TRelations` types `db.query`: use the
- * `relations` the database was opened with (`typeof relations`).
+ * Handler as the runtime runs it: the facades adapt user handlers to this.
+ * `IndexerDatabase` is the batch transaction and `HandlerClient` is pinned to
+ * the event's block while it runs.
  */
-export interface HandlerContext<TRelations extends AnyRelations = AnyRelations> {
-  /**
-   * Indexer database scoped to the batch transaction: writes commit together
-   * with the indexing checkpoint, or roll back with it.
-   */
-  db: IndexerDb<TRelations>;
-  client: IndexingClient;
-  decode: <A>(schema: Schema.Schema<A>, repr: string) => Effect.Effect<A, unknown>;
-}
-
-export type EventHandler<TRelations extends AnyRelations = AnyRelations> = (
-  event: HandlerEvent,
-  context: HandlerContext<TRelations>,
-) => Effect.Effect<void, any>;
-
-export type Handlers = Record<string, EventHandler | undefined>;
+export type CoreHandler = (
+  event: PrintEvent<unknown>,
+) => Effect.Effect<void, unknown, IndexerDatabase | HandlerClient>;

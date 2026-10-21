@@ -1,23 +1,39 @@
 // Promise-native entrypoint (`stacksindex`).
 
-export { createIndexer } from "./promise/index.ts";
+export { defineIndexer } from "./promise/index.ts";
 
 export type {
+  ContractDefinition,
+  ContractDefinitions,
+  CreateOptions,
   EventHandler,
-  Filter,
   HandlerContext,
+  Handlers,
   Indexer,
-  IndexerOptions,
+  IndexerDefinition,
   IndexingClient,
   LogAnnotations,
   Logger,
-  LogLevel,
   LogValue,
+  PrintData,
 } from "./promise/index.ts";
+
+export { pglite, postgres } from "./database/index.ts";
+
+export type { Database, IndexerDb } from "./database/index.ts";
+
+export type { PrintEvent } from "./lib/types.ts";
+
+export type { ChainOption } from "./lib/network.ts";
+
+export type { OnInvalid } from "./runtime/contracts.ts";
 
 export type {
   ContractRunResult,
+  ContractStatus,
+  IndexerError,
   IndexerPhase,
+  IndexerRuntimeOptions,
   IndexerStatus,
   LiveOptions,
   OtlpOptions,
@@ -25,58 +41,17 @@ export type {
   TelemetryOptions,
 } from "./runtime/index.ts";
 
-export { type DatabaseConfig, type IndexerDb } from "./database/index.ts";
-
-export { ReadOnlyCallError } from "./datasources/api/index.ts";
-
-export type {
-  ContractFunctionArgs,
-  ContractFunctionName,
-  ContractFunctionReturnType,
-  StacksApiError,
-  TypedCallReadOnlyFunctionParameters,
-  TypedCallReadOnlyFunctionReturnType,
-  UntypedCallReadOnlyFunctionParameters,
-} from "./datasources/api/index.ts";
-
-export type {
-  ClarityAbi,
-  ClarityAbiAccess,
-  ClarityAbiArg,
-  ClarityAbiFunction,
-  ContractFunctionParameters,
-} from "clarity-abitype";
-
 export {
   ConfigurationError,
   DatabaseError,
-  FilterValidationError,
+  EventDecodeError,
   HandlerExecutionError,
-  InvalidCursorError,
   MigrationError,
   ReorgError,
-  SyncStoreError,
-  TransactionBatchError,
 } from "./lib/errors.ts";
 
-export {
-  MAINNET_API_BASE_URL,
-  MAINNET_CHAIN_ID,
-  TESTNET_API_BASE_URL,
-  TESTNET_CHAIN_ID,
-  resolveNetwork,
-} from "./lib/network.ts";
+export { ReadOnlyCallError } from "./datasources/api/index.ts";
 
-export type { NetworkName, NetworkOption, ResolvedNetwork } from "./lib/network.ts";
+export type { StacksApiError } from "./datasources/api/index.ts";
 
-export {
-  ClarityTypeID,
-  cvToJSON,
-  decodeClarityValue,
-  decodeHex,
-  encodeUint,
-} from "./codec/index.ts";
-
-export type { ClarityJsonValue, ClarityValue } from "./codec/index.ts";
-
-export type { HandlerEvent } from "./lib/types.ts";
+export type { ClarityAbi } from "clarity-abitype";

@@ -30,13 +30,21 @@ export interface IndexerStatus {
   checkpoint: { blockHeight: number; blockTime: number; finalizedBlockHeight: number } | null;
   /** Chain tip read at the start of the latest pass, or `null` before the first pass. */
   anchor: { blockHeight: number } | null;
-  /** Sync progress of every contract stored for the chain. */
-  contracts: { contractId: string; syncedBlockHeight: number; isComplete: boolean }[];
+  /** Sync progress of every defined contract, keyed by definition name. */
+  contracts: Record<string, ContractStatus>;
+}
+
+export interface ContractStatus {
+  /** Every event at or below this height is stored; `null` before the contract's first sync. */
+  syncedBlockHeight: number | null;
+  /** True once the contract synced through its `endBlock`. */
+  isComplete: boolean;
 }
 
 /** Reads the phase and the stored progress; the database is the source of truth across restarts. */
 export const readIndexerStatus = (
   chainId: number,
+  contracts: readonly { readonly name: string; readonly contractId: string }[],
 ): Effect.Effect<IndexerStatus, SyncStoreError, IndexerDatabase | RunPhase> =>
   Effect.gen(function* () {
     const phase = yield* Ref.get(yield* RunPhase);
@@ -46,6 +54,18 @@ export const readIndexerStatus = (
       syncStore.getSyncAnchor({ chainId }),
       syncStore.listSyncProgress({ chainId }),
     ]);
+
+    const progressById = new Map(progress.map((row) => [row.contractId, row]));
+    const contractStatuses: Record<string, ContractStatus> = {};
+
+    for (const contract of contracts) {
+      const row = progressById.get(contract.contractId);
+
+      contractStatuses[contract.name] = {
+        syncedBlockHeight: row === undefined ? null : Number(row.syncedBlockHeight),
+        isComplete: row?.isComplete ?? false,
+      };
+    }
 
     return {
       chainId,
@@ -60,10 +80,6 @@ export const readIndexerStatus = (
               finalizedBlockHeight: Number(checkpoint.finalizedBlockHeight),
             },
       anchor: anchor === null ? null : { blockHeight: anchor.blockHeight },
-      contracts: progress.map((row) => ({
-        contractId: row.contractId,
-        syncedBlockHeight: Number(row.syncedBlockHeight),
-        isComplete: row.isComplete,
-      })),
+      contracts: contractStatuses,
     };
   });

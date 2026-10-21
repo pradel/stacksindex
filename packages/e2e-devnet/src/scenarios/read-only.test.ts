@@ -1,6 +1,6 @@
 import { Cl } from "@stacks/transactions";
 import { createTraceCollector } from "indexer-e2e/src/tracer.ts";
-import type { ClarityJsonValue } from "stacksindex";
+import type { ClarityJsonValue } from "stacksindex/clarity";
 import { describe, expect, test } from "vite-plus/test";
 
 import { chainTip, EVENTS_CONTRACT, RUNTIME_SENDER, submitContractCall } from "../chain.ts";
@@ -20,21 +20,20 @@ describe("callReadOnly from a handler", () => {
 
     const trace = createTraceCollector();
     const reads: ClarityJsonValue[] = [];
-    await using indexer = await createDevnetIndexer();
 
-    expect(second.blockHeight).toBeGreaterThan(first.blockHeight);
-
-    await indexer.run({
-      contractId: EVENTS_CONTRACT,
-      startBlock,
-      endBlock: second.blockHeight,
-      handler: async (event, { client }) => {
-        trace.record(EVENTS_CONTRACT, event);
+    await using indexer = await createDevnetIndexer({
+      trace,
+      contracts: [{ contractId: EVENTS_CONTRACT, startBlock, endBlock: second.blockHeight }],
+      handler: async (_event, { client }) => {
         reads.push(
           await client.callReadOnly({ contractId: EVENTS_CONTRACT, functionName: "get-value" }),
         );
       },
     });
+
+    expect(second.blockHeight).toBeGreaterThan(first.blockHeight);
+
+    await indexer.run();
 
     expect(trace.getEvents().map((event) => printField(event, "value"))).toStrictEqual([
       1000n,

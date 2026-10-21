@@ -1,16 +1,17 @@
 import { Cause, Effect, Exit, Metric, References } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { IndexerDatabase } from "../database/index.ts";
+import { IndexerDatabase, pglite } from "../database/index.ts";
 import { HandlerExecutionError, ReorgError } from "../lib/errors.ts";
 import { liveConsecutiveFailures, liveIsRealtime, syncErrors } from "../lib/metrics.ts";
-import type { HandlerEvent } from "../lib/types.ts";
-import { createIndexer } from "../promise/index.ts";
+import type { PrintEvent } from "../lib/types.ts";
+import { defineIndexer } from "../promise/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { checkpointsTable, eventsTable, syncProgressTable } from "../sync-store/schema.ts";
 import { createFakeChain, type FakeChain, type FakeTransaction } from "../test-utils/fake-chain.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
-import { Indexer, type Filter, type IndexerOptions } from "./index.ts";
+import type { ContractSpec } from "./contracts.ts";
+import { Indexer, type IndexerOptions } from "./index.ts";
 
 const CONTRACT_ID = "SP123.token";
 
@@ -26,9 +27,11 @@ interface HandledEvent {
   readonly txId: string;
 }
 
-const recordingHandler = (handled: HandledEvent[]) => (event: HandlerEvent) =>
+type TestContract = Pick<ContractSpec, "contractId" | "startBlock" | "endBlock" | "handler">;
+
+const recordingHandler = (handled: HandledEvent[]) => (event: PrintEvent<unknown>) =>
   Effect.sync(() => {
-    handled.push({ height: event.block_height, txId: event.tx_id });
+    handled.push({ height: event.block.height, txId: event.txId });
   });
 
 const seedSynced = (testDb: TestDatabase, contractId: string) =>
@@ -47,7 +50,7 @@ const seedSynced = (testDb: TestDatabase, contractId: string) =>
  */
 const runLive = (
   testDb: TestDatabase,
-  filters: Filter[],
+  contracts: TestContract[],
   options: IndexerOptions = {},
   registry: Metric.MetricRegistry = new Map(),
 ): Promise<Exit.Exit<void, unknown>> =>
@@ -55,9 +58,19 @@ const runLive = (
     Effect.gen(function* () {
       const indexer = yield* Indexer;
 
-      yield* indexer.live(filters);
+      yield* indexer.live;
     }).pipe(
-      Effect.provide(Indexer.layer({ live: { pollingInterval: 100 }, ...options })),
+      Effect.provide(
+        Indexer.layer({
+          live: { pollingInterval: 100 },
+          ...options,
+          contracts: contracts.map((contract) => ({
+            name: contract.contractId,
+            onInvalid: "fail",
+            ...contract,
+          })),
+        }),
+      ),
       Effect.provideService(IndexerDatabase, testDb.db),
       Effect.provideService(Metric.MetricRegistry, registry),
       Effect.provideService(References.MinimumLogLevel, "None"),
@@ -92,8 +105,8 @@ const readMetric = (
 const failureOf = (exit: Exit.Exit<void, unknown>) =>
   Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
 
-const failOnBlock = (height: number) => (event: HandlerEvent) =>
-  event.block_height === height ? Effect.fail(new Error("boom")) : Effect.void;
+const failOnBlock = (height: number) => (event: PrintEvent<unknown>) =>
+  event.block.height === height ? Effect.fail(new Error("boom")) : Effect.void;
 
 /** Runs one scripted step per head poll, after the first poll. */
 const scriptHeads = (chain: FakeChain, steps: readonly (() => void)[]) => {
@@ -278,7 +291,7 @@ describe("live indexing", () => {
           contractId: CONTRACT_ID,
           handler: (event) =>
             Effect.sync(() => {
-              realtimeByTx[event.tx_id] = readMetric(registry, liveIsRealtime);
+              realtimeByTx[event.txId] = readMetric(registry, liveIsRealtime);
             }),
           endBlock: 101,
         },
@@ -315,7 +328,7 @@ describe("live indexing", () => {
           // Handlers run inside the retrying pass, before it succeeds.
           handler: (event) =>
             Effect.sync(() => {
-              failuresByTx[event.tx_id] = readMetric(registry, liveConsecutiveFailures);
+              failuresByTx[event.txId] = readMetric(registry, liveConsecutiveFailures);
             }),
           endBlock: 102,
         },
@@ -466,10 +479,23 @@ describe("live indexing", () => {
   });
 
   test("close() ends live indexing on the promise API", async () => {
-    const indexer = await createIndexer({
-      database: { kind: "pglite" },
+    const handled: string[] = [];
+    let resolveFirstEvent: () => void = () => undefined;
+
+    const firstEvent = new Promise<void>((resolve) => {
+      resolveFirstEvent = resolve;
+    });
+
+    const indexer = await defineIndexer({ contracts: { token: { id: CONTRACT_ID } } }).create({
+      database: pglite(),
       live: { pollingInterval: 100 },
       logLevel: "None",
+      handlers: {
+        token: (event) => {
+          handled.push(event.txId);
+          resolveFirstEvent();
+        },
+      },
     });
 
     await indexer.db.insert(syncProgressTable).values({
@@ -479,20 +505,7 @@ describe("live indexing", () => {
       syncedBlockHeight: BigInt(BASE_HEIGHT - 1),
     });
 
-    const handled: string[] = [];
-    let resolveFirstEvent: () => void = () => undefined;
-
-    const firstEvent = new Promise<void>((resolve) => {
-      resolveFirstEvent = resolve;
-    });
-
-    const live = indexer.live({
-      contractId: CONTRACT_ID,
-      handler: (event) => {
-        handled.push(event.tx_id);
-        resolveFirstEvent();
-      },
-    });
+    const live = indexer.live();
 
     await firstEvent;
     await indexer.close();

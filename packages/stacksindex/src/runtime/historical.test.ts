@@ -32,7 +32,9 @@ import {
   vi,
 } from "vite-plus/test";
 
-import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
+import { IndexerDatabase, type IndexerDb, pglite } from "../database/index.ts";
+import { defineIndexer as defineEffectIndexer } from "../effect-api/index.ts";
+import { HandlerClient } from "../indexing/client.ts";
 import {
   FilterValidationError,
   HandlerExecutionError,
@@ -42,8 +44,8 @@ import {
   TransactionBatchError,
 } from "../lib/errors.ts";
 import { indexingBatchDuration, indexingBlock, indexingEvents } from "../lib/metrics.ts";
-import type { EventHandler, HandlerContext, HandlerEvent } from "../lib/types.ts";
-import { createIndexer } from "../promise/index.ts";
+import type { CoreHandler, PrintEvent } from "../lib/types.ts";
+import { defineIndexer } from "../promise/index.ts";
 import { toThenable } from "../promise/thenable.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
@@ -55,36 +57,45 @@ import {
 import { parseLogsCursor, parseTransactionCursor } from "../sync/cursor.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
-import {
-  Indexer,
-  type Filter,
-  type IndexerError,
-  type IndexerOptions,
-  type RunResult,
-} from "./index.ts";
+import type { ContractSpec } from "./contracts.ts";
+import { Indexer, type IndexerError, type IndexerOptions, type RunResult } from "./index.ts";
 
-const makeRuntime = (input: { db: IndexerDb } & IndexerOptions) => {
-  const layer = Indexer.layer({
-    network: input.network,
-    api: input.api,
-    finality: input.finality,
-  });
+/** A contract as tests pass it to `makeRuntime().run`; the name defaults to the id's contract name. */
+interface TestContract {
+  readonly contractId: string;
+  readonly handler: CoreHandler;
+  readonly name?: string;
+  readonly startBlock?: number;
+  readonly endBlock?: number | "latest";
+}
 
-  return {
-    run: (filters: Filter[]) =>
-      toThenable(
-        Effect.gen(function* () {
-          const runtime = yield* Indexer;
+const contractSpec = ({ name, ...contract }: TestContract): ContractSpec => ({
+  name: name ?? contract.contractId.slice(contract.contractId.indexOf(".") + 1),
+  onInvalid: "fail",
+  ...contract,
+});
 
-          return yield* runtime.run(filters);
-        }).pipe(
-          Effect.provide(layer),
-          Effect.provideService(IndexerDatabase, input.db),
-          Effect.provideService(References.MinimumLogLevel, "None"),
+const makeRuntime = (input: { db: IndexerDb } & IndexerOptions) => ({
+  run: (contracts: readonly TestContract[]) =>
+    toThenable(
+      Effect.gen(function* () {
+        const indexer = yield* Indexer;
+
+        return yield* indexer.run;
+      }).pipe(
+        Effect.provide(
+          Indexer.layer({
+            chain: input.chain,
+            api: input.api,
+            finality: input.finality,
+            contracts: contracts.map(contractSpec),
+          }),
         ),
+        Effect.provideService(IndexerDatabase, input.db),
+        Effect.provideService(References.MinimumLogLevel, "None"),
       ),
-  };
-};
+    ),
+});
 
 interface Dictionary<TValue> {
   [key: string]: TValue;
@@ -239,34 +250,33 @@ const standardTxById: Dictionary<Schema.Json> = {
   "tx-150-1": standardTx("tx-150-1", 150, "block-150", 50),
 };
 
-const handledEventBlockHeight = (event: HandlerEvent) =>
-  BigInt(100_000 + event.event_index + (event.block_height === 200 ? 10_000 : 0));
+const handledEventBlockHeight = (event: PrintEvent<unknown>) =>
+  BigInt(100_000 + event.eventIndex + (event.block.height === 200 ? 10_000 : 0));
 
-const handledEventBlock = (event: HandlerEvent, context: HandlerContext) =>
-  context.db
-    .insert(blocksTable)
-    .values({
+const handledEventBlock = (event: PrintEvent<unknown>) =>
+  Effect.gen(function* () {
+    const db = yield* IndexerDatabase;
+
+    yield* db.insert(blocksTable).values({
       chainId: 1n,
       height: handledEventBlockHeight(event),
-      hash: `handled-${event.block_height}-${event.event_index}`,
-      indexBlockHash: `index-handled-${event.block_height}-${event.event_index}`,
+      hash: `handled-${event.block.height}-${event.eventIndex}`,
+      indexBlockHash: `index-handled-${event.block.height}-${event.eventIndex}`,
       blockTime: 0n,
       tenureHeight: 0n,
-    })
-    .pipe(Effect.asVoid);
+    });
+  });
 
-const failOnBlock200 = (event: HandlerEvent, context: HandlerContext) =>
-  event.block_height === 200
-    ? Effect.fail(new Error("Handler failed"))
-    : handledEventBlock(event, context);
+const failOnBlock200 = (event: PrintEvent<unknown>) =>
+  event.block.height === 200 ? Effect.fail(new Error("Handler failed")) : handledEventBlock(event);
 
 const blockOnBlock200Handler =
-  (started: Deferred.Deferred<"started">) => (event: HandlerEvent, context: HandlerContext) => {
-    if (event.block_height === 200) {
+  (started: Deferred.Deferred<"started">) => (event: PrintEvent<unknown>) => {
+    if (event.block.height === 200) {
       return Deferred.succeed(started, "started").pipe(Effect.andThen(Effect.never));
     }
 
-    return handledEventBlock(event, context);
+    return handledEventBlock(event);
   };
 
 const storedEventRow = (txId: string, blockHeight: number, eventIndex: number) => ({
@@ -276,7 +286,7 @@ const storedEventRow = (txId: string, blockHeight: number, eventIndex: number) =
   eventIndex,
   eventType: "smart_contract_log",
   topic: "print",
-  valueHex: "0x01",
+  valueHex: "0x0703",
   valueRepr: "(ok true)",
   blockHeight: BigInt(blockHeight),
 });
@@ -434,7 +444,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -471,7 +481,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -493,7 +503,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -523,7 +533,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -684,7 +694,11 @@ describe("historical runtime", () => {
         {
           event_index: 0,
           event_type: "smart_contract_log",
-          contract_log: { contract_id: contractId, topic: "print", value: { hex: "", repr: "" } },
+          contract_log: {
+            contract_id: contractId,
+            topic: "print",
+            value: { hex: "0x0703", repr: "(ok true)" },
+          },
         },
       ],
     });
@@ -869,7 +883,7 @@ describe("historical runtime", () => {
               contract_log: {
                 contract_id: contractA,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -894,7 +908,7 @@ describe("historical runtime", () => {
               contract_log: {
                 contract_id: contractB,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -920,7 +934,7 @@ describe("historical runtime", () => {
               contract_log: {
                 contract_id: contractA,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -946,7 +960,7 @@ describe("historical runtime", () => {
               contract_log: {
                 contract_id: contractB,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -1054,7 +1068,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -1201,7 +1215,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -1287,7 +1301,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -1324,7 +1338,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -1471,7 +1485,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "0x01", repr: "123" },
+                  value: { hex: "0x010000000000000000000000000000007b", repr: "u123" },
                 },
               },
             ],
@@ -1512,7 +1526,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "0x01", repr: "123" },
+                  value: { hex: "0x010000000000000000000000000000007b", repr: "u123" },
                 },
               },
             ],
@@ -1545,7 +1559,7 @@ describe("historical runtime", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "0x01", repr: "123" },
+                  value: { hex: "0x010000000000000000000000000000007b", repr: "u123" },
                 },
               },
             ],
@@ -1599,8 +1613,8 @@ describe("historical runtime", () => {
       eventType: "smart_contract_log",
       txId: "tx-1",
       eventIndex: 1,
-      valueHex: "0x01",
-      valueRepr: "123",
+      valueHex: "0x010000000000000000000000000000007b",
+      valueRepr: "u123",
     });
   });
 });
@@ -1705,7 +1719,11 @@ describe("historical runtime with handlers", () => {
         {
           event_index: 0,
           event_type: "smart_contract_log",
-          contract_log: { contract_id: contractId, topic: "print", value: { hex: "", repr: "" } },
+          contract_log: {
+            contract_id: contractId,
+            topic: "print",
+            value: { hex: "0x0703", repr: "(ok true)" },
+          },
         },
       ],
     });
@@ -1879,7 +1897,7 @@ describe("historical runtime with handlers", () => {
               contract_log: {
                 contract_id: contractA,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -1905,7 +1923,7 @@ describe("historical runtime with handlers", () => {
               contract_log: {
                 contract_id: contractB,
                 topic: "print",
-                value: { hex: "", repr: "" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -1948,8 +1966,8 @@ describe("historical runtime with handlers", () => {
     expect(handlerB).toHaveBeenCalledBefore(handlerA);
 
     // Verify the events have correct block heights
-    expect(handlerB.mock.calls[0][0].block_height).toBe(50);
-    expect(handlerA.mock.calls[0][0].block_height).toBe(100);
+    expect(handlerB.mock.calls[0][0].block.height).toBe(50);
+    expect(handlerA.mock.calls[0][0].block.height).toBe(100);
   });
 
   test("updates checkpoint after processing events", async () => {
@@ -2004,7 +2022,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2041,7 +2059,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2066,7 +2084,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2198,7 +2216,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2304,7 +2322,11 @@ describe("historical runtime with handlers", () => {
     );
 
     expect(failure).toBeTaggedError(
-      new HandlerExecutionError({ contractId, cause: new Error("Handler failed") }),
+      new HandlerExecutionError({
+        contract: "token",
+        contractId,
+        cause: new Error("Handler failed"),
+      }),
     );
     // 1000 events from block 100 plus the first event of block 200.
     expect(failingHandler).toHaveBeenCalledTimes(1001);
@@ -2492,7 +2514,7 @@ describe("historical runtime with handlers", () => {
           contract_log: {
             contract_id: contractId,
             topic: "print",
-            value: { hex: "0x01", repr: "(ok true)" },
+            value: { hex: "0x0703", repr: "(ok true)" },
           },
         },
       ],
@@ -2565,9 +2587,15 @@ describe("historical runtime with handlers", () => {
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
 
     expect(result.finalizedBlockHeight).toBe(200);
+    expect(result.contracts.token.eventsProcessed).toBe(4);
     // Four backfill pages plus the head page of the final catch-up.
-    expect(result.contracts[0].pagesFetched).toBe(5);
-    expect(result.contracts[0].transactionsFetched).toBe(4);
+    const requestedUrls = mockRequest.mock.calls.map(([url]) => decodeURIComponent(String(url)));
+    expect(requestedUrls.filter((url) => url.includes("/logs?"))).toHaveLength(5);
+    expect(
+      requestedUrls
+        .filter((url) => url.includes("/extended/v3/transactions/batch"))
+        .flatMap((url) => parseBatchIds(url)),
+    ).toHaveLength(4);
 
     const checkpoint = await testDb.db.select().from(checkpointsTable);
     expect(Number(checkpoint[0].blockHeight)).toBe(400);
@@ -2693,7 +2721,11 @@ describe("historical runtime with handlers", () => {
           histogram: yield* Metric.value(Metric.withAttributes(indexingBatchDuration, chain)),
           block: yield* Metric.value(Metric.withAttributes(indexingBlock, chain)),
           events: yield* Metric.value(
-            Metric.withAttributes(indexingEvents, { ...chain, contract: contractId }),
+            Metric.withAttributes(indexingEvents, {
+              ...chain,
+              contract: "token",
+              contract_id: contractId,
+            }),
           ),
         };
       }).pipe(
@@ -2863,7 +2895,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2900,7 +2932,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2925,7 +2957,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -2976,6 +3008,7 @@ describe("historical runtime with handlers", () => {
 
     expect(result).toBeTaggedError(
       new HandlerExecutionError({
+        contract: "token",
         contractId,
         cause: new Error("Handler failed"),
       }),
@@ -2983,7 +3016,7 @@ describe("historical runtime with handlers", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  test("uses custom baseUrl and apiKey when provided to runtime", async () => {
+  test("uses custom api url and apiKey when provided to runtime", async () => {
     const contractId = "SP123.token";
     const customBaseUrl = "https://custom-stacks.example.com";
     const customApiKey = "test-api-key-123";
@@ -3039,7 +3072,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({
       db: testDb.db,
       api: {
-        baseUrl: customBaseUrl,
+        url: customBaseUrl,
         apiKey: customApiKey,
       },
     });
@@ -3133,7 +3166,7 @@ describe("historical runtime with handlers", () => {
                   contract_log: {
                     contract_id: contractId,
                     topic: "print",
-                    value: { hex: "", repr: "" },
+                    value: { hex: "0x0703", repr: "(ok true)" },
                   },
                 },
               ],
@@ -3166,7 +3199,7 @@ describe("historical runtime with handlers", () => {
                   contract_log: {
                     contract_id: contractId,
                     topic: "print",
-                    value: { hex: "", repr: "" },
+                    value: { hex: "0x0703", repr: "(ok true)" },
                   },
                 },
               ],
@@ -3191,7 +3224,7 @@ describe("historical runtime with handlers", () => {
                   contract_log: {
                     contract_id: contractId,
                     topic: "print",
-                    value: { hex: "", repr: "" },
+                    value: { hex: "0x0703", repr: "(ok true)" },
                   },
                 },
               ],
@@ -3248,7 +3281,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({
       db: testDb.db,
       api: {
-        baseUrl: customBaseUrl,
+        url: customBaseUrl,
         apiKey: customApiKey,
       },
     });
@@ -3256,9 +3289,11 @@ describe("historical runtime with handlers", () => {
     const result = await runtime.run([
       {
         contractId,
-        handler: (_event, { client }) =>
+        handler: () =>
           Effect.gen(function* () {
             handlerCalled = true;
+
+            const client = yield* HandlerClient;
 
             const readResult = yield* client.callReadOnly({
               contractId,
@@ -3312,17 +3347,22 @@ describe("historical runtime with handlers", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const runtime = await createIndexer({ database: { kind: "pglite" } });
+    const runtime = await defineIndexer({ contracts: { token: { id: contractId } } }).create({
+      database: pglite(),
+      logLevel: "None",
+      handlers: { token: () => undefined },
+    });
 
-    const result = await runtime.run({ contractId, handler: () => undefined });
-    expect(result.contracts).toHaveLength(1);
-    expect(result.contracts[0]?.contractId).toBe(contractId);
+    const result = await runtime.run();
+    expect(Object.keys(result.contracts)).toStrictEqual(["token"]);
+    expect(result.contracts.token.eventsProcessed).toBe(0);
 
     await runtime.close();
   });
 
   describe("promise handlers writing through context.db", () => {
     const contractId = "SP123.token";
+    const contracts = { token: { id: contractId, endBlock: 200 } } as const;
 
     const seedContract = (db: IndexerDb) =>
       seedCompleteContract(
@@ -3337,45 +3377,38 @@ describe("historical runtime with handlers", () => {
         [100, 200],
       );
 
-    const seedPromiseIndexer = async () => {
-      const indexer = await createIndexer({ database: { kind: "pglite" }, logLevel: "None" });
-
-      await seedContract(indexer.db);
-
-      return indexer;
-    };
-
     const handledRows = async (db: IndexerDb) =>
       (await db.select().from(blocksTable)).filter((row) => Number(row.height) >= 100_000);
 
-    const insertHandledBlock = async (
-      event: { block_height: number; event_index: number },
-      db: IndexerDb,
-    ) => {
+    const insertHandledBlock = async (event: PrintEvent<unknown>, db: IndexerDb) => {
       await db.insert(blocksTable).values({
         chainId: 1n,
-        height: BigInt(100_000 + event.block_height),
-        hash: `handled-${event.block_height}-${event.event_index}`,
-        indexBlockHash: `index-handled-${event.block_height}-${event.event_index}`,
+        height: BigInt(100_000 + event.block.height),
+        hash: `handled-${event.block.height}-${event.eventIndex}`,
+        indexBlockHash: `index-handled-${event.block.height}-${event.eventIndex}`,
         blockTime: 0n,
         tenureHeight: 0n,
       });
     };
 
     test("commits awaited writes with the batch checkpoint", async () => {
-      await using indexer = await seedPromiseIndexer();
-
-      const result = await indexer.run({
-        contractId,
-        endBlock: 200,
-        handler: async (event, context) => {
-          await insertHandledBlock(event, context.db);
-          // Reads inside the handler see the batch's uncommitted writes.
-          await expect(handledRows(context.db)).resolves.toHaveLength(
-            event.block_height === 100 ? 1 : 2,
-          );
+      await using indexer = await defineIndexer({ contracts }).create({
+        database: pglite(),
+        logLevel: "None",
+        handlers: {
+          token: async (event, context) => {
+            await insertHandledBlock(event, context.db);
+            // Reads inside the handler see the batch's uncommitted writes.
+            await expect(handledRows(context.db)).resolves.toHaveLength(
+              event.block.height === 100 ? 1 : 2,
+            );
+          },
         },
       });
+
+      await seedContract(indexer.db);
+
+      const result = await indexer.run();
 
       expect(result.eventsProcessed).toBe(2);
       await expect(handledRows(indexer.db)).resolves.toHaveLength(2);
@@ -3384,24 +3417,28 @@ describe("historical runtime with handlers", () => {
     });
 
     test("rolls back awaited writes when a later handler in the batch throws", async () => {
-      await using indexer = await seedPromiseIndexer();
-
       const failure = new Error("Handler failed");
 
-      const run = indexer.run({
-        contractId,
-        endBlock: 200,
-        handler: async (event, context) => {
-          await insertHandledBlock(event, context.db);
+      await using indexer = await defineIndexer({ contracts }).create({
+        database: pglite(),
+        logLevel: "None",
+        handlers: {
+          token: async (event, context) => {
+            await insertHandledBlock(event, context.db);
 
-          if (event.block_height === 200) {
-            throw failure;
-          }
+            if (event.block.height === 200) {
+              throw failure;
+            }
+          },
         },
       });
 
+      await seedContract(indexer.db);
+
+      const run = indexer.run();
+
       await expect(run).rejects.toBeInstanceOf(HandlerExecutionError);
-      await expect(run).rejects.toMatchObject({ contractId, cause: failure });
+      await expect(run).rejects.toMatchObject({ contract: "token", contractId, cause: failure });
 
       await expect(handledRows(indexer.db)).resolves.toHaveLength(0);
       await expect(indexer.db.select().from(checkpointsTable)).resolves.toHaveLength(0);
@@ -3414,11 +3451,25 @@ describe("historical runtime with handlers", () => {
 
     const handledRelations = defineRelations({ handledTable });
 
-    test("serves typed context.db.query from the indexer's relations", async () => {
-      await using indexer = await createIndexer({
-        database: { kind: "pglite" },
+    test("serves typed context.db.query from the definition's relations", async () => {
+      const seenInBatch: number[] = [];
+
+      await using indexer = await defineIndexer({ contracts, relations: handledRelations }).create({
+        database: pglite(),
         logLevel: "None",
-        relations: handledRelations,
+        handlers: {
+          token: async (event, context) => {
+            await context.db.insert(handledTable).values({
+              id: `${event.txId}:${event.eventIndex}`,
+              blockHeight: event.block.height,
+            });
+
+            const rows = await context.db.query.handledTable.findMany();
+
+            expectTypeOf(rows).toEqualTypeOf<{ id: string; blockHeight: number }[]>();
+            seenInBatch.push(rows.length);
+          },
+        },
       });
 
       await seedContract(indexer.db);
@@ -3426,22 +3477,7 @@ describe("historical runtime with handlers", () => {
         sql`create table "handled" ("id" text primary key, "block_height" integer not null)`,
       );
 
-      const seenInBatch: number[] = [];
-
-      await indexer.run({
-        contractId,
-        endBlock: 200,
-        handler: async (event, context) => {
-          await context.db
-            .insert(handledTable)
-            .values({ id: `${event.tx_id}:${event.event_index}`, blockHeight: event.block_height });
-
-          const rows = await context.db.query.handledTable.findMany();
-
-          expectTypeOf(rows).toEqualTypeOf<{ id: string; blockHeight: number }[]>();
-          seenInBatch.push(rows.length);
-        },
-      });
+      await indexer.run();
 
       expect(seenInBatch).toStrictEqual([1, 2]);
       await expect(
@@ -3452,32 +3488,39 @@ describe("historical runtime with handlers", () => {
       ).resolves.toStrictEqual([{ blockHeight: 100 }, { blockHeight: 200 }]);
     });
 
-    test("types Effect handlers' context.db.query from the same relations", () => {
-      const handler: EventHandler<typeof handledRelations> = (_event, context) =>
+    test("types Effect handlers' db.query from the same relations", () => {
+      const effectIndexer = defineEffectIndexer({ contracts, relations: handledRelations });
+
+      effectIndexer.handler("token", () =>
         Effect.gen(function* () {
-          const rows = yield* context.db.query.handledTable.findMany();
+          const db = yield* effectIndexer.Db;
+          const rows = yield* db.query.handledTable.findMany();
 
           expectTypeOf(rows).toEqualTypeOf<{ id: string; blockHeight: number }[]>();
-        });
+        }),
+      );
 
       const program = Effect.gen(function* () {
         const indexer = yield* Indexer;
 
-        return yield* indexer.run([{ contractId, handler }]);
+        return yield* indexer.run;
       });
 
       expectTypeOf(program).toEqualTypeOf<Effect.Effect<RunResult, IndexerError, Indexer>>();
     });
 
-    test("types db.query only for a promise indexer created with relations", () => {
+    test("types db.query only for a promise indexer defined with relations", () => {
       // Type-level only: never called, so no database is opened.
       const typeCheck = async () => {
-        const plain = await createIndexer({ database: { kind: "pglite" } });
+        const plain = await defineIndexer({ contracts }).create({
+          database: pglite(),
+          handlers: { token: () => undefined },
+        });
 
         expectTypeOf<keyof typeof plain.db.query>().toEqualTypeOf<never>();
 
-        // @ts-expect-error -- a relations-typed indexer must be given its `relations`
-        await createIndexer<typeof handledRelations>({ database: { kind: "pglite" } });
+        // @ts-expect-error -- every defined contract needs a handler
+        await defineIndexer({ contracts }).create({ database: pglite(), handlers: {} });
       };
 
       expectTypeOf(typeCheck).returns.resolves.toBeVoid();
@@ -3488,8 +3531,8 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
 
-    const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
-      handledHeights.push(event.block_height);
+    const handler = vi.fn().mockImplementation((event: PrintEvent<unknown>) => {
+      handledHeights.push(event.block.height);
 
       return Effect.void;
     });
@@ -3545,7 +3588,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3582,7 +3625,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3607,7 +3650,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3662,8 +3705,8 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
 
-    const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
-      handledHeights.push(event.block_height);
+    const handler = vi.fn().mockImplementation((event: PrintEvent<unknown>) => {
+      handledHeights.push(event.block.height);
 
       return Effect.void;
     });
@@ -3716,7 +3759,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3753,7 +3796,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3775,7 +3818,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3805,7 +3848,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3847,7 +3890,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -3972,7 +4015,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4056,7 +4099,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4081,7 +4124,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
               {
@@ -4091,7 +4134,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4133,7 +4176,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4170,7 +4213,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4226,58 +4269,6 @@ describe("historical runtime with handlers", () => {
     expect(block200Calls).toHaveLength(0);
   });
 
-  test("rejects invalid startBlock (negative or non-integer)", async () => {
-    const contractId = "SP123.token";
-    const runtime = makeRuntime({ db: testDb.db });
-
-    const negativeResult = await Effect.runPromiseExit(
-      runtime.run([{ contractId, handler: noopHandler, startBlock: -1 }]),
-    );
-
-    expect(negativeResult).toBeTaggedError(
-      new FilterValidationError({
-        message:
-          'Validation failed: Expected a value greater than or equal to 0\n  at [0]["startBlock"]',
-      }),
-    );
-
-    const floatResult = await Effect.runPromiseExit(
-      runtime.run([{ contractId, handler: noopHandler, startBlock: 1.5 }]),
-    );
-
-    expect(floatResult).toBeTaggedError(
-      new FilterValidationError({
-        message: 'Validation failed: Expected an integer\n  at [0]["startBlock"]',
-      }),
-    );
-  });
-
-  test("rejects invalid endBlock (negative or non-integer)", async () => {
-    const contractId = "SP123.token";
-    const runtime = makeRuntime({ db: testDb.db });
-
-    const negativeResult = await Effect.runPromiseExit(
-      runtime.run([{ contractId, handler: noopHandler, endBlock: -5 }]),
-    );
-
-    expect(negativeResult).toBeTaggedError(
-      new FilterValidationError({
-        message:
-          'Validation failed: Expected a value greater than or equal to 0\n  at [0]["endBlock"]',
-      }),
-    );
-
-    const floatResult = await Effect.runPromiseExit(
-      runtime.run([{ contractId, handler: noopHandler, endBlock: 100.2 }]),
-    );
-
-    expect(floatResult).toBeTaggedError(
-      new FilterValidationError({
-        message: 'Validation failed: Expected an integer\n  at [0]["endBlock"]',
-      }),
-    );
-  });
-
   test("rejects when startBlock is greater than endBlock", async () => {
     const contractId = "SP123.token";
     const runtime = makeRuntime({ db: testDb.db });
@@ -4288,8 +4279,7 @@ describe("historical runtime with handlers", () => {
 
     expect(result).toBeTaggedError(
       new FilterValidationError({
-        message:
-          "Validation failed: Start block (200) is after end block (100) for contract 'SP123.token'.\n  at [0]",
+        message: "Start block (200) is after end block (100) for contracts.token.",
       }),
     );
   });
@@ -4298,8 +4288,8 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
 
-    const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
-      handledHeights.push(event.block_height);
+    const handler = vi.fn().mockImplementation((event: PrintEvent<unknown>) => {
+      handledHeights.push(event.block.height);
 
       return Effect.void;
     });
@@ -4369,7 +4359,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4394,7 +4384,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4436,7 +4426,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4551,8 +4541,8 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
 
-    const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
-      handledHeights.push(event.block_height);
+    const handler = vi.fn().mockImplementation((event: PrintEvent<unknown>) => {
+      handledHeights.push(event.block.height);
 
       return Effect.void;
     });
@@ -4592,7 +4582,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4635,7 +4625,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4698,8 +4688,8 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
 
-    const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
-      handledHeights.push(event.block_height);
+    const handler = vi.fn().mockImplementation((event: PrintEvent<unknown>) => {
+      handledHeights.push(event.block.height);
 
       return Effect.void;
     });
@@ -4739,7 +4729,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4782,7 +4772,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4858,7 +4848,7 @@ describe("historical runtime with handlers", () => {
               contract_log: {
                 contract_id: contractId,
                 topic: "print",
-                value: { hex: "0x01", repr: "(ok true)" },
+                value: { hex: "0x0703", repr: "(ok true)" },
               },
             },
           ],
@@ -4873,7 +4863,7 @@ describe("historical runtime with handlers", () => {
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler }]);
 
-    expect(result.contracts[0]).toMatchObject({ status: "up-to-date", lastBlockHeight: 100 });
+    expect(result.contracts.token).toMatchObject({ blockHeight: 100 });
 
     const requestedPaths = mockRequest.mock.calls.map(([url]) => decodeURIComponent(String(url)));
     expect(requestedPaths.filter((url) => !url.endsWith("/extended"))).toStrictEqual([
@@ -4885,8 +4875,8 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];
 
-    const handler = vi.fn().mockImplementation((event: { block_height: number }) => {
-      handledHeights.push(event.block_height);
+    const handler = vi.fn().mockImplementation((event: PrintEvent<unknown>) => {
+      handledHeights.push(event.block.height);
 
       return Effect.void;
     });
@@ -4952,7 +4942,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -4986,8 +4976,8 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const handledEvents: { txId: string; blockHeight: number }[] = [];
 
-    const handler = vi.fn().mockImplementation((event: { tx_id: string; block_height: number }) => {
-      handledEvents.push({ txId: event.tx_id, blockHeight: event.block_height });
+    const handler = vi.fn().mockImplementation((event: PrintEvent<unknown>) => {
+      handledEvents.push({ txId: event.txId, blockHeight: event.block.height });
 
       return Effect.void;
     });
@@ -5018,7 +5008,7 @@ describe("historical runtime with handlers", () => {
           contract_log: {
             contract_id: contractId,
             topic: "print",
-            value: { hex: "", repr: "" },
+            value: { hex: "0x0703", repr: "(ok true)" },
           },
         },
       ],
@@ -5076,7 +5066,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5099,7 +5089,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5127,7 +5117,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
               {
@@ -5137,7 +5127,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
               {
@@ -5147,7 +5137,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5238,8 +5228,8 @@ describe("historical runtime with handlers", () => {
     const contractId = "SP123.token";
     const handledEvents: { txId: string; blockHeight: number }[] = [];
 
-    const handler = vi.fn().mockImplementation((event: { tx_id: string; block_height: number }) => {
-      handledEvents.push({ txId: event.tx_id, blockHeight: event.block_height });
+    const handler = vi.fn().mockImplementation((event: PrintEvent<unknown>) => {
+      handledEvents.push({ txId: event.txId, blockHeight: event.block.height });
 
       return Effect.void;
     });
@@ -5270,7 +5260,7 @@ describe("historical runtime with handlers", () => {
           contract_log: {
             contract_id: contractId,
             topic: "print",
-            value: { hex: "", repr: "" },
+            value: { hex: "0x0703", repr: "(ok true)" },
           },
         },
       ],
@@ -5328,7 +5318,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5351,7 +5341,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5379,7 +5369,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5407,7 +5397,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5435,7 +5425,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5522,8 +5512,8 @@ describe("historical runtime with handlers", () => {
     });
   });
 
-  test("rejects invalid custom networks", async () => {
-    const invalidNetworks = [
+  test("rejects invalid custom chain ids", async () => {
+    const invalidChainIds = [
       1.5,
       Number.NaN,
       Number.POSITIVE_INFINITY,
@@ -5532,8 +5522,11 @@ describe("historical runtime with handlers", () => {
       Number.MIN_SAFE_INTEGER - 1,
     ];
 
-    for (const network of invalidNetworks) {
-      const runtime = makeRuntime({ db: testDb.db, network });
+    for (const id of invalidChainIds) {
+      const runtime = makeRuntime({
+        db: testDb.db,
+        chain: { id, apiUrl: "https://devnet.example" },
+      });
 
       const error = await Effect.runPromise(
         runtime.run([{ contractId: "SP123.token", handler: noopHandler }]).pipe(Effect.flip),
@@ -5543,7 +5536,7 @@ describe("historical runtime with handlers", () => {
     }
   });
 
-  test("supports custom network in context", async () => {
+  test("supports a custom chain", async () => {
     const contractId = "SP123.custom-chain";
     const customChainId = 2147483648;
     const handler = vi.fn().mockReturnValue(Effect.void);
@@ -5613,7 +5606,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "0x01", repr: "u1" },
+                  value: { hex: "0x0100000000000000000000000000000001", repr: "u1" },
                 },
               },
             ],
@@ -5635,7 +5628,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "0x01", repr: "u1" },
+                  value: { hex: "0x0100000000000000000000000000000001", repr: "u1" },
                 },
               },
             ],
@@ -5675,7 +5668,7 @@ describe("historical runtime with handlers", () => {
 
     const runtime = makeRuntime({
       db: testDb.db,
-      network: customChainId,
+      chain: { id: customChainId, apiUrl: "https://devnet.example" },
     });
 
     const result = await runtime.run([{ contractId, handler }]);
@@ -5701,7 +5694,7 @@ describe("historical runtime with handlers", () => {
     expect(defaultProgress).toBeNull();
   });
 
-  test('network "testnet" uses the testnet chain ID and API', async () => {
+  test('chain "testnet" uses the testnet chain ID and API', async () => {
     const contractId = "SP123.testnet";
     const requestedUrls: string[] = [];
 
@@ -5733,7 +5726,7 @@ describe("historical runtime with handlers", () => {
 
     const runtime = makeRuntime({
       db: testDb.db,
-      network: "testnet",
+      chain: "testnet",
     });
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
@@ -5753,7 +5746,7 @@ describe("historical runtime with handlers", () => {
     expect(progress?.chainId).toBe(2_147_483_648n);
   });
 
-  test("explicit api.baseUrl overrides the network default", async () => {
+  test("explicit api.url overrides the chain default", async () => {
     const contractId = "SP123.override";
     const requestedUrls: string[] = [];
 
@@ -5785,8 +5778,8 @@ describe("historical runtime with handlers", () => {
 
     const runtime = makeRuntime({
       db: testDb.db,
-      network: "testnet",
-      api: { baseUrl: "https://custom.example" },
+      chain: "testnet",
+      api: { url: "https://custom.example" },
     });
 
     const result = await runtime.run([{ contractId, handler: noopHandler }]);
@@ -5878,7 +5871,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -5902,7 +5895,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
               {
@@ -5912,7 +5905,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -6023,7 +6016,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -6047,7 +6040,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
               {
@@ -6057,7 +6050,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -6121,7 +6114,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -6165,7 +6158,7 @@ describe("historical runtime with handlers", () => {
                 contract_log: {
                   contract_id: contractId,
                   topic: "print",
-                  value: { hex: "", repr: "" },
+                  value: { hex: "0x0703", repr: "(ok true)" },
                 },
               },
             ],
@@ -6261,7 +6254,10 @@ describe("historical runtime with handlers", () => {
       });
     });
 
-    const layer = Indexer.layer({ finality: 0 });
+    const layer = Indexer.layer({
+      finality: 0,
+      contracts: [contractSpec({ contractId, handler, endBlock: 100 })],
+    });
 
     await Effect.runPromise(
       Effect.scoped(
@@ -6270,7 +6266,7 @@ describe("historical runtime with handlers", () => {
             Effect.gen(function* () {
               const runtime = yield* Indexer;
 
-              return yield* runtime.run([{ contractId, handler, endBlock: 100 }]);
+              return yield* runtime.run;
             }).pipe(Effect.provide(layer), Effect.provideService(IndexerDatabase, testDb.db)),
           );
 
@@ -6346,7 +6342,9 @@ describe("historical runtime with handlers", () => {
       });
     });
 
-    const layer = Indexer.layer({});
+    const layer = Indexer.layer({
+      contracts: [contractSpec({ contractId, handler, endBlock: 100 })],
+    });
 
     await Effect.runPromise(
       Effect.scoped(
@@ -6355,7 +6353,7 @@ describe("historical runtime with handlers", () => {
             Effect.gen(function* () {
               const runtime = yield* Indexer;
 
-              return yield* runtime.run([{ contractId, handler, endBlock: 100 }]);
+              return yield* runtime.run;
             }).pipe(Effect.provide(layer), Effect.provideService(IndexerDatabase, testDb.db)),
           );
 

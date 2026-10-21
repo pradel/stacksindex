@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import type { HandlerEvent } from "../lib/types.ts";
+import type { PrintEvent } from "../lib/types.ts";
 
 /**
  * Runtime shape of an `events` row joined with its transaction and block, as
@@ -16,6 +16,7 @@ export const StoredEventSchema = Schema.Struct({
   valueRepr: Schema.String,
   blockHeight: Schema.BigInt,
   blockTime: Schema.BigInt,
+  blockHash: Schema.String,
   indexBlockHash: Schema.String,
   txIndex: Schema.Int,
   senderAddress: Schema.String,
@@ -25,21 +26,24 @@ export type StoredEvent = typeof StoredEventSchema.Type;
 
 export const decodeStoredEvents = Schema.decodeUnknownEffect(Schema.Array(StoredEventSchema));
 
-export const storedEventToHandlerEvent = (event: StoredEvent): HandlerEvent => ({
-  event_index: event.eventIndex,
-  event_type: event.eventType,
-  tx_id: event.txId,
-  contract_log: {
-    contract_id: event.contractId,
-    topic: event.topic,
-    value: {
-      hex: event.valueHex,
-      repr: event.valueRepr,
-    },
+/** The handler payload for a stored event of contract `contract`, carrying `data`. */
+export const storedEventToPrintEvent = <TData>(
+  event: StoredEvent,
+  contract: string,
+  data: TData,
+): PrintEvent<TData> => ({
+  type: "print",
+  contract,
+  contractId: event.contractId,
+  txId: event.txId,
+  eventIndex: event.eventIndex,
+  data,
+  raw: { hex: event.valueHex, repr: event.valueRepr, topic: event.topic },
+  block: {
+    height: Number(event.blockHeight),
+    time: Number(event.blockTime),
+    hash: event.blockHash,
+    indexBlockHash: event.indexBlockHash,
   },
-  block_height: Number(event.blockHeight),
-  block_time: Number(event.blockTime),
-  index_block_hash: event.indexBlockHash,
-  tx_index: event.txIndex,
-  sender_address: event.senderAddress,
+  tx: { index: event.txIndex, sender: event.senderAddress },
 });

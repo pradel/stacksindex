@@ -20,9 +20,9 @@ const POOL = "SP1.pool";
 const LATE = "SP1.late";
 
 const FILTERS: readonly SyncFilter[] = [
-  { contractId: TOKEN },
-  { contractId: POOL, endBlock: 102 },
-  { contractId: LATE, startBlock: 103 },
+  { name: "token", contractId: TOKEN },
+  { name: "pool", contractId: POOL, endBlock: 102 },
+  { name: "late", contractId: LATE, startBlock: 103 },
 ];
 
 /** Blocks covering what both fetch paths must agree on. */

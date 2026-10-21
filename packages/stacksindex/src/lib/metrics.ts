@@ -12,9 +12,16 @@ import { Metric } from "effect";
  *
  * Every series also carries `chain_id`, applied once per `run`/`live` call
  * through `Metric.CurrentMetricAttributes`. Metrics with per-contract series
- * take a `contract` attribute: build the labelled metric once per contract
- * with `Metric.withAttributes`, not on every update.
+ * take the `contract` (definition name) and `contract_id` attributes from
+ * `contractAttributes`: build the labelled metric once per contract with
+ * `Metric.withAttributes`, not on every update.
  */
+
+/** Attributes of a per-contract series: the definition name and the contract id. */
+export const contractAttributes = (name: string, contractId: string) => ({
+  contract: name,
+  contract_id: contractId,
+});
 
 /** Millisecond buckets for I/O-bound work. */
 const DURATION_MS_BOUNDARIES = [
