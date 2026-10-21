@@ -8,7 +8,8 @@ import { afterAll, describe, expect, test } from "vite-plus/test";
 
 import { defineIndexer, type Indexer } from "../promise/index.ts";
 import { blocksTable } from "../sync-store/schema.ts";
-import { type Database, pglite } from "./index.ts";
+import { freshDatabase, persistentDatabase } from "../test/fresh-database.ts";
+import type { Database } from "./index.ts";
 
 const definition = defineIndexer({ contracts: { token: { id: "SP123.token" } } });
 
@@ -66,7 +67,7 @@ describe("database", () => {
   });
 
   test("creates the indexer tables in the stacksindex schema when opened", async () => {
-    await using indexer = await open(pglite());
+    await using indexer = await open(await freshDatabase());
 
     await expect(tablesIn(indexer, "stacksindex")).resolves.toStrictEqual([
       "__drizzle_migrations",
@@ -81,14 +82,14 @@ describe("database", () => {
     await expect(indexer.db.select().from(blocksTable)).resolves.toStrictEqual([]);
   });
 
-  test("reopens an existing pglite directory without reapplying indexer migrations", async () => {
-    const directory = makeTempDir();
+  test("reopens an existing database without reapplying indexer migrations", async () => {
+    const database = await persistentDatabase(makeTempDir());
 
-    const first = await open(pglite(directory));
+    const first = await open(database);
     const appliedOnCreate = await migrationNames(first, "stacksindex");
     await first.close();
 
-    await using reopened = await open(pglite(directory));
+    await using reopened = await open(database);
 
     await expect(migrationNames(reopened, "stacksindex")).resolves.toStrictEqual(appliedOnCreate);
   });
@@ -103,8 +104,8 @@ describe("database", () => {
       'CREATE TABLE "events" ("id" text PRIMARY KEY);',
     );
 
-    await using plain = await open(pglite());
-    await using indexer = await open(pglite(), migrationsFolder);
+    await using plain = await open(await freshDatabase());
+    await using indexer = await open(await freshDatabase(), migrationsFolder);
 
     await expect(tablesIn(indexer, "public")).resolves.toStrictEqual(["events"]);
     await expect(tablesIn(indexer, "stacksindex")).resolves.toContain("events");
@@ -117,7 +118,7 @@ describe("database", () => {
   });
 
   test("reopening with the same migrations does not reapply them", async () => {
-    const directory = makeTempDir();
+    const database = await persistentDatabase(makeTempDir());
     const migrationsFolder = makeTempDir();
     const migrationDir = path.join(migrationsFolder, "20260101000000_user_events");
     fs.mkdirSync(migrationDir);
@@ -126,10 +127,10 @@ describe("database", () => {
       'CREATE TABLE "events" ("id" text PRIMARY KEY);',
     );
 
-    const first = await open(pglite(directory), migrationsFolder);
+    const first = await open(database, migrationsFolder);
     await first.close();
 
-    await using reopened = await open(pglite(directory), migrationsFolder);
+    await using reopened = await open(database, migrationsFolder);
 
     await expect(migrationNames(reopened, "drizzle")).resolves.toStrictEqual([
       "20260101000000_user_events",
@@ -137,7 +138,7 @@ describe("database", () => {
   });
 
   test("close is idempotent and further calls reject after closing", async () => {
-    const indexer = await open(pglite());
+    const indexer = await open(await freshDatabase());
 
     await indexer.close();
     await indexer.close();

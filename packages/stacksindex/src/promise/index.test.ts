@@ -14,6 +14,7 @@ import { pglite } from "../database/index.ts";
 import { ConfigurationError, EventDecodeError } from "../lib/errors.ts";
 import { syncProgressTable } from "../sync-store/schema.ts";
 import { createFakeChain, type FakeChain } from "../test-utils/fake-chain.ts";
+import { freshDatabase } from "../test/fresh-database.ts";
 import { defineIndexer, type Indexer } from "./index.ts";
 
 const CONTRACT_ID = "SP123.token";
@@ -59,7 +60,7 @@ describe("promise indexer", () => {
     await using indexer = await defineIndexer({
       contracts: { token: { id: CONTRACT_ID, print: Schema.toStandardSchemaV1(Print) } },
     }).create({
-      database: pglite(),
+      database: await freshDatabase(),
       logLevel: "None",
       handlers: {
         token: (event) => {
@@ -91,7 +92,7 @@ describe("promise indexer", () => {
           print: Schema.toStandardSchemaV1(Schema.Struct({ ok: Schema.String })),
         },
       },
-    }).create({ database: pglite(), logLevel: "None", handlers: { token: handler } });
+    }).create({ database: await freshDatabase(), logLevel: "None", handlers: { token: handler } });
 
     await seedProgress(indexer);
 

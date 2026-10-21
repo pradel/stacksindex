@@ -3,6 +3,7 @@ import { Context, Effect, Exit, Layer, Scope } from "effect";
 
 import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import { toThenable } from "../promise/thenable.ts";
+import { freshDatabase } from "./fresh-database.ts";
 
 export interface TestDatabase {
   db: IndexerDb;
@@ -15,7 +16,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   const scope = await Effect.runPromise(Scope.make());
 
   const context = await Effect.runPromise(
-    Layer.build(IndexerDatabase.layer({ kind: "pglite" })).pipe(Scope.provide(scope)),
+    Layer.build(IndexerDatabase.layer(await freshDatabase())).pipe(Scope.provide(scope)),
   );
 
   const rawDb = Context.get(context, IndexerDatabase);

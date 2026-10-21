@@ -22,6 +22,7 @@ import {
 import { Indexer } from "../runtime/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { createFakeChain, type FakeChain } from "../test-utils/fake-chain.ts";
+import { freshDatabase } from "../test/fresh-database.ts";
 import { defineIndexer } from "./index.ts";
 
 const CONTRACT_ID = "SP123.token";
@@ -100,7 +101,7 @@ describe("effect indexer", () => {
     );
 
     const layer = definition.layer({
-      database: pglite(),
+      database: await freshDatabase(),
       logLevel: "None",
       handlers: { token: handler },
     });
@@ -130,7 +131,11 @@ describe("effect indexer", () => {
     const result = await Effect.runPromise(
       runOnce.pipe(
         Effect.provide(
-          definition.layer({ database: pglite(), logLevel: "None", handlers: { token: handler } }),
+          definition.layer({
+            database: await freshDatabase(),
+            logLevel: "None",
+            handlers: { token: handler },
+          }),
         ),
         Effect.provide(greetingLayer),
       ),
@@ -163,7 +168,11 @@ describe("effect indexer", () => {
     await Effect.runPromise(
       runOnce.pipe(
         Effect.provide(
-          withPrint.layer({ database: pglite(), logLevel: "None", handlers: { token: handler } }),
+          withPrint.layer({
+            database: await freshDatabase(),
+            logLevel: "None",
+            handlers: { token: handler },
+          }),
         ),
       ),
     );

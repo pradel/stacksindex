@@ -10,7 +10,7 @@ import {
   vi,
 } from "vite-plus/test";
 
-import { IndexerDatabase, pglite } from "../database/index.ts";
+import { IndexerDatabase } from "../database/index.ts";
 import { EventDecodeError, HandlerExecutionError, ReorgError } from "../lib/errors.ts";
 import { liveConsecutiveFailures, liveIsRealtime, syncErrors } from "../lib/metrics.ts";
 import type { PrintEvent } from "../lib/types.ts";
@@ -19,6 +19,7 @@ import { syncStore } from "../sync-store/index.ts";
 import { checkpointsTable, eventsTable, syncProgressTable } from "../sync-store/schema.ts";
 import { createFakeChain, type FakeChain, type FakeTransaction } from "../test-utils/fake-chain.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
+import { freshDatabase } from "../test/fresh-database.ts";
 import type { ContractSpec } from "./contracts.ts";
 import { Indexer, type IndexerOptions } from "./index.ts";
 
@@ -552,7 +553,7 @@ describe("live indexing", () => {
     });
 
     const indexer = await defineIndexer({ contracts: { token: { id: CONTRACT_ID } } }).create({
-      database: pglite(),
+      database: await freshDatabase(),
       live: { pollingInterval: 100 },
       logLevel: "None",
       handlers: {

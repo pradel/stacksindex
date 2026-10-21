@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { pglite } from "../database/index.ts";
 import { ConfigurationError } from "../lib/errors.ts";
 import { defineIndexer } from "../promise/index.ts";
+import { freshDatabase } from "../test/fresh-database.ts";
 import type { TelemetryOptions } from "./index.ts";
 
 interface ExportRequest {
@@ -12,9 +12,9 @@ interface ExportRequest {
 
 const indexer = defineIndexer({ contracts: { token: { id: "SP123.token" } } });
 
-const createWithTelemetry = (telemetry: TelemetryOptions) =>
+const createWithTelemetry = async (telemetry: TelemetryOptions) =>
   indexer.create({
-    database: pglite(),
+    database: await freshDatabase(),
     logLevel: "None",
     telemetry,
     handlers: { token: () => undefined },
