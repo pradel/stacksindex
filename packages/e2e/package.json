@@ -10,15 +10,15 @@
     "bench": "BENCHMARK_REPORT=true vp test"
   },
   "dependencies": {
-    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite": "0.5.10",
     "@stacks/codec": "2.1.0",
     "drizzle-orm": "1.0.0-rc.5-5935859",
     "stacksindex": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "26.6.4",
+    "@types/node": "26.6.5",
     "@vitest/coverage-v8": "catalog:",
-    "effect": "4.0.2",
+    "effect": "4.0.5",
     "typescript": "7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:",

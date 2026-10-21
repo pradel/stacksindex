@@ -48,12 +48,14 @@ const transaction: TransactionApiResponse = {
     hash: "0xaa832f80b70e93f9b35415cf88b00daf6c398997520ad1efc00d83afd1157c81",
     height: 7444092,
     time: 1775137130,
+    time_iso: "2026-04-02T13:38:50.000Z",
     tx_index: 3,
     index_hash: "0x9ff38d3c314e8b60fa2c1e556339b7c4e650bb134f52e262b67112ba32ca302c",
   },
   bitcoin_block: {
     height: 943364,
     time: 1775137333,
+    time_iso: "2026-04-02T13:42:13.000Z",
   },
   parent_block: {
     hash: "0x5594d5355a70d798871bc202ba2b843291ec032ff2367616bc539291f47abf32",

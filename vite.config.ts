@@ -4,6 +4,7 @@ import {
   antipattern,
   correctness,
   effectNative,
+  maintainers,
   recommended,
   style,
 } from "@effect/tsgo/oxlint-presets";
@@ -16,6 +17,7 @@ const deferredEffectRules = Object.fromEntries(
     ...Object.keys(antipattern.rules ?? {}),
     ...Object.keys(effectNative.rules ?? {}),
     ...Object.keys(style.rules ?? {}),
+    ...Object.keys(maintainers.rules ?? {}),
   ].map((rule) => [rule, "off"]),
 );
 
