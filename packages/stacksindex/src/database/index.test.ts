@@ -8,6 +8,7 @@ import { afterAll, describe, expect, test } from "vite-plus/test";
 
 import { createIndexer, type Indexer } from "../promise/index.ts";
 import { blocksTable } from "../sync-store/schema.ts";
+import { pglite } from "./index.ts";
 
 const catalogTables = pgSchema("information_schema").table("tables", {
   tableSchema: text("table_schema").notNull(),
@@ -54,8 +55,21 @@ describe("database", () => {
     }
   });
 
+  const writeUserMigration = (): string => {
+    const migrationsFolder = makeTempDir();
+    const migrationDir = path.join(migrationsFolder, "20260101000000_user_events");
+    fs.mkdirSync(migrationDir);
+    // `events` is also an indexer table name; the schemas keep them apart.
+    fs.writeFileSync(
+      path.join(migrationDir, "migration.sql"),
+      'CREATE TABLE "events" ("id" text PRIMARY KEY);',
+    );
+
+    return migrationsFolder;
+  };
+
   test("creates the indexer tables in the stacksindex schema when opened", async () => {
-    await using indexer = await createIndexer({ database: { kind: "pglite" } });
+    await using indexer = await createIndexer({ database: pglite() });
 
     await expect(tablesIn(indexer, "stacksindex")).resolves.toStrictEqual([
       "__drizzle_migrations",
@@ -73,45 +87,49 @@ describe("database", () => {
   test("reopens an existing pglite directory without reapplying indexer migrations", async () => {
     const directory = makeTempDir();
 
-    const first = await createIndexer({ database: { kind: "pglite", directory } });
+    const first = await createIndexer({ database: pglite(directory) });
     const appliedOnCreate = await migrationNames(first, "stacksindex");
     await first.close();
 
-    await using reopened = await createIndexer({ database: { kind: "pglite", directory } });
+    await using reopened = await createIndexer({ database: pglite(directory) });
 
     await expect(migrationNames(reopened, "stacksindex")).resolves.toStrictEqual(appliedOnCreate);
   });
 
-  test("migrate() applies user migrations to public without colliding with indexer tables", async () => {
-    const migrationsFolder = makeTempDir();
-    const migrationDir = path.join(migrationsFolder, "20260101000000_user_events");
-    fs.mkdirSync(migrationDir);
-    // `events` is also an indexer table name; the schemas keep them apart.
-    fs.writeFileSync(
-      path.join(migrationDir, "migration.sql"),
-      'CREATE TABLE "events" ("id" text PRIMARY KEY);',
-    );
+  test("migrations applies user migrations to public without colliding with indexer tables", async () => {
+    const migrations = writeUserMigration();
 
-    await using indexer = await createIndexer({ database: { kind: "pglite" } });
-    const indexerMigrations = await migrationNames(indexer, "stacksindex");
-
-    await indexer.migrate({ migrationsFolder });
+    await using indexer = await createIndexer({ database: pglite(), migrations });
 
     await expect(tablesIn(indexer, "public")).resolves.toStrictEqual(["events"]);
     await expect(migrationNames(indexer, "drizzle")).resolves.toStrictEqual([
       "20260101000000_user_events",
     ]);
-    await expect(migrationNames(indexer, "stacksindex")).resolves.toStrictEqual(indexerMigrations);
+    await expect(migrationNames(indexer, "stacksindex")).resolves.not.toContain(
+      "20260101000000_user_events",
+    );
+  });
+
+  test("reopening with the same migrations does not reapply them", async () => {
+    const directory = makeTempDir();
+    const migrations = writeUserMigration();
+
+    const first = await createIndexer({ database: pglite(directory), migrations });
+    await first.close();
+
+    await using reopened = await createIndexer({ database: pglite(directory), migrations });
+
+    await expect(migrationNames(reopened, "drizzle")).resolves.toStrictEqual([
+      "20260101000000_user_events",
+    ]);
   });
 
   test("close is idempotent and further calls reject after closing", async () => {
-    const indexer = await createIndexer({ database: { kind: "pglite" } });
+    const indexer = await createIndexer({ database: pglite() });
 
     await indexer.close();
     await indexer.close();
 
-    await expect(indexer.migrate({ migrationsFolder: makeTempDir() })).rejects.toThrow(
-      "Indexer is closed",
-    );
+    await expect(indexer.status()).rejects.toThrow("Indexer is closed");
   });
 });

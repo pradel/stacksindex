@@ -13,12 +13,7 @@ import {
 } from "effect";
 
 import type { ClarityJsonValue } from "../codec/index.ts";
-import {
-  type DatabaseConfig,
-  IndexerDatabase,
-  migrate,
-  type IndexerDb,
-} from "../database/index.ts";
+import { type Database, IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import type {
   ContractFunctionArgs,
   ContractFunctionName,
@@ -171,8 +166,13 @@ export interface Filter<TRelations extends AnyRelations = EmptyRelations> {
 export type LogLevel = EffectLogLevel.LogLevel;
 
 export interface IndexerOptions<TRelations extends AnyRelations = EmptyRelations> {
-  /** Database for sync storage, checkpoints and your own tables. */
-  database: DatabaseConfig;
+  /** Database for sync storage, checkpoints and your own tables: `pglite(...)` or `postgres(...)`. */
+  database: Database;
+  /**
+   * Folder of your drizzle-kit migrations, applied when the database opens,
+   * after the indexer's own. Tracked in drizzle's default `drizzle.__drizzle_migrations`.
+   */
+  migrations?: string;
   /**
    * Drizzle relations from `defineRelations`, enabling `db.query` on
    * `indexer.db` and `context.db`.
@@ -209,11 +209,6 @@ export interface Indexer<TRelations extends AnyRelations = EmptyRelations> {
    * the indexer's. On PGlite, queries wait for the batch in progress.
    */
   readonly db: IndexerDb<TRelations>;
-  /**
-   * Applies your drizzle-kit migrations from `migrationsFolder`. The indexer's
-   * own tables live in the `stacksindex` schema and are migrated by `createIndexer`.
-   */
-  migrate: (options: { migrationsFolder: string }) => Promise<void>;
   /** Syncs and indexes one or more contracts up to the current chain tip. */
   run: (filters: Filter<TRelations> | Filter<TRelations>[]) => Promise<RunResult>;
   /**
@@ -286,6 +281,7 @@ export async function createIndexer<TRelations extends AnyRelations>(
   const runtime = ManagedRuntime.make(
     IndexerService.layerWithDatabase({
       database: options.database,
+      migrations: options.migrations,
       relations: options.relations,
       chain: options.chain,
       api: options.api,
@@ -339,10 +335,6 @@ export async function createIndexer<TRelations extends AnyRelations>(
 
   return {
     db,
-    migrate: async (migrateOptions) => {
-      ensureOpen();
-      await runtime.runPromise(migrate(migrateOptions));
-    },
     run: async (filters) => {
       ensureOpen();
 

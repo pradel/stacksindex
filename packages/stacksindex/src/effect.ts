@@ -4,9 +4,9 @@ export { loggerLayer } from "./logger/index.ts";
 
 export type { LoggerLayerOptions } from "./logger/index.ts";
 
-export { IndexerDatabase, migrate } from "./database/index.ts";
+export { IndexerDatabase, pglite, postgres } from "./database/index.ts";
 
-export type { DatabaseConfig, DatabaseOptions, IndexerDb } from "./database/index.ts";
+export type { Database, DatabaseOptions, IndexerDb } from "./database/index.ts";
 
 export { Indexer } from "./runtime/index.ts";
 

@@ -1,7 +1,7 @@
 import type { AnyRelations } from "drizzle-orm";
 import { Effect, type LogLevel, Schema } from "effect";
 
-import type { DatabaseConfig } from "../database/index.ts";
+import type { Database } from "../database/index.ts";
 import { defaultWebSocketUrl, type HeadsTransport } from "../datasources/api/heads.ts";
 import type { StacksApiError } from "../datasources/api/index.ts";
 import {
@@ -62,8 +62,13 @@ export interface IndexerOptions {
 }
 
 export interface IndexerWithDatabaseOptions extends IndexerOptions {
-  /** Database for sync storage, checkpoints and your own tables. */
-  database: DatabaseConfig;
+  /** Database for sync storage, checkpoints and your own tables: `pglite(...)` or `postgres(...)`. */
+  database: Database;
+  /**
+   * Folder of your drizzle-kit migrations, applied when the database opens,
+   * after the indexer's own. Tracked in drizzle's default `drizzle.__drizzle_migrations`.
+   */
+  migrations?: string;
   /**
    * Drizzle relations from `defineRelations`, enabling `context.db.query`.
    * Type handlers with the same value: `EventHandler<typeof relations>`.

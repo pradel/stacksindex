@@ -42,7 +42,7 @@ Processes events from the sync store by executing user-defined handlers. Each ha
 
 ### User Tables
 
-PostgreSQL tables defined by the user's schema, in the same database as the sync store (by default in `public`). These store the transformed/indexed data that applications query. The user creates them with drizzle-kit migrations applied by `migrate({ migrationsFolder })`, tracked in drizzle's default `drizzle.__drizzle_migrations`.
+PostgreSQL tables defined by the user's schema, in the same database as the sync store (by default in `public`). These store the transformed/indexed data that applications query. The user creates them with drizzle-kit migrations whose folder is passed as `migrations`; they are applied when the database opens, after the sync store's, and tracked in drizzle's default `drizzle.__drizzle_migrations`.
 
 ## Configuration
 
@@ -342,15 +342,15 @@ The core handler contract is Effect-only. The promise entrypoint (`stacksindex`)
 
 ### Entrypoints
 
-- `stacksindex` — promise-native facade: `createIndexer({ database, chain, api, finality, live, logLevel, telemetry })` owns the database and runtime lifecycle and returns `{ db, migrate, run, live, status, close, [Symbol.asyncDispose] }`. `migrate({ migrationsFolder })` applies the user's migrations; `run` returns a `RunResult` summary; `live` resolves when every filter reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter.
-- `stacksindex/effect` — Effect-native surface: `Indexer` (+ `layer` and `layerWithDatabase`), `IndexerDatabase`, `StacksClient`, `readOnly`, `migrate`, and `loggerLayer`.
+- `stacksindex` — promise-native facade: `createIndexer({ database, migrations, chain, api, finality, live, logLevel, telemetry })` owns the database and runtime lifecycle and returns `{ db, run, live, status, close, [Symbol.asyncDispose] }`. `database` comes from `pglite(directory?)` or `postgres(url)`; `run` returns a `RunResult` summary; `live` resolves when every filter reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter.
+- `stacksindex/effect` — Effect-native surface: `Indexer` (+ `layer` and `layerWithDatabase`), `IndexerDatabase`, `pglite`/`postgres`, `StacksClient`, `readOnly`, and `loggerLayer`.
 - `stacksindex/clarity` — Clarity codec: `decodeHex`, `cvToJSON`, `decodeClarityValue`, `decodeClarityWithSchema`, `encodeUint`, `ClarityTypeID` and the `ClarityJsonValue`/`ClarityValue` types.
 
 ### Services
 
 The runtime is composed from Effect services and layers:
 
-- `IndexerDatabase` — the Drizzle database; `IndexerDatabase.layer(config)` opens it and applies the sync store migrations, and `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service.
+- `IndexerDatabase` — the Drizzle database; `IndexerDatabase.layer(database, { relations, migrations })` opens it, applies the sync store migrations then the user's, and `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service.
 - `Indexer` — `Indexer.layer({ chain, api, finality, live })` builds the Stacks API client and the in-memory `RunPhase`; `run(filters)` and `live(filters)` require `IndexerDatabase`. Both set the phase (`backfill`, then `done`, `failed`, or `idle` when interrupted; `runLive` sets `live` once it follows new heads) and add the `chain_id` attribute to every metric recorded inside through `Metric.CurrentMetricAttributes`. `status` combines the phase with the stored checkpoint, sync anchor and per-contract sync progress. `Indexer.layerWithDatabase({ database, chain, api, finality, live, logLevel, telemetry })` provides the indexer, database, logger and, with `telemetry.otlp`, the metrics exporter in one layer.
 - `Indexing` — `Indexing.layer({ handlers })` executes user handlers inside `IndexerDatabase.transaction` (internal).
 - `loggerLayer({ level })` — installs Effect's pretty console logger and minimum log level.

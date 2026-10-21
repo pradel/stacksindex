@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { createIndexer, type IndexerDb } from "stacksindex";
+import { createIndexer, type IndexerDb, pglite } from "stacksindex";
 
 export interface TestDatabase {
   db: IndexerDb;
@@ -8,7 +8,7 @@ export interface TestDatabase {
 }
 
 export async function createTestDatabase(): Promise<TestDatabase> {
-  const runtime = await createIndexer({ database: { kind: "pglite" } });
+  const runtime = await createIndexer({ database: pglite() });
 
   return {
     db: runtime.db,

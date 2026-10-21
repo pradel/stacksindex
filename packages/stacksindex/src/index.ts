@@ -25,7 +25,9 @@ export type {
   TelemetryOptions,
 } from "./runtime/index.ts";
 
-export { type DatabaseConfig, type IndexerDb } from "./database/index.ts";
+export { pglite, postgres } from "./database/index.ts";
+
+export type { Database, IndexerDb } from "./database/index.ts";
 
 export { ReadOnlyCallError } from "./datasources/api/index.ts";
 

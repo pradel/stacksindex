@@ -6,7 +6,7 @@ import { Cl } from "@stacks/transactions";
 import { sql } from "drizzle-orm";
 import { integer, pgTable, text } from "drizzle-orm/pg-core";
 import { createTraceCollector } from "indexer-e2e/src/tracer.ts";
-import type { EventHandler, IndexerDb } from "stacksindex";
+import { type EventHandler, type IndexerDb, pglite } from "stacksindex";
 import { afterAll, describe, expect, test } from "vite-plus/test";
 
 import { chainTip, EVENTS_CONTRACT, RUNTIME_SENDER, submitContractCall } from "../chain.ts";
@@ -83,7 +83,7 @@ describe("resuming on the same database", () => {
     test("applies each event once across a failed batch and a restart", async () => {
       const directory = fs.mkdtempSync(path.join(os.tmpdir(), "stacksindex-devnet-"));
       directories.push(directory);
-      const database = { kind: "pglite", directory } as const;
+      const database = pglite(directory);
       const startBlock = (await chainTip()) + 1;
 
       await submitContractCall(RUNTIME_SENDER, EVENTS_CONTRACT, "set-value", [Cl.uint(20)]);
@@ -93,8 +93,7 @@ describe("resuming on the same database", () => {
       };
 
       {
-        await using indexer = await createDevnetIndexer(undefined, database);
-        await indexer.migrate({ migrationsFolder });
+        await using indexer = await createDevnetIndexer(undefined, database, migrationsFolder);
 
         const firstRun = await indexer.run({
           contractId: EVENTS_CONTRACT,
@@ -112,7 +111,7 @@ describe("resuming on the same database", () => {
 
       {
         // Only the new event is pending, and the run fails right after writing it.
-        await using indexer = await createDevnetIndexer(undefined, database);
+        await using indexer = await createDevnetIndexer(undefined, database, migrationsFolder);
         const crash = new Error("crash after the write");
 
         await expect(
@@ -130,7 +129,7 @@ describe("resuming on the same database", () => {
         await expect(readCount(indexer.db)).resolves.toBe(1);
       }
 
-      await using restarted = await createDevnetIndexer(undefined, database);
+      await using restarted = await createDevnetIndexer(undefined, database, migrationsFolder);
 
       const resumed = await restarted.run({
         contractId: EVENTS_CONTRACT,
