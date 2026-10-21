@@ -30,12 +30,19 @@ export const ChainOptionSchema = Schema.Union([
 ]);
 
 export function resolveChain(chain: typeof ChainOptionSchema.Type | undefined): ResolvedChain {
+  if (chain === undefined || chain === "mainnet") {
+    return { chainId: MAINNET_CHAIN_ID, apiUrl: MAINNET_API_URL };
+  }
+
   if (chain === "testnet") {
     return { chainId: TESTNET_CHAIN_ID, apiUrl: TESTNET_API_URL };
   }
 
-  if (chain === undefined || Predicate.isString(chain)) {
-    return { chainId: MAINNET_CHAIN_ID, apiUrl: MAINNET_API_URL };
+  // Unreachable from TypeScript; plain JavaScript can pass any string.
+  if (Predicate.isString(chain)) {
+    throw new RangeError(
+      `Invalid chain: ${JSON.stringify(chain)}. Expected "mainnet", "testnet", or { id, apiUrl }.`,
+    );
   }
 
   return { chainId: chain.id, apiUrl: chain.apiUrl };

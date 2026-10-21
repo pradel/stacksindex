@@ -7,10 +7,11 @@ A simple, open-source indexer for the Stacks blockchain: historical backfill, th
 
 `stacksindex` lets you backfill smart contract events, follow new blocks as they are mined, execute user-defined handlers to derive custom relational state, and query historical contract data at specific block heights.
 
-Two entrypoints ship with the package:
+Three entrypoints ship with the package:
 
 - **`stacksindex`** — promise-native API for scripts, CLIs and Node services.
 - **`stacksindex/effect`** — Effect-native services and layers.
+- **`stacksindex/clarity`** — the Clarity codec (`decodeHex`, `cvToJSON`, …); see [`stacksindex/clarity`](#stacksindexclarity).
 
 ---
 

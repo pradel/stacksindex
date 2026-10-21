@@ -36,4 +36,11 @@ describe("chain", () => {
       apiUrl: "http://localhost:3999",
     });
   });
+
+  test("rejects an unknown chain name instead of falling back to mainnet", () => {
+    // @ts-expect-error -- JavaScript callers can pass any string.
+    expect(() => resolveChain("devnet")).toThrow(
+      'Invalid chain: "devnet". Expected "mainnet", "testnet", or { id, apiUrl }.',
+    );
+  });
 });
