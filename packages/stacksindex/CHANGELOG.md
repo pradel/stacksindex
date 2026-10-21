@@ -1,5 +1,11 @@
 # stacksindex
 
+## 0.1.1
+
+### Patch Changes
+
+- [#82](https://github.com/pradel/stacksindex/pull/82) [`fbed2a7`](https://github.com/pradel/stacksindex/commit/fbed2a7a2c3bf9c41b45bf001c4648d660ec85a9) Thanks [@pradel](https://github.com/pradel)! - Upgrade dependencies: `effect`, `@effect/sql-pg` and `@effect/sql-pglite` 4.0.5, and `@stacks/blockchain-api-client` 9.6.0.
+
 ## 0.1.0
 
 ### Minor Changes
