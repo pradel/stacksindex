@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import pg from "pg";
 
@@ -12,11 +12,32 @@ import { type Database, pglite, postgres } from "../database/index.ts";
 // oxlint-disable-next-line node/no-process-env -- test-only switch, never read by the library
 export const TEST_POSTGRES_URL = process.env.STACKSINDEX_TEST_POSTGRES_URL;
 
-/** Prefix of every database the tests create, so a teardown can drop them. */
+/**
+ * Prefix of every database the tests create. A full name is
+ * `stacksindex_test_<epoch seconds>_<run id>_<database id>`: the run part lets a
+ * run drop only its own databases, the timestamp lets a later run tell stale
+ * leftovers from a run still in progress.
+ */
 export const TEST_DATABASE_PREFIX = "stacksindex_test_";
 
+/** Env var through which the global setup hands the current run's prefix to the test workers. */
+export const TEST_RUN_PREFIX_ENV = "STACKSINDEX_TEST_RUN_PREFIX";
+
+/** A new run's database name prefix: `stacksindex_test_<epoch seconds>_<run id>_`. */
+export const newTestRunPrefix = (): string =>
+  `${TEST_DATABASE_PREFIX}${Math.floor(Date.now() / 1000)}_${randomBytes(4).toString("hex")}_`;
+
 const createPostgresDatabase = async (adminUrl: string): Promise<Database> => {
-  const name = `${TEST_DATABASE_PREFIX}${randomUUID().replaceAll("-", "")}`;
+  // oxlint-disable-next-line node/no-process-env -- set by the test global setup
+  const runPrefix = process.env[TEST_RUN_PREFIX_ENV];
+
+  if (runPrefix === undefined) {
+    throw new Error(
+      `${TEST_RUN_PREFIX_ENV} is not set: run the tests through Vitest, whose global setup sets it.`,
+    );
+  }
+
+  const name = `${runPrefix}${randomBytes(6).toString("hex")}`;
   const client = new pg.Client({ connectionString: adminUrl });
 
   await client.connect();
