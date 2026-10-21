@@ -2,14 +2,18 @@ import { createTraceCollector, type RecordedTraceEvent } from "indexer-e2e/src/t
 import { describe, expect, test } from "vite-plus/test";
 
 import { EVENTS_CONTRACT, waitUntil } from "../chain.ts";
-import { createDevnetIndexer, printField, tracedFilters } from "../indexer.ts";
+import { createDevnetIndexer, printField } from "../indexer.ts";
 import { readSeedHistory } from "../seed.ts";
 
 async function indexEvents(startBlock?: number, endBlock?: number): Promise<RecordedTraceEvent[]> {
   const trace = createTraceCollector();
-  await using indexer = await createDevnetIndexer();
 
-  await indexer.run(tracedFilters(trace, [{ contractId: EVENTS_CONTRACT, startBlock, endBlock }]));
+  await using indexer = await createDevnetIndexer({
+    trace,
+    contracts: [{ contractId: EVENTS_CONTRACT, startBlock, endBlock }],
+  });
+
+  await indexer.run();
 
   return trace.getEvents();
 }

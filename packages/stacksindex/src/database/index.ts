@@ -86,7 +86,7 @@ const migrateInternal = (db: IndexerDb): Effect.Effect<void, MigrationError> =>
 export interface DatabaseOptions {
   /**
    * Drizzle relations from `defineRelations`, enabling `db.query` on the
-   * database handle. Type handlers with the same value: `HandlerContext<typeof relations>`.
+   * database handle.
    */
   relations?: AnyRelations;
   /**

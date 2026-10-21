@@ -223,7 +223,7 @@ describe("sync historical", () => {
 
   const runSync = (
     client: StacksClientService,
-    filters: SyncFilter[] = [{ contractId: CONTRACT_ID }],
+    filters: SyncFilter[] = [{ name: "token", contractId: CONTRACT_ID }],
   ) =>
     Effect.runPromise(
       createSync({ chainId: CHAIN_ID, client, database: testDb.db })
@@ -358,7 +358,9 @@ describe("sync historical", () => {
     const api = makeFakeApi(chainAt([100, 200, 300, 400]), 2);
     await seedProgress(null, 100);
 
-    const events = await runSync(api.client, [{ contractId: CONTRACT_ID, endBlock: 300 }]);
+    const events = await runSync(api.client, [
+      { name: "token", contractId: CONTRACT_ID, endBlock: 300 },
+    ]);
 
     // The oldest page overlaps the synced range (100); nothing past endBlock is stored.
     await expect(storedEventHeights()).resolves.toStrictEqual([100, 200, 300]);
@@ -374,7 +376,9 @@ describe("sync historical", () => {
     const api = makeFakeApi(chainAt([100, 200, 300, 400, 500, 600]), 2);
     await seedProgress("100:0:0:0", 99);
 
-    const events = await runSync(api.client, [{ contractId: CONTRACT_ID, endBlock: 250 }]);
+    const events = await runSync(api.client, [
+      { name: "token", contractId: CONTRACT_ID, endBlock: 250 },
+    ]);
 
     expect(api.logRequests).toStrictEqual(["100:0:0:0", "300:0:0:0"]);
     expect(events.at(-1)).toMatchObject({ contracts: [{ lastBlockHeight: 250 }] });
@@ -392,8 +396,8 @@ describe("sync historical", () => {
     await seedProgress("100:0:0:0", 99, activeContractId);
 
     const events = await runSync(api.client, [
-      { contractId: CONTRACT_ID },
-      { contractId: activeContractId },
+      { name: "token", contractId: CONTRACT_ID },
+      { name: "active", contractId: activeContractId },
     ]);
 
     expect(events[1]).toMatchObject({
@@ -428,7 +432,7 @@ describe("sync historical", () => {
     // The consumer blocks on the first event, so the producer should only be
     // Able to run ahead by the queue capacity.
     const fiber = Effect.runFork(
-      sync.historical([{ contractId: CONTRACT_ID }]).pipe(
+      sync.historical([{ name: "token", contractId: CONTRACT_ID }]).pipe(
         Stream.runForEach(() => Effect.sleep("10 seconds")),
         Effect.provideService(References.MinimumLogLevel, "None"),
       ),
@@ -454,23 +458,35 @@ describe("sync historical", () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const events = yield* sync
-          .historical([{ contractId: CONTRACT_ID }])
+          .historical([{ name: "token", contractId: CONTRACT_ID }])
           .pipe(Stream.runCollect);
 
         const backfillPages = yield* Metric.value(
-          Metric.withAttributes(syncPages, { contract: CONTRACT_ID, kind: "backfill" }),
+          Metric.withAttributes(syncPages, {
+            contract: "token",
+            contract_id: CONTRACT_ID,
+            kind: "backfill",
+          }),
         );
 
         const catchupPages = yield* Metric.value(
-          Metric.withAttributes(syncPages, { contract: CONTRACT_ID, kind: "catchup" }),
+          Metric.withAttributes(syncPages, {
+            contract: "token",
+            contract_id: CONTRACT_ID,
+            kind: "catchup",
+          }),
         );
 
         const storedEvents = yield* Metric.value(
-          Metric.withAttributes(syncEvents, { contract: CONTRACT_ID, path: "historical" }),
+          Metric.withAttributes(syncEvents, {
+            contract: "token",
+            contract_id: CONTRACT_ID,
+            path: "historical",
+          }),
         );
 
         const block = yield* Metric.value(
-          Metric.withAttributes(syncBlock, { contract: CONTRACT_ID }),
+          Metric.withAttributes(syncBlock, { contract: "token", contract_id: CONTRACT_ID }),
         );
 
         return {
@@ -510,7 +526,9 @@ describe("sync historical", () => {
 
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* sync.historical([{ contractId: CONTRACT_ID }]).pipe(Stream.runDrain, Effect.exit);
+        yield* sync
+          .historical([{ name: "token", contractId: CONTRACT_ID }])
+          .pipe(Stream.runDrain, Effect.exit);
 
         return yield* Metric.value(Metric.withAttributes(syncErrors, { mode: "historical" }));
       }).pipe(
@@ -535,7 +553,7 @@ describe("sync historical", () => {
 
     await Effect.runPromise(
       sync
-        .historical([{ contractId: CONTRACT_ID }])
+        .historical([{ name: "token", contractId: CONTRACT_ID }])
         .pipe(Stream.runDrain, Effect.provide(Logger.layer([captureLogs(logs)]))),
     );
 
@@ -559,7 +577,7 @@ describe("sync historical", () => {
 
     await Effect.runPromise(
       sync
-        .historical([{ contractId: CONTRACT_ID }])
+        .historical([{ name: "token", contractId: CONTRACT_ID }])
         .pipe(
           Stream.runDrain,
           Effect.provide(Logger.layer([captureLogs(logs)])),
@@ -607,7 +625,7 @@ describe("sync historical", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const fiber = yield* Effect.forkScoped(
-            sync.historical([{ contractId: CONTRACT_ID }]).pipe(Stream.runDrain),
+            sync.historical([{ name: "token", contractId: CONTRACT_ID }]).pipe(Stream.runDrain),
           );
 
           yield* Deferred.await(fetchStarted);

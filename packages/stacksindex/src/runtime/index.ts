@@ -16,66 +16,52 @@ import { telemetryLayer } from "../telemetry/index.ts";
 import {
   type IndexerError,
   type IndexerOptions,
-  type IndexerWithDatabaseOptions,
+  type IndexerRuntimeOptions,
   resolveIndexerConfig,
 } from "./config.ts";
-import type { Filter } from "./filters.ts";
+import type { ContractSpec } from "./contracts.ts";
 import { runHistorical, type RunResult } from "./historical.ts";
 import { runLive } from "./realtime.ts";
 import { type IndexerStatus, readIndexerStatus, RunPhase } from "./status.ts";
 
-export type {
-  IndexerError,
-  IndexerOptions,
-  IndexerWithDatabaseOptions,
-  LiveOptions,
-} from "./config.ts";
-
-export type { Filter } from "./filters.ts";
+export type { IndexerError, IndexerOptions, IndexerRuntimeOptions, LiveOptions } from "./config.ts";
 
 export type { ContractRunResult, RunResult } from "./historical.ts";
 
-export type { IndexerPhase, IndexerStatus } from "./status.ts";
+export type { ContractStatus, IndexerPhase, IndexerStatus } from "./status.ts";
 
 export type { OtlpOptions, TelemetryOptions } from "../telemetry/index.ts";
 
+/** The indexer, bound to the contracts and handlers it was built with. */
 export interface IndexerService {
   /**
-   * Syncs and indexes every filter up to the chain tip read at the start of the
-   * call, then returns. `TRelations` must match the `relations` the
-   * `IndexerDatabase` was opened with.
+   * Syncs and indexes every contract up to the chain tip read at the start of
+   * the run, then returns.
    */
-  readonly run: <TRelations extends AnyRelations>(
-    filters: Filter<TRelations>[],
-  ) => Effect.Effect<RunResult, IndexerError>;
+  readonly run: Effect.Effect<RunResult, IndexerError>;
   /**
    * Runs `run`, then follows new blocks and indexes them as they arrive. Ends
-   * once every filter reached its `endBlock`; runs until interrupted when a
-   * filter has none.
+   * once every contract reached its `endBlock`; runs until interrupted when a
+   * contract has none.
    */
-  readonly live: <TRelations extends AnyRelations>(
-    filters: Filter<TRelations>[],
-  ) => Effect.Effect<void, IndexerError>;
+  readonly live: Effect.Effect<void, IndexerError>;
   /** Current phase plus the stored checkpoint, anchor and per-contract sync progress. */
   readonly status: Effect.Effect<IndexerStatus, SyncStoreError>;
 }
-
-/**
- * Handlers are typed with the relations of the database they run against;
- * `context.db` is that database at run time, so the runtime drops the type.
- */
-const eraseRelations = <TRelations extends AnyRelations>(filters: Filter<TRelations>[]): Filter[] =>
-  // SAFETY: `context.db` is the IndexerDatabase, opened with the relations the handlers are typed with.
-  filters as Filter[];
 
 export class Indexer extends Context.Service<Indexer, IndexerService>()(
   "stacksindex/runtime/Indexer",
 ) {
   static readonly layer = (
-    options?: IndexerOptions,
+    options: IndexerOptions & { readonly contracts: readonly ContractSpec[] },
   ): Layer.Layer<Indexer, ConfigurationError, IndexerDatabase> =>
     Layer.unwrap(
-      resolveIndexerConfig(options).pipe(
+      resolveIndexerConfig({
+        chain: options.chain,
+        api: options.api,
+        finality: options.finality,
+        live: options.live,
+      }).pipe(
         Effect.map((config) =>
           Layer.effect(
             Indexer,
@@ -126,22 +112,20 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
                 );
 
               return Indexer.of({
-                run: (filters) =>
-                  trackRun(
-                    runHistorical(eraseRelations(filters), config, sync).pipe(
-                      Effect.provideService(StacksClient, client),
-                      Effect.provideService(IndexerDatabase, database),
-                    ),
+                run: trackRun(
+                  runHistorical(options.contracts, config, sync).pipe(
+                    Effect.provideService(StacksClient, client),
+                    Effect.provideService(IndexerDatabase, database),
                   ),
-                live: (filters) =>
-                  trackRun(
-                    runLive(eraseRelations(filters), config, sync).pipe(
-                      Effect.provideService(StacksClient, client),
-                      Effect.provideService(IndexerDatabase, database),
-                      Effect.provideService(Socket.WebSocketConstructor, webSocketConstructor),
-                    ),
+                ),
+                live: trackRun(
+                  runLive(options.contracts, config, sync).pipe(
+                    Effect.provideService(StacksClient, client),
+                    Effect.provideService(IndexerDatabase, database),
+                    Effect.provideService(Socket.WebSocketConstructor, webSocketConstructor),
                   ),
-                status: readIndexerStatus(config.chainId).pipe(
+                ),
+                status: readIndexerStatus(config.chainId, options.contracts).pipe(
                   Effect.provideService(IndexerDatabase, database),
                   Effect.provideService(RunPhase, phase),
                 ),
@@ -160,20 +144,23 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
     );
 
   /**
-   * Batteries-included layer: provides `Indexer`, `IndexerDatabase`, the
-   * pretty console logger and, when `telemetry.otlp` is set, the OTLP metrics
-   * exporter from a single config. Opening the database creates or upgrades
-   * the indexer's own tables, then applies `migrations`. Closing the layer
-   * flushes the exporter.
+   * Provides `Indexer`, `IndexerDatabase`, the pretty console logger and, when
+   * `telemetry.otlp` is set, the OTLP metrics exporter. Opening the database
+   * creates or upgrades the indexer's tables, then applies `migrations`.
+   * Closing the layer flushes the exporter.
    */
   static readonly layerWithDatabase = (
-    options: IndexerWithDatabaseOptions,
+    options: IndexerRuntimeOptions & {
+      readonly relations?: AnyRelations;
+      readonly contracts: readonly ContractSpec[];
+    },
   ): Layer.Layer<Indexer | IndexerDatabase, ConfigurationError | DatabaseError | MigrationError> =>
     Indexer.layer({
       chain: options.chain,
       api: options.api,
       finality: options.finality,
       live: options.live,
+      contracts: options.contracts,
     }).pipe(
       // Built after the database and released before it, after the indexer.
       Layer.provide(telemetryLayer(options.telemetry)),

@@ -20,21 +20,20 @@ describe("callReadOnly from a handler", () => {
 
     const trace = createTraceCollector();
     const reads: ClarityJsonValue[] = [];
-    await using indexer = await createDevnetIndexer();
 
-    expect(second.blockHeight).toBeGreaterThan(first.blockHeight);
-
-    await indexer.run({
-      contractId: EVENTS_CONTRACT,
-      startBlock,
-      endBlock: second.blockHeight,
-      handler: async (event, { client }) => {
-        trace.record(EVENTS_CONTRACT, event);
+    await using indexer = await createDevnetIndexer({
+      trace,
+      contracts: [{ contractId: EVENTS_CONTRACT, startBlock, endBlock: second.blockHeight }],
+      handler: async (_event, { client }) => {
         reads.push(
           await client.callReadOnly({ contractId: EVENTS_CONTRACT, functionName: "get-value" }),
         );
       },
     });
+
+    expect(second.blockHeight).toBeGreaterThan(first.blockHeight);
+
+    await indexer.run();
 
     expect(trace.getEvents().map((event) => printField(event, "value"))).toStrictEqual([
       1000n,

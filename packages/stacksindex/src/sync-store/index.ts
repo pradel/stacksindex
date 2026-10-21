@@ -332,6 +332,7 @@ export const syncStore = {
           valueRepr: eventsTable.valueRepr,
           blockHeight: eventsTable.blockHeight,
           blockTime: blocksTable.blockTime,
+          blockHash: blocksTable.hash,
           indexBlockHash: blocksTable.indexBlockHash,
           txIndex: transactionsTable.txIndex,
           senderAddress: transactionsTable.senderAddress,

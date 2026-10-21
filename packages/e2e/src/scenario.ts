@@ -1,8 +1,19 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { sql, type SQL } from "drizzle-orm";
-import type { Filter, Indexer } from "stacksindex";
+import {
+  defineIndexer,
+  pglite,
+  type Database,
+  type Indexer,
+  type IndexerDb,
+  type PrintEvent,
+  type RunResult,
+} from "stacksindex";
 import { expect } from "vite-plus/test";
 
-import { createTestDatabase, type TestDatabase } from "./test-db.ts";
 import { createTraceCollector, type RecordedTraceEvent, type TraceCollector } from "./tracer.ts";
 
 function isRowsResult<Row>(value: unknown): value is { rows: Row[] } {
@@ -11,7 +22,7 @@ function isRowsResult<Row>(value: unknown): value is { rows: Row[] } {
   );
 }
 
-export async function selectRows<Row>(database: TestDatabase["db"], query: SQL): Promise<Row[]> {
+export async function selectRows<Row>(database: IndexerDb, query: SQL): Promise<Row[]> {
   const result = await database.execute(query);
 
   if (Array.isArray(result)) {
@@ -21,54 +32,92 @@ export async function selectRows<Row>(database: TestDatabase["db"], query: SQL):
   return isRowsResult<Row>(result) ? result.rows : [];
 }
 
+type ScenarioIndexer = Indexer;
+
 export interface ScenarioDatabase {
-  readonly db: TestDatabase["db"];
-  readonly indexer: Indexer;
+  /** Database of the indexer from the latest `runScenario`; still open until the next run or reset. */
+  readonly db: IndexerDb;
+  /** Runs a fresh indexer on this scenario's PGlite directory, closing the previous one first. */
+  open: (
+    createIndexer: (database: Database) => Promise<ScenarioIndexer>,
+  ) => Promise<ScenarioIndexer>;
   setup: () => Promise<void>;
   reset: () => Promise<void>;
   teardown: () => Promise<void>;
 }
 
 export function createScenarioDatabase(): ScenarioDatabase {
-  let testDb: TestDatabase | undefined = undefined;
+  let directory: string | undefined = undefined;
+  let current: ScenarioIndexer | undefined = undefined;
 
-  const current = (): TestDatabase => {
-    if (!testDb) {
-      throw new Error("Scenario database is not set up. Call setup() in beforeAll.");
+  async function closeCurrent(): Promise<void> {
+    await current?.close();
+    current = undefined;
+  }
+
+  async function removeDirectory(): Promise<void> {
+    if (directory) {
+      await fs.rm(directory, { recursive: true, force: true });
+      directory = undefined;
     }
+  }
 
-    return testDb;
-  };
+  async function createDirectory(): Promise<void> {
+    directory = await fs.mkdtemp(path.join(os.tmpdir(), "stacksindex-e2e-"));
+  }
 
   return {
-    get db(): TestDatabase["db"] {
-      return current().db;
+    get db(): IndexerDb {
+      if (!current) {
+        throw new Error("No scenario indexer is open. Call runScenario() first.");
+      }
+
+      return current.db;
     },
 
-    get indexer(): Indexer {
-      return current().indexer;
+    async open(createIndexer) {
+      if (!directory) {
+        throw new Error("Scenario database is not set up. Call setup() in beforeAll.");
+      }
+
+      await closeCurrent();
+      current = await createIndexer(pglite(directory));
+
+      return current;
     },
 
     async setup(): Promise<void> {
-      testDb = await createTestDatabase();
+      await createDirectory();
     },
 
     async reset(): Promise<void> {
-      await testDb?.cleanup();
+      await closeCurrent();
+      await removeDirectory();
+      await createDirectory();
     },
 
     async teardown(): Promise<void> {
-      await testDb?.close();
-      testDb = undefined;
+      await closeCurrent();
+      await removeDirectory();
     },
   };
 }
 
-export type ScenarioContract = Omit<Filter, "handler">;
+export interface ScenarioContract {
+  contractId: string;
+  startBlock?: number;
+  endBlock?: number | "latest";
+}
 
 export interface ScenarioOutcome {
+  result: RunResult;
   tracer: TraceCollector;
   events: RecordedTraceEvent[];
+}
+
+/** Definition name used for a contract: its `<contract-name>` segment. */
+export function contractName(contractId: string): string {
+  return contractId.slice(contractId.indexOf(".") + 1);
 }
 
 export async function runScenario(options: {
@@ -77,18 +126,29 @@ export async function runScenario(options: {
 }): Promise<ScenarioOutcome> {
   const tracer = createTraceCollector();
 
-  const filters: Filter[] = options.contracts.map((contract) => ({
-    contractId: contract.contractId,
-    startBlock: contract.startBlock,
-    endBlock: contract.endBlock,
-    handler: (event) => {
-      tracer.record(contract.contractId, event);
-    },
-  }));
+  const contracts = Object.fromEntries(
+    options.contracts.map((contract) => [
+      contractName(contract.contractId),
+      { id: contract.contractId, startBlock: contract.startBlock, endBlock: contract.endBlock },
+    ]),
+  );
 
-  await options.database.indexer.run(filters);
+  const handlers = Object.fromEntries(
+    Object.keys(contracts).map((name) => [
+      name,
+      (event: PrintEvent) => {
+        tracer.record(event);
+      },
+    ]),
+  );
 
-  return { tracer, events: tracer.getEvents() };
+  const app = await options.database.open((database) =>
+    defineIndexer({ contracts }).create({ database, logLevel: "None", handlers }),
+  );
+
+  const result = await app.run();
+
+  return { result, tracer, events: tracer.getEvents() };
 }
 
 export interface ExpectedSyncProgress {
@@ -98,7 +158,7 @@ export interface ExpectedSyncProgress {
 }
 
 export async function expectProgress(
-  database: TestDatabase["db"],
+  database: IndexerDb,
   contractId: string,
   expected: ExpectedSyncProgress,
 ): Promise<void> {
@@ -117,10 +177,7 @@ export async function expectProgress(
   expect(rows[0].isComplete).toBe(expected.isComplete);
 }
 
-export async function expectCheckpoint(
-  database: TestDatabase["db"],
-  height: number,
-): Promise<void> {
+export async function expectCheckpoint(database: IndexerDb, height: number): Promise<void> {
   const rows = await selectRows<{ blockHeight: string | number | bigint }>(
     database,
     sql`select "blockHeight" from "stacksindex"."checkpoints"`,
@@ -141,7 +198,7 @@ const TABLE_COUNT_QUERIES = {
 export type SyncTableName = keyof typeof TABLE_COUNT_QUERIES;
 
 export async function expectTableCount(
-  database: TestDatabase["db"],
+  database: IndexerDb,
   table: SyncTableName,
   count: number,
 ): Promise<void> {
@@ -154,7 +211,7 @@ export async function expectTableCount(
 }
 
 export async function expectStoredBlockHeights(
-  database: TestDatabase["db"],
+  database: IndexerDb,
   heights: number[],
 ): Promise<void> {
   const rows = await selectRows<{ height: string | number | bigint }>(

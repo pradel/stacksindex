@@ -1,4 +1,3 @@
-import type { AnyRelations } from "drizzle-orm";
 import { Effect, type LogLevel, Schema } from "effect";
 
 import type { Database } from "../database/index.ts";
@@ -7,6 +6,7 @@ import type { StacksApiError } from "../datasources/api/index.ts";
 import {
   ConfigurationError,
   type DatabaseError,
+  type EventDecodeError,
   type FilterValidationError,
   type HandlerExecutionError,
   type InvalidCursorError,
@@ -43,6 +43,7 @@ export interface LiveOptions {
   webSocketUrl?: string;
 }
 
+/** How the runtime reaches the chain and when it finalizes. */
 export interface IndexerOptions {
   /** Which chain to index. Defaults to `"mainnet"`. */
   chain?: ChainOption;
@@ -61,7 +62,8 @@ export interface IndexerOptions {
   live?: LiveOptions;
 }
 
-export interface IndexerWithDatabaseOptions extends IndexerOptions {
+/** Options of `create` (promise) and `layer` (Effect), apart from `handlers`. */
+export interface IndexerRuntimeOptions extends IndexerOptions {
   /** Database for sync storage, checkpoints and your own tables: `pglite(...)` or `postgres(...)`. */
   database: Database;
   /**
@@ -69,12 +71,7 @@ export interface IndexerWithDatabaseOptions extends IndexerOptions {
    * after the indexer's own. Tracked in drizzle's default `drizzle.__drizzle_migrations`.
    */
   migrations?: string;
-  /**
-   * Drizzle relations from `defineRelations`, enabling `context.db.query`.
-   * Type handlers with the same value: `EventHandler<typeof relations>`.
-   */
-  relations?: AnyRelations;
-  /** Minimum log level for the pretty console logger. Defaults to `"Info"`. */
+  /** Minimum log level for the console logger. Defaults to `"Info"`. */
   logLevel?: LogLevel.LogLevel;
   /** Pushes metrics over OTLP. Unset: metrics are recorded but not exported. */
   telemetry?: TelemetryOptions;
@@ -91,9 +88,11 @@ export interface ResolvedIndexerConfig {
   live: ResolvedLiveConfig;
 }
 
+/** Every failure of `run` and `live`. */
 export type IndexerError =
   | StacksApiError
   | HandlerExecutionError
+  | EventDecodeError
   | ReorgError
   | FilterValidationError
   | SyncStoreError

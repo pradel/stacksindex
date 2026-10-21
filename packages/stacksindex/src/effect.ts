@@ -1,38 +1,50 @@
 // Effect-native entrypoint (`stacksindex/effect`).
 
+export { defineIndexer } from "./effect-api/index.ts";
+
+export type {
+  ContractDefinition,
+  ContractDefinitions,
+  EventHandler,
+  HandlerRequirements,
+  Handlers,
+  IndexerDefinition,
+  LayerOptions,
+  PrintData,
+} from "./effect-api/index.ts";
+
 export { Indexer } from "./runtime/index.ts";
 
 export type {
   ContractRunResult,
-  Filter,
+  ContractStatus,
   IndexerError,
   IndexerPhase,
+  IndexerRuntimeOptions,
   IndexerService,
   IndexerStatus,
-  IndexerWithDatabaseOptions,
   LiveOptions,
   OtlpOptions,
   RunResult,
   TelemetryOptions,
 } from "./runtime/index.ts";
 
-export { IndexerDatabase, pglite, postgres } from "./database/index.ts";
+export { pglite, postgres } from "./database/index.ts";
 
-export type { Database, IndexerDb } from "./database/index.ts";
+export type { Database, IndexerDatabase, IndexerDb } from "./database/index.ts";
+
+export type { HandlerClient } from "./indexing/client.ts";
+
+export type { IndexingClient, PrintEvent } from "./lib/types.ts";
 
 export type { ChainOption } from "./lib/network.ts";
 
-export type {
-  EventHandler,
-  HandlerContext,
-  HandlerEvent,
-  Handlers,
-  IndexingClient,
-} from "./lib/types.ts";
+export type { OnInvalid } from "./runtime/contracts.ts";
 
 export {
   ConfigurationError,
   DatabaseError,
+  EventDecodeError,
   HandlerExecutionError,
   MigrationError,
   ReorgError,

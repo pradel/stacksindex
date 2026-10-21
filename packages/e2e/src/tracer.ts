@@ -1,5 +1,5 @@
-import type { HandlerEvent } from "stacksindex";
-import { decodeHex, type ClarityJsonValue } from "stacksindex/clarity";
+import type { PrintEvent } from "stacksindex";
+import type { ClarityJsonValue } from "stacksindex/clarity";
 
 export interface RecordedTraceEvent {
   contractId: string;
@@ -17,7 +17,7 @@ export interface RecordedTraceEvent {
 }
 
 export interface TraceCollector {
-  record: (contractId: string, event: HandlerEvent) => void;
+  record: (event: PrintEvent) => void;
   getEvents: () => RecordedTraceEvent[];
   getEventsForContract: (contractId: string) => RecordedTraceEvent[];
   assertChronologicalOrder: () => void;
@@ -37,29 +37,19 @@ export function createTraceCollector(): TraceCollector {
   const events: RecordedTraceEvent[] = [];
 
   return {
-    record(contractId: string, event: HandlerEvent) {
-      let decoded: ClarityJsonValue = null;
-
-      try {
-        if (event.contract_log.value.hex) {
-          decoded = decodeHex(event.contract_log.value.hex);
-        }
-      } catch {
-        decoded = event.contract_log.value.repr;
-      }
-
+    record(event: PrintEvent) {
       events.push({
-        contractId,
-        blockHeight: event.block_height,
-        txIndex: event.tx_index,
-        eventIndex: event.event_index,
-        txId: event.tx_id,
-        topic: event.contract_log.topic,
-        blockTime: event.block_time,
-        senderAddress: event.sender_address,
-        valueHex: event.contract_log.value.hex,
-        valueRepr: event.contract_log.value.repr,
-        decoded,
+        contractId: event.contractId,
+        blockHeight: event.block.height,
+        txIndex: event.tx.index,
+        eventIndex: event.eventIndex,
+        txId: event.txId,
+        topic: event.raw.topic,
+        blockTime: event.block.time,
+        senderAddress: event.tx.sender,
+        valueHex: event.raw.hex,
+        valueRepr: event.raw.repr,
+        decoded: event.data,
         recordedAt: Date.now(),
       });
     },

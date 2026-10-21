@@ -34,15 +34,15 @@ Responsibilities:
 
 ### Sync Store
 
-PostgreSQL / PGlite tables that cache raw blockchain data. This avoids re-fetching data on restarts and enables efficient queries during indexing. They live in the `stacksindex` Postgres schema, and their migrations are tracked in `stacksindex.__drizzle_migrations`; opening the database (`IndexerDatabase.layer`, `createIndexer`) applies them.
+PostgreSQL / PGlite tables that cache raw blockchain data. This avoids re-fetching data on restarts and enables efficient queries during indexing. They live in the `stacksindex` Postgres schema, and their migrations are tracked in `stacksindex.__drizzle_migrations`; opening the database (`create`, or `layer` with the Effect API) applies them.
 
 ### Indexer
 
-Processes events from the sync store by executing user-defined handlers. Each handler receives event data and a context containing the database client and a read-only contract client.
+Processes events from the sync store: decodes each print, parses it with the contract's `print` schema, and executes the contract's handler with a database scoped to the batch transaction and a read-only contract client.
 
 ### User Tables
 
-PostgreSQL tables defined by the user's schema, in the same database as the sync store (by default in `public`). These store the transformed/indexed data that applications query. The user creates them with drizzle-kit migrations whose folder is passed as `migrations`; they are applied when the database opens, after the sync store's, and tracked in drizzle's default `drizzle.__drizzle_migrations`.
+PostgreSQL tables defined by the user's schema, in the same database as the sync store (by default in `public`). These store the transformed/indexed data that applications query. The user creates them with drizzle-kit migrations passed as the `migrations` folder and applied when the database opens, after the sync store's, tracked in drizzle's default `drizzle.__drizzle_migrations`.
 
 ## Configuration
 
@@ -54,7 +54,7 @@ Users configure the indexer with four elements:
 ├─────────────────┬───────────────────────────────────────────┤
 │  Chain          │  Stacks chain, API endpoint and settings  │
 ├─────────────────┼───────────────────────────────────────────┤
-│  Filters        │  Contract IDs, block ranges               │
+│  Contracts      │  Named contract IDs, ranges, schemas      │
 ├─────────────────┼───────────────────────────────────────────┤
 │  Schema         │  Output table definitions                 │
 ├─────────────────┼───────────────────────────────────────────┤
@@ -64,19 +64,21 @@ Users configure the indexer with four elements:
 
 ### Chain
 
-Define the Stacks chain to index and how to reach it:
+Define the Stacks chain to connect to (`chain`: `"mainnet"`, `"testnet"` or `{ id, apiUrl }`):
 
-- `chain`: `"mainnet"`, `"testnet"`, or `{ id, apiUrl }` for any other chain (e.g. a devnet)
-- `api.url` overrides the chain's API URL (e.g. `https://api.hiro.so`); optional API key (`api.apiKey`)
+- API endpoint URL (`api.url`, defaulting to the chain's, e.g. `https://api.hiro.so`)
+- Optional API key (`api.apiKey`)
 - How live sync detects new blocks: `live.transport` (`"polling"` or `"websocket"`), `live.pollingInterval`, `live.webSocketUrl`
 
-### Filters
+### Contracts
 
-Define what contract events to capture and their handlers:
+`defineIndexer({ contracts, relations? })` names every contract to capture:
 
-- Contract ID (e.g., `SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles`)
-- Handler function associated with the contract
-- Block range (start/end)
+- Contract ID (`id`, e.g. `SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles`)
+- Block range (`startBlock`/`endBlock`)
+- Optional `print` schema (Standard Schema for the promise API, Effect `Schema` for the Effect API) and `onInvalid` (`"fail"` or `"skip"`)
+
+The definition name (the key in `contracts`) identifies the contract in handlers, events, run results, status and metrics. `defineIndexer` validates ids, duplicates and ranges synchronously, throwing `ConfigurationError`.
 
 ### Schema
 
@@ -90,11 +92,11 @@ Define output tables using standard SQL types:
 
 Define transformation logic:
 
-- One handler function per contract
-- Receives the raw event (`HandlerEvent`)
-- Receives `HandlerContext` with:
-  - `db`: the indexer database scoped to the batch transaction, which also stores the checkpoint; typed with the user's Drizzle `relations` (`HandlerContext<typeof relations>`)
-  - `client`: Provides `callReadOnly(options)` pinned to the event's block for time-travel contract state lookups (supports both typed with `abi` and untyped calls). The node pins reads by index block hash only, so `tip` defaults to the event's `index_block_hash`, stored with its block during sync; an explicit `tip` must be an index block hash
+- One handler per contract name, passed as `handlers` to `create`/`layer` (exhaustive at compile time); `indexer.handler(name, fn)` types one defined in its own module
+- Receives the decoded event (`PrintEvent`, `data` typed by the contract's `print` schema)
+- Has access to:
+  - `db`: the indexer database scoped to the batch transaction, which also stores the checkpoint; typed with the definition's Drizzle `relations` (`context.db` in the promise API, `yield* indexer.Db` in the Effect API)
+  - `client`: provides `callReadOnly(options)` pinned to the event's block for time-travel contract state lookups (supports both typed with `abi` and untyped calls). The node pins reads by index block hash only, so `tip` defaults to the event's `block.indexBlockHash`, stored with its block during sync; an explicit `tip` must be an index block hash (`context.client`, or `yield* indexer.Client`)
 
 ## Stacks Event Structure
 
@@ -177,8 +179,9 @@ Key differences from EVM:
                             │
                             ▼
    ┌──────────────────────────────────────────────────────────┐
-   │ Pass HandlerEvent + HandlerContext { db, client }        │
-   │ Execute handler function                                 │
+   │ Decode the print, parse it with the `print` schema       │
+   │ (mismatch: EventDecodeError, or skip with onInvalid)     │
+   │ Execute the contract's handler with the PrintEvent       │
    │ Handler writes to user tables                            │
    └────────────────────────┬─────────────────────────────────┘
                             │
@@ -258,7 +261,7 @@ flowchart TD
   P -- no --> C[per contract: newest logs pages<br/>after verifying the anchor]
   B --> I[anchor = head, index up to head]
   C --> I
-  I --> E{every filter past its endBlock?}
+  I --> E{every contract past its endBlock?}
   E -- no --> H
   E -- yes --> X[done]
 ```
@@ -276,85 +279,80 @@ Both store the same rows, and the per-block path raises every syncing contract's
 
 **Reorgs.** A head built on the anchor (or blocks linking it) proves the anchor canonical without a request. Otherwise the anchor check of `reconcileWithCanonicalChain` runs, and a reorged range is rewound and replayed like at the start of a run.
 
-**Errors.** A failed pass is retried with the next head. `live` fails once 10 consecutive passes failed over at least 10 minutes (Ponder's realtime budget), and at once on handler, database, cursor or finalized-reorg errors.
+**Errors.** A failed pass is retried with the next head. `live` fails once 10 consecutive passes failed over at least 10 minutes (Ponder's realtime budget), and at once on handler, print decode (`EventDecodeError`), database, cursor or finalized-reorg errors.
 
 ## Key Data Structures
 
-### Filter
+### ContractSpec
 
-Defines what blockchain data to fetch:
+The runtime form of a defined contract (`runtime/contracts.ts`):
 
 ```typescript
-Filter {
+ContractSpec {
+    name: string                     // Definition name (the key in `contracts`)
     contractId: string               // e.g., "SP6P4EJF...satoshibles"
-    handler: EventHandler            // Handler function for this contract
     startBlock?: number              // Optional start block height
     endBlock?: number | "latest"     // Optional end block height or "latest"
+    onInvalid: "fail" | "skip"       // On a decode mismatch
+    decode?: (value: ClarityJsonValue) => Effect<unknown, DecodeIssue>  // From `print`
+    handler: CoreHandler             // (event: PrintEvent) => Effect<void, unknown, IndexerDatabase | HandlerClient>
 }
 ```
 
-### HandlerEvent
+The sync layer receives `SyncFilter`s (`name`, `contractId`, block range) derived from the specs.
 
-Event passed to contract handlers:
+### PrintEvent
+
+Event passed to contract handlers, built from the stored event, its transaction and block:
 
 ```typescript
-HandlerEvent {
-    // Raw event data
-    event_index: number
-    event_type: string
-    tx_id: string
-    contract_log: {
-        contract_id: string
-        topic: string
-        value: {
-            hex: string              // Raw Clarity value hex (decoded in handler)
-            repr: string             // Human-readable string repr
-        }
+PrintEvent<TData> {
+    type: "print"
+    contract: string                 // Definition name
+    contractId: string
+    txId: string
+    eventIndex: number
+    data: TData                      // Clarity value decoded to plain JS, parsed by `print`
+    raw: { hex: string, repr: string, topic: string }   // As returned by the Stacks API
+    block: {
+        height: number
+        time: number                 // Unix seconds
+        hash: string
+        indexBlockHash: string       // Pins read-only calls (`tip`) to this block
     }
-
-    // Context (from transaction and block)
-    block_height: number
-    block_time: number
-    index_block_hash: string     // Pins read-only calls (`tip`) to this block
-    tx_index: number
-    sender_address: string
+    tx: { index: number, sender: string }
 }
 ```
 
-### HandlerContext
+### Decode step
 
-Context passed to handler execution:
+`Indexing.executeBatch` decodes every print's hex with the Clarity codec (`stacksindex/clarity`), runs the contract's `decode` (the `print` schema), then calls the handler. A mismatch fails the batch with `EventDecodeError { contract, contractId, txId, eventIndex, message, cause }` under `onInvalid: "fail"`; under `"skip"` it is logged at warning level, skipped and not counted. A handler failure becomes `HandlerExecutionError { contract, contractId, cause }`.
 
-```typescript
-HandlerContext<TRelations> {
-    db: IndexerDb<TRelations>     // Transaction-scoped database handle, typed with the user's relations
-    client: {
-        callReadOnly: (options) => Effect<Result<...>>
-        // Supports typed calls (with abi) and untyped calls (with raw args), pinned to the index block hash of the event's block
-    }
-    decode: (schema, repr) => Effect<...>
-}
-```
+### Handlers
 
-The core handler contract is Effect-only. The promise entrypoint (`stacksindex`) is an adapter that exposes the same context with `client.callReadOnly` returning a `Promise`, plus a `logger` bound to the configured Effect logger. Its awaited queries run with the batch fiber's services, so they use the open transaction. The Effect entrypoint (`stacksindex/effect`) exposes the raw services, layers, and clients.
+The core handler contract is Effect-only: `CoreHandler` reads the batch transaction from `IndexerDatabase` and the pinned client from `HandlerClient`. The promise entrypoint adapts `(event, { db, client, logger }) => Promise<void> | void`, with `client.callReadOnly` returning a `Promise` and a `logger` bound to the configured Effect logger; its awaited queries run with the batch fiber's services, so they use the open transaction. The Effect entrypoint adapts `(event) => Effect<void, E, R>`: `indexer.Db` and `indexer.Client` read the two runtime services, and other requirements `R` are captured from the context `indexer.layer` is built in.
 
-`relations` (from `defineRelations`) is passed to `createIndexer` or `Indexer.layerWithDatabase` and reaches drizzle when the database is opened, enabling `db.query`. The runtime itself is not generic: `Indexer.run`/`live` take `Filter<TRelations>[]` and drop the type parameter, since `context.db` is the database opened with those relations.
+`relations` (from `defineRelations`) is passed to `defineIndexer` and reaches drizzle when the database is opened, enabling `db.query`. The runtime itself is not generic: `ContractSpec` drops the type parameter, since `db` is the database opened with those relations.
 
 ### Entrypoints
 
-- `stacksindex` — promise-native facade: `createIndexer({ database, migrations, chain, api, finality, live, logLevel, telemetry })` owns the database and runtime lifecycle and returns `{ db, run, live, status, close, [Symbol.asyncDispose] }`. `database` comes from `pglite(directory?)` or `postgres(url)`; `run` returns a `RunResult` summary; `live` resolves when every filter reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter.
-- `stacksindex/effect` — Effect-native surface: `Indexer` (+ `layer` and `layerWithDatabase`), `IndexerDatabase` and `pglite`/`postgres`. Both entrypoints export the errors users act on (`HandlerExecutionError`, `ReorgError`, `ConfigurationError`, `DatabaseError`, `MigrationError`, `ReadOnlyCallError`) and the `IndexerError` union; internal errors stay reachable as `cause`.
-- `stacksindex/clarity` — Clarity codec: `decodeHex`, `cvToJSON`, `decodeClarityValue`, `decodeClarityWithSchema`, `encodeUint`, `ClarityTypeID` and the `ClarityJsonValue`/`ClarityValue` types.
+- `stacksindex` — promise-native facade: `defineIndexer({ contracts, relations })` returns `{ contracts, handler, create }`. `create({ database, migrations, chain, api, finality, live, logLevel, telemetry, handlers })` owns the database and runtime lifecycle and returns `{ db, run, live, status, close, [Symbol.asyncDispose] }`. `run` returns a `RunResult`; `live` resolves when every contract reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter. `database` is `pglite(directory?)` or `postgres(connectionString)`.
+- `stacksindex/effect` — Effect-native facade: `defineIndexer` returns `{ contracts, Db, Client, handler, layer }`; `layer(options)` provides `Indexer | IndexerDatabase` and fails with `ConfigurationError | DatabaseError | MigrationError`. Also exports the `Indexer` service tag.
+- `stacksindex/clarity` — the Clarity codec: `decodeHex`, `cvToJSON`, `decodeClarityValue`, `decodeClarityWithSchema`, `encodeUint`, `ClarityTypeID`.
+
+### Run result and status
+
+`RunResult { eventsProcessed, blockHeight?, finalizedBlockHeight?, contracts }` and `IndexerStatus { chainId, phase, ready, checkpoint, anchor, contracts }`; both `contracts` are records keyed by definition name (`{ eventsProcessed, blockHeight? }` and `{ syncedBlockHeight, isComplete }`), the status listing every defined contract.
 
 ### Services
 
-The runtime is composed from Effect services and layers:
+The runtime is composed from Effect services and layers (internal; the facades build them):
 
-- `IndexerDatabase` — the Drizzle database; `IndexerDatabase.layer(database, { relations, migrations })` opens it, applies the sync store migrations then the user's, and `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service (internal).
-- `Indexer` — `Indexer.layer({ chain, api, finality, live })` builds the Stacks API client and the in-memory `RunPhase`; `run(filters)` and `live(filters)` require `IndexerDatabase`. Both set the phase (`backfill`, then `done`, `failed`, or `idle` when interrupted; `runLive` sets `live` once it follows new heads) and add the `chain_id` attribute to every metric recorded inside through `Metric.CurrentMetricAttributes`. `status` combines the phase with the stored checkpoint, sync anchor and per-contract sync progress. `Indexer.layerWithDatabase({ database, chain, api, finality, live, logLevel, telemetry })` provides the indexer, database, logger and, with `telemetry.otlp`, the metrics exporter in one layer.
-- `Indexing` — `Indexing.layer({ handlers })` executes user handlers inside `IndexerDatabase.transaction` (internal).
-- `loggerLayer({ level })` — installs Effect's pretty console logger and minimum log level (internal).
-- `telemetryLayer(telemetry)` — `OtlpMetrics.layer` over the fetch HTTP client with protobuf serialization, posting to `${baseUrl}/v1/metrics` (internal). Metrics are defined once in `lib/metrics.ts` and recorded in Effect's default `MetricRegistry`; nothing is served over HTTP. Closing the layer flushes the last snapshot.
+- `IndexerDatabase` — the Drizzle database; `IndexerDatabase.layer(database, { relations, migrations })` opens it, applies the sync store migrations then the user's, and `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service.
+- `Indexer` — `Indexer.layer({ chain, api, finality, live, contracts })` builds the Stacks API client and the in-memory `RunPhase`, and requires `IndexerDatabase`; the service exposes `run`, `live` and `status` effects with no arguments. `run` and `live` set the phase (`backfill`, then `done`, `failed`, or `idle` when interrupted; `runLive` sets `live` once it follows new heads) and add the `chain_id` attribute to every metric recorded inside through `Metric.CurrentMetricAttributes`. `status` combines the phase with the stored checkpoint, sync anchor and per-contract sync progress. `Indexer.layerWithDatabase({ database, migrations, relations, chain, api, finality, live, logLevel, telemetry, contracts })` provides the indexer, database, logger and, with `telemetry.otlp`, the metrics exporter in one layer.
+- `Indexing` — `createIndexing({ contracts, client })` decodes and executes handlers inside `IndexerDatabase.transaction`.
+- `HandlerClient` — the read-only client pinned to the handled event's index block hash, provided per event.
+- `telemetryLayer(telemetry)` — `OtlpMetrics.layer` over the fetch HTTP client with protobuf serialization, posting to `${baseUrl}/v1/metrics`. Metrics are defined once in `lib/metrics.ts` and recorded in Effect's default `MetricRegistry`; per-contract series carry `contract` (definition name) and `contract_id`. Nothing is served over HTTP. Closing the layer flushes the last snapshot.
 
 ### Checkpoint
 

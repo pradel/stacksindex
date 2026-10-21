@@ -7,6 +7,7 @@ const storedEvent = (blockHeight: number, eventIndex: number): StoredEvent => ({
   eventIndex,
   eventType: "smart_contract_log",
   txId: `tx-${blockHeight}`,
+  blockHash: `0x${blockHeight}`,
   indexBlockHash: `index-${blockHeight}`,
   contractId: "SP123.token",
   topic: "print",

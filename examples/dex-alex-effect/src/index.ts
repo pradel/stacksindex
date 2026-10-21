@@ -4,8 +4,8 @@ import process from "node:process";
 import { Cause, Effect, Exit, Fiber } from "effect";
 import { Indexer, pglite } from "stacksindex/effect";
 
-import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
-import { relations } from "./schema.ts";
+import { PoolHandler } from "./handler.ts";
+import { indexer } from "./indexer.ts";
 
 const apiKey = process.env.HIRO_API_KEY;
 
@@ -15,32 +15,27 @@ const isLive = process.argv.includes("--live");
 fs.mkdirSync("./data", { recursive: true });
 
 const program = Effect.gen(function* () {
-  const indexer = yield* Indexer;
+  const app = yield* Indexer;
 
-  const filters = [
-    {
-      contractId: POOL_CONTRACT,
-      handler: createPoolHandler(),
-    },
-  ];
-
-  yield* isLive ? indexer.live(filters) : indexer.run(filters);
+  yield* isLive ? app.live : app.run;
 });
 
 const fiber = Effect.runFork(
   program.pipe(
     Effect.provide(
-      // One database for the indexer and the app, so handler writes through
-      // `context.db` commit with the checkpoint.
-      Indexer.layerWithDatabase({
+      /*
+       * One database holds the indexer's tables (`stacksindex` schema) and the
+       * app's tables (`public`, from the `./drizzle` migrations), so handler
+       * writes through `indexer.Db` commit with the checkpoint.
+       */
+      indexer.layer({
         database: pglite("./data/indexer.db"),
-        // The app's tables live in `public`, next to the indexer's `stacksindex` schema.
         migrations: "./drizzle",
-        relations,
         chain: "mainnet",
         api: { apiKey },
         live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },
         logLevel: "Info",
+        handlers: { pool: PoolHandler },
       }),
     ),
   ),
@@ -72,14 +67,7 @@ process.on("SIGTERM", () => {
 const exit = await Effect.runPromise(Fiber.await(fiber));
 
 if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
-  const error = Cause.squash(exit.cause);
-
-  Effect.runSync(
-    Effect.logError(
-      "Error running the indexer",
-      error instanceof Error ? error : new Error(String(error)),
-    ),
-  );
+  Effect.runSync(Effect.logError("Error running the indexer", Cause.squash(exit.cause)));
 
   await shutdown(1);
 } else {

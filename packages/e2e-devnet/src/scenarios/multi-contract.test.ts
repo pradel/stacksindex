@@ -2,7 +2,7 @@ import { createTraceCollector } from "indexer-e2e/src/tracer.ts";
 import { describe, expect, test } from "vite-plus/test";
 
 import { EVENTS_CONTRACT, LEDGER_CONTRACT, waitUntil } from "../chain.ts";
-import { createDevnetIndexer, printName, tracedFilters } from "../indexer.ts";
+import { createDevnetIndexer, printName } from "../indexer.ts";
 import {
   readSeedHistory,
   SEED_EVENTS_CONTRACT_EVENTS,
@@ -13,14 +13,16 @@ describe("multiple contracts", () => {
   test("deliver events of both contracts in chain order, interleaved inside a transaction", async () => {
     const seed = await waitUntil("the seed history", readSeedHistory);
     const trace = createTraceCollector();
-    await using indexer = await createDevnetIndexer();
 
-    const result = await indexer.run(
-      tracedFilters(trace, [
+    await using indexer = await createDevnetIndexer({
+      trace,
+      contracts: [
         { contractId: EVENTS_CONTRACT, endBlock: seed.endHeight },
         { contractId: LEDGER_CONTRACT, endBlock: seed.endHeight },
-      ]),
-    );
+      ],
+    });
+
+    const result = await indexer.run();
 
     const events = trace.getEvents();
     const [ledgerEvent] = trace.getEventsForContract(LEDGER_CONTRACT);

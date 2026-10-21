@@ -11,7 +11,7 @@ import {
   submitContractCall,
   waitUntil,
 } from "../chain.ts";
-import { createDevnetIndexer, tracedFilters, waitForPhase } from "../indexer.ts";
+import { createDevnetIndexer, contractName, waitForPhase } from "../indexer.ts";
 
 const POLLING_INTERVAL = 500;
 
@@ -23,13 +23,12 @@ describe.each<NonNullable<LiveOptions["transport"]>>(["polling", "websocket"])(
       const trace = createTraceCollector();
 
       await using indexer = await createDevnetIndexer({
-        transport,
-        pollingInterval: POLLING_INTERVAL,
+        trace,
+        contracts: [{ contractId: EVENTS_CONTRACT, startBlock }],
+        live: { transport, pollingInterval: POLLING_INTERVAL },
       });
 
-      const live = indexer.live(
-        tracedFilters(trace, [{ contractId: EVENTS_CONTRACT, startBlock }]),
-      );
+      const live = indexer.live();
 
       const endedEarly = live.then(() => {
         throw new Error("live() ended before it was closed");
@@ -64,11 +63,14 @@ describe("live sync with an endBlock", () => {
     // Transaction then gets the next block mined within seconds.
     const endBlock = (await chainTip()) + 2;
     const trace = createTraceCollector();
-    await using indexer = await createDevnetIndexer({ pollingInterval: POLLING_INTERVAL });
 
-    const live = indexer.live(
-      tracedFilters(trace, [{ contractId: EVENTS_CONTRACT, startBlock: endBlock, endBlock }]),
-    );
+    await using indexer = await createDevnetIndexer({
+      trace,
+      contracts: [{ contractId: EVENTS_CONTRACT, startBlock: endBlock, endBlock }],
+      live: { pollingInterval: POLLING_INTERVAL },
+    });
+
+    const live = indexer.live();
 
     await Promise.race([
       live.then(() => {
@@ -84,8 +86,8 @@ describe("live sync with an endBlock", () => {
 
     expect(status.phase).toBe("done");
     expect(status.anchor?.blockHeight).toBeGreaterThanOrEqual(endBlock);
-    expect(status.contracts).toMatchObject([
-      { contractId: EVENTS_CONTRACT, syncedBlockHeight: endBlock },
-    ]);
+    expect(status.contracts).toMatchObject({
+      [contractName(EVENTS_CONTRACT)]: { syncedBlockHeight: endBlock },
+    });
   });
 });

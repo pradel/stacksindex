@@ -1,12 +1,29 @@
 import { Schema } from "effect";
 
+/** Raised when a handler fails or throws; `cause` is what it failed with. */
 export class HandlerExecutionError extends Schema.TaggedError<HandlerExecutionError>()(
   "HandlerExecutionError",
   {
+    /** Definition name of the contract. */
+    contract: Schema.String,
     contractId: Schema.String,
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
+
+/**
+ * Raised when a print event does not match its contract's `print` schema and
+ * the contract's `onInvalid` is `"fail"`.
+ */
+export class EventDecodeError extends Schema.TaggedError<EventDecodeError>()("EventDecodeError", {
+  /** Definition name of the contract. */
+  contract: Schema.String,
+  contractId: Schema.String,
+  txId: Schema.String,
+  eventIndex: Schema.Number,
+  message: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+}) {}
 
 export class FilterValidationError extends Schema.TaggedError<FilterValidationError>()(
   "FilterValidationError",

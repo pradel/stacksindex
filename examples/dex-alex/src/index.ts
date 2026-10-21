@@ -1,19 +1,23 @@
 import fs from "node:fs";
 import process from "node:process";
 
-import { createIndexer, type Indexer, pglite } from "stacksindex";
+import { pglite, type Indexer } from "stacksindex";
 
-import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
-import { relations } from "./schema.ts";
+import { poolHandler } from "./handler.ts";
+import { indexer } from "./indexer.ts";
+import type { relations } from "./schema.ts";
 
 const apiKey = process.env.HIRO_API_KEY;
 
 // For example http://localhost:4318 (OpenTelemetry Collector) or http://localhost:9090/api/v1/otlp (Prometheus).
 const otlpBaseUrl = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
+// `pnpm dev --live` keeps following new blocks after the historical sync.
+const isLive = process.argv.includes("--live");
+
 fs.mkdirSync("./data", { recursive: true });
 
-let indexer: Indexer<typeof relations> | undefined;
+let app: Indexer<typeof relations> | undefined;
 
 let isShuttingDown = false;
 
@@ -25,7 +29,7 @@ async function shutdown(code: number) {
   isShuttingDown = true;
 
   try {
-    await indexer?.close();
+    await app?.close();
   } catch {
     // Ignore error on close
   }
@@ -43,35 +47,30 @@ process.on("SIGTERM", () => {
   void shutdown(0);
 });
 
-// `pnpm dev --live` keeps following new blocks after the historical sync.
-const isLive = process.argv.includes("--live");
-
 try {
-  // One database holds the indexer's tables (`stacksindex` schema) and the
-  // App's tables (`public`), so handler writes commit with the checkpoint.
-  indexer = await createIndexer({
+  /*
+   * One database holds the indexer's tables (`stacksindex` schema) and the
+   * app's tables (`public`, from the `./drizzle` migrations), so handler
+   * writes commit with the checkpoint.
+   */
+  app = await indexer.create({
     database: pglite("./data/indexer.db"),
-    // The app's own tables, applied after the indexer's.
     migrations: "./drizzle",
-    relations,
     chain: "mainnet",
     api: { apiKey },
     live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },
     telemetry: otlpBaseUrl ? { otlp: { baseUrl: otlpBaseUrl } } : undefined,
+    handlers: { pool: poolHandler },
   });
 
-  const filter = {
-    contractId: POOL_CONTRACT,
-    handler: createPoolHandler(),
-  };
-
-  await (isLive ? indexer.live(filter) : indexer.run(filter));
+  await (isLive ? app.live() : app.run());
 
   await shutdown(0);
 } catch (err) {
-  const error = err instanceof Error ? err : new Error(String(err));
-
-  // oxlint-disable-next-line no-console
-  console.error("Error running the indexer", error);
-  await shutdown(1);
+  // `close()` on SIGINT / SIGTERM interrupts `run()`, which then rejects.
+  if (!isShuttingDown) {
+    // oxlint-disable-next-line no-console
+    console.error("Error running the indexer", err);
+    await shutdown(1);
+  }
 }

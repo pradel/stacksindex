@@ -29,12 +29,12 @@ import { estimateBlockRequests, syncBlock } from "../sync-realtime/block.ts";
 import { syncStore } from "../sync-store/index.ts";
 import type { SyncService } from "../sync/index.ts";
 import type { IndexerError, ResolvedIndexerConfig } from "./config.ts";
-import type { Filter } from "./filters.ts";
+import type { ContractSpec } from "./contracts.ts";
 import {
-  getSyncingContractIds,
+  getSyncingContracts,
   indexEventsUpTo,
-  type PreparedFilters,
-  prepareFilters,
+  type PreparedContracts,
+  prepareContracts,
   runPreparedHistorical,
   syncAndIndexTo,
 } from "./historical.ts";
@@ -88,11 +88,13 @@ function followHeads<A, E, R>(
 /**
  * Errors worth retrying with the next head: API transport, status and rate
  * limit failures, and transaction batches missing ids the API has not caught
- * up on yet. Handler, database, cursor and reorg errors fail `live` at once.
+ * up on yet. Handler, decode, database, cursor and reorg errors fail `live` at
+ * once: retrying replays the same events and fails the same way.
  */
 function isTransientError(error: IndexerError): boolean {
   return !(
     Predicate.isTagged(error, "HandlerExecutionError") ||
+    Predicate.isTagged(error, "EventDecodeError") ||
     Predicate.isTagged(error, "ReorgError") ||
     Predicate.isTagged(error, "SyncStoreError") ||
     Predicate.isTagged(error, "DatabaseError") ||
@@ -102,18 +104,18 @@ function isTransientError(error: IndexerError): boolean {
 }
 
 /**
- * Height at which every filter is complete, or `undefined` when at least one
- * filter is open-ended and `live` follows the chain indefinitely.
+ * Height at which every contract is complete, or `undefined` when at least
+ * one contract is open-ended and `live` follows the chain indefinitely.
  */
-function getEndBlockHeight(prepared: PreparedFilters): number | undefined {
+function getEndBlockHeight(prepared: PreparedContracts): number | undefined {
   let endHeight = 0;
 
-  for (const filter of prepared.filterMap.values()) {
-    if (filter.endBlock === undefined) {
+  for (const contract of prepared.contracts) {
+    if (contract.endBlock === undefined) {
       return undefined;
     }
 
-    endHeight = Math.max(endHeight, filter.endBlock);
+    endHeight = Math.max(endHeight, contract.endBlock);
   }
 
   return endHeight;
@@ -185,7 +187,7 @@ function getLinkedBlocks(
  */
 function planFetch(options: {
   readonly chainId: number;
-  readonly prepared: PreparedFilters;
+  readonly prepared: PreparedContracts;
   readonly anchor: { readonly blockHeight: number; readonly blockHash: string } | null;
   readonly head: LightBlock;
 }): Effect.Effect<FetchPlan, StacksHttpError | SyncStoreError, StacksClient | IndexerDatabase> {
@@ -197,7 +199,10 @@ function planFetch(options: {
     }
 
     const gap = head.height - anchor.blockHeight;
-    const contractIds = getSyncingContractIds(options.prepared, anchor.blockHeight + 1);
+
+    const contractIds = getSyncingContracts(options.prepared, anchor.blockHeight + 1).map(
+      (contract) => contract.contractId,
+    );
 
     // Every block costs at least one request, plus one to list them.
     const minimumBlockRequests = gap === 1 ? 1 : gap + 1;
@@ -242,7 +247,7 @@ function planFetch(options: {
  */
 function syncBlocksAndIndexTo(options: {
   readonly config: ResolvedIndexerConfig;
-  readonly prepared: PreparedFilters;
+  readonly prepared: PreparedContracts;
   readonly head: LightBlock;
   readonly blocks: readonly LightBlock[];
   readonly eventsByContract: Map<string, number>;
@@ -263,7 +268,7 @@ function syncBlocksAndIndexTo(options: {
 
     yield* indexEventsUpTo(
       head.height,
-      prepared.filterMap,
+      prepared.contractsById,
       chainId,
       options.eventsByContract,
       config.finality,
@@ -280,7 +285,7 @@ function syncBlocksAndIndexTo(options: {
 function processHead(options: {
   readonly config: ResolvedIndexerConfig;
   readonly sync: SyncService;
-  readonly prepared: PreparedFilters;
+  readonly prepared: PreparedContracts;
   readonly head: LightBlock;
 }): Effect.Effect<HeadOutcome, IndexerError, StacksClient | IndexerDatabase | Indexing> {
   const { config, prepared, head } = options;
@@ -365,7 +370,7 @@ function processHead(options: {
  * newest: each pass catches up over the whole range since the previous one.
  */
 export function runLive(
-  filters: Filter[],
+  specs: readonly ContractSpec[],
   config: ResolvedIndexerConfig,
   sync: SyncService,
 ): Effect.Effect<
@@ -376,11 +381,7 @@ export function runLive(
   const { chainId } = config;
 
   return Effect.gen(function* () {
-    if (filters.length === 0) {
-      return;
-    }
-
-    const prepared = yield* prepareFilters(filters);
+    const prepared = yield* prepareContracts(specs);
 
     yield* runPreparedHistorical(prepared, config, sync);
 
@@ -392,7 +393,7 @@ export function runLive(
     const anchor = yield* syncStore.getSyncAnchor({ chainId });
 
     if (anchor !== null && isComplete(anchor.blockHeight)) {
-      yield* Effect.logInfo("Every filter reached its end block; live indexing complete").pipe(
+      yield* Effect.logInfo("Every contract reached its end block; live indexing complete").pipe(
         Effect.annotateLogs({ chainId, phase: "live", block: anchor.blockHeight }),
       );
 
@@ -454,11 +455,11 @@ export function runLive(
       blockHeads({ chainId, ...config.live }).pipe(
         Stream.buffer({ capacity: 1, strategy: "sliding" }),
         Stream.runForEachWhile(handleHead),
-        Effect.provide(Indexing.layer({ handlers: prepared.handlers })),
+        Effect.provide(Indexing.layer({ contracts: prepared.contracts })),
       ),
     );
 
-    yield* Effect.logInfo("Every filter reached its end block; live indexing complete").pipe(
+    yield* Effect.logInfo("Every contract reached its end block; live indexing complete").pipe(
       Effect.annotateLogs({ chainId, phase: "live" }),
     );
   }).pipe(Effect.annotateLogs({ service: "indexer" }), Effect.withLogSpan("liveIndexing"));

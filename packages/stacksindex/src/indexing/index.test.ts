@@ -2,17 +2,21 @@
 // oxlint-disable vitest/prefer-called-once, vitest/no-conditional-expect, vitest/no-conditional-in-test
 
 import type { ClarityAbi } from "clarity-abitype";
-import { Effect, Metric, References } from "effect";
+import { Effect, Exit, Metric, Option, References, Schema } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
+import type { ClarityJsonValue } from "../codec/index.ts";
 import { IndexerDatabase, type IndexerDb } from "../database/index.ts";
 import type { StacksClientService } from "../datasources/api/index.ts";
-import { HandlerExecutionError } from "../lib/errors.ts";
-import { indexingHandlerErrors } from "../lib/metrics.ts";
-import type { HandlerContext, HandlerEvent, Handlers } from "../lib/types.ts";
+import { EventDecodeError, HandlerExecutionError } from "../lib/errors.ts";
+import { contractAttributes, indexingHandlerErrors } from "../lib/metrics.ts";
+import type { CoreHandler, PrintEvent } from "../lib/types.ts";
+import type { ResolvedContract } from "../runtime/contracts.ts";
+import type { StoredEvent } from "../sync-store/decode.ts";
 import { blocksTable } from "../sync-store/schema.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
-import { createIndexing } from "./index.ts";
+import { HandlerClient } from "./client.ts";
+import { createIndexing, type IndexingService } from "./index.ts";
 
 const notUsed = () => Effect.die("StacksClient method not used in this test");
 
@@ -36,6 +40,14 @@ const makeStacksClient = (overrides: Partial<StacksClientService> = {}): StacksC
 // Object satisfies the service type they provide as `IndexerDatabase`.
 const mockDb = {} as IndexerDb;
 
+const CONTRACT_ID = "SP123.token";
+
+/** `(ok true)` */
+const OK_TRUE_HEX = "0x0703";
+
+/** `(ok false)` */
+const OK_FALSE_HEX = "0x0704";
+
 const testAbi = {
   functions: [
     {
@@ -58,63 +70,84 @@ const testAbi = {
   non_fungible_tokens: [],
 } as const satisfies ClarityAbi;
 
-const createMockEvent = (overrides: Partial<HandlerEvent> = {}): HandlerEvent => ({
-  event_index: 0,
-  event_type: "smart_contract_log",
-  tx_id: "tx-1",
-  contract_log: {
-    contract_id: "SP123.token",
-    topic: "print",
-    value: { hex: "0x01", repr: "(ok true)" },
-  },
-  block_height: 100,
-  block_time: 1000,
-  index_block_hash: "0xindex-100",
-  tx_index: 0,
-  sender_address: "SP sender",
+const tokenContract = (
+  handler: CoreHandler,
+  overrides: Partial<ResolvedContract> = {},
+): ResolvedContract => ({
+  name: "token",
+  contractId: CONTRACT_ID,
+  onInvalid: "fail",
+  handler,
   ...overrides,
 });
 
-const runBatch = (
-  indexing: ReturnType<typeof createIndexing>,
-  events: HandlerEvent[],
-  db: IndexerDb,
-) =>
-  Effect.runPromise(
+const createStoredEvent = (overrides: Partial<StoredEvent> = {}): StoredEvent => ({
+  eventIndex: 0,
+  eventType: "smart_contract_log",
+  txId: "tx-1",
+  contractId: CONTRACT_ID,
+  topic: "print",
+  valueHex: OK_TRUE_HEX,
+  valueRepr: "(ok true)",
+  blockHeight: 100n,
+  blockTime: 1000n,
+  blockHash: "0xblock-100",
+  indexBlockHash: "0xindex-100",
+  txIndex: 0,
+  senderAddress: "SP sender",
+  ...overrides,
+});
+
+const runBatchExit = (indexing: IndexingService, events: StoredEvent[]) =>
+  Effect.runPromiseExit(
     indexing
       .executeBatch(events)
       .pipe(
-        Effect.provideService(IndexerDatabase, db),
+        Effect.provideService(IndexerDatabase, mockDb),
         Effect.provideService(References.MinimumLogLevel, "None"),
       ),
   );
 
+const runBatch = async (indexing: IndexingService, events: StoredEvent[]) => {
+  const exit = await runBatchExit(indexing, events);
+
+  if (Exit.isFailure(exit)) {
+    throw new Error("Expected the batch to succeed", { cause: exit.cause });
+  }
+
+  return exit.value;
+};
+
+const failureOf = (exit: Exit.Exit<unknown, unknown>) =>
+  Exit.isFailure(exit) ? Option.getOrUndefined(Exit.findErrorOption(exit)) : undefined;
+
 describe("indexing engine", () => {
-  test("calls matching handler with event and context containing db and client", async () => {
-    const handler = vi.fn().mockReturnValue(Effect.void);
+  test("calls the contract's handler with the print event and counts it", async () => {
+    const handler = vi.fn<CoreHandler>().mockReturnValue(Effect.void);
 
-    const handlers: Handlers = {
-      "SP123.token": handler,
-    };
+    const indexing = createIndexing({
+      contracts: [tokenContract(handler)],
+      client: makeStacksClient(),
+    });
 
-    const indexing = createIndexing({ handlers, client: makeStacksClient() });
-
-    const event = createMockEvent();
-    await runBatch(indexing, [event], mockDb);
+    const counts = await runBatch(indexing, [createStoredEvent()]);
 
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler).toHaveBeenCalledWith(
-      event,
-      expect.objectContaining({
-        db: mockDb,
-        client: expect.objectContaining({
-          callReadOnly: expect.any(Function),
-        }),
-      }),
-    );
+    expect(handler.mock.calls[0][0]).toStrictEqual({
+      type: "print",
+      contract: "token",
+      contractId: CONTRACT_ID,
+      txId: "tx-1",
+      eventIndex: 0,
+      data: { ok: true },
+      raw: { hex: OK_TRUE_HEX, repr: "(ok true)", topic: "print" },
+      block: { height: 100, time: 1000, hash: "0xblock-100", indexBlockHash: "0xindex-100" },
+      tx: { index: 0, sender: "SP sender" },
+    } satisfies PrintEvent);
+    expect(counts).toStrictEqual(new Map([[CONTRACT_ID, 1]]));
   });
 
-  test("client.callReadOnly pins calls to the event's index block hash", async () => {
+  test("the handler client pins calls to the event's index block hash", async () => {
     const callReadFunction = vi
       .fn()
       .mockReturnValue(
@@ -122,10 +155,12 @@ describe("indexing engine", () => {
       );
 
     // `getBlock` stays `notUsed`: the tip comes from the event, not a block lookup.
-    const handler = vi.fn().mockImplementation((_event, ctx: HandlerContext) =>
+    const handler = vi.fn<CoreHandler>().mockReturnValue(
       Effect.gen(function* () {
+        const client = yield* HandlerClient;
+
         // Without a tip: the event's block.
-        yield* ctx.client.callReadOnly({
+        yield* client.callReadOnly({
           contractId: "SP123.contract",
           functionName: "get-something",
           args: ["0x01"],
@@ -133,7 +168,7 @@ describe("indexing engine", () => {
         });
 
         // An explicit tip overrides the event's index block hash.
-        yield* ctx.client.callReadOnly({
+        yield* client.callReadOnly({
           contractId: "SP123.contract",
           functionName: "get-something",
           tip: "0xexplicit",
@@ -141,21 +176,15 @@ describe("indexing engine", () => {
       }),
     );
 
-    const handlers: Handlers = {
-      "SP123.token": handler,
-    };
+    const indexing = createIndexing({
+      contracts: [tokenContract(handler)],
+      client: makeStacksClient({ callReadFunction }),
+    });
 
-    const stacksClient = makeStacksClient({ callReadFunction });
-    const indexing = createIndexing({ handlers, client: stacksClient });
-
-    await runBatch(
-      indexing,
-      [
-        createMockEvent({ block_height: 54321, index_block_hash: "0xindex-54321", event_index: 0 }),
-        createMockEvent({ block_height: 54321, index_block_hash: "0xindex-54321", event_index: 1 }),
-      ],
-      mockDb,
-    );
+    await runBatch(indexing, [
+      createStoredEvent({ blockHeight: 54321n, indexBlockHash: "0xindex-54321", eventIndex: 0 }),
+      createStoredEvent({ blockHeight: 54321n, indexBlockHash: "0xindex-54321", eventIndex: 1 }),
+    ]);
 
     expect(handler).toHaveBeenCalledTimes(2);
     expect(callReadFunction.mock.calls.slice(0, 2)).toStrictEqual([
@@ -175,7 +204,7 @@ describe("indexing engine", () => {
     );
   });
 
-  test("client.callReadOnly supports typed ABI options and pins them to the event's index block hash", async () => {
+  test("the handler client supports typed ABI options and pins them to the event's index block hash", async () => {
     const callReadFunction = vi.fn().mockReturnValue(
       Effect.succeed({
         okay: true,
@@ -184,12 +213,13 @@ describe("indexing engine", () => {
       }),
     );
 
-    // `getBlock` stays `notUsed`: the tip comes from the event, not a block lookup.
     let handlerResult: unknown;
 
-    const handler = vi.fn().mockImplementation((_event, ctx: HandlerContext) =>
+    const handler = vi.fn<CoreHandler>().mockImplementation(() =>
       Effect.gen(function* () {
-        handlerResult = yield* ctx.client.callReadOnly({
+        const client = yield* HandlerClient;
+
+        handlerResult = yield* client.callReadOnly({
           abi: testAbi,
           contractId: "SP123.contract",
           functionName: "get-decimals",
@@ -197,15 +227,14 @@ describe("indexing engine", () => {
       }),
     );
 
-    const handlers: Handlers = {
-      "SP123.token": handler,
-    };
+    const indexing = createIndexing({
+      contracts: [tokenContract(handler)],
+      client: makeStacksClient({ callReadFunction }),
+    });
 
-    const event = createMockEvent({ block_height: 77777, index_block_hash: "0xindex-77777" });
-    const stacksClient = makeStacksClient({ callReadFunction });
-    const indexing = createIndexing({ handlers, client: stacksClient });
-
-    await runBatch(indexing, [event], mockDb);
+    await runBatch(indexing, [
+      createStoredEvent({ blockHeight: 77777n, indexBlockHash: "0xindex-77777" }),
+    ]);
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handlerResult).toStrictEqual({ ok: 42n });
@@ -217,65 +246,59 @@ describe("indexing engine", () => {
     });
   });
 
-  test("returns ok when no handler matches contract", async () => {
-    const handlers: Handlers = {};
+  test("skips events of contracts it does not index", async () => {
+    const handler = vi.fn<CoreHandler>().mockReturnValue(Effect.void);
 
-    const event = createMockEvent();
-    const indexing = createIndexing({ handlers, client: makeStacksClient() });
+    const indexing = createIndexing({
+      contracts: [tokenContract(handler)],
+      client: makeStacksClient(),
+    });
 
-    await runBatch(indexing, [event], mockDb);
+    const counts = await runBatch(indexing, [createStoredEvent({ contractId: "SP456.other" })]);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(counts).toStrictEqual(new Map());
   });
 
-  test("returns err when handler throws", async () => {
+  test("fails with HandlerExecutionError when the handler fails", async () => {
     const error = new Error("Handler failed");
-    const handler = vi.fn().mockReturnValue(Effect.fail(error));
 
-    const handlers: Handlers = {
-      "SP123.token": handler,
-    };
+    const indexing = createIndexing({
+      contracts: [tokenContract(() => Effect.fail(error))],
+      client: makeStacksClient(),
+    });
 
-    const event = createMockEvent();
-    const indexing = createIndexing({ handlers, client: makeStacksClient() });
-
-    const result = await Effect.runPromiseExit(
-      indexing
-        .executeBatch([event])
-        .pipe(
-          Effect.provideService(IndexerDatabase, mockDb),
-          Effect.provideService(References.MinimumLogLevel, "None"),
-        ),
-    );
+    const result = await runBatchExit(indexing, [createStoredEvent()]);
 
     expect(result).toBeTaggedError(
-      new HandlerExecutionError({ contractId: "SP123.token", cause: error }),
+      new HandlerExecutionError({ contract: "token", contractId: CONTRACT_ID, cause: error }),
     );
   });
 
-  test("counts failed handler calls per contract", async () => {
-    const handlers: Handlers = {
-      "SP123.token": () => Effect.fail(new Error("Handler failed")),
-      "SP456.other": () => Effect.void,
-    };
-
-    const indexing = createIndexing({ handlers, client: makeStacksClient() });
+  test("counts failed handler calls per contract, labelled by name and id", async () => {
+    const indexing = createIndexing({
+      contracts: [
+        tokenContract(() => Effect.fail(new Error("Handler failed"))),
+        tokenContract(() => Effect.void, { name: "other", contractId: "SP456.other" }),
+      ],
+      client: makeStacksClient(),
+    });
 
     const [tokenErrors, otherErrors] = await Effect.runPromise(
       Effect.gen(function* () {
         yield* indexing
-          .executeBatch([
-            createMockEvent({
-              contract_log: { ...createMockEvent().contract_log, contract_id: "SP456.other" },
-            }),
-            createMockEvent(),
-          ])
+          .executeBatch([createStoredEvent({ contractId: "SP456.other" }), createStoredEvent()])
           .pipe(Effect.ignore);
 
         return [
           yield* Metric.value(
-            Metric.withAttributes(indexingHandlerErrors, { contract: "SP123.token" }),
+            Metric.withAttributes(indexingHandlerErrors, contractAttributes("token", CONTRACT_ID)),
           ),
           yield* Metric.value(
-            Metric.withAttributes(indexingHandlerErrors, { contract: "SP456.other" }),
+            Metric.withAttributes(
+              indexingHandlerErrors,
+              contractAttributes("other", "SP456.other"),
+            ),
           ),
         ];
       }).pipe(
@@ -287,6 +310,98 @@ describe("indexing engine", () => {
 
     expect(tokenErrors.count).toBe(1);
     expect(otherErrors.count).toBe(0);
+  });
+});
+
+describe("print decoding", () => {
+  /** Accepts `(ok true)` only, as a contract `print` schema would. */
+  const okTrueOnly = (value: ClarityJsonValue) =>
+    Schema.decodeUnknownEffect(Schema.Struct({ ok: Schema.Literal(true) }))(value).pipe(
+      Effect.as({ accepted: true }),
+      Effect.mapError((cause) => ({ message: "ok: Expected true", cause })),
+    );
+
+  test("hands the decoded data to the handler", async () => {
+    const handler = vi.fn<CoreHandler>().mockReturnValue(Effect.void);
+
+    const indexing = createIndexing({
+      contracts: [tokenContract(handler, { decode: okTrueOnly })],
+      client: makeStacksClient(),
+    });
+
+    await runBatch(indexing, [createStoredEvent()]);
+
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ data: { accepted: true } }));
+  });
+
+  test('fails the batch with EventDecodeError on a mismatch when onInvalid is "fail"', async () => {
+    const handler = vi.fn<CoreHandler>().mockReturnValue(Effect.void);
+
+    const indexing = createIndexing({
+      contracts: [tokenContract(handler, { decode: okTrueOnly })],
+      client: makeStacksClient(),
+    });
+
+    const exit = await runBatchExit(indexing, [
+      createStoredEvent({ txId: "tx-bad", eventIndex: 3, valueHex: OK_FALSE_HEX }),
+    ]);
+
+    const failure = failureOf(exit);
+
+    expect(failure).toBeInstanceOf(EventDecodeError);
+    expect(failure).toMatchObject({
+      contract: "token",
+      contractId: CONTRACT_ID,
+      txId: "tx-bad",
+      eventIndex: 3,
+      message: "ok: Expected true",
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  test('skips a mismatching print without counting it when onInvalid is "skip"', async () => {
+    const handler = vi.fn<CoreHandler>().mockReturnValue(Effect.void);
+
+    const indexing = createIndexing({
+      contracts: [tokenContract(handler, { decode: okTrueOnly, onInvalid: "skip" })],
+      client: makeStacksClient(),
+    });
+
+    const counts = await runBatch(indexing, [
+      createStoredEvent({ txId: "tx-bad", valueHex: OK_FALSE_HEX }),
+      createStoredEvent({ txId: "tx-good" }),
+    ]);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ txId: "tx-good" }));
+    expect(counts).toStrictEqual(new Map([[CONTRACT_ID, 1]]));
+  });
+
+  test("treats a value that is not valid Clarity as a decode issue", async () => {
+    const handler = vi.fn<CoreHandler>().mockReturnValue(Effect.void);
+    const invalid = createStoredEvent({ txId: "tx-garbage", valueHex: "0xff" });
+
+    const failing = createIndexing({
+      contracts: [tokenContract(handler)],
+      client: makeStacksClient(),
+    });
+
+    const failure = failureOf(await runBatchExit(failing, [invalid]));
+
+    expect(failure).toBeInstanceOf(EventDecodeError);
+    expect(failure).toMatchObject({
+      contract: "token",
+      txId: "tx-garbage",
+      message: "Not a valid Clarity value",
+    });
+
+    const skipping = createIndexing({
+      contracts: [tokenContract(handler, { onInvalid: "skip" })],
+      client: makeStacksClient(),
+    });
+
+    await expect(runBatch(skipping, [invalid])).resolves.toStrictEqual(new Map());
+    expect(handler).not.toHaveBeenCalled();
   });
 });
 
@@ -306,68 +421,49 @@ describe("transactional event handlers", () => {
     await testDb.close();
   });
 
-  const insertBlock = (context: HandlerContext) =>
-    context.db
-      .insert(blocksTable)
-      .values({
-        chainId: 1n,
-        height: 100n,
-        hash: "0x0000000000000000000000000000000000000000000000000000000000000001",
-        indexBlockHash: "0x0000000000000000000000000000000000000000000000000000000000000002",
-        blockTime: 1000n,
-        tenureHeight: 1n,
-      })
-      .pipe(Effect.asVoid);
+  const insertBlock = Effect.gen(function* () {
+    const db = yield* IndexerDatabase;
 
-  const runBatchInTransaction = (
-    indexing: ReturnType<typeof createIndexing>,
-    events: HandlerEvent[],
-  ) =>
-    Effect.runPromise(
-      IndexerDatabase.transaction(() => indexing.executeBatch(events)).pipe(
+    yield* db.insert(blocksTable).values({
+      chainId: 1n,
+      height: 100n,
+      hash: "0x0000000000000000000000000000000000000000000000000000000000000001",
+      indexBlockHash: "0x0000000000000000000000000000000000000000000000000000000000000002",
+      blockTime: 1000n,
+      tenureHeight: 1n,
+    });
+  });
+
+  const runBatchInTransaction = (indexing: IndexingService) =>
+    Effect.runPromiseExit(
+      IndexerDatabase.transaction(() => indexing.executeBatch([createStoredEvent()])).pipe(
         Effect.provideService(IndexerDatabase, testDb.db),
         Effect.provideService(References.MinimumLogLevel, "None"),
       ),
     );
 
   test("commits handler writes together with the event", async () => {
-    const handler = vi
-      .fn()
-      .mockImplementation((_event: HandlerEvent, context: HandlerContext) => insertBlock(context));
-
     const indexing = createIndexing({
-      handlers: { "SP123.token": handler },
+      contracts: [tokenContract(() => insertBlock)],
       client: makeStacksClient(),
     });
 
-    await runBatchInTransaction(indexing, [createMockEvent()]);
-
+    expect(Exit.isSuccess(await runBatchInTransaction(indexing))).toBe(true);
     await expect(testDb.db.select().from(blocksTable)).resolves.toHaveLength(1);
   });
 
-  test("rolls back handler writes when the handler throws", async () => {
+  test("rolls back handler writes when the handler fails", async () => {
     const error = new Error("Handler failed");
 
-    const handler = vi
-      .fn()
-      .mockImplementation((_event: HandlerEvent, context: HandlerContext) =>
-        insertBlock(context).pipe(Effect.andThen(Effect.fail(error))),
-      );
-
     const indexing = createIndexing({
-      handlers: { "SP123.token": handler },
+      contracts: [tokenContract(() => insertBlock.pipe(Effect.andThen(Effect.fail(error))))],
       client: makeStacksClient(),
     });
 
-    const result = await Effect.runPromiseExit(
-      IndexerDatabase.transaction(() => indexing.executeBatch([createMockEvent()])).pipe(
-        Effect.provideService(IndexerDatabase, testDb.db),
-        Effect.provideService(References.MinimumLogLevel, "None"),
-      ),
-    );
+    const result = await runBatchInTransaction(indexing);
 
     expect(result).toBeTaggedError(
-      new HandlerExecutionError({ contractId: "SP123.token", cause: error }),
+      new HandlerExecutionError({ contract: "token", contractId: CONTRACT_ID, cause: error }),
     );
     await expect(testDb.db.select().from(blocksTable)).resolves.toHaveLength(0);
   });

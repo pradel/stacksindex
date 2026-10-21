@@ -6,13 +6,13 @@ import { Cl } from "@stacks/transactions";
 import { sql } from "drizzle-orm";
 import { integer, pgTable, text } from "drizzle-orm/pg-core";
 import { createTraceCollector } from "indexer-e2e/src/tracer.ts";
-import { type EventHandler, type IndexerDb, pglite } from "stacksindex";
+import { pglite, type IndexerDb } from "stacksindex";
 import { afterAll, describe, expect, test } from "vite-plus/test";
 
 import { chainTip, EVENTS_CONTRACT, RUNTIME_SENDER, submitContractCall } from "../chain.ts";
-import { createDevnetIndexer, tracedFilters } from "../indexer.ts";
+import { createDevnetIndexer, type DevnetHandler } from "../indexer.ts";
 
-const migrationsFolder = path.resolve(import.meta.dirname, "../migrations");
+const migrations = path.resolve(import.meta.dirname, "../migrations");
 
 const eventCounts = pgTable("event_counts", {
   contractId: text("contract_id").primaryKey(),
@@ -44,10 +44,13 @@ describe("resuming on the same database", () => {
     ]);
 
     const trace = createTraceCollector();
-    await using indexer = await createDevnetIndexer();
-    const filters = tracedFilters(trace, [{ contractId: EVENTS_CONTRACT, startBlock }]);
 
-    const firstRun = await indexer.run(filters);
+    await using indexer = await createDevnetIndexer({
+      trace,
+      contracts: [{ contractId: EVENTS_CONTRACT, startBlock }],
+    });
+
+    const firstRun = await indexer.run();
 
     expect(firstRun.eventsProcessed).toBe(1);
     expect(trace.getEvents().map((event) => event.txId)).toStrictEqual([first.txId]);
@@ -58,14 +61,14 @@ describe("resuming on the same database", () => {
       Cl.uint(11),
     ]);
 
-    const secondRun = await indexer.run(filters);
+    const secondRun = await indexer.run();
 
     expect(secondRun.eventsProcessed).toBe(1);
     expect(trace.getEvents().map((event) => event.txId)).toStrictEqual([second.txId]);
 
     trace.clear();
 
-    const thirdRun = await indexer.run(filters);
+    const thirdRun = await indexer.run();
 
     expect(thirdRun.eventsProcessed).toBe(0);
     expect(trace.getEvents()).toStrictEqual([]);
@@ -85,21 +88,23 @@ describe("resuming on the same database", () => {
       directories.push(directory);
       const database = pglite(directory);
       const startBlock = (await chainTip()) + 1;
+      const contracts = [{ contractId: EVENTS_CONTRACT, startBlock }];
 
       await submitContractCall(RUNTIME_SENDER, EVENTS_CONTRACT, "set-value", [Cl.uint(20)]);
 
-      const counting: EventHandler = async (_event, { db }) => {
+      const counting: DevnetHandler = async (_event, { db }) => {
         await countEvent(db);
       };
 
       {
-        await using indexer = await createDevnetIndexer(undefined, database, migrationsFolder);
-
-        const firstRun = await indexer.run({
-          contractId: EVENTS_CONTRACT,
-          startBlock,
+        await using indexer = await createDevnetIndexer({
+          contracts,
+          database,
+          migrations,
           handler: counting,
         });
+
+        const firstRun = await indexer.run();
 
         expect(firstRun.eventsProcessed).toBe(1);
         await expect(readCount(indexer.db)).resolves.toBe(1);
@@ -111,31 +116,32 @@ describe("resuming on the same database", () => {
 
       {
         // Only the new event is pending, and the run fails right after writing it.
-        await using indexer = await createDevnetIndexer(undefined, database, migrationsFolder);
         const crash = new Error("crash after the write");
 
-        await expect(
-          indexer.run({
-            contractId: EVENTS_CONTRACT,
-            startBlock,
-            handler: async (event, { db }) => {
-              await countEvent(db);
-              expect(event.tx_id).toBe(second.txId);
-              throw crash;
-            },
-          }),
-        ).rejects.toMatchObject({ cause: crash });
+        await using indexer = await createDevnetIndexer({
+          contracts,
+          database,
+          migrations,
+          handler: async (event, { db }) => {
+            await countEvent(db);
+            expect(event.txId).toBe(second.txId);
+            throw crash;
+          },
+        });
+
+        await expect(indexer.run()).rejects.toMatchObject({ cause: crash });
         // The write rolled back with the checkpoint.
         await expect(readCount(indexer.db)).resolves.toBe(1);
       }
 
-      await using restarted = await createDevnetIndexer(undefined, database, migrationsFolder);
-
-      const resumed = await restarted.run({
-        contractId: EVENTS_CONTRACT,
-        startBlock,
+      await using restarted = await createDevnetIndexer({
+        contracts,
+        database,
+        migrations,
         handler: counting,
       });
+
+      const resumed = await restarted.run();
 
       expect(resumed.eventsProcessed).toBe(1);
       await expect(readCount(restarted.db)).resolves.toBe(2);

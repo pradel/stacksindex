@@ -62,7 +62,7 @@ export const swapTable = pgTable(
 );
 
 /**
- * Enables `db.query.<table>`, typed through `EventHandler<typeof relations>`.
+ * Passed to `defineIndexer`, types the handlers' `db.query.<table>`.
  * Rows are keyed by address and chain, so every join matches both.
  */
 export const relations = defineRelations(

@@ -11,7 +11,7 @@ import {
   type TransactionEventsResponse,
 } from "../datasources/api/index.ts";
 import type { DatabaseError, SyncStoreError } from "../lib/errors.ts";
-import { syncBlock as syncBlockGauge, syncEvents } from "../lib/metrics.ts";
+import { contractAttributes, syncBlock as syncBlockGauge, syncEvents } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import type { SyncFilter } from "../sync/index.ts";
 
@@ -29,22 +29,25 @@ interface ContractMetrics {
   readonly block: Metric.Metric<number, Metric.GaugeState<number>>;
 }
 
-function makeContractMetrics(contract: string): ContractMetrics {
+function makeContractMetrics(filter: SyncFilter): ContractMetrics {
+  const attributes = contractAttributes(filter.name, filter.contractId);
+
   return {
-    events: Metric.withAttributes(syncEvents, { contract, path: "block" }),
-    block: Metric.withAttributes(syncBlockGauge, { contract }),
+    events: Metric.withAttributes(syncEvents, { ...attributes, path: "block" }),
+    block: Metric.withAttributes(syncBlockGauge, attributes),
   };
 }
 
 /** Per-contract series, labelled once per contract rather than once per block. */
 const contractMetrics = new Map<string, ContractMetrics>();
 
-function getContractMetrics(contract: string) {
-  let metrics = contractMetrics.get(contract);
+function getContractMetrics(filter: SyncFilter) {
+  const key = `${filter.name}\u0000${filter.contractId}`;
+  let metrics = contractMetrics.get(key);
 
   if (metrics === undefined) {
-    metrics = makeContractMetrics(contract);
-    contractMetrics.set(contract, metrics);
+    metrics = makeContractMetrics(filter);
+    contractMetrics.set(key, metrics);
   }
 
   return metrics;
@@ -211,9 +214,9 @@ export function syncBlock(options: {
       }
     }
 
-    for (const contract of contractIds) {
-      const metrics = getContractMetrics(contract);
-      const count = eventsByContract.get(contract);
+    for (const filter of syncing) {
+      const metrics = getContractMetrics(filter);
+      const count = eventsByContract.get(filter.contractId);
 
       if (count !== undefined) {
         yield* Metric.update(metrics.events, count);
