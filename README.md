@@ -114,8 +114,8 @@ Each contract can declare a `print` schema. Every print is decoded from Clarity 
 With the promise API, `print` is any [Standard Schema](https://standardschema.dev) (zod, valibot, arktype, or Effect's `Schema.toStandardSchemaV1`); with the Effect API it is an Effect `Schema`.
 
 ```ts
-import { z } from "zod";
 import { defineIndexer } from "stacksindex";
+import { z } from "zod";
 
 const SwapLog = z.object({
   object: z.literal("pool"),
