@@ -34,3 +34,37 @@ jobs:
 
       - name: Run tests
         run: vp run test
+
+  # The stacksindex unit tests again, with every test database on Postgres
+  # instead of PGlite.
+  postgres:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: vite-plus setup
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: ".node-version"
+          cache: true
+
+      - name: Run tests on Postgres
+        working-directory: packages/stacksindex
+        env:
+          STACKSINDEX_TEST_POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: vp test run

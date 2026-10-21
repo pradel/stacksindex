@@ -57,6 +57,7 @@ import {
 import { parseLogsCursor, parseTransactionCursor } from "../sync/cursor.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
+import { freshDatabase } from "../test/fresh-database.ts";
 import type { ContractSpec } from "./contracts.ts";
 import { Indexer, type IndexerError, type IndexerOptions, type RunResult } from "./index.ts";
 
@@ -3348,7 +3349,7 @@ describe("historical runtime with handlers", () => {
     });
 
     const runtime = await defineIndexer({ contracts: { token: { id: contractId } } }).create({
-      database: pglite(),
+      database: await freshDatabase(),
       logLevel: "None",
       handlers: { token: () => undefined },
     });
@@ -3393,7 +3394,7 @@ describe("historical runtime with handlers", () => {
 
     test("commits awaited writes with the batch checkpoint", async () => {
       await using indexer = await defineIndexer({ contracts }).create({
-        database: pglite(),
+        database: await freshDatabase(),
         logLevel: "None",
         handlers: {
           token: async (event, context) => {
@@ -3420,7 +3421,7 @@ describe("historical runtime with handlers", () => {
       const failure = new Error("Handler failed");
 
       await using indexer = await defineIndexer({ contracts }).create({
-        database: pglite(),
+        database: await freshDatabase(),
         logLevel: "None",
         handlers: {
           token: async (event, context) => {
@@ -3455,7 +3456,7 @@ describe("historical runtime with handlers", () => {
       const seenInBatch: number[] = [];
 
       await using indexer = await defineIndexer({ contracts, relations: handledRelations }).create({
-        database: pglite(),
+        database: await freshDatabase(),
         logLevel: "None",
         handlers: {
           token: async (event, context) => {
