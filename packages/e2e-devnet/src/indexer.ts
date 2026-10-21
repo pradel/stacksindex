@@ -1,13 +1,13 @@
 import type { RecordedTraceEvent, TraceCollector } from "indexer-e2e/src/tracer.ts";
 import {
   createIndexer,
-  type ClarityJsonValue,
   type DatabaseConfig,
   type Filter,
   type Indexer,
   type IndexerPhase,
   type LiveOptions,
 } from "stacksindex";
+import type { ClarityJsonValue } from "stacksindex/clarity";
 
 import { DEVNET_API_URL, waitUntil } from "./chain.ts";
 
@@ -19,8 +19,8 @@ export function createDevnetIndexer(
   return createIndexer({
     database,
     // Clarinet devnet uses the testnet chain id; only the API URL differs.
-    network: "testnet",
-    api: { baseUrl: DEVNET_API_URL },
+    chain: "testnet",
+    api: { url: DEVNET_API_URL },
     live,
     logLevel: "Warn",
   });

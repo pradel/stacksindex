@@ -124,7 +124,8 @@ const transactionSummary = (block: FakeBlock, txIndex: number) => ({
 const contractLogValue = (event: FakeEvent) => ({
   contract_id: event.contractId,
   topic: "print",
-  value: { hex: "0x01", repr: event.repr ?? "(ok true)" },
+  // `(ok true)`, so the value is valid Clarity like the repr says.
+  value: { hex: "0x0703", repr: event.repr ?? "(ok true)" },
 });
 
 /** Pages `items` through an offset `cursor`, answering with `cursor.next`. */

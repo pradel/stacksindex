@@ -1,11 +1,6 @@
 import { eq } from "drizzle-orm";
-import {
-  decodeHex,
-  type EventHandler,
-  type IndexerDb,
-  type IndexingClient,
-  type Logger,
-} from "stacksindex";
+import type { EventHandler, IndexerDb, IndexingClient, Logger } from "stacksindex";
+import { decodeHex } from "stacksindex/clarity";
 import { z } from "zod";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
@@ -65,7 +60,10 @@ export const poolSwapLogSchema = z
     totalSupply: val.data["total-supply"],
   }));
 
+// The pool prints `liquidity-added` / `liquidity-removed` when liquidity moves.
 const otherPoolActionSchema = z.union([
+  z.literal("liquidity-added"),
+  z.literal("liquidity-removed"),
   z.literal("add-to-position"),
   z.literal("reduce-position"),
   z.literal("set-fee-to-address"),

@@ -7,10 +7,11 @@ A simple, open-source indexer for the Stacks blockchain: historical backfill, th
 
 `stacksindex` lets you backfill smart contract events, follow new blocks as they are mined, execute user-defined handlers to derive custom relational state, and query historical contract data at specific block heights.
 
-Two entrypoints ship with the package:
+Three entrypoints ship with the package:
 
 - **`stacksindex`** — promise-native API for scripts, CLIs and Node services.
 - **`stacksindex/effect`** — Effect-native services and layers.
+- **`stacksindex/clarity`** — Clarity codec: `decodeHex`, `cvToJSON`, `decodeClarityValue`, `decodeClarityWithSchema` (Effect Schema), `encodeUint`, `ClarityTypeID`.
 
 ---
 
@@ -21,7 +22,7 @@ Two entrypoints ship with the package:
 - **Live Sync**: After the backfill, follow new blocks by polling the API or over its websocket, fetching each block's events or each contract's newest logs, whichever costs fewer requests.
 - **Embedded or External Database**: First-class support for embedded [PGlite](https://pglite.electric-sql.com/) (zero configuration) or production PostgreSQL via [Drizzle ORM](https://orm.drizzle.team/).
 - **Time-Travel Read-Only Calls**: Query contract state (`client.callReadOnly`) automatically pinned to the exact block height of the event being processed.
-- **Clarity Codec Built-in**: Easily decode raw Clarity hex values to plain JavaScript objects (`decodeHex`, `cvToJSON`).
+- **Clarity Codec Built-in**: Easily decode raw Clarity hex values to plain JavaScript objects (`decodeHex`, `cvToJSON` from `stacksindex/clarity`).
 - **Crash Recovery**: Checkpointing and resume progress stored directly in the database so sync resumes where it left off. Unfinalized data is replayed after a restart, so reorgs are handled automatically.
 - **Atomic Handler Writes**: Handler writes through `context.db` commit in the same transaction as the indexing checkpoint, so a crash or a failed batch never applies an event twice.
 - **Monitoring**: Sync, indexing, live sync, reorg and API metrics pushed over OTLP to Prometheus or any OpenTelemetry backend, plus a status call for readiness probes.
@@ -43,7 +44,8 @@ _(or via `npm install` / `yarn add` / `bun add`)_
 ```ts
 import { defineRelations } from "drizzle-orm";
 import { integer, pgTable, text } from "drizzle-orm/pg-core";
-import { createIndexer, decodeHex } from "stacksindex";
+import { createIndexer } from "stacksindex";
+import { decodeHex } from "stacksindex/clarity";
 
 // Your tables live in the indexer database, next to the indexer's own tables.
 const mints = pgTable("mints", {
@@ -58,7 +60,7 @@ const relations = defineRelations({ mints });
 await using indexer = await createIndexer({
   database: { kind: "pglite", directory: "./indexer.db" },
   relations,
-  network: "mainnet",
+  chain: "mainnet",
   api: {
     apiKey: process.env.HIRO_API_KEY, // Optional: Stacks / Hiro API key for higher rate limits
   },
@@ -173,7 +175,7 @@ await Effect.runPromise(
       Indexer.layerWithDatabase({
         database: { kind: "pglite", directory: "./indexer.db" },
         relations,
-        network: "mainnet",
+        chain: "mainnet",
         api: { apiKey },
         logLevel: "Info",
       }),
@@ -270,7 +272,7 @@ const MetricsLive = OtlpMetrics.layer({
   resource: { serviceName: "my-indexer" }, // required unless OTEL_SERVICE_NAME is set
 }).pipe(Layer.provide(Layer.mergeAll(OtlpSerialization.layerProtobuf, FetchHttpClient.layer)));
 
-const IndexerLive = Indexer.layer({ network: "mainnet" }).pipe(
+const IndexerLive = Indexer.layer({ chain: "mainnet" }).pipe(
   Layer.provideMerge(IndexerDatabase.layer({ kind: "pglite", directory: "./indexer.db" })),
 );
 
@@ -346,23 +348,23 @@ The exporter logs its target once at `Info` when the indexer starts. Failed expo
 
 ### `createIndexer(options)`
 
-| Option                          | Type                                             | Default                          | Description                                                                                                                                      |
-| ------------------------------- | ------------------------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `database`                      | `DatabaseConfig`                                 | _Required_                       | Indexer storage. `{ kind: "pglite", directory? }` or `{ kind: "postgres", connectionString }`.                                                   |
-| `relations`                     | `Relations` from `defineRelations`               | `undefined`                      | Drizzle relations enabling typed `db.query` on `indexer.db` and `context.db`.                                                                    |
-| `network`                       | `"mainnet" \| "testnet" \| number`               | `"mainnet"`                      | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID.                                                                 |
-| `finality`                      | `number`                                         | `6`                              | Depth, in blocks, of reorgs handled by replaying; deeper reorgs fail with `ReorgError`.                                                          |
-| `api.baseUrl`                   | `string`                                         | _Network default_                | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the network default. |
-| `api.apiKey`                    | `string`                                         | `undefined`                      | Optional Hiro API key.                                                                                                                           |
-| `live.transport`                | `"polling" \| "websocket"`                       | `"polling"`                      | How `live` detects new blocks.                                                                                                                   |
-| `live.pollingInterval`          | `number`                                         | `5000`                           | Milliseconds between polls for the latest block (minimum `100`). Also used after a websocket falls back to polling.                              |
-| `live.webSocketUrl`             | `string`                                         | `/extended/v1/ws` (API)          | Websocket endpoint; defaults to the API base URL with `wss:` (or `ws:`) and `/extended/v1/ws`.                                                   |
-| `logLevel`                      | `LogLevel`                                       | `"Info"`                         | Minimum log level for the console logger.                                                                                                        |
-| `telemetry.otlp.baseUrl`        | `string`                                         | _Required with `otlp`_           | OTLP/HTTP base URL; `/v1/metrics` is appended. Metrics are not exported without `telemetry.otlp`.                                                |
-| `telemetry.otlp.headers`        | `Record<string, string>`                         | `undefined`                      | Headers sent with every export, e.g. authentication.                                                                                             |
-| `telemetry.otlp.exportInterval` | `number`                                         | `10000`                          | Milliseconds between exports (positive integer).                                                                                                 |
-| `telemetry.otlp.temporality`    | `"cumulative" \| "delta"`                        | `"cumulative"`                   | `"cumulative"` for Prometheus, `"delta"` for Datadog or Dynatrace.                                                                               |
-| `telemetry.otlp.resource`       | `{ serviceName?, serviceVersion?, attributes? }` | `{ serviceName: "stacksindex" }` | OpenTelemetry resource attached to every export.                                                                                                 |
+| Option                          | Type                                             | Default                          | Description                                                                                                                                    |
+| ------------------------------- | ------------------------------------------------ | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `database`                      | `DatabaseConfig`                                 | _Required_                       | Indexer storage. `{ kind: "pglite", directory? }` or `{ kind: "postgres", connectionString }`.                                                 |
+| `relations`                     | `Relations` from `defineRelations`               | `undefined`                      | Drizzle relations enabling typed `db.query` on `indexer.db` and `context.db`.                                                                  |
+| `chain`                         | `"mainnet" \| "testnet" \| { id, apiUrl }`       | `"mainnet"`                      | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID with the API serving it (e.g. a devnet).                       |
+| `finality`                      | `number`                                         | `6`                              | Depth, in blocks, of reorgs handled by replaying; deeper reorgs fail with `ReorgError`.                                                        |
+| `api.url`                       | `string`                                         | _Chain default_                  | Stacks API URL (`"https://api.hiro.so"` for Mainnet, `"https://api.testnet.hiro.so"` for Testnet). Explicit value overrides the chain default. |
+| `api.apiKey`                    | `string`                                         | `undefined`                      | Optional Hiro API key.                                                                                                                         |
+| `live.transport`                | `"polling" \| "websocket"`                       | `"polling"`                      | How `live` detects new blocks.                                                                                                                 |
+| `live.pollingInterval`          | `number`                                         | `5000`                           | Milliseconds between polls for the latest block (minimum `100`). Also used after a websocket falls back to polling.                            |
+| `live.webSocketUrl`             | `string`                                         | `/extended/v1/ws` (API)          | Websocket endpoint; defaults to the API base URL with `wss:` (or `ws:`) and `/extended/v1/ws`.                                                 |
+| `logLevel`                      | `LogLevel`                                       | `"Info"`                         | Minimum log level for the console logger.                                                                                                      |
+| `telemetry.otlp.baseUrl`        | `string`                                         | _Required with `otlp`_           | OTLP/HTTP base URL; `/v1/metrics` is appended. Metrics are not exported without `telemetry.otlp`.                                              |
+| `telemetry.otlp.headers`        | `Record<string, string>`                         | `undefined`                      | Headers sent with every export, e.g. authentication.                                                                                           |
+| `telemetry.otlp.exportInterval` | `number`                                         | `10000`                          | Milliseconds between exports (positive integer).                                                                                               |
+| `telemetry.otlp.temporality`    | `"cumulative" \| "delta"`                        | `"cumulative"`                   | `"cumulative"` for Prometheus, `"delta"` for Datadog or Dynatrace.                                                                             |
+| `telemetry.otlp.resource`       | `{ serviceName?, serviceVersion?, attributes? }` | `{ serviceName: "stacksindex" }` | OpenTelemetry resource attached to every export.                                                                                               |
 
 ### `Indexer` (Promise)
 

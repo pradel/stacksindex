@@ -1,6 +1,6 @@
 import { Cl } from "@stacks/transactions";
 import { createTraceCollector } from "indexer-e2e/src/tracer.ts";
-import type { ClarityJsonValue } from "stacksindex";
+import type { ClarityJsonValue } from "stacksindex/clarity";
 import { describe, expect, test } from "vite-plus/test";
 
 import { chainTip, EVENTS_CONTRACT, RUNTIME_SENDER, submitContractCall } from "../chain.ts";

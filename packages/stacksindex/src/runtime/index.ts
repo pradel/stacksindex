@@ -169,7 +169,7 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
     options: IndexerWithDatabaseOptions,
   ): Layer.Layer<Indexer | IndexerDatabase, ConfigurationError | DatabaseError | MigrationError> =>
     Indexer.layer({
-      network: options.network,
+      chain: options.chain,
       api: options.api,
       finality: options.finality,
       live: options.live,

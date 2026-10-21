@@ -52,7 +52,7 @@ Users configure the indexer with four elements:
 ┌─────────────────────────────────────────────────────────────┐
 │                      CONFIGURATION                          │
 ├─────────────────┬───────────────────────────────────────────┤
-│  Network        │  Stacks API endpoint and settings         │
+│  Chain          │  Stacks chain, API endpoint and settings  │
 ├─────────────────┼───────────────────────────────────────────┤
 │  Filters        │  Contract IDs, block ranges               │
 ├─────────────────┼───────────────────────────────────────────┤
@@ -62,12 +62,12 @@ Users configure the indexer with four elements:
 └─────────────────┴───────────────────────────────────────────┘
 ```
 
-### Network
+### Chain
 
-Define the Stacks network to connect to:
+Define the Stacks chain to index and how to reach it:
 
-- API endpoint URL (e.g., `https://api.hiro.so`)
-- Optional API key (`apiKey`)
+- `chain`: `"mainnet"`, `"testnet"`, or `{ id, apiUrl }` for any other chain (e.g. a devnet)
+- `api.url` overrides the chain's API URL (e.g. `https://api.hiro.so`); optional API key (`api.apiKey`)
 - How live sync detects new blocks: `live.transport` (`"polling"` or `"websocket"`), `live.pollingInterval`, `live.webSocketUrl`
 
 ### Filters
@@ -342,15 +342,16 @@ The core handler contract is Effect-only. The promise entrypoint (`stacksindex`)
 
 ### Entrypoints
 
-- `stacksindex` — promise-native facade: `createIndexer({ database, network, api, finality, live, logLevel, telemetry })` owns the database and runtime lifecycle and returns `{ db, migrate, run, live, status, close, [Symbol.asyncDispose] }`. `migrate({ migrationsFolder })` applies the user's migrations; `run` returns a `RunResult` summary; `live` resolves when every filter reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter.
+- `stacksindex` — promise-native facade: `createIndexer({ database, chain, api, finality, live, logLevel, telemetry })` owns the database and runtime lifecycle and returns `{ db, migrate, run, live, status, close, [Symbol.asyncDispose] }`. `migrate({ migrationsFolder })` applies the user's migrations; `run` returns a `RunResult` summary; `live` resolves when every filter reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter.
 - `stacksindex/effect` — Effect-native surface: `Indexer` (+ `layer` and `layerWithDatabase`), `IndexerDatabase`, `StacksClient`, `readOnly`, `migrate`, and `loggerLayer`.
+- `stacksindex/clarity` — Clarity codec: `decodeHex`, `cvToJSON`, `decodeClarityValue`, `decodeClarityWithSchema`, `encodeUint`, `ClarityTypeID` and the `ClarityJsonValue`/`ClarityValue` types.
 
 ### Services
 
 The runtime is composed from Effect services and layers:
 
 - `IndexerDatabase` — the Drizzle database; `IndexerDatabase.layer(config)` opens it and applies the sync store migrations, and `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service.
-- `Indexer` — `Indexer.layer({ network, api, finality, live })` builds the Stacks API client and the in-memory `RunPhase`; `run(filters)` and `live(filters)` require `IndexerDatabase`. Both set the phase (`backfill`, then `done`, `failed`, or `idle` when interrupted; `runLive` sets `live` once it follows new heads) and add the `chain_id` attribute to every metric recorded inside through `Metric.CurrentMetricAttributes`. `status` combines the phase with the stored checkpoint, sync anchor and per-contract sync progress. `Indexer.layerWithDatabase({ database, network, api, finality, live, logLevel, telemetry })` provides the indexer, database, logger and, with `telemetry.otlp`, the metrics exporter in one layer.
+- `Indexer` — `Indexer.layer({ chain, api, finality, live })` builds the Stacks API client and the in-memory `RunPhase`; `run(filters)` and `live(filters)` require `IndexerDatabase`. Both set the phase (`backfill`, then `done`, `failed`, or `idle` when interrupted; `runLive` sets `live` once it follows new heads) and add the `chain_id` attribute to every metric recorded inside through `Metric.CurrentMetricAttributes`. `status` combines the phase with the stored checkpoint, sync anchor and per-contract sync progress. `Indexer.layerWithDatabase({ database, chain, api, finality, live, logLevel, telemetry })` provides the indexer, database, logger and, with `telemetry.otlp`, the metrics exporter in one layer.
 - `Indexing` — `Indexing.layer({ handlers })` executes user handlers inside `IndexerDatabase.transaction` (internal).
 - `loggerLayer({ level })` — installs Effect's pretty console logger and minimum log level.
 - `telemetryLayer(telemetry)` — `OtlpMetrics.layer` over the fetch HTTP client with protobuf serialization, posting to `${baseUrl}/v1/metrics` (internal). Metrics are defined once in `lib/metrics.ts` and recorded in Effect's default `MetricRegistry`; nothing is served over HTTP. Closing the layer flushes the last snapshot.

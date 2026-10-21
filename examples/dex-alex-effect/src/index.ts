@@ -38,7 +38,7 @@ const fiber = Effect.runFork(
       Indexer.layerWithDatabase({
         database: { kind: "pglite", directory: "./data/indexer.db" },
         relations,
-        network: "mainnet",
+        chain: "mainnet",
         api: { apiKey },
         live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },
         logLevel: "Info",

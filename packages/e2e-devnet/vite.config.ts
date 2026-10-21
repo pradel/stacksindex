@@ -14,6 +14,10 @@ export default defineConfig({
         find: /^stacksindex\/effect$/u,
         replacement: path.resolve(import.meta.dirname, "../stacksindex/src/effect.ts"),
       },
+      {
+        find: /^stacksindex\/clarity$/u,
+        replacement: path.resolve(import.meta.dirname, "../stacksindex/src/clarity.ts"),
+      },
     ],
   },
   test: {
