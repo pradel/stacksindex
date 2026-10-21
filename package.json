@@ -21,7 +21,6 @@
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.3",
     "@effect/tsgo": "0.54.1",
-    "oxlint-tsgolint": "7.0.2004",
     "typescript": "7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"

@@ -194,9 +194,6 @@ importers:
       '@effect/tsgo':
         specifier: 0.54.1
         version: 0.54.1
-      oxlint-tsgolint:
-        specifier: 7.0.2004
-        version: 7.0.2004
       typescript:
         specifier: 7.0.2
         version: 7.0.2
