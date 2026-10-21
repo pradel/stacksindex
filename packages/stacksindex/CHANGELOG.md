@@ -1,5 +1,39 @@
 # stacksindex
 
+## 0.1.0
+
+### Minor Changes
+
+- [#77](https://github.com/pradel/stacksindex/pull/77) [`4a42df2`](https://github.com/pradel/stacksindex/commit/4a42df25a89b5798fe8dbb243781a45e6dddcd67) Thanks [@pradel](https://github.com/pradel)! - Breaking: new 0.1.0 API. `defineIndexer` declares named contracts and takes one handler each, replacing `createIndexer` and the filters passed to `run`/`live`. Handlers receive decoded events typed by optional `print` schemas, and results and status are keyed by contract name.
+
+- [#78](https://github.com/pradel/stacksindex/pull/78) [`2e0251c`](https://github.com/pradel/stacksindex/commit/2e0251c89193a5d2eb68014737da0251978b0394) Thanks [@pradel](https://github.com/pradel)! - Breaking: `network` is renamed `chain` and takes `"mainnet"`, `"testnet"` or `{ id, apiUrl }` for any other chain, and `api.baseUrl` is renamed `api.url`. `resolveNetwork`, `NetworkOption`, `MAINNET_API_BASE_URL` and `TESTNET_API_BASE_URL` become `resolveChain`, `ChainOption`, `MAINNET_API_URL` and `TESTNET_API_URL`.
+
+- [#78](https://github.com/pradel/stacksindex/pull/78) [`2e0251c`](https://github.com/pradel/stacksindex/commit/2e0251c89193a5d2eb68014737da0251978b0394) Thanks [@pradel](https://github.com/pradel)! - Breaking: the Clarity codec (`decodeHex`, `cvToJSON`, `decodeClarityValue`, `decodeClarityWithSchema`, `encodeUint`, `ClarityTypeID`, `ClarityJsonValue`, `ClarityValue`) moves from `stacksindex` and `stacksindex/effect` to `stacksindex/clarity`.
+
+- [#79](https://github.com/pradel/stacksindex/pull/79) [`0bb4df8`](https://github.com/pradel/stacksindex/commit/0bb4df808bbfc65c2f2c4f841d79fd1ba7168c86) Thanks [@pradel](https://github.com/pradel)! - Breaking: build the database with `pglite(directory?)` or `postgres(connectionString)` (the `DatabaseConfig` type is now `Database`), and pass your drizzle-kit migrations folder as `migrations` to `createIndexer` or `Indexer.layerWithDatabase`; it is applied when the database opens. `indexer.migrate()` and the Effect `migrate` are removed.
+
+- [#67](https://github.com/pradel/stacksindex/pull/67) [`28ef595`](https://github.com/pradel/stacksindex/commit/28ef595b82c26e3158973f11f7589b300c728770) Thanks [@pradel](https://github.com/pradel)! - Add live sync: `indexer.live(filters)` runs the historical sync, then indexes new blocks as they arrive, detected by polling (default) or the API websocket (`live.transport`). Breaking: `createHistoricalRuntime` and `HistoricalRuntime` are renamed to `createIndexer` and `Indexer`, `finality` defaults to `6`, and Node.js 22 or later is required.
+
+- [#68](https://github.com/pradel/stacksindex/pull/68) [`bf35ef6`](https://github.com/pradel/stacksindex/commit/bf35ef68f8f4a5f7f9a926d30fc5cb324882a632) Thanks [@pradel](https://github.com/pradel)! - Add monitoring: `telemetry.otlp` pushes metrics for the Stacks API, sync, indexing, live sync and reorgs over OTLP, and `indexer.status()` reports the phase, readiness and progress. Breaking: `stacksindex.index.batch_duration` is renamed to `stacksindex.indexing.batch.duration`, and every metric now carries a `chain_id` attribute.
+
+- [#71](https://github.com/pradel/stacksindex/pull/71) [`6641492`](https://github.com/pradel/stacksindex/commit/6641492ab4a5f087dec205baaa0bbf0e6df14e47) Thanks [@pradel](https://github.com/pradel)! - Fix `callReadOnly` reading the chain head instead of the event's block. Breaking: `tip` takes an index block hash (`event.index_block_hash` for the event's block), and existing indexer databases must be re-synced.
+
+- [#74](https://github.com/pradel/stacksindex/pull/74) [`32e6052`](https://github.com/pradel/stacksindex/commit/32e6052bf6ce7ae60fe90e29a9d35b515bbb4543) Thanks [@pradel](https://github.com/pradel)! - Breaking: the indexer's tables move to a `stacksindex` Postgres schema, leaving `public` to your tables, and are created when the database opens. `migrate({ migrationsFolder })` now only applies your migrations. `makeDatabase` and `getMigrationsFolder` are removed. Existing indexer databases must be deleted and re-synced.
+
+- [#79](https://github.com/pradel/stacksindex/pull/79) [`0bb4df8`](https://github.com/pradel/stacksindex/commit/0bb4df808bbfc65c2f2c4f841d79fd1ba7168c86) Thanks [@pradel](https://github.com/pradel)! - Breaking: the public exports are trimmed to the indexer API. Removed: `resolveChain` and the chain/API URL constants, `loggerLayer`, `StacksClient`, `readOnly` and their types, the read-only call parameter types, and the `FilterValidationError`, `SyncStoreError`, `InvalidCursorError` and `TransactionBatchError` classes (still reachable as `cause`). `IndexerError` is now exported from `stacksindex` too.
+
+- [#75](https://github.com/pradel/stacksindex/pull/75) [`898c9dd`](https://github.com/pradel/stacksindex/commit/898c9dd681b107bf65c853eae491bad7b07faa62) Thanks [@pradel](https://github.com/pradel)! - Write your tables through `context.db`: handler writes commit with the indexing checkpoint, so a crash or a failed batch never applies an event twice. Pass Drizzle `relations` to `createIndexer` or `Indexer.layerWithDatabase` for typed `db.query` (`EventHandler<typeof relations>`).
+
+### Patch Changes
+
+- [#64](https://github.com/pradel/stacksindex/pull/64) [`7d0a03d`](https://github.com/pradel/stacksindex/commit/7d0a03dab5a022469700743939f88ca31b7820ed) Thanks [@pradel](https://github.com/pradel)! - Fix historical sync missing up to 99 of a contract's newest events by finishing each contract from its newest logs page. A caught-up contract is now checked with a single request instead of re-running first-event discovery. Re-sync from an empty indexer database to recover events skipped by previous versions.
+
+- [#66](https://github.com/pradel/stacksindex/pull/66) [`1744ff0`](https://github.com/pradel/stacksindex/commit/1744ff02cc7341643e267fd861502b0d489bb03e) Thanks [@pradel](https://github.com/pradel)! - Detect reorgs by checking the previous run's chain tip against the canonical chain instead of replaying the finality window on every run. Only a reorged range is refetched and replayed, and a reorg that replaces a finalized block now fails with `ReorgError`.
+
+- [#73](https://github.com/pradel/stacksindex/pull/73) [`7c7f195`](https://github.com/pradel/stacksindex/commit/7c7f1956e5163915ff0032ca27ea6500d5ac5d28) Thanks [@pradel](https://github.com/pradel)! - Run awaited `context.db` queries in promise handlers inside the batch transaction. They previously ran outside it: on PGlite they deadlocked, and on Postgres they committed on a separate connection instead of with the batch checkpoint. Awaiting `insert`, `update`, `delete`, `execute`, `$count` and relational queries is now typed as well, not only `select`.
+
+- [#79](https://github.com/pradel/stacksindex/pull/79) [`0bb4df8`](https://github.com/pradel/stacksindex/commit/0bb4df808bbfc65c2f2c4f841d79fd1ba7168c86) Thanks [@pradel](https://github.com/pradel)! - Reject filters that repeat a contract id, which previously kept only the last handler and silently dropped the others, and contract ids that are not `<principal>.<contract-name>`. Both fail `run`/`live` with `FilterValidationError` before any request.
+
 ## 0.0.8
 
 ### Patch Changes
