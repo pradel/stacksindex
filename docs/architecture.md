@@ -67,7 +67,7 @@ Users configure the indexer with four elements:
 Define the Stacks chain to connect to (`chain`: `"mainnet"`, `"testnet"` or `{ id, apiUrl }`):
 
 - API endpoint URL (`api.url`, defaulting to the chain's, e.g. `https://api.hiro.so`)
-- Optional API key (`apiKey`)
+- Optional API key (`api.apiKey`)
 - How live sync detects new blocks: `live.transport` (`"polling"` or `"websocket"`), `live.pollingInterval`, `live.webSocketUrl`
 
 ### Contracts
@@ -279,7 +279,7 @@ Both store the same rows, and the per-block path raises every syncing contract's
 
 **Reorgs.** A head built on the anchor (or blocks linking it) proves the anchor canonical without a request. Otherwise the anchor check of `reconcileWithCanonicalChain` runs, and a reorged range is rewound and replayed like at the start of a run.
 
-**Errors.** A failed pass is retried with the next head. `live` fails once 10 consecutive passes failed over at least 10 minutes (Ponder's realtime budget), and at once on handler, database, cursor or finalized-reorg errors.
+**Errors.** A failed pass is retried with the next head. `live` fails once 10 consecutive passes failed over at least 10 minutes (Ponder's realtime budget), and at once on handler, print decode (`EventDecodeError`), database, cursor or finalized-reorg errors.
 
 ## Key Data Structures
 

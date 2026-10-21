@@ -2,7 +2,7 @@ import { Cause, Effect, Exit, Metric, References } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase, pglite } from "../database/index.ts";
-import { HandlerExecutionError, ReorgError } from "../lib/errors.ts";
+import { EventDecodeError, HandlerExecutionError, ReorgError } from "../lib/errors.ts";
 import { liveConsecutiveFailures, liveIsRealtime, syncErrors } from "../lib/metrics.ts";
 import type { PrintEvent } from "../lib/types.ts";
 import { defineIndexer } from "../promise/index.ts";
@@ -27,7 +27,8 @@ interface HandledEvent {
   readonly txId: string;
 }
 
-type TestContract = Pick<ContractSpec, "contractId" | "startBlock" | "endBlock" | "handler">;
+type TestContract = Pick<ContractSpec, "contractId" | "startBlock" | "endBlock" | "handler"> &
+  Partial<Pick<ContractSpec, "decode">>;
 
 const recordingHandler = (handled: HandledEvent[]) => (event: PrintEvent<unknown>) =>
   Effect.sync(() => {
@@ -107,6 +108,12 @@ const failureOf = (exit: Exit.Exit<void, unknown>) =>
 
 const failOnBlock = (height: number) => (event: PrintEvent<unknown>) =>
   event.block.height === height ? Effect.fail(new Error("boom")) : Effect.void;
+
+/** A `print` decoder that accepts every value until `schemaChanged()` turns true. */
+const decodeUntil =
+  (schemaChanged: () => boolean): NonNullable<ContractSpec["decode"]> =>
+  (value) =>
+    schemaChanged() ? Effect.fail({ message: "Expected a swap" }) : Effect.succeed(value);
 
 /** Runs one scripted step per head poll, after the first poll. */
 const scriptHeads = (chain: FakeChain, steps: readonly (() => void)[]) => {
@@ -364,6 +371,36 @@ describe("live indexing", () => {
 
     expect(failure).toBeInstanceOf(HandlerExecutionError);
     expect(failure).toMatchObject({ contractId: CONTRACT_ID });
+  });
+
+  test("fails at once when a print does not match its schema", async () => {
+    // The historical pass decodes block 100; only prints from block 101 on mismatch.
+    let mismatch = false;
+    const handled: HandledEvent[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        mismatch = true;
+        chain.mine([logTx("tx-101")]);
+      },
+      () => {
+        chain.mine();
+      },
+    ]);
+
+    const exit = await runLive(testDb, [
+      {
+        contractId: CONTRACT_ID,
+        handler: recordingHandler(handled),
+        decode: decodeUntil(() => mismatch),
+      },
+    ]);
+
+    const failure = failureOf(exit);
+
+    expect(failure).toBeInstanceOf(EventDecodeError);
+    expect(failure).toMatchObject({ contractId: CONTRACT_ID, txId: "tx-101" });
+    expect(handled).toStrictEqual([{ height: 100, txId: "tx-100" }]);
   });
 
   test("ignores a head below the indexed tip instead of replaying", async () => {

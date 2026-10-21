@@ -88,11 +88,13 @@ function followHeads<A, E, R>(
 /**
  * Errors worth retrying with the next head: API transport, status and rate
  * limit failures, and transaction batches missing ids the API has not caught
- * up on yet. Handler, database, cursor and reorg errors fail `live` at once.
+ * up on yet. Handler, decode, database, cursor and reorg errors fail `live` at
+ * once: retrying replays the same events and fails the same way.
  */
 function isTransientError(error: IndexerError): boolean {
   return !(
     Predicate.isTagged(error, "HandlerExecutionError") ||
+    Predicate.isTagged(error, "EventDecodeError") ||
     Predicate.isTagged(error, "ReorgError") ||
     Predicate.isTagged(error, "SyncStoreError") ||
     Predicate.isTagged(error, "DatabaseError") ||
