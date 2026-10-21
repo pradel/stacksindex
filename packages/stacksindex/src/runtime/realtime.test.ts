@@ -1,5 +1,14 @@
-import { Cause, Effect, Exit, Metric, References } from "effect";
-import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { Cause, Effect, Exit, Fiber, Metric, References } from "effect";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vite-plus/test";
 
 import { IndexerDatabase, pglite } from "../database/index.ts";
 import { EventDecodeError, HandlerExecutionError, ReorgError } from "../lib/errors.ts";
@@ -46,6 +55,13 @@ const seedSynced = (testDb: TestDatabase, contractId: string) =>
   );
 
 /**
+ * `live` runs started by the current test. A test that times out leaves its
+ * run polling against the shared database, so `afterEach` interrupts them
+ * before the next test resets it (or `afterAll` closes it).
+ */
+const liveFibers = new Set<Fiber.Fiber<void, unknown>>();
+
+/**
  * Runs `live` on the Effect API with fast polling. Contracts are seeded as
  * synced through `BASE_HEIGHT - 1`, so no first-event discovery is needed.
  */
@@ -54,8 +70,8 @@ const runLive = (
   contracts: TestContract[],
   options: IndexerOptions = {},
   registry: Metric.MetricRegistry = new Map(),
-): Promise<Exit.Exit<void, unknown>> =>
-  Effect.runPromiseExit(
+): Promise<Exit.Exit<void, unknown>> => {
+  const fiber = Effect.runFork(
     Effect.gen(function* () {
       const indexer = yield* Indexer;
 
@@ -77,6 +93,13 @@ const runLive = (
       Effect.provideService(References.MinimumLogLevel, "None"),
     ),
   );
+
+  liveFibers.add(fiber);
+
+  return Effect.runPromise(Fiber.await(fiber)).finally(() => {
+    liveFibers.delete(fiber);
+  });
+};
 
 /**
  * Current value of the series of `metric` carrying `attributes`, ignoring any
@@ -154,6 +177,11 @@ describe("live indexing", () => {
 
     chain = createFakeChain({ baseHeight: BASE_HEIGHT - 1 });
     chain.mine([logTx("tx-100")]);
+  });
+
+  afterEach(async () => {
+    await Effect.runPromise(Fiber.interruptAll(liveFibers));
+    liveFibers.clear();
   });
 
   afterAll(async () => {
