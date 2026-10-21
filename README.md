@@ -181,7 +181,7 @@ await Effect.runPromise(
 );
 ```
 
-`Indexer.layerWithDatabase` provides `Indexer`, `IndexerDatabase`, Effect's pretty console logger and, with `telemetry.otlp`, the metrics exporter from a single config. For advanced composition, use the granular building blocks: `Indexer.layer(options)` (requires `IndexerDatabase`), `IndexerDatabase.layer(database, { relations, migrations })` (opens the database, creates the indexer's tables and applies your migrations), `IndexerDatabase.transaction`, `loggerLayer`, `StacksClient` and `readOnly`. Interrupting the `live` fiber stops live sync. `indexer.status` reads the current [`IndexerStatus`](#indexerstatus).
+`Indexer.layerWithDatabase` provides `Indexer`, `IndexerDatabase`, Effect's pretty console logger and, with `telemetry.otlp`, the metrics exporter from a single config. To compose the layers yourself, use `Indexer.layer(options)` (requires `IndexerDatabase`) with `IndexerDatabase.layer(database, { relations, migrations })` (opens the database, creates the indexer's tables and applies your migrations). Interrupting the `live` fiber stops live sync. `indexer.status` reads the current [`IndexerStatus`](#indexerstatus).
 
 ---
 
@@ -333,7 +333,7 @@ createServer(async (_request, response) => {
 }).listen(8080);
 ```
 
-See [`IndexerStatus`](#indexerstatus) for the fields. `status()` rejects with `SyncStoreError` while the indexer tables are missing or the database is unreachable.
+See [`IndexerStatus`](#indexerstatus) for the fields. `status()` rejects while the indexer tables are missing or the database is unreachable.
 
 ### Troubleshooting
 

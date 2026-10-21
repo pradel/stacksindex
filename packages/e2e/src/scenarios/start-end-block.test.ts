@@ -36,7 +36,7 @@ describe("e2E: Bounded startBlock and endBlock scenario", () => {
 
   test("restricts event synchronization and indexing strictly within startBlock and endBlock", async () => {
     const { tracer, events } = await runScenario({
-      db: database.db,
+      database,
       contracts: [{ contractId: SATOSHIBLES_CONTRACT, startBlock: 47784, endBlock: 47784 }],
     });
 

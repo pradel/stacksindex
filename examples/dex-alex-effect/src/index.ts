@@ -2,7 +2,7 @@ import fs from "node:fs";
 import process from "node:process";
 
 import { Cause, Effect, Exit, Fiber } from "effect";
-import { Indexer, loggerLayer, pglite } from "stacksindex/effect";
+import { Indexer, pglite } from "stacksindex/effect";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 import { relations } from "./schema.ts";
@@ -78,7 +78,7 @@ if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
     Effect.logError(
       "Error running the indexer",
       error instanceof Error ? error : new Error(String(error)),
-    ).pipe(Effect.provide(loggerLayer({ level: "Info" }))),
+    ),
   );
 
   await shutdown(1);

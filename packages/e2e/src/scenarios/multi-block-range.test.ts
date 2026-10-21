@@ -47,7 +47,7 @@ describe("e2E: Multi-block bounded range scenario", () => {
 
   test("syncs and indexes events across multiple blocks within startBlock and endBlock", async () => {
     const { tracer, events } = await runScenario({
-      db: database.db,
+      database,
       contracts: [
         { contractId: SATOSHIBLES_CONTRACT, startBlock: START_BLOCK, endBlock: END_BLOCK },
       ],

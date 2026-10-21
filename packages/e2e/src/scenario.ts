@@ -1,6 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import { Effect } from "effect";
-import { Indexer, IndexerDatabase, loggerLayer, type Filter } from "stacksindex/effect";
+import type { Filter, Indexer } from "stacksindex";
 import { expect } from "vite-plus/test";
 
 import { createTestDatabase, type TestDatabase } from "./test-db.ts";
@@ -24,6 +23,7 @@ export async function selectRows<Row>(database: TestDatabase["db"], query: SQL):
 
 export interface ScenarioDatabase {
   readonly db: TestDatabase["db"];
+  readonly indexer: Indexer;
   setup: () => Promise<void>;
   reset: () => Promise<void>;
   teardown: () => Promise<void>;
@@ -32,13 +32,21 @@ export interface ScenarioDatabase {
 export function createScenarioDatabase(): ScenarioDatabase {
   let testDb: TestDatabase | undefined = undefined;
 
+  const current = (): TestDatabase => {
+    if (!testDb) {
+      throw new Error("Scenario database is not set up. Call setup() in beforeAll.");
+    }
+
+    return testDb;
+  };
+
   return {
     get db(): TestDatabase["db"] {
-      if (!testDb) {
-        throw new Error("Scenario database is not set up. Call setup() in beforeAll.");
-      }
+      return current().db;
+    },
 
-      return testDb.db;
+    get indexer(): Indexer {
+      return current().indexer;
     },
 
     async setup(): Promise<void> {
@@ -64,7 +72,7 @@ export interface ScenarioOutcome {
 }
 
 export async function runScenario(options: {
-  db: TestDatabase["db"];
+  database: ScenarioDatabase;
   contracts: ScenarioContract[];
 }): Promise<ScenarioOutcome> {
   const tracer = createTraceCollector();
@@ -73,22 +81,12 @@ export async function runScenario(options: {
     contractId: contract.contractId,
     startBlock: contract.startBlock,
     endBlock: contract.endBlock,
-    handler: (event) =>
-      Effect.sync(() => {
-        tracer.record(contract.contractId, event);
-      }),
+    handler: (event) => {
+      tracer.record(contract.contractId, event);
+    },
   }));
 
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const runtime = yield* Indexer;
-      yield* runtime.run(filters);
-    }).pipe(
-      Effect.provide(Indexer.layer()),
-      Effect.provideService(IndexerDatabase, options.db),
-      Effect.provide(loggerLayer({ level: "None" })),
-    ),
-  );
+  await options.database.indexer.run(filters);
 
   return { tracer, events: tracer.getEvents() };
 }
