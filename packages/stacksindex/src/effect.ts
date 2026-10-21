@@ -1,20 +1,11 @@
 // Effect-native entrypoint (`stacksindex/effect`).
 
-export { loggerLayer } from "./logger/index.ts";
-
-export type { LoggerLayerOptions } from "./logger/index.ts";
-
-export { IndexerDatabase, migrate } from "./database/index.ts";
-
-export type { DatabaseConfig, DatabaseOptions, IndexerDb } from "./database/index.ts";
-
 export { Indexer } from "./runtime/index.ts";
 
 export type {
   ContractRunResult,
   Filter,
   IndexerError,
-  IndexerOptions,
   IndexerPhase,
   IndexerService,
   IndexerStatus,
@@ -25,52 +16,11 @@ export type {
   TelemetryOptions,
 } from "./runtime/index.ts";
 
-export {
-  MAINNET_API_URL,
-  MAINNET_CHAIN_ID,
-  TESTNET_API_URL,
-  TESTNET_CHAIN_ID,
-  resolveChain,
-} from "./lib/network.ts";
+export { IndexerDatabase, pglite, postgres } from "./database/index.ts";
 
-export type { ChainOption, ResolvedChain } from "./lib/network.ts";
+export type { Database, IndexerDb } from "./database/index.ts";
 
-export { readOnly, ReadOnlyCallError, StacksClient } from "./datasources/api/index.ts";
-
-export type {
-  CallReadFunction,
-  CallReadResponse,
-  ContractFunctionArgs,
-  ContractFunctionName,
-  ContractFunctionReturnType,
-  StacksApiError,
-  StacksClientConfig,
-  StacksClientService,
-  StacksHttpError,
-  TypedCallReadOnlyFunctionParameters,
-  TypedCallReadOnlyFunctionReturnType,
-  UntypedCallReadOnlyFunctionParameters,
-} from "./datasources/api/index.ts";
-
-export type {
-  ClarityAbi,
-  ClarityAbiAccess,
-  ClarityAbiArg,
-  ClarityAbiFunction,
-  ContractFunctionParameters,
-} from "clarity-abitype";
-
-export {
-  ConfigurationError,
-  DatabaseError,
-  FilterValidationError,
-  HandlerExecutionError,
-  InvalidCursorError,
-  MigrationError,
-  ReorgError,
-  SyncStoreError,
-  TransactionBatchError,
-} from "./lib/errors.ts";
+export type { ChainOption } from "./lib/network.ts";
 
 export type {
   EventHandler,
@@ -79,3 +29,17 @@ export type {
   Handlers,
   IndexingClient,
 } from "./lib/types.ts";
+
+export {
+  ConfigurationError,
+  DatabaseError,
+  HandlerExecutionError,
+  MigrationError,
+  ReorgError,
+} from "./lib/errors.ts";
+
+export { ReadOnlyCallError } from "./datasources/api/index.ts";
+
+export type { StacksApiError } from "./datasources/api/index.ts";
+
+export type { ClarityAbi } from "clarity-abitype";

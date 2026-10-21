@@ -49,7 +49,7 @@ describe("e2E: Multi-contract fair scheduling scenario", () => {
 
   test("delivers globally ordered events across contracts sharing overlapping block ranges", async () => {
     const { tracer, events } = await runScenario({
-      db: database.db,
+      database,
       contracts: [
         { contractId: SATOSHIBLES_CONTRACT, startBlock: START_BLOCK, endBlock: END_BLOCK },
         { contractId: BRIDGE_CONTRACT, startBlock: START_BLOCK, endBlock: END_BLOCK },

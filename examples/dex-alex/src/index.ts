@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import process from "node:process";
 
-import { createIndexer, type Indexer } from "stacksindex";
+import { createIndexer, type Indexer, pglite } from "stacksindex";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 import { relations } from "./schema.ts";
@@ -50,15 +50,15 @@ try {
   // One database holds the indexer's tables (`stacksindex` schema) and the
   // App's tables (`public`), so handler writes commit with the checkpoint.
   indexer = await createIndexer({
-    database: { kind: "pglite", directory: "./data/indexer.db" },
+    database: pglite("./data/indexer.db"),
+    // The app's own tables, applied after the indexer's.
+    migrations: "./drizzle",
     relations,
     chain: "mainnet",
     api: { apiKey },
     live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },
     telemetry: otlpBaseUrl ? { otlp: { baseUrl: otlpBaseUrl } } : undefined,
   });
-
-  await indexer.migrate({ migrationsFolder: "./drizzle" });
 
   const filter = {
     contractId: POOL_CONTRACT,

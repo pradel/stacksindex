@@ -163,7 +163,8 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
    * Batteries-included layer: provides `Indexer`, `IndexerDatabase`, the
    * pretty console logger and, when `telemetry.otlp` is set, the OTLP metrics
    * exporter from a single config. Opening the database creates or upgrades
-   * the indexer's own tables. Closing the layer flushes the exporter.
+   * the indexer's own tables, then applies `migrations`. Closing the layer
+   * flushes the exporter.
    */
   static readonly layerWithDatabase = (
     options: IndexerWithDatabaseOptions,
@@ -176,7 +177,12 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
     }).pipe(
       // Built after the database and released before it, after the indexer.
       Layer.provide(telemetryLayer(options.telemetry)),
-      Layer.provideMerge(IndexerDatabase.layer(options.database, { relations: options.relations })),
+      Layer.provideMerge(
+        IndexerDatabase.layer(options.database, {
+          relations: options.relations,
+          migrations: options.migrations,
+        }),
+      ),
       Layer.provideMerge(loggerLayer({ level: options.logLevel })),
     );
 }

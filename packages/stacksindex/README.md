@@ -44,7 +44,7 @@ _(or via `npm install` / `yarn add` / `bun add`)_
 ```ts
 import { defineRelations } from "drizzle-orm";
 import { integer, pgTable, text } from "drizzle-orm/pg-core";
-import { createIndexer } from "stacksindex";
+import { createIndexer, pglite } from "stacksindex";
 import { decodeHex } from "stacksindex/clarity";
 
 // Your tables live in the indexer database, next to the indexer's own tables.
@@ -56,9 +56,10 @@ const mints = pgTable("mints", {
 // Optional: enables typed `db.query.mints.findMany()` in handlers.
 const relations = defineRelations({ mints });
 
-// 1. Create the indexer: it owns the database and the Stacks API client
+// 1. Create the indexer: it opens the database, creates its tables, applies your migrations
 await using indexer = await createIndexer({
-  database: { kind: "pglite", directory: "./indexer.db" },
+  database: pglite("./indexer.db"), // or postgres("postgres://user:pass@host:5432/db")
+  migrations: "./drizzle",
   relations,
   chain: "mainnet",
   api: {
@@ -67,10 +68,7 @@ await using indexer = await createIndexer({
   logLevel: "Info",
 });
 
-// 2. Create your tables from the migrations drizzle-kit generated for them
-await indexer.migrate({ migrationsFolder: "./drizzle" });
-
-// 3. Sync and index one or more contracts up to the current chain tip
+// 2. Sync and index one or more contracts up to the current chain tip
 const result = await indexer.run({
   contractId: "SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles",
   startBlock: 47784, // optional: start indexing from this block height
@@ -101,7 +99,7 @@ console.log(`Indexed ${result.eventsProcessed} events`);
 Put your tables in the indexer database and write them through `context.db` in your handlers. `context.db` is scoped to the transaction that also stores the indexing checkpoint, so a batch's writes and its progress commit together or not at all. See [Crash Recovery & Reorgs](#crash-recovery--reorgs) for what this guarantees.
 
 - **Layout**: the indexer's tables live in the `stacksindex` Postgres schema; `public` is yours. Point drizzle-kit at the same database with `schemaFilter: ["public"]` so it ignores the indexer's tables.
-- **Migrations**: generate them with `drizzle-kit generate` and apply them with `indexer.migrate({ migrationsFolder })` (`migrate` from `stacksindex/effect`). They are tracked in drizzle's default `drizzle.__drizzle_migrations`, apart from the indexer's.
+- **Migrations**: generate them with `drizzle-kit generate` and pass their folder as `migrations` to `createIndexer` (or `Indexer.layerWithDatabase`). They are applied when the database opens, after the indexer's own, and tracked in drizzle's default `drizzle.__drizzle_migrations`.
 - **Typed queries**: pass `relations` from `defineRelations` to `createIndexer` (or `Indexer.layerWithDatabase`) to enable `db.query`. Handlers defined inline infer it; type the others with `EventHandler<typeof relations>`.
 - **Reads**: `indexer.db` (the `IndexerDatabase` service with the Effect API) queries the same database outside any batch, e.g. from an API. PGlite runs one query at a time, so on PGlite reads wait for the batch in progress; on Postgres they don't.
 
@@ -113,7 +111,7 @@ Put your tables in the indexer database and write them through `context.db` in y
 
 ```ts
 await using indexer = await createIndexer({
-  database: { kind: "pglite", directory: "./indexer.db" },
+  database: pglite("./indexer.db"),
   live: {
     transport: "polling", // or "websocket"
     pollingInterval: 5000,
@@ -144,7 +142,7 @@ The same indexer can be composed entirely with Effect services and layers from `
 
 ```ts
 import { Effect } from "effect";
-import { type EventHandler, Indexer, migrate } from "stacksindex/effect";
+import { type EventHandler, Indexer, pglite } from "stacksindex/effect";
 
 import { mints, relations } from "./schema.ts";
 
@@ -159,8 +157,6 @@ const handler: EventHandler<typeof relations> = (event, { db }) =>
     .pipe(Effect.asVoid);
 
 const program = Effect.gen(function* () {
-  yield* migrate({ migrationsFolder: "./drizzle" });
-
   const indexer = yield* Indexer;
 
   // `indexer.live(filters)` follows new blocks after the historical pass.
@@ -173,7 +169,8 @@ await Effect.runPromise(
   program.pipe(
     Effect.provide(
       Indexer.layerWithDatabase({
-        database: { kind: "pglite", directory: "./indexer.db" },
+        database: pglite("./indexer.db"),
+        migrations: "./drizzle",
         relations,
         chain: "mainnet",
         api: { apiKey },
@@ -184,7 +181,7 @@ await Effect.runPromise(
 );
 ```
 
-`Indexer.layerWithDatabase` provides `Indexer`, `IndexerDatabase`, Effect's pretty console logger and, with `telemetry.otlp`, the metrics exporter from a single config. For advanced composition, use the granular building blocks: `Indexer.layer(options)` (requires `IndexerDatabase`), `IndexerDatabase.layer(config)` (opens the database and creates the indexer's tables), `IndexerDatabase.transaction`, `migrate({ migrationsFolder })` (applies your migrations), `loggerLayer`, `StacksClient` and `readOnly`. Interrupting the `live` fiber stops live sync. `indexer.status` reads the current [`IndexerStatus`](#indexerstatus).
+`Indexer.layerWithDatabase` provides `Indexer`, `IndexerDatabase`, Effect's pretty console logger and, with `telemetry.otlp`, the metrics exporter from a single config. To compose the layers yourself, use `Indexer.layer(options)` (requires `IndexerDatabase`) with `IndexerDatabase.layer(database, { relations, migrations })` (opens the database, creates the indexer's tables and applies your migrations). Interrupting the `live` fiber stops live sync. `indexer.status` reads the current [`IndexerStatus`](#indexerstatus).
 
 ---
 
@@ -234,7 +231,7 @@ stacksindex records [OpenTelemetry](https://opentelemetry.io/)-style metrics for
 
 ```ts
 await using indexer = await createIndexer({
-  database: { kind: "pglite", directory: "./indexer.db" },
+  database: pglite("./indexer.db"),
   telemetry: {
     otlp: {
       baseUrl: "http://localhost:4318", // OpenTelemetry Collector; `/v1/metrics` is appended
@@ -265,7 +262,7 @@ With the Effect API, pass the same `telemetry` option to `Indexer.layerWithDatab
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { OtlpMetrics, OtlpSerialization } from "effect/observability";
-import { Indexer, IndexerDatabase } from "stacksindex/effect";
+import { Indexer, IndexerDatabase, pglite } from "stacksindex/effect";
 
 const MetricsLive = OtlpMetrics.layer({
   url: "http://localhost:4318/v1/metrics",
@@ -273,7 +270,7 @@ const MetricsLive = OtlpMetrics.layer({
 }).pipe(Layer.provide(Layer.mergeAll(OtlpSerialization.layerProtobuf, FetchHttpClient.layer)));
 
 const IndexerLive = Indexer.layer({ chain: "mainnet" }).pipe(
-  Layer.provideMerge(IndexerDatabase.layer({ kind: "pglite", directory: "./indexer.db" })),
+  Layer.provideMerge(IndexerDatabase.layer(pglite("./indexer.db"))),
 );
 
 // The exporter flushes a last snapshot when `program` ends and the layers close.
@@ -336,7 +333,7 @@ createServer(async (_request, response) => {
 }).listen(8080);
 ```
 
-See [`IndexerStatus`](#indexerstatus) for the fields. `status()` rejects with `SyncStoreError` while the indexer tables are missing or the database is unreachable.
+See [`IndexerStatus`](#indexerstatus) for the fields. `status()` rejects while the indexer tables are missing or the database is unreachable.
 
 ### Troubleshooting
 
@@ -350,7 +347,8 @@ The exporter logs its target once at `Info` when the indexer starts. Failed expo
 
 | Option                          | Type                                             | Default                          | Description                                                                                                                                    |
 | ------------------------------- | ------------------------------------------------ | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `database`                      | `DatabaseConfig`                                 | _Required_                       | Indexer storage. `{ kind: "pglite", directory? }` or `{ kind: "postgres", connectionString }`.                                                 |
+| `database`                      | `Database`                                       | _Required_                       | Indexer storage: `pglite(directory?)` (in memory without a directory) or `postgres(connectionString)`.                                         |
+| `migrations`                    | `string`                                         | `undefined`                      | Folder of your drizzle-kit migrations, applied when the database opens, after the indexer's own.                                               |
 | `relations`                     | `Relations` from `defineRelations`               | `undefined`                      | Drizzle relations enabling typed `db.query` on `indexer.db` and `context.db`.                                                                  |
 | `chain`                         | `"mainnet" \| "testnet" \| { id, apiUrl }`       | `"mainnet"`                      | `"mainnet"` (chain `1`), `"testnet"` (chain `2147483648`), or a custom chain ID with the API serving it (e.g. a devnet).                       |
 | `finality`                      | `number`                                         | `6`                              | Depth, in blocks, of reorgs handled by replaying; deeper reorgs fail with `ReorgError`.                                                        |
@@ -373,7 +371,6 @@ The exporter logs its target once at `Info` when the indexer starts. Failed expo
 | `run(filters)`          | Syncs and indexes a single filter or an array up to the current chain tip; resolves with a `RunResult`.                                          |
 | `live(filters)`         | Runs `run`, then follows new blocks. Resolves when every filter reached its `endBlock` or on `close()`; rejects on a fatal error.                |
 | `db`                    | Database handle outside any batch, to query your tables (e.g. from an API) and the indexer's. On PGlite, queries wait for the batch in progress. |
-| `migrate(options)`      | Applies your drizzle-kit migrations from `options.migrationsFolder`. The indexer's own tables are created by `createIndexer`.                    |
 | `status()`              | Resolves with the current [`IndexerStatus`](#indexerstatus).                                                                                     |
 | `close()`               | Stops live sync, flushes pending metrics and releases database and runtime resources. Safe to call multiple times.                               |
 | `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                                       |

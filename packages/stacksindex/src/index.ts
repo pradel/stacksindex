@@ -17,6 +17,7 @@ export type {
 
 export type {
   ContractRunResult,
+  IndexerError,
   IndexerPhase,
   IndexerStatus,
   LiveOptions,
@@ -25,48 +26,24 @@ export type {
   TelemetryOptions,
 } from "./runtime/index.ts";
 
-export { type DatabaseConfig, type IndexerDb } from "./database/index.ts";
+export { pglite, postgres } from "./database/index.ts";
 
-export { ReadOnlyCallError } from "./datasources/api/index.ts";
+export type { Database, IndexerDb } from "./database/index.ts";
 
-export type {
-  ContractFunctionArgs,
-  ContractFunctionName,
-  ContractFunctionReturnType,
-  StacksApiError,
-  TypedCallReadOnlyFunctionParameters,
-  TypedCallReadOnlyFunctionReturnType,
-  UntypedCallReadOnlyFunctionParameters,
-} from "./datasources/api/index.ts";
+export type { ChainOption } from "./lib/network.ts";
 
-export type {
-  ClarityAbi,
-  ClarityAbiAccess,
-  ClarityAbiArg,
-  ClarityAbiFunction,
-  ContractFunctionParameters,
-} from "clarity-abitype";
+export type { HandlerEvent } from "./lib/types.ts";
 
 export {
   ConfigurationError,
   DatabaseError,
-  FilterValidationError,
   HandlerExecutionError,
-  InvalidCursorError,
   MigrationError,
   ReorgError,
-  SyncStoreError,
-  TransactionBatchError,
 } from "./lib/errors.ts";
 
-export {
-  MAINNET_API_URL,
-  MAINNET_CHAIN_ID,
-  TESTNET_API_URL,
-  TESTNET_CHAIN_ID,
-  resolveChain,
-} from "./lib/network.ts";
+export { ReadOnlyCallError } from "./datasources/api/index.ts";
 
-export type { ChainOption, ResolvedChain } from "./lib/network.ts";
+export type { StacksApiError } from "./datasources/api/index.ts";
 
-export type { HandlerEvent } from "./lib/types.ts";
+export type { ClarityAbi } from "clarity-abitype";

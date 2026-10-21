@@ -4302,6 +4302,43 @@ describe("historical runtime with handlers", () => {
     );
   });
 
+  test("rejects two filters for the same contract instead of dropping a handler", async () => {
+    const contractId = "SP123.token";
+    const first = vi.fn(noopHandler);
+    const second = vi.fn(noopHandler);
+    const runtime = makeRuntime({ db: testDb.db });
+
+    const result = await Effect.runPromiseExit(
+      runtime.run([
+        { contractId, handler: first },
+        { contractId, handler: second, startBlock: 100 },
+      ]),
+    );
+
+    expect(result).toBeTaggedError(
+      new FilterValidationError({
+        message:
+          "Validation failed: Contract 'SP123.token' has more than one filter; combine them into one handler.",
+      }),
+    );
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  test("rejects a contract id that is not <principal>.<contract-name>", async () => {
+    const runtime = makeRuntime({ db: testDb.db });
+
+    const result = await Effect.runPromiseExit(
+      runtime.run([{ contractId: "SP123", handler: noopHandler }]),
+    );
+
+    expect(result).toBeTaggedError(
+      new FilterValidationError({
+        message:
+          "Validation failed: Contract id 'SP123' must look like '<principal>.<contract-name>'.\n  at [0][\"contractId\"]",
+      }),
+    );
+  });
+
   test("resolves endBlock: 'latest' using API status and bounds synchronization", async () => {
     const contractId = "SP123.token";
     const handledHeights: number[] = [];

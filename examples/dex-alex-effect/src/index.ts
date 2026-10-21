@@ -2,7 +2,7 @@ import fs from "node:fs";
 import process from "node:process";
 
 import { Cause, Effect, Exit, Fiber } from "effect";
-import { Indexer, loggerLayer, migrate } from "stacksindex/effect";
+import { Indexer, pglite } from "stacksindex/effect";
 
 import { createPoolHandler, POOL_CONTRACT } from "./handler.ts";
 import { relations } from "./schema.ts";
@@ -15,9 +15,6 @@ const isLive = process.argv.includes("--live");
 fs.mkdirSync("./data", { recursive: true });
 
 const program = Effect.gen(function* () {
-  // The app's tables live in `public`, next to the indexer's `stacksindex` schema.
-  yield* migrate({ migrationsFolder: "./drizzle" });
-
   const indexer = yield* Indexer;
 
   const filters = [
@@ -36,7 +33,9 @@ const fiber = Effect.runFork(
       // One database for the indexer and the app, so handler writes through
       // `context.db` commit with the checkpoint.
       Indexer.layerWithDatabase({
-        database: { kind: "pglite", directory: "./data/indexer.db" },
+        database: pglite("./data/indexer.db"),
+        // The app's tables live in `public`, next to the indexer's `stacksindex` schema.
+        migrations: "./drizzle",
         relations,
         chain: "mainnet",
         api: { apiKey },
@@ -79,7 +78,7 @@ if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
     Effect.logError(
       "Error running the indexer",
       error instanceof Error ? error : new Error(String(error)),
-    ).pipe(Effect.provide(loggerLayer({ level: "Info" }))),
+    ),
   );
 
   await shutdown(1);

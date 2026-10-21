@@ -24,15 +24,26 @@ export type IndexerDb<TRelations extends AnyRelations = AnyRelations> =
   | PgliteEffectPgDatabase<TRelations>
   | PgEffectPgDatabase<TRelations>;
 
-export type DatabaseConfig =
+/** Where the indexer stores its data; build it with `pglite` or `postgres`. */
+export type Database =
   | {
-      kind: "pglite";
-      directory?: string;
+      readonly kind: "pglite";
+      readonly directory?: string;
     }
   | {
-      kind: "postgres";
-      connectionString: string;
+      readonly kind: "postgres";
+      readonly connectionString: string;
     };
+
+/** Embedded PGlite, persisted in `directory` or kept in memory without one. */
+export const pglite = (directory?: string): Database =>
+  directory === undefined ? { kind: "pglite" } : { kind: "pglite", directory };
+
+/** PostgreSQL reached through `connectionString` (`postgres://user:pass@host:5432/db`). */
+export const postgres = (connectionString: string): Database => ({
+  kind: "postgres",
+  connectionString,
+});
 
 /** The indexer's own migrations, shipped next to the build output. */
 function internalMigrationsFolder(): string {
@@ -72,31 +83,21 @@ const migrateInternal = (db: IndexerDb): Effect.Effect<void, MigrationError> =>
     migrationsSchema: STACKSINDEX_SCHEMA,
   });
 
-/**
- * Applies the user's drizzle-kit migrations from `migrationsFolder`, tracked in
- * drizzle's default `drizzle.__drizzle_migrations` table. The indexer's own
- * tables are migrated when the database is opened.
- */
-export function migrate(options: {
-  migrationsFolder: string;
-}): Effect.Effect<void, MigrationError, IndexerDatabase> {
-  return Effect.gen(function* () {
-    const db = yield* IndexerDatabase;
-
-    yield* runMigrations(db, { migrationsFolder: options.migrationsFolder });
-  });
-}
-
 export interface DatabaseOptions {
   /**
    * Drizzle relations from `defineRelations`, enabling `db.query` on the
    * database handle. Type handlers with the same value: `HandlerContext<typeof relations>`.
    */
   relations?: AnyRelations;
+  /**
+   * Folder of the user's drizzle-kit migrations, applied after the indexer's
+   * own and tracked in drizzle's default `drizzle.__drizzle_migrations`.
+   */
+  migrations?: string;
 }
 
 const connect = (
-  config: DatabaseConfig,
+  config: Database,
   options?: DatabaseOptions,
 ): Effect.Effect<IndexerDb, DatabaseError, Scope.Scope> =>
   Effect.gen(function* () {
@@ -125,12 +126,22 @@ export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>
     make: Effect.die("IndexerDatabase must be provided via IndexerDatabase.layer"),
   },
 ) {
-  /** Opens the database and creates or upgrades the indexer's own tables. */
+  /** Opens the database, then creates or upgrades the indexer's tables and the user's. */
   static readonly layer = (
-    config: DatabaseConfig,
+    config: Database,
     options?: DatabaseOptions,
   ): Layer.Layer<IndexerDatabase, DatabaseError | MigrationError> =>
-    Layer.effect(IndexerDatabase, connect(config, options).pipe(Effect.tap(migrateInternal)));
+    Layer.effect(
+      IndexerDatabase,
+      connect(config, options).pipe(
+        Effect.tap(migrateInternal),
+        Effect.tap((db) =>
+          options?.migrations === undefined
+            ? Effect.void
+            : runMigrations(db, { migrationsFolder: options.migrations }),
+        ),
+      ),
+    );
 
   static readonly transaction = <A, E, R>(
     f: (db: IndexerDb) => Effect.Effect<A, E, R>,

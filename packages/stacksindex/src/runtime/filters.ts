@@ -23,8 +23,17 @@ const EventHandlerSchema = Schema.declare<EventHandler>((input): input is EventH
   Predicate.isFunction(input),
 );
 
+/** `<principal>.<contract-name>`, e.g. `SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-pool`. */
+const CONTRACT_ID = /^S[0-9A-Z]+\.[a-zA-Z][a-zA-Z0-9_-]*$/u;
+
 const FilterSchema = Schema.Struct({
-  contractId: Schema.String,
+  contractId: Schema.String.check(
+    Schema.makeFilter((contractId) =>
+      CONTRACT_ID.test(contractId)
+        ? undefined
+        : `Contract id '${contractId}' must look like '<principal>.<contract-name>'.`,
+    ),
+  ),
   handler: EventHandlerSchema,
   startBlock: Schema.optional(Schema.Natural),
   endBlock: Schema.optional(Schema.Union([Schema.Natural, Schema.Literal("latest")])),
@@ -59,6 +68,19 @@ export function validateAndResolveFilters(
         (error) => new FilterValidationError({ message: `Validation failed: ${error.message}` }),
       ),
     );
+
+    // Handlers are looked up by contract id, so a second filter would silently replace the first.
+    const seen = new Set<string>();
+
+    for (const filter of decodedFilters) {
+      if (seen.has(filter.contractId)) {
+        return yield* new FilterValidationError({
+          message: `Validation failed: Contract '${filter.contractId}' has more than one filter; combine them into one handler.`,
+        });
+      }
+
+      seen.add(filter.contractId);
+    }
 
     let latestBlockHeight: number | undefined = undefined;
     const hasLatestTag = decodedFilters.some((filter) => filter.endBlock === "latest");
