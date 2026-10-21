@@ -188,10 +188,6 @@ describe("live indexing", () => {
     await testDb.close();
   });
 
-  test("zZ_PROBE times out with live still running", { timeout: 1000 }, async () => {
-    await runLive(testDb, [{ contractId: CONTRACT_ID, handler: () => Effect.void }]);
-  });
-
   test("indexes blocks as they arrive and stops at the end block", async () => {
     const handled: HandledEvent[] = [];
 
