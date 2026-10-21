@@ -1,11 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Effect, Option, Schema } from "effect";
-import {
-  decodeHex,
-  type EventHandler,
-  type IndexerDb,
-  type IndexingClient,
-} from "stacksindex/effect";
+import { decodeHex } from "stacksindex/clarity";
+import type { EventHandler, IndexerDb, IndexingClient } from "stacksindex/effect";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
 import { poolTable, type relations, swapTable, type Token, tokenTable } from "./schema.ts";

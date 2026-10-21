@@ -344,6 +344,7 @@ The core handler contract is Effect-only. The promise entrypoint (`stacksindex`)
 
 - `stacksindex` — promise-native facade: `createIndexer({ database, network, api, finality, live, logLevel, telemetry })` owns the database and runtime lifecycle and returns `{ db, migrate, run, live, status, close, [Symbol.asyncDispose] }`. `migrate({ migrationsFolder })` applies the user's migrations; `run` returns a `RunResult` summary; `live` resolves when every filter reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter.
 - `stacksindex/effect` — Effect-native surface: `Indexer` (+ `layer` and `layerWithDatabase`), `IndexerDatabase`, `StacksClient`, `readOnly`, `migrate`, and `loggerLayer`.
+- `stacksindex/clarity` — Clarity codec: `decodeHex`, `cvToJSON`, `decodeClarityValue`, `decodeClarityWithSchema`, `encodeUint`, `ClarityTypeID` and the `ClarityJsonValue`/`ClarityValue` types.
 
 ### Services
 

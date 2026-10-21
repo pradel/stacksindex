@@ -69,14 +69,4 @@ export {
 
 export type { NetworkName, NetworkOption, ResolvedNetwork } from "./lib/network.ts";
 
-export {
-  ClarityTypeID,
-  cvToJSON,
-  decodeClarityValue,
-  decodeHex,
-  encodeUint,
-} from "./codec/index.ts";
-
-export type { ClarityJsonValue, ClarityValue } from "./codec/index.ts";
-
 export type { HandlerEvent } from "./lib/types.ts";

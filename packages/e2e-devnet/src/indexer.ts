@@ -1,13 +1,13 @@
 import type { RecordedTraceEvent, TraceCollector } from "indexer-e2e/src/tracer.ts";
 import {
   createIndexer,
-  type ClarityJsonValue,
   type DatabaseConfig,
   type Filter,
   type Indexer,
   type IndexerPhase,
   type LiveOptions,
 } from "stacksindex";
+import type { ClarityJsonValue } from "stacksindex/clarity";
 
 import { DEVNET_API_URL, waitUntil } from "./chain.ts";
 

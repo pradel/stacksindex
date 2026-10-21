@@ -1,4 +1,5 @@
-import { decodeHex, type ClarityJsonValue, type HandlerEvent } from "stacksindex";
+import type { HandlerEvent } from "stacksindex";
+import { decodeHex, type ClarityJsonValue } from "stacksindex/clarity";
 
 export interface RecordedTraceEvent {
   contractId: string;

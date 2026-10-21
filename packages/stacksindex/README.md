@@ -7,10 +7,11 @@ A simple, open-source indexer for the Stacks blockchain: historical backfill, th
 
 `stacksindex` lets you backfill smart contract events, follow new blocks as they are mined, execute user-defined handlers to derive custom relational state, and query historical contract data at specific block heights.
 
-Two entrypoints ship with the package:
+Three entrypoints ship with the package:
 
 - **`stacksindex`** — promise-native API for scripts, CLIs and Node services.
 - **`stacksindex/effect`** — Effect-native services and layers.
+- **`stacksindex/clarity`** — Clarity codec: `decodeHex`, `cvToJSON`, `decodeClarityValue`, `decodeClarityWithSchema` (Effect Schema), `encodeUint`, `ClarityTypeID`.
 
 ---
 
@@ -21,7 +22,7 @@ Two entrypoints ship with the package:
 - **Live Sync**: After the backfill, follow new blocks by polling the API or over its websocket, fetching each block's events or each contract's newest logs, whichever costs fewer requests.
 - **Embedded or External Database**: First-class support for embedded [PGlite](https://pglite.electric-sql.com/) (zero configuration) or production PostgreSQL via [Drizzle ORM](https://orm.drizzle.team/).
 - **Time-Travel Read-Only Calls**: Query contract state (`client.callReadOnly`) automatically pinned to the exact block height of the event being processed.
-- **Clarity Codec Built-in**: Easily decode raw Clarity hex values to plain JavaScript objects (`decodeHex`, `cvToJSON`).
+- **Clarity Codec Built-in**: Easily decode raw Clarity hex values to plain JavaScript objects (`decodeHex`, `cvToJSON` from `stacksindex/clarity`).
 - **Crash Recovery**: Checkpointing and resume progress stored directly in the database so sync resumes where it left off. Unfinalized data is replayed after a restart, so reorgs are handled automatically.
 - **Atomic Handler Writes**: Handler writes through `context.db` commit in the same transaction as the indexing checkpoint, so a crash or a failed batch never applies an event twice.
 - **Monitoring**: Sync, indexing, live sync, reorg and API metrics pushed over OTLP to Prometheus or any OpenTelemetry backend, plus a status call for readiness probes.
@@ -43,7 +44,8 @@ _(or via `npm install` / `yarn add` / `bun add`)_
 ```ts
 import { defineRelations } from "drizzle-orm";
 import { integer, pgTable, text } from "drizzle-orm/pg-core";
-import { createIndexer, decodeHex } from "stacksindex";
+import { createIndexer } from "stacksindex";
+import { decodeHex } from "stacksindex/clarity";
 
 // Your tables live in the indexer database, next to the indexer's own tables.
 const mints = pgTable("mints", {

@@ -72,17 +72,6 @@ export {
   TransactionBatchError,
 } from "./lib/errors.ts";
 
-export {
-  ClarityTypeID,
-  cvToJSON,
-  decodeClarityValue,
-  decodeClarityWithSchema,
-  decodeHex,
-  encodeUint,
-} from "./codec/index.ts";
-
-export type { ClarityJsonValue, ClarityValue } from "./codec/index.ts";
-
 export type {
   EventHandler,
   HandlerContext,

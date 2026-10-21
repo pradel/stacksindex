@@ -1,11 +1,6 @@
 import { eq } from "drizzle-orm";
-import {
-  decodeHex,
-  type EventHandler,
-  type IndexerDb,
-  type IndexingClient,
-  type Logger,
-} from "stacksindex";
+import type { EventHandler, IndexerDb, IndexingClient, Logger } from "stacksindex";
+import { decodeHex } from "stacksindex/clarity";
 import { z } from "zod";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
