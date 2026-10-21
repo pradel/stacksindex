@@ -65,7 +65,10 @@ export const poolSwapLogSchema = z
     totalSupply: val.data["total-supply"],
   }));
 
+// The pool prints `liquidity-added` / `liquidity-removed` when liquidity moves.
 const otherPoolActionSchema = z.union([
+  z.literal("liquidity-added"),
+  z.literal("liquidity-removed"),
   z.literal("add-to-position"),
   z.literal("reduce-position"),
   z.literal("set-fee-to-address"),

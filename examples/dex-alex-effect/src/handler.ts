@@ -44,7 +44,10 @@ export const PoolSwapLog = Schema.Struct({
   }),
 });
 
+// The pool prints `liquidity-added` / `liquidity-removed` when liquidity moves.
 const OtherPoolAction = Schema.Union([
+  Schema.Literal("liquidity-added"),
+  Schema.Literal("liquidity-removed"),
   Schema.Literal("add-to-position"),
   Schema.Literal("reduce-position"),
   Schema.Literal("set-fee-to-address"),
