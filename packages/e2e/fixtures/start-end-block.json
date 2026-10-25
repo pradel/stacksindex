@@ -28,6 +28,9 @@
             "block": {
               "height": 47784,
               "tx_index": 48
+            },
+            "bitcoin_block": {
+              "height": 722076
             }
           }
         },
@@ -38,6 +41,9 @@
             "block": {
               "height": 47784,
               "tx_index": 34
+            },
+            "bitcoin_block": {
+              "height": 722076
             }
           }
         },
@@ -48,6 +54,9 @@
             "block": {
               "height": 47784,
               "tx_index": 28
+            },
+            "bitcoin_block": {
+              "height": 722076
             }
           }
         },
@@ -58,6 +67,9 @@
             "block": {
               "height": 47499,
               "tx_index": 6
+            },
+            "bitcoin_block": {
+              "height": 721738
             }
           }
         },
@@ -68,6 +80,9 @@
             "block": {
               "height": 47498,
               "tx_index": 51
+            },
+            "bitcoin_block": {
+              "height": 721737
             }
           }
         },
@@ -78,6 +93,9 @@
             "block": {
               "height": 47495,
               "tx_index": 27
+            },
+            "bitcoin_block": {
+              "height": 721733
             }
           }
         },
@@ -88,6 +106,9 @@
             "block": {
               "height": 47490,
               "tx_index": 9
+            },
+            "bitcoin_block": {
+              "height": 721727
             }
           }
         },
@@ -98,6 +119,9 @@
             "block": {
               "height": 47489,
               "tx_index": 31
+            },
+            "bitcoin_block": {
+              "height": 721726
             }
           }
         },
@@ -108,6 +132,9 @@
             "block": {
               "height": 47486,
               "tx_index": 13
+            },
+            "bitcoin_block": {
+              "height": 721723
             }
           }
         }

@@ -141,6 +141,8 @@ Key differences from EVM:
    │    -> Find first matching smart_contract_log             │
    │ 4. Construct 4-part cursor                               │
    │    (block_height:microblock_sequence:tx_index:event_index│
+   │    microblock_sequence: 2147483647 from epoch 2.5, else  │
+   │    GET /extended/v1/tx/{tx_id}                           │
    └────────────────────────┬─────────────────────────────────┘
                             │
                             ▼
@@ -217,7 +219,7 @@ To resolve the initial cursor:
 1. Fetch contract metadata via `GET /extended/v3/smart-contracts/{contract_id}` to obtain its deployment `block.height`.
 2. Jump straight to the deployment or requested `startBlock` using `GET /extended/v3/principals/{principal}/transactions?cursor=${startBlock}:0:0`.
 3. Scan transactions in chronological order and query `GET /extended/v3/transactions/{tx_id}/events` to locate the first `smart_contract_log` for that contract. Transactions whose summary reports `event_count: 0` are skipped without a request.
-4. Construct the exact 4-part cursor (`block_height:0:tx_index:event_index`) to begin forward pagination with `/logs`.
+4. Construct the exact 4-part cursor (`block_height:microblock_sequence:tx_index:event_index`) to begin forward pagination with `/logs`. V3 summaries lack `microblock_sequence`. From epoch 2.5 on, blocks cannot confirm microblocks, so it is `2147483647` (anchor block) when the transaction's Bitcoin block is at or after the epoch 2.5 start: 840,360 on mainnet, 6 on testnet (devnets share the testnet chain ID). Older transactions, and every transaction on other chains, take it from `GET /extended/v1/tx/{tx_id}`.
 
 Discovery runs only for a contract's first sync, and as a fallback when a catch-up backlog exceeds 10 pages.
 

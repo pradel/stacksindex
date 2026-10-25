@@ -449,6 +449,7 @@ function catchUp(
       );
 
       const cursor = yield* getContractEventsFirstCursor(state.contractId, {
+        chainId,
         startBlock: Math.max(state.startBlock ?? 0, state.syncedBlockHeight + 1),
       });
 
@@ -476,6 +477,7 @@ function initContractFromScratch(
     const state = makeContractSyncState(filter, Math.max((filter.startBlock ?? 0) - 1, 0));
 
     const cursor = yield* getContractEventsFirstCursor(filter.contractId, {
+      chainId,
       startBlock: filter.startBlock,
     });
 
