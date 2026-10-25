@@ -19,6 +19,8 @@ export interface FakeTransaction {
   readonly txId: string;
   /** Defaults to `"success"`; other statuses keep no events, as on mainnet. */
   readonly status?: string;
+  /** API transaction type; defaults to `"contract_call"`. */
+  readonly type?: string;
   readonly events: readonly FakeEvent[];
   /**
    * Asset events (not contract logs) emitted first, at event indexes
@@ -104,6 +106,22 @@ const blockRow = (block: FakeBlock) => ({
   burn_block_height: block.height,
 });
 
+const transactionEvents = (transaction: FakeTransaction) =>
+  isSuccess(transaction)
+    ? [
+        ...Array.from({ length: transaction.assetEvents ?? 0 }, (_, index) => ({
+          event_index: index,
+          type: "stx_asset",
+          stx_asset: { type: "transfer", amount: "1" },
+        })),
+        ...transaction.events.map((event) => ({
+          event_index: event.eventIndex,
+          type: "contract_log",
+          contract_log: contractLogValue(event),
+        })),
+      ]
+    : [];
+
 const transactionSummary = (block: FakeBlock, txIndex: number) => ({
   tx_id: block.transactions[txIndex].txId,
   sender: { address: "SP sender", nonce: txIndex },
@@ -118,7 +136,8 @@ const transactionSummary = (block: FakeBlock, txIndex: number) => ({
   },
   bitcoin_block: { height: block.height, time: block.blockTime },
   status: block.transactions[txIndex].status ?? "success",
-  type: "contract_call",
+  event_count: transactionEvents(block.transactions[txIndex]).length,
+  type: block.transactions[txIndex].type ?? "contract_call",
 });
 
 const contractLogValue = (event: FakeEvent) => ({
@@ -141,22 +160,6 @@ const offsetPage = (items: readonly Schema.Json[], params: URLSearchParams) => {
     results: items.slice(offset, offset + limit),
   });
 };
-
-const transactionEvents = (transaction: FakeTransaction) =>
-  isSuccess(transaction)
-    ? [
-        ...Array.from({ length: transaction.assetEvents ?? 0 }, (_, index) => ({
-          event_index: index,
-          type: "stx_asset",
-          stx_asset: { type: "transfer", amount: "1" },
-        })),
-        ...transaction.events.map((event) => ({
-          event_index: event.eventIndex,
-          type: "contract_log",
-          contract_log: contractLogValue(event),
-        })),
-      ]
-    : [];
 
 export function createFakeChain(options: { readonly baseHeight: number }): FakeChain {
   const blocks: FakeBlock[] = [

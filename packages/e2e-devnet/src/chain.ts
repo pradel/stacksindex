@@ -54,19 +54,19 @@ interface ApiStatusResponse {
 }
 
 interface ApiNoncesResponse {
-  possible_next_nonce: number;
+  next_nonce: number;
 }
 
+/** `GET /extended/v3/transactions/{tx_id}` fields the scenarios read; mined transactions carry `block`. */
 export interface ApiTransaction {
   tx_id: string;
-  tx_status: string;
-  block_height?: number;
-  nonce: number;
-  sender_address: string;
+  status: string;
+  sender: { address: string };
+  block?: { height: number };
 }
 
-interface ApiAddressTransactionsResponse {
-  results: ApiTransaction[];
+interface ApiPrincipalTransactionsResponse {
+  results: { transaction: ApiTransaction }[];
 }
 
 interface ApiContractResponse {
@@ -149,11 +149,13 @@ export async function blockHash(height: number): Promise<string> {
  * sBTC), so filter on the sender.
  */
 export async function latestSentTransaction(address: string): Promise<ApiTransaction | undefined> {
-  const response = await getJson<ApiAddressTransactionsResponse>(
-    `/extended/v1/address/${address}/transactions?limit=50`,
+  const response = await getJson<ApiPrincipalTransactionsResponse>(
+    `/extended/v3/principals/${address}/transactions?limit=50`,
   );
 
-  return response.results.find((transaction) => transaction.sender_address === address);
+  return response.results
+    .map(({ transaction }) => transaction)
+    .find((transaction) => transaction.sender.address === address);
 }
 
 /** Signs, broadcasts and returns the id of a contract call from `sender`. */
@@ -165,8 +167,8 @@ export async function callContract(
 ): Promise<string> {
   const [contractAddress, contractName] = contractId.split(".");
 
-  const { possible_next_nonce: nonce } = await getJson<ApiNoncesResponse>(
-    `/extended/v1/address/${sender.address}/nonces`,
+  const { next_nonce: nonce } = await getJson<ApiNoncesResponse>(
+    `/extended/v3/principals/${sender.address}/nonces`,
   );
 
   const transaction = await makeContractCall({
@@ -206,23 +208,24 @@ export interface ConfirmedTransaction {
 /** Waits until `txId` is included in an anchored block, successful or not. */
 export async function waitForTransaction(txId: string): Promise<ConfirmedTransaction> {
   return waitUntil(`transaction ${txId}`, async () => {
-    const response = await fetch(`${DEVNET_API_URL}/extended/v1/tx/${txId}`);
+    const response = await fetch(`${DEVNET_API_URL}/extended/v3/transactions/${txId}`);
 
     if (response.status === 404) {
       return undefined;
     }
 
-    // SAFETY: `/extended/v1/tx/{tx_id}` returns a transaction object.
+    // SAFETY: `/extended/v3/transactions/{tx_id}` returns a transaction object.
     const transaction = (await response.json()) as ApiTransaction;
 
-    if (transaction.tx_status === "pending" || transaction.block_height === undefined) {
+    // Mempool transactions have no block yet.
+    if (transaction.block === undefined) {
       return undefined;
     }
 
     return {
       txId: transaction.tx_id,
-      status: transaction.tx_status,
-      blockHeight: transaction.block_height,
+      status: transaction.status,
+      blockHeight: transaction.block.height,
     };
   });
 }

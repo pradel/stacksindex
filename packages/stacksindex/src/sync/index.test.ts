@@ -101,7 +101,6 @@ const makeFakeApi = (chain: readonly ChainEvent[], limit = 2): FakeApi => {
       getBlocks: notUsed,
       getBlock: notUsed,
       getBlockTransactions: notUsed,
-      getTransaction: notUsed,
       getV1Transaction: notUsed,
       getTransactionsBatch: (txIds: string[]) => {
         batchRequests.push(txIds);
@@ -136,15 +135,16 @@ const withDiscovery = (api: FakeApi, first: ChainEvent): StacksClientService => 
   getPrincipalTransactions: () =>
     // SAFETY: Discovery reads only `results[].transaction` and `cursor.previous`.
     Effect.succeed({
-      results: [{ transaction: { tx_id: first.txId, block: { height: first.height } } }],
+      results: [
+        {
+          transaction: {
+            tx_id: first.txId,
+            event_count: 1,
+            block: { height: first.height, tx_index: 0 },
+          },
+        },
+      ],
       cursor: { previous: null },
-    } as never),
-  getTransaction: () =>
-    // SAFETY: Discovery reads only `tx_id`, `event_count` and `block`.
-    Effect.succeed({
-      tx_id: first.txId,
-      event_count: 1,
-      block: { height: first.height, tx_index: 0 },
     } as never),
   getTransactionEvents: () =>
     // SAFETY: Discovery reads only `results[]` contract logs and `cursor.next`.

@@ -25,7 +25,6 @@ const makeStacksClient = (overrides: Partial<StacksClientService> = {}): StacksC
   getBlocks: notUsed,
   getBlock: notUsed,
   getBlockTransactions: notUsed,
-  getTransaction: notUsed,
   getV1Transaction: notUsed,
   getTransactionsBatch: notUsed,
   getTransactionEvents: notUsed,

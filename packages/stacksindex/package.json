@@ -39,7 +39,7 @@
   "dependencies": {
     "@effect/sql-pg": "4.0.5",
     "@effect/sql-pglite": "4.0.5",
-    "@stacks/blockchain-api-client": "9.6.0",
+    "@stacks/blockchain-api-client": "9.7.0",
     "@stacks/codec": "2.1.0",
     "@stacks/transactions": "7.6.0",
     "clarity-abitype": "0.8.0",

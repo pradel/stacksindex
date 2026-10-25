@@ -218,6 +218,43 @@ describe("per-block sync", () => {
     ]);
   });
 
+  test("fetches events only for successful transactions that may hold logs", async () => {
+    await seedProgress();
+    chain.mine([
+      { txId: "tx-104-tenure", type: "tenure_change", events: [] },
+      // Mint events and an STX transfer event: never a print.
+      { txId: "tx-104-coinbase", type: "coinbase", assetEvents: 1, events: [] },
+      { txId: "tx-104-transfer", type: "token_transfer", assetEvents: 1, events: [] },
+      { txId: "tx-104-empty", events: [] },
+      { txId: "tx-104-failed", status: "abort_by_response", events: [] },
+      { txId: "tx-104-log", events: [{ contractId: TOKEN, eventIndex: 0 }] },
+    ]);
+
+    const [block] = chain.blocks.slice(-1);
+
+    const stored = await run(
+      syncBlock({
+        chainId: 1,
+        filters: FILTERS,
+        block: toLightBlock({
+          height: block.height,
+          hash: block.hash,
+          parent_block_hash: block.parentHash,
+          block_time: block.blockTime,
+          tenure_height: block.height,
+          txs: block.transactions.map((transaction) => transaction.txId),
+        }),
+      }),
+    );
+
+    const eventsRequests = chain.requests.filter((request) =>
+      /^\/extended\/v3\/transactions\/[^/]+\/events/u.test(request),
+    );
+
+    expect(stored).toBe(1);
+    expect(eventsRequests).toStrictEqual(["/extended/v3/transactions/tx-104-log/events?limit=100"]);
+  });
+
   test("estimates one transactions page plus one events page per transaction", () => {
     const block = { height: 1, hash: "0x1", parentHash: "0x0", blockTime: 1, tenureHeight: 1 };
 
