@@ -25,6 +25,21 @@ const TRANSACTION_EVENTS_PAGE_LIMIT = 100;
 /** Transactions whose events are fetched concurrently within one block. */
 const EVENTS_FETCH_CONCURRENCY = 4;
 
+/**
+ * Transaction types that may carry contract logs. The others run no Clarity
+ * code and the node attaches no block-level events to them. Exhaustive, so a
+ * type added to the API has to be classified here.
+ */
+const MAY_HOLD_LOGS: Record<BlockTransaction["type"], boolean> = {
+  contract_call: true,
+  smart_contract: true,
+  // Before epoch 2.5 the node attached pox-2/pox-3 `handle-unlock` prints to coinbases.
+  coinbase: true,
+  token_transfer: false,
+  tenure_change: false,
+  poison_microblock: false,
+};
+
 interface ContractMetrics {
   readonly events: Metric.Metric<number, Metric.CounterState<number>>;
   readonly block: Metric.Metric<number, Metric.GaugeState<number>>;
@@ -56,9 +71,9 @@ function getContractMetrics(filter: SyncFilter) {
 
 /**
  * Estimates the requests a per-block fetch of `block` costs: its transaction
- * pages plus one events page per transaction. Transactions without events
- * cost none and those with more than `TRANSACTION_EVENTS_PAGE_LIMIT` events
- * cost more, which the estimate ignores.
+ * pages plus one events page per transaction. Transactions that cannot hold
+ * logs cost none and those with more than `TRANSACTION_EVENTS_PAGE_LIMIT`
+ * events cost more, which the estimate ignores.
  */
 export function estimateBlockRequests(block: LightBlock): number {
   return Math.ceil(Math.max(block.txCount, 1) / BLOCK_TRANSACTIONS_PAGE_LIMIT) + block.txCount;
@@ -136,8 +151,9 @@ function fetchTransactionLogs(
  * Every filter syncing at `block.height` is then synced through it, in the
  * same transaction. Returns the number of stored events.
  *
- * Only successful transactions with events are queried: the API keeps no
- * events for aborted ones, matching the contract logs endpoint.
+ * Only successful transactions with events of a type that may hold logs are
+ * queried: the API keeps no events for aborted ones, matching the contract
+ * logs endpoint, and `MAY_HOLD_LOGS` rules out the types that never print.
  */
 export function syncBlock(options: {
   readonly chainId: number;
@@ -162,7 +178,10 @@ export function syncBlock(options: {
 
     const logsByTransaction = yield* Effect.forEach(
       transactions.filter(
-        (transaction) => transaction.status === "success" && transaction.event_count > 0,
+        (transaction) =>
+          transaction.status === "success" &&
+          transaction.event_count > 0 &&
+          MAY_HOLD_LOGS[transaction.type],
       ),
       (transaction) =>
         fetchTransactionLogs(transaction.tx_id, contractIds).pipe(

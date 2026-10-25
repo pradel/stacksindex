@@ -19,6 +19,8 @@ export interface FakeTransaction {
   readonly txId: string;
   /** Defaults to `"success"`; other statuses keep no events, as on mainnet. */
   readonly status?: string;
+  /** API transaction type; defaults to `"contract_call"`. */
+  readonly type?: string;
   readonly events: readonly FakeEvent[];
   /**
    * Asset events (not contract logs) emitted first, at event indexes
@@ -135,7 +137,7 @@ const transactionSummary = (block: FakeBlock, txIndex: number) => ({
   bitcoin_block: { height: block.height, time: block.blockTime },
   status: block.transactions[txIndex].status ?? "success",
   event_count: transactionEvents(block.transactions[txIndex]).length,
-  type: "contract_call",
+  type: block.transactions[txIndex].type ?? "contract_call",
 });
 
 const contractLogValue = (event: FakeEvent) => ({
