@@ -222,9 +222,8 @@ describe("per-block sync", () => {
     await seedProgress();
     chain.mine([
       { txId: "tx-104-tenure", type: "tenure_change", events: [] },
-      // Mints only, but coinbases carried PoX prints before epoch 2.5.
+      // Mint events and an STX transfer event: never a print.
       { txId: "tx-104-coinbase", type: "coinbase", assetEvents: 1, events: [] },
-      // One STX transfer event, never a print.
       { txId: "tx-104-transfer", type: "token_transfer", assetEvents: 1, events: [] },
       { txId: "tx-104-empty", events: [] },
       { txId: "tx-104-failed", status: "abort_by_response", events: [] },
@@ -253,10 +252,7 @@ describe("per-block sync", () => {
     );
 
     expect(stored).toBe(1);
-    expect(eventsRequests).toStrictEqual([
-      "/extended/v3/transactions/tx-104-coinbase/events?limit=100",
-      "/extended/v3/transactions/tx-104-log/events?limit=100",
-    ]);
+    expect(eventsRequests).toStrictEqual(["/extended/v3/transactions/tx-104-log/events?limit=100"]);
   });
 
   test("estimates one transactions page plus one events page per transaction", () => {

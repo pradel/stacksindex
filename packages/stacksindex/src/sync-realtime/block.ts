@@ -27,14 +27,15 @@ const EVENTS_FETCH_CONCURRENCY = 4;
 
 /**
  * Transaction types that may carry contract logs. The others run no Clarity
- * code and the node attaches no block-level events to them. Exhaustive, so a
- * type added to the API has to be classified here.
+ * code, and the node attaches no prints to them near the chain tip.
+ * Exhaustive, so a type added to the API has to be classified here.
  */
 const MAY_HOLD_LOGS: Record<BlockTransaction["type"], boolean> = {
   contract_call: true,
   smart_contract: true,
-  // Before epoch 2.5 the node attached pox-2/pox-3 `handle-unlock` prints to coinbases.
-  coinbase: true,
+  // Pre-epoch-2.5 coinbases carried pox-2/pox-3 `handle-unlock` prints, but
+  // Per-block sync only covers blocks near the chain tip.
+  coinbase: false,
   token_transfer: false,
   tenure_change: false,
   poison_microblock: false,
