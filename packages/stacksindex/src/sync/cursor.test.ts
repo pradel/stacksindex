@@ -693,7 +693,7 @@ describe("contract events first cursor", () => {
           body: mockBody({
             tx_id: "tx-mb",
             block_height: 147279,
-            tx_index: 161,
+            tx_index: 7,
             microblock_sequence: 14,
           }),
         };
