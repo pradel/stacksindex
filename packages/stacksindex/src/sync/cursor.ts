@@ -151,35 +151,35 @@ function findFirstMatchingContractEvent(
   });
 }
 
+type PrincipalTransaction = PrincipalTransactionsResponse["results"][number]["transaction"];
+
 function checkTransactionForMatchingEvent(
-  txId: string,
+  transaction: PrincipalTransaction,
   contractId: string,
 ): Effect.Effect<LogsCursor | null, StacksApiError, StacksClient> {
   return Effect.gen(function* () {
-    const client = yield* StacksClient;
-    const fullTx = yield* client.getTransaction(txId);
-
-    if (fullTx.event_count === 0) {
+    if (transaction.event_count === 0) {
       return null;
     }
 
-    const matchingEvent = yield* findFirstMatchingContractEvent(fullTx.tx_id, contractId);
+    const matchingEvent = yield* findFirstMatchingContractEvent(transaction.tx_id, contractId);
 
     if (!matchingEvent) {
       return null;
     }
 
+    const client = yield* StacksClient;
     // The v2 /logs endpoint strictly matches (block_height, microblock_sequence, tx_index, event_index).
     // In Hiro's DB, transactions confirmed in an anchor block have microblock_sequence = 2147483647 (0x7FFFFFFF),
     // While microblock transactions have 0..N. Because v3 endpoints completely dropped microblock_sequence and
     // V3 cursors do not expose it, GET /extended/v1/tx/{tx_id} is the only endpoint that provides the true
     // Microblock_sequence needed to construct a valid cursor.
-    const v1Tx = yield* client.getV1Transaction(fullTx.tx_id);
+    const v1Tx = yield* client.getV1Transaction(transaction.tx_id);
 
     return {
-      blockHeight: fullTx.block.height,
+      blockHeight: transaction.block.height,
       microblockSequence: v1Tx.microblock_sequence,
-      txIndex: fullTx.block.tx_index,
+      txIndex: transaction.block.tx_index,
       eventIndex: matchingEvent.event_index,
     };
   });
@@ -203,7 +203,7 @@ function checkTransactionForMatchingEvent(
  *      `${deploymentBlock}:0:0` jumps directly to that block's transactions without validating prior existence.
  *
  * 3. **Transactions may contain non-log events or logs for other contracts**:
- *    - In v3, transaction objects return `event_count` rather than an inline `events` array.
+ *    - In v3, transaction summaries return `event_count` rather than an inline `events` array.
  *    - A transaction's events may be token transfers (`ft_asset`, `stx_asset`), locks, or print logs for other contracts
  *      in a multi-contract transaction.
  *    - Blindly using `event_index: 0` can result in a 404 from `/logs` if index 0 is not a `contract_log` for that contract.
@@ -217,14 +217,14 @@ function checkTransactionForMatchingEvent(
  * ### Implementation Strategy
  * 1. Fetch contract metadata via `GET /extended/v3/smart-contracts/{contract_id}` (1 request) to obtain its deployment `block.height`.
  * 2. Jump straight to the deployment block by querying `getPrincipalTransactions` with `cursor: "${deploymentBlock}:0:0"`.
- * 3. Iterate transactions from oldest to newest within the page:
+ * 3. Iterate the page's transaction summaries from oldest to newest:
  *    - If `event_count === 0`, skip immediately (0 extra requests).
- *    - If `event_count > 0`, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
+ *    - Otherwise, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
  *      matching `contract_id`.
  *    - When found, fetch `GET /extended/v1/tx/{tx_id}` to obtain its `microblock_sequence`
  *      (e.g. `2147483647` for anchor blocks, `0..N` for microblocks) and construct the exact 4-part cursor
  *      (`block.height:microblock_sequence:block.tx_index:event_index`) for `getContractLogs`.
- * 5. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
+ * 4. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
  */
 export const getContractEventsFirstCursor = (
   contractId: string,
@@ -291,7 +291,7 @@ export const getContractEventsFirstCursor = (
 
         if (!isBeforeStart) {
           const cursorResult = yield* checkTransactionForMatchingEvent(
-            item.transaction.tx_id,
+            item.transaction,
             contractId,
           );
 

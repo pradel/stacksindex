@@ -146,7 +146,7 @@ const sanitizePrincipalTransactions = (body: JsonObject): JsonValue => {
         }
 
         const { block } = tx;
-        const transaction: JsonObject = { tx_id: tx.tx_id };
+        const transaction: JsonObject = { tx_id: tx.tx_id, event_count: tx.event_count };
 
         if (isJsonObject(block)) {
           transaction.block = {
@@ -211,8 +211,7 @@ const sanitizeContractLogs = (body: JsonObject): JsonValue => {
 };
 
 const sanitizeTransactionSummary = (tx: JsonObject): JsonValue => {
-  // Only the fields consumed by encodeTransaction and encodeBlock are kept. The batch
-  // Endpoint returns summaries without event_count or events.
+  // Only the fields consumed by encodeTransaction and encodeBlock are kept.
   const sanitized: JsonObject = {
     tx_id: tx.tx_id,
     type: tx.type,
@@ -254,44 +253,6 @@ const sanitizeTransactionsBatch = (body: JsonObject): JsonValue => {
     : body.results;
 
   return { results };
-};
-
-const sanitizeTransaction = (body: JsonObject): JsonValue => {
-  const sanitized: JsonObject = {
-    tx_id: body.tx_id,
-    event_count: body.event_count,
-    type: body.type,
-    status: body.status,
-    fee_rate: body.fee_rate,
-    events: body.events,
-  };
-
-  const { sender, block, bitcoin_block: bitcoinBlock } = body;
-
-  if (isJsonObject(sender)) {
-    sanitized.sender = {
-      address: sender.address,
-      nonce: sender.nonce,
-    };
-  }
-
-  if (isJsonObject(block)) {
-    sanitized.block = {
-      hash: block.hash,
-      index_hash: block.index_hash,
-      height: block.height,
-      tx_index: block.tx_index,
-    };
-  }
-
-  if (isJsonObject(bitcoinBlock)) {
-    sanitized.bitcoin_block = {
-      height: bitcoinBlock.height,
-      time: bitcoinBlock.time,
-    };
-  }
-
-  return sanitized;
 };
 
 // Only the fields consumed by encodeBlock are kept (blockTime and
@@ -357,10 +318,6 @@ export function sanitizePayload(rawUrl: string, body: JsonValue): JsonValue {
     return sanitizeContractLogs(body);
   }
 
-  if (rawUrl.includes("/extended/v3/transactions/")) {
-    return sanitizeTransaction(body);
-  }
-
   if (rawUrl.includes("/extended/v2/blocks/")) {
     return sanitizeBlock(body);
   }
@@ -370,63 +327,6 @@ export function sanitizePayload(rawUrl: string, body: JsonValue): JsonValue {
   }
 
   return body;
-}
-
-/**
- * Parses transaction ids from a batch lookup URL. Supports both repeated
- * (`?tx_id=A&tx_id=B`) and comma-separated (`?tx_id=A,B`) forms. Returns
- * Null when the URL is not a batch lookup.
- */
-function tryParseUrl(raw: string): URL | null {
-  try {
-    return new URL(raw);
-  } catch {
-    return null;
-  }
-}
-
-export function parseBatchTxIds(rawUrl: string): string[] | null {
-  const url = tryParseUrl(rawUrl);
-
-  if (url?.pathname !== "/extended/v3/transactions/batch") {
-    return null;
-  }
-
-  const ids: string[] = [];
-
-  for (const value of url.searchParams.getAll("tx_id")) {
-    for (const id of value.split(",")) {
-      if (id !== "") {
-        ids.push(id);
-      }
-    }
-  }
-
-  return ids;
-}
-
-function findArchivedTransaction(archive: FixtureArchive, txId: string): JsonObject | null {
-  for (const [rawKey, entry] of Object.entries(archive)) {
-    const spaceIndex = rawKey.indexOf(" ");
-    const method = spaceIndex === -1 ? "" : rawKey.slice(0, spaceIndex);
-    const url = spaceIndex === -1 ? null : tryParseUrl(rawKey.slice(spaceIndex + 1));
-
-    const isArchivedSingle =
-      entry.statusCode === 200 &&
-      method === "GET" &&
-      url?.pathname === `/extended/v3/transactions/${txId}` &&
-      url.search === "";
-
-    if (isArchivedSingle) {
-      const { body } = entry;
-
-      if (isJsonObject(body)) {
-        return body;
-      }
-    }
-  }
-
-  return null;
 }
 
 const loadArchive = (fixturePath: string): FixtureArchive => {
@@ -465,31 +365,6 @@ const loadArchive = (fixturePath: string): FixtureArchive => {
   } catch {
     return {};
   }
-};
-
-const synthesizeBatchResponse = (
-  archive: FixtureArchive,
-  rawUrl: string,
-): RecorderResponse | null => {
-  const batchIds = parseBatchTxIds(rawUrl);
-
-  if (!batchIds) {
-    return null;
-  }
-
-  const results: JsonValue[] = [];
-
-  for (const txId of batchIds) {
-    const txBody = findArchivedTransaction(archive, txId);
-
-    if (!txBody) {
-      return null;
-    }
-
-    results.push(sanitizeTransactionSummary(txBody));
-  }
-
-  return jsonResponse(200, { results }, { "content-type": "application/json" });
 };
 
 const recordLiveResponse = async (
@@ -589,17 +464,6 @@ export function createScenarioRecorder(
       const method = init?.method ?? "GET";
       tracker.recordCall(method, rawUrl);
       const key = normalizeKey(method, rawUrl);
-
-      // Replay mode: synthesize batch lookups from archived single-transaction
-      // Entries. Fixtures recorded before the batch endpoint existed only
-      // Contain individual transaction responses.
-      if (!shouldRecord && !(key in archive) && method === "GET") {
-        const synthesized = synthesizeBatchResponse(archive, rawUrl);
-
-        if (synthesized !== null) {
-          return synthesized;
-        }
-      }
 
       // Replay mode when recording is not required and the fixture key exists.
       if (!shouldRecord && key in archive) {

@@ -5,7 +5,7 @@ import process from "node:process";
 
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { createScenarioRecorder, parseBatchTxIds, sanitizePayload } from "./recorder.ts";
+import { createScenarioRecorder, sanitizePayload } from "./recorder.ts";
 
 const originalRecord = process.env.RECORD;
 
@@ -112,17 +112,6 @@ describe("scenario recorder", () => {
     expect(recorder.size()).toBe(1);
   });
 
-  test("parses batch transaction ids from repeated and comma-separated params", () => {
-    expect(
-      parseBatchTxIds("https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xaaa&tx_id=0xbbb"),
-    ).toStrictEqual(["0xaaa", "0xbbb"]);
-    expect(
-      parseBatchTxIds("https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xaaa,0xbbb"),
-    ).toStrictEqual(["0xaaa", "0xbbb"]);
-    expect(parseBatchTxIds("https://api.hiro.so/extended/v3/transactions/0xaaa")).toBeNull();
-    expect(parseBatchTxIds("not a url")).toBeNull();
-  });
-
   test("sanitizes batch transaction payloads to summary fields", () => {
     const body = {
       results: [
@@ -179,68 +168,7 @@ describe("scenario recorder", () => {
     });
   });
 
-  test("synthesizes batch lookups from archived single transactions in replay mode", async () => {
-    const fixturePath = createFixturePath();
-    const txUrl = (id: string) => `https://api.hiro.so/extended/v3/transactions/${id}`;
-
-    const txBody = (id: string, height: number) => ({
-      tx_id: id,
-      event_count: 1,
-      type: "contract_call",
-      status: "success",
-      fee_rate: "100",
-      sender: { address: "SP123", nonce: 0 },
-      block: {
-        hash: `block-${height}`,
-        index_hash: `index-${height}`,
-        height,
-        time: 1000,
-        tx_index: 0,
-      },
-    });
-
-    fs.writeFileSync(
-      fixturePath,
-      JSON.stringify({
-        [`GET ${txUrl("0xaaa")}`]: { statusCode: 200, body: txBody("0xaaa", 10) },
-        [`GET ${txUrl("0xbbb")}`]: { statusCode: 200, body: txBody("0xbbb", 20) },
-      }),
-    );
-    process.env.RECORD = "false";
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-
-    const recorder = createScenarioRecorder(fixturePath);
-
-    const response = await recorder.handleRequest(
-      "https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xaaa&tx_id=0xbbb",
-    );
-
-    expect(response.statusCode).toBe(200);
-    await expect(response.body.json()).resolves.toStrictEqual({
-      results: [
-        {
-          tx_id: "0xaaa",
-          type: "contract_call",
-          status: "success",
-          fee_rate: "100",
-          sender: { address: "SP123", nonce: 0 },
-          block: { hash: "block-10", index_hash: "index-10", height: 10, tx_index: 0 },
-        },
-        {
-          tx_id: "0xbbb",
-          type: "contract_call",
-          status: "success",
-          fee_rate: "100",
-          sender: { address: "SP123", nonce: 0 },
-          block: { hash: "block-20", index_hash: "index-20", height: 20, tx_index: 0 },
-        },
-      ],
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  test("falls through to live fetch when a batch id is missing from fixtures", async () => {
+  test("falls through to live fetch when a request is missing from fixtures", async () => {
     const fixturePath = createFixturePath();
     fs.writeFileSync(fixturePath, JSON.stringify({}));
     process.env.RECORD = "false";

@@ -104,6 +104,22 @@ const blockRow = (block: FakeBlock) => ({
   burn_block_height: block.height,
 });
 
+const transactionEvents = (transaction: FakeTransaction) =>
+  isSuccess(transaction)
+    ? [
+        ...Array.from({ length: transaction.assetEvents ?? 0 }, (_, index) => ({
+          event_index: index,
+          type: "stx_asset",
+          stx_asset: { type: "transfer", amount: "1" },
+        })),
+        ...transaction.events.map((event) => ({
+          event_index: event.eventIndex,
+          type: "contract_log",
+          contract_log: contractLogValue(event),
+        })),
+      ]
+    : [];
+
 const transactionSummary = (block: FakeBlock, txIndex: number) => ({
   tx_id: block.transactions[txIndex].txId,
   sender: { address: "SP sender", nonce: txIndex },
@@ -118,6 +134,7 @@ const transactionSummary = (block: FakeBlock, txIndex: number) => ({
   },
   bitcoin_block: { height: block.height, time: block.blockTime },
   status: block.transactions[txIndex].status ?? "success",
+  event_count: transactionEvents(block.transactions[txIndex]).length,
   type: "contract_call",
 });
 
@@ -141,22 +158,6 @@ const offsetPage = (items: readonly Schema.Json[], params: URLSearchParams) => {
     results: items.slice(offset, offset + limit),
   });
 };
-
-const transactionEvents = (transaction: FakeTransaction) =>
-  isSuccess(transaction)
-    ? [
-        ...Array.from({ length: transaction.assetEvents ?? 0 }, (_, index) => ({
-          event_index: index,
-          type: "stx_asset",
-          stx_asset: { type: "transfer", amount: "1" },
-        })),
-        ...transaction.events.map((event) => ({
-          event_index: event.eventIndex,
-          type: "contract_log",
-          contract_log: contractLogValue(event),
-        })),
-      ]
-    : [];
 
 export function createFakeChain(options: { readonly baseHeight: number }): FakeChain {
   const blocks: FakeBlock[] = [

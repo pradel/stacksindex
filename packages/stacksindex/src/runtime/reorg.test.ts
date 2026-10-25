@@ -44,7 +44,6 @@ const makeClient = (
       : Effect.succeed({ hash } as never);
   },
   getBlockTransactions: notUsed,
-  getTransaction: notUsed,
   getV1Transaction: notUsed,
   getTransactionsBatch: notUsed,
   getTransactionEvents: notUsed,

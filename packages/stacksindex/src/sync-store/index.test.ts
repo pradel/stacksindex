@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 
-import type { SmartContractLogEvent, TransactionApiResponse } from "../datasources/api/index.ts";
+import type { SmartContractLogEvent, StorableTransaction } from "../datasources/api/index.ts";
 import { SyncStoreError } from "../lib/errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { syncStore } from "./index.ts";
@@ -36,52 +36,26 @@ const block = {
   execution_cost_write_length: 0,
 };
 
-const transaction: TransactionApiResponse = {
+const transaction: StorableTransaction = {
   tx_id: "0x78323ef7a23b45b96f318f5e41306dee91ee1d083b0e98be75382b91cab88f80",
   fee_rate: "1218",
   sender: {
     address: "SP220K5EDGPF1A09AD0VCTGC541TJH4SX96DV5ES7",
     nonce: 43334,
   },
-  sponsor: null,
   block: {
     hash: "0xaa832f80b70e93f9b35415cf88b00daf6c398997520ad1efc00d83afd1157c81",
     height: 7444092,
     time: 1775137130,
-    time_iso: "2026-04-02T13:38:50.000Z",
     tx_index: 3,
     index_hash: "0x9ff38d3c314e8b60fa2c1e556339b7c4e650bb134f52e262b67112ba32ca302c",
   },
   bitcoin_block: {
     height: 943364,
     time: 1775137333,
-    time_iso: "2026-04-02T13:42:13.000Z",
-  },
-  parent_block: {
-    hash: "0x5594d5355a70d798871bc202ba2b843291ec032ff2367616bc539291f47abf32",
-    index_hash: "0x39c2e63268fb24e9b25accbfe4e27991a13464ac16bc116531ff675b59421363",
   },
   status: "success",
   type: "token_transfer",
-  result: {
-    hex: "0x0703",
-    repr: "(ok true)",
-  },
-  event_count: 0,
-  post_conditions: [],
-  execution_cost: {
-    read_count: 0,
-    read_length: 0,
-    runtime: 0,
-    write_count: 0,
-    write_length: 0,
-  },
-  vm_error: null,
-  token_transfer: {
-    recipient: "SP2728B2NG5E4P60KH8Y8D65298XS7TYD0306RFSX",
-    amount: "2218",
-    memo: null,
-  },
 };
 
 // oxlint-disable-next-line vitest/prefer-describe-function-title

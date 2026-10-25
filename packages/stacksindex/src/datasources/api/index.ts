@@ -57,8 +57,6 @@ type GetBlockTransactionsQuery =
 type GetContractLogsQuery =
   paths["/extended/v2/smart-contracts/{contract_id}/logs"]["get"]["parameters"]["query"];
 
-type GetTransactionQuery = paths["/extended/v3/transactions/{tx_id}"]["get"]["parameters"]["query"];
-
 type TransactionsBatchResponse =
   paths["/extended/v3/transactions/batch"]["get"]["responses"]["200"]["content"]["application/json"];
 
@@ -71,15 +69,10 @@ type GetTransactionEventsQuery =
 export type TransactionEventsResponse =
   paths["/extended/v3/transactions/{tx_id}/events"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type TransactionApiResponse = Extract<
-  paths["/extended/v3/transactions/{tx_id}"]["get"]["responses"]["200"]["content"]["application/json"],
-  { block: unknown }
->;
-
 /**
  * Minimal transaction shape required for storage.
- * Satisfied by both the full `GET /extended/v3/transactions/{tx_id}` response
- * and the `GET /extended/v3/transactions/batch` summaries.
+ * Satisfied by the `GET /extended/v3/transactions/batch` and
+ * `GET /extended/v3/blocks/{height_or_hash}/transactions` summaries.
  */
 export interface StorableTransaction {
   tx_id: string;
@@ -158,10 +151,6 @@ export interface StacksClientService {
     heightOrHash: string | number,
     options?: GetBlockTransactionsQuery,
   ) => Effect.Effect<BlockTransactionsApiResponse, StacksHttpError>;
-  readonly getTransaction: (
-    txId: string,
-    options?: GetTransactionQuery,
-  ) => Effect.Effect<TransactionApiResponse, StacksHttpError>;
   readonly getV1Transaction: (
     txId: string,
   ) => Effect.Effect<V1TransactionApiResponse, StacksHttpError>;
@@ -430,20 +419,6 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
             `/extended/v3/blocks/${heightOrHash}/transactions`,
             options,
           ),
-        getTransaction: (txId, options = {}) => {
-          const { include } = options;
-
-          const query =
-            include !== null && include !== undefined && include.length > 0
-              ? { include: include.join(",") }
-              : undefined;
-
-          return get<TransactionApiResponse>(
-            "getTransaction",
-            `/extended/v3/transactions/${txId}`,
-            query,
-          );
-        },
         getV1Transaction: (txId) =>
           get<V1TransactionApiResponse>("getV1Transaction", `/extended/v1/tx/${txId}`),
         getTransactionsBatch: (txIds) =>

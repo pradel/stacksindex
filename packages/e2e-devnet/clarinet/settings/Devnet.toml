@@ -92,7 +92,7 @@ disable_stacks_api = false
 bitcoin_node_image_url = "lncm/bitcoind:v27.2"
 stacks_node_image_url = "ghcr.io/stacks-network/stacks-core:4.0.1-alpine"
 stacks_signer_image_url = "ghcr.io/stacks-network/stacks-signer:4.0.1-alpine"
-stacks_api_image_url = "hirosystems/stacks-blockchain-api:9.6.0"
+stacks_api_image_url = "hirosystems/stacks-blockchain-api:9.7.0"
 postgres_image_url = "postgres:18-alpine"
 
 # epoch_2_0 = 100

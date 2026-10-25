@@ -40,11 +40,11 @@ export async function readSeedHistory(): Promise<SeedHistory | undefined> {
   const heights: number[] = [];
 
   for (const transaction of lastTransactions) {
-    if (transaction?.tx_status !== "success" || transaction.block_height === undefined) {
+    if (transaction?.status !== "success" || transaction.block === undefined) {
       return undefined;
     }
 
-    heights.push(transaction.block_height);
+    heights.push(transaction.block.height);
   }
 
   return {

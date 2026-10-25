@@ -24,6 +24,7 @@
         {
           "transaction": {
             "tx_id": "0xc5c2b57b01170927608158110f634def41af4eb2a2ec3bfd71d8af6f0deac4ae",
+            "event_count": 1,
             "block": {
               "height": 47784,
               "tx_index": 48
@@ -33,6 +34,7 @@
         {
           "transaction": {
             "tx_id": "0xb27807a32a851a931bb0623abf34201097e40afe2fa862c19b6af02d0c298b11",
+            "event_count": 1,
             "block": {
               "height": 47784,
               "tx_index": 34
@@ -42,6 +44,7 @@
         {
           "transaction": {
             "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
+            "event_count": 1,
             "block": {
               "height": 47784,
               "tx_index": 28
@@ -51,6 +54,7 @@
         {
           "transaction": {
             "tx_id": "0x551cb8f8512081b09438564d0883f65c65cf3c5b1fc595e84072ca7354894ea7",
+            "event_count": 1000,
             "block": {
               "height": 47499,
               "tx_index": 6
@@ -60,6 +64,7 @@
         {
           "transaction": {
             "tx_id": "0xa3b71ffc99ffa9d2e136ce2f3f52e674ee2b4bf40b620c9ef29de9515458e610",
+            "event_count": 1000,
             "block": {
               "height": 47498,
               "tx_index": 51
@@ -69,6 +74,7 @@
         {
           "transaction": {
             "tx_id": "0x0b2f643ad48ac0eede31a71cf631725a282be60152e8546e5fe80d493d171122",
+            "event_count": 1000,
             "block": {
               "height": 47495,
               "tx_index": 27
@@ -78,6 +84,7 @@
         {
           "transaction": {
             "tx_id": "0xdfb34d373c5abfdae150a67e00d6e4654d3eec07b93840629abb6fcbbbda4ac7",
+            "event_count": 1000,
             "block": {
               "height": 47490,
               "tx_index": 9
@@ -87,6 +94,7 @@
         {
           "transaction": {
             "tx_id": "0xbefd1dd1ccdec2de01c5be4cb1c9a63fb732261a472ae41d7fbe64c92f6ae494",
+            "event_count": 1000,
             "block": {
               "height": 47489,
               "tx_index": 31
@@ -96,6 +104,7 @@
         {
           "transaction": {
             "tx_id": "0x4e5eea8be2c5b956bba7d767498d9bf4fdb1723563d2b2fedc7f45f1a2ec08ca",
+            "event_count": 0,
             "block": {
               "height": 47486,
               "tx_index": 13
@@ -103,30 +112,6 @@
           }
         }
       ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d",
-      "event_count": 1,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "300000",
-      "sender": {
-        "address": "SP1QRFVDS76WFV5XCDHAR7FQYTSNM4M1P4TGFZRK1",
-        "nonce": 294
-      },
-      "block": {
-        "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
-        "height": 47784,
-        "tx_index": 28
-      },
-      "bitcoin_block": {
-        "height": 722076,
-        "time": 1644169830
-      }
     }
   },
   "GET https://api.hiro.so/extended/v3/transactions/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d/events?limit=50": {
@@ -189,6 +174,7 @@
         {
           "transaction": {
             "tx_id": "0x1ad6dafaca875df5283fb9b64cbb5c3e0e15a2d06dc180d2c6fd29db8292939f",
+            "event_count": 2,
             "block": {
               "height": 47784,
               "tx_index": 8
@@ -198,6 +184,7 @@
         {
           "transaction": {
             "tx_id": "0x1f6b9707a4c39af8e62d394be25ca689dabc029b00fc512e1333e7a9e7805e9c",
+            "event_count": 2,
             "block": {
               "height": 47784,
               "tx_index": 7
@@ -207,6 +194,7 @@
         {
           "transaction": {
             "tx_id": "0xc3b6019fd4c1afc3b3ac0f30efcb6e19701d797d1b479df721736cd45ec13ee4",
+            "event_count": 2,
             "block": {
               "height": 47784,
               "tx_index": 6
@@ -216,6 +204,7 @@
         {
           "transaction": {
             "tx_id": "0x3aa1adbc56f8ce2665e10d36ab9bc29c7abb3fe3dd53c729ce36d755ea42434f",
+            "event_count": 2,
             "block": {
               "height": 47784,
               "tx_index": 5
@@ -225,6 +214,7 @@
         {
           "transaction": {
             "tx_id": "0xc9d4f94da65a02bd40d620d3bf12fece656d08927ddc9ff6bd75cbcb54b81f09",
+            "event_count": 2,
             "block": {
               "height": 47784,
               "tx_index": 4
@@ -234,6 +224,7 @@
         {
           "transaction": {
             "tx_id": "0x4d2489d8e0e8cab63ae31a404f82a9d74cc44e1e55fc16a7b4286edc70e6f87e",
+            "event_count": 2,
             "block": {
               "height": 47784,
               "tx_index": 33
@@ -243,6 +234,7 @@
         {
           "transaction": {
             "tx_id": "0xfa2ba903f1012dd590dfeae07dd36896ab95c93f824583a56f85aca3a35dcd9a",
+            "event_count": 2,
             "block": {
               "height": 47784,
               "tx_index": 32
@@ -252,6 +244,7 @@
         {
           "transaction": {
             "tx_id": "0x57231862a83de9ed0993152958e17e1a46ee24457962106ee90edf15f732a956",
+            "event_count": 2,
             "block": {
               "height": 47784,
               "tx_index": 31
@@ -261,6 +254,7 @@
         {
           "transaction": {
             "tx_id": "0x08cecc2f6cae33a667f5f64caf7dfb67ecf65f461db167ea6d86d6c57ee3ba96",
+            "event_count": 2,
             "block": {
               "height": 47784,
               "tx_index": 30
@@ -270,6 +264,7 @@
         {
           "transaction": {
             "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
+            "event_count": 2,
             "block": {
               "height": 47784,
               "tx_index": 29
@@ -279,6 +274,7 @@
         {
           "transaction": {
             "tx_id": "0x18f15323fdb5f2fca0cf5f34a0efb3e0bb57ee09799575a1e2c402e36234e825",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 19
@@ -288,6 +284,7 @@
         {
           "transaction": {
             "tx_id": "0xf337a39cf246317a4511a24e6712578905361b1df152d09ab178b14b3aca267e",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 18
@@ -297,6 +294,7 @@
         {
           "transaction": {
             "tx_id": "0xfadf996352080751cff3e639f66e381368b86b7d1cfd5f7ed1f1597b09f71759",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 17
@@ -306,6 +304,7 @@
         {
           "transaction": {
             "tx_id": "0x62da84177a510e98da397014a57f4f2a1c9d284868fadc998913d4e76e7f3d7b",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 16
@@ -315,6 +314,7 @@
         {
           "transaction": {
             "tx_id": "0xabdbff7b1821824ab748f2189cef46103420b5d306d47ad6ae27d5c810cbb3bc",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 15
@@ -324,6 +324,7 @@
         {
           "transaction": {
             "tx_id": "0x8d9d849e7a680e297e89d281afbfb9bf52c3b9697143dcac1e629ad2223c6f00",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 14
@@ -333,6 +334,7 @@
         {
           "transaction": {
             "tx_id": "0xf4a7c034b0c4ff4e7c5da0dad07e06aa1e0cfbf12117c801d739179af3cf1ebb",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 12
@@ -342,6 +344,7 @@
         {
           "transaction": {
             "tx_id": "0xf8ebba8c166f82aeb301338b39c9d551db0de62d4ac054eb166f2a3b7fe0b699",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 11
@@ -351,6 +354,7 @@
         {
           "transaction": {
             "tx_id": "0x051b185758e75290e762f902be646c6ec64d336536d333ab1de4b200e3c59563",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 10
@@ -360,6 +364,7 @@
         {
           "transaction": {
             "tx_id": "0x238bf342f89be119084c37f3c4da83763d7c488e474ae5814abd31b4cd785683",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 9
@@ -369,6 +374,7 @@
         {
           "transaction": {
             "tx_id": "0xd0a402b634b98bc367681d6f2394ad3e1b922cb940aecdd01411cc9559b75fdf",
+            "event_count": 2,
             "block": {
               "height": 47783,
               "tx_index": 8
@@ -378,6 +384,7 @@
         {
           "transaction": {
             "tx_id": "0xc7338ffc59860770644d3adb66a6a7ff9b6da2bb0895eefe81e3ccca7ac82738",
+            "event_count": 2,
             "block": {
               "height": 47779,
               "tx_index": 86
@@ -387,6 +394,7 @@
         {
           "transaction": {
             "tx_id": "0x0de37f03bcd0002be579168712459186301707417cc003ee6d1703d8b1b3cd96",
+            "event_count": 2,
             "block": {
               "height": 47779,
               "tx_index": 85
@@ -396,6 +404,7 @@
         {
           "transaction": {
             "tx_id": "0x68adf2f36fe328a1fbc46f8f57f642fd6c4ac0ac5cf99cfc33be29d9ce832323",
+            "event_count": 2,
             "block": {
               "height": 47779,
               "tx_index": 84
@@ -405,6 +414,7 @@
         {
           "transaction": {
             "tx_id": "0xb124e15ee71741e687c85c4b3e83934999a8ba4ca61b903299a96d2d9854c38a",
+            "event_count": 4,
             "block": {
               "height": 47773,
               "tx_index": 2
@@ -414,6 +424,7 @@
         {
           "transaction": {
             "tx_id": "0x9058bd2aa08eaa843fcdca1a9333ab6b5ea852060a9264b649abb1aa8b01cda2",
+            "event_count": 2,
             "block": {
               "height": 47771,
               "tx_index": 27
@@ -423,6 +434,7 @@
         {
           "transaction": {
             "tx_id": "0xa35e3d14a47719d65c10180b896856dc6e819c0a9de52ed8798b10d72279e3ba",
+            "event_count": 2,
             "block": {
               "height": 47771,
               "tx_index": 26
@@ -432,6 +444,7 @@
         {
           "transaction": {
             "tx_id": "0xa6071dd9e42692b2653d6a1502b94ae8a64931b3597db11bdabbf55e84d2c1d8",
+            "event_count": 2,
             "block": {
               "height": 47771,
               "tx_index": 25
@@ -441,6 +454,7 @@
         {
           "transaction": {
             "tx_id": "0x4ebf9478ca14171e967167a982755a3da70596f696cd1ce2f0efb295941bd161",
+            "event_count": 2,
             "block": {
               "height": 47771,
               "tx_index": 24
@@ -450,6 +464,7 @@
         {
           "transaction": {
             "tx_id": "0xe749b36e8d6bf539471b2b74bef71102de509ed1c1979354fd71237219b47ece",
+            "event_count": 4,
             "block": {
               "height": 47767,
               "tx_index": 34
@@ -459,6 +474,7 @@
         {
           "transaction": {
             "tx_id": "0x1c5f918ddbd8b3551d7725bfa20efe35f6ba9d410f5e11c06635dbae9766c9b5",
+            "event_count": 2,
             "block": {
               "height": 47733,
               "tx_index": 20
@@ -468,6 +484,7 @@
         {
           "transaction": {
             "tx_id": "0x85d51cd173f96c6fd28d649fd5c11406c66a3a562142bd6914c7e041fd53914c",
+            "event_count": 2,
             "block": {
               "height": 47733,
               "tx_index": 19
@@ -477,6 +494,7 @@
         {
           "transaction": {
             "tx_id": "0x316557fa24ec75e7149564ce6597fc5e1e4a773bd2e7eb12ea66f91aa78fd036",
+            "event_count": 4,
             "block": {
               "height": 47731,
               "tx_index": 44
@@ -486,6 +504,7 @@
         {
           "transaction": {
             "tx_id": "0xa1ee4b7c4e1617931b600e19c8e3b99a33b01fe2b94bf7b9cad26c0b64c0ecac",
+            "event_count": 2,
             "block": {
               "height": 47729,
               "tx_index": 17
@@ -495,6 +514,7 @@
         {
           "transaction": {
             "tx_id": "0x0dcdcbcfd58292c05cd4567f17376cc8408fadec770b763b4816da15126b577f",
+            "event_count": 2,
             "block": {
               "height": 47729,
               "tx_index": 16
@@ -504,6 +524,7 @@
         {
           "transaction": {
             "tx_id": "0xa7f3d139bef56cd8c6e6d89f12f205c3761a30651bf0cd6f86b05a4872ec369c",
+            "event_count": 4,
             "block": {
               "height": 47713,
               "tx_index": 2
@@ -513,6 +534,7 @@
         {
           "transaction": {
             "tx_id": "0xe1ff4fbd3a4345e3ed44fcf72d24c85534f5da1fec57e884480c3ac660fe6bd4",
+            "event_count": 2,
             "block": {
               "height": 47711,
               "tx_index": 52
@@ -522,6 +544,7 @@
         {
           "transaction": {
             "tx_id": "0xc212c33455361c2bef3b30f21782df902475ef9dea7571cf145722719df0b416",
+            "event_count": 2,
             "block": {
               "height": 47711,
               "tx_index": 51
@@ -531,6 +554,7 @@
         {
           "transaction": {
             "tx_id": "0x469825e4999564b51108ac0847a9b9822a9be0758c6c828b6fa395ee7eb6cc88",
+            "event_count": 2,
             "block": {
               "height": 47711,
               "tx_index": 50
@@ -540,6 +564,7 @@
         {
           "transaction": {
             "tx_id": "0x91f2c12caffde25fc83193fb6fa6d7c6af2e88014cc69318700e7c4d51aec7be",
+            "event_count": 2,
             "block": {
               "height": 47711,
               "tx_index": 49
@@ -549,6 +574,7 @@
         {
           "transaction": {
             "tx_id": "0xaa086a56241c7e2a064814fea850704a3a233bafc859e6a32e531dd31fcc558e",
+            "event_count": 2,
             "block": {
               "height": 47711,
               "tx_index": 48
@@ -558,6 +584,7 @@
         {
           "transaction": {
             "tx_id": "0x84cfb45451e46f0d936a5ca58cbba74c5e5079cf9cf778cd4deb81d96b47f0f6",
+            "event_count": 2,
             "block": {
               "height": 47708,
               "tx_index": 26
@@ -567,6 +594,7 @@
         {
           "transaction": {
             "tx_id": "0xc2ff8909ea5224c33ce4621ca959db89b277ebc5c167229cc1ddf53e941e2e61",
+            "event_count": 2,
             "block": {
               "height": 47706,
               "tx_index": 6
@@ -576,6 +604,7 @@
         {
           "transaction": {
             "tx_id": "0x4bb460c55df5d9af74c2958c41dd912d887d6adccadd0391af181e61f55ea54a",
+            "event_count": 2,
             "block": {
               "height": 47698,
               "tx_index": 64
@@ -585,6 +614,7 @@
         {
           "transaction": {
             "tx_id": "0x2072b4996a8e45fe5cf122a052c27c70949faf389de9f8d422bb178db062f312",
+            "event_count": 2,
             "block": {
               "height": 47698,
               "tx_index": 63
@@ -594,6 +624,7 @@
         {
           "transaction": {
             "tx_id": "0x22c092180c472f2b97460e23d292356075deb7d545a2b560b30adb053f118d60",
+            "event_count": 2,
             "block": {
               "height": 47698,
               "tx_index": 62
@@ -603,6 +634,7 @@
         {
           "transaction": {
             "tx_id": "0xa9b312bdfb517e3f2fe62a9307102ac439efb31167b3036769fc0b2b2b1683ea",
+            "event_count": 2,
             "block": {
               "height": 47698,
               "tx_index": 61
@@ -612,6 +644,7 @@
         {
           "transaction": {
             "tx_id": "0x29f888f33187b54ba77b38d0b8e64c3441c947f75e02d5a71d80fd4ef95735f5",
+            "event_count": 2,
             "block": {
               "height": 47697,
               "tx_index": 32
@@ -621,6 +654,7 @@
         {
           "transaction": {
             "tx_id": "0x97d6d2fc0e17acc44dc52b4bd56f44031e8fa1883e9269282debd661589c7825",
+            "event_count": 4,
             "block": {
               "height": 47695,
               "tx_index": 4
@@ -630,6 +664,7 @@
         {
           "transaction": {
             "tx_id": "0x5ebe299c11c5d5e296b85b4c6321d1cd2390c29f64182eac42f8b1bfa6117c9a",
+            "event_count": 2,
             "block": {
               "height": 47693,
               "tx_index": 15
@@ -637,30 +672,6 @@
           }
         }
       ]
-    }
-  },
-  "GET https://api.hiro.so/extended/v3/transactions/0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222": {
-    "statusCode": 200,
-    "body": {
-      "tx_id": "0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222",
-      "event_count": 2,
-      "type": "contract_call",
-      "status": "success",
-      "fee_rate": "176269",
-      "sender": {
-        "address": "SP1VCSXDMFNVKJ68XTMH963KNBNJ5PFJY9ZWS0Z34",
-        "nonce": 43
-      },
-      "block": {
-        "hash": "0x5435c5ae9988cfd79b3dfdd11bc8d35de983f1487f7ac33de945fe772bb0d864",
-        "index_hash": "0x49033ea2b837ccfafff3ef40dedec1ef862ebaf8bc86b7b0a19058628d2dd4f9",
-        "height": 47784,
-        "tx_index": 29
-      },
-      "bitcoin_block": {
-        "height": 722076,
-        "time": 1644169830
-      }
     }
   },
   "GET https://api.hiro.so/extended/v3/transactions/0x50e2f4353311a944f71e035e54d8cddd2f985f3772951ae443e8caae6d2ff222/events?limit=50": {

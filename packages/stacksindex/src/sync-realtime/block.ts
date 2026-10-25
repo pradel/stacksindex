@@ -7,13 +7,14 @@ import {
   type SmartContractLogEvent,
   type StacksApiError,
   StacksClient,
-  type StorableTransaction,
   type TransactionEventsResponse,
 } from "../datasources/api/index.ts";
 import type { DatabaseError, SyncStoreError } from "../lib/errors.ts";
 import { contractAttributes, syncBlock as syncBlockGauge, syncEvents } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
 import type { SyncFilter } from "../sync/index.ts";
+
+type BlockTransaction = BlockTransactionsApiResponse["results"][number];
 
 /** Max results per `GET /extended/v3/blocks/{hash}/transactions` page. */
 const BLOCK_TRANSACTIONS_PAGE_LIMIT = 50;
@@ -54,9 +55,10 @@ function getContractMetrics(filter: SyncFilter) {
 }
 
 /**
- * Requests a per-block fetch of `block` costs at least: its transaction pages
- * plus one events page per transaction. Transactions with more than
- * `TRANSACTION_EVENTS_PAGE_LIMIT` events cost more, which the estimate ignores.
+ * Estimates the requests a per-block fetch of `block` costs: its transaction
+ * pages plus one events page per transaction. Transactions without events
+ * cost none and those with more than `TRANSACTION_EVENTS_PAGE_LIMIT` events
+ * cost more, which the estimate ignores.
  */
 export function estimateBlockRequests(block: LightBlock): number {
   return Math.ceil(Math.max(block.txCount, 1) / BLOCK_TRANSACTIONS_PAGE_LIMIT) + block.txCount;
@@ -65,10 +67,10 @@ export function estimateBlockRequests(block: LightBlock): number {
 /** Every transaction of the block, in block order. */
 function fetchBlockTransactions(
   block: LightBlock,
-): Effect.Effect<StorableTransaction[], StacksApiError, StacksClient> {
+): Effect.Effect<BlockTransaction[], StacksApiError, StacksClient> {
   return Effect.gen(function* () {
     const client = yield* StacksClient;
-    const transactions: StorableTransaction[] = [];
+    const transactions: BlockTransaction[] = [];
     let cursor: string | undefined = undefined;
 
     for (;;) {
@@ -134,8 +136,8 @@ function fetchTransactionLogs(
  * Every filter syncing at `block.height` is then synced through it, in the
  * same transaction. Returns the number of stored events.
  *
- * Only successful transactions are queried: the API keeps no events for
- * aborted ones, matching the contract logs endpoint.
+ * Only successful transactions with events are queried: the API keeps no
+ * events for aborted ones, matching the contract logs endpoint.
  */
 export function syncBlock(options: {
   readonly chainId: number;
@@ -159,7 +161,9 @@ export function syncBlock(options: {
     const transactions = yield* fetchBlockTransactions(block);
 
     const logsByTransaction = yield* Effect.forEach(
-      transactions.filter((transaction) => transaction.status === "success"),
+      transactions.filter(
+        (transaction) => transaction.status === "success" && transaction.event_count > 0,
+      ),
       (transaction) =>
         fetchTransactionLogs(transaction.tx_id, contractIds).pipe(
           Effect.map((logs) => ({ transaction, logs })),

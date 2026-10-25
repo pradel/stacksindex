@@ -27,6 +27,7 @@ minimumReleaseAge: 1440 # 1 day
 strictDepBuilds: true
 minimumReleaseAgeExclude:
   - clarity-abitype@0.7.1
+  - "@stacks/blockchain-api-client@9.7.0"
   - effect
   - "@effect/sql-pg"
   - "@effect/sql-pglite"
