@@ -7,6 +7,7 @@ import {
   type TransactionEventsResponse,
 } from "../datasources/api/index.ts";
 import { InvalidCursorError } from "../lib/errors.ts";
+import { MAINNET_CHAIN_ID, TESTNET_CHAIN_ID } from "../lib/network.ts";
 
 export interface LogsCursor {
   blockHeight: number;
@@ -153,9 +154,24 @@ function findFirstMatchingContractEvent(
 
 type PrincipalTransaction = PrincipalTransactionsResponse["results"][number]["transaction"];
 
+/** `microblock_sequence` of every transaction confirmed in an anchor block. */
+const ANCHOR_BLOCK_MICROBLOCK_SEQUENCE = 2_147_483_647;
+
+/**
+ * Bitcoin height at which epoch 2.5 starts, from each network's `GET /v2/pox`
+ * epochs. From then on blocks cannot confirm microblocks, so every transaction
+ * has the anchor-block `microblock_sequence`. Devnets share the testnet chain
+ * ID, so their early blocks are assumed to confirm no microblocks either.
+ */
+const EPOCH_2_5_START_HEIGHT = new Map<number, number>([
+  [MAINNET_CHAIN_ID, 840_360],
+  [TESTNET_CHAIN_ID, 6],
+]);
+
 function checkTransactionForMatchingEvent(
   transaction: PrincipalTransaction,
   contractId: string,
+  chainId: number,
 ): Effect.Effect<LogsCursor | null, StacksApiError, StacksClient> {
   return Effect.gen(function* () {
     if (transaction.event_count === 0) {
@@ -168,17 +184,21 @@ function checkTransactionForMatchingEvent(
       return null;
     }
 
-    const client = yield* StacksClient;
     // The v2 /logs endpoint strictly matches (block_height, microblock_sequence, tx_index, event_index).
-    // In Hiro's DB, transactions confirmed in an anchor block have microblock_sequence = 2147483647 (0x7FFFFFFF),
-    // While microblock transactions have 0..N. Because v3 endpoints completely dropped microblock_sequence and
-    // V3 cursors do not expose it, GET /extended/v1/tx/{tx_id} is the only endpoint that provides the true
-    // Microblock_sequence needed to construct a valid cursor.
-    const v1Tx = yield* client.getV1Transaction(transaction.tx_id);
+    // Transactions confirmed in an anchor block have microblock_sequence = 2147483647 (0x7FFFFFFF), while
+    // Microblock transactions have 0..N. V3 endpoints dropped microblock_sequence, so before epoch 2.5
+    // (or on an unknown chain) GET /extended/v1/tx/{tx_id} is the only endpoint that provides it.
+    const client = yield* StacksClient;
+    const epoch25Height = EPOCH_2_5_START_HEIGHT.get(chainId);
+
+    const microblockSequence =
+      epoch25Height !== undefined && transaction.bitcoin_block.height >= epoch25Height
+        ? ANCHOR_BLOCK_MICROBLOCK_SEQUENCE
+        : (yield* client.getV1Transaction(transaction.tx_id)).microblock_sequence;
 
     return {
       blockHeight: transaction.block.height,
-      microblockSequence: v1Tx.microblock_sequence,
+      microblockSequence,
       txIndex: transaction.block.tx_index,
       eventIndex: matchingEvent.event_index,
     };
@@ -208,11 +228,12 @@ function checkTransactionForMatchingEvent(
  *      in a multi-contract transaction.
  *    - Blindly using `event_index: 0` can result in a 404 from `/logs` if index 0 is not a `contract_log` for that contract.
  *
- * 4. **`microblock_sequence` resolution requires `GET /extended/v1/tx/{tx_id}`**:
+ * 4. **`microblock_sequence` resolution**:
  *    - `/logs` strictly validates `microblock_sequence` (`2147483647` for anchor blocks, `0..N` for microblocks).
  *    - V3 transaction endpoints dropped `microblock_sequence`, and v3 pagination cursors do not contain it.
- *    - Since `/logs` lacks inequality querying, fetching `GET /extended/v1/tx/{tx_id}` once for the first matching
- *      event is the only way to obtain the exact `microblock_sequence` needed for the initial cursor.
+ *    - From epoch 2.5 on, blocks cannot confirm microblocks, so the sequence is always `2147483647`. For older
+ *      events, and on chains whose epoch 2.5 height is unknown, `GET /extended/v1/tx/{tx_id}` is the only way to
+ *      obtain it.
  *
  * ### Implementation Strategy
  * 1. Fetch contract metadata via `GET /extended/v3/smart-contracts/{contract_id}` (1 request) to obtain its deployment `block.height`.
@@ -221,14 +242,15 @@ function checkTransactionForMatchingEvent(
  *    - If `event_count === 0`, skip immediately (0 extra requests).
  *    - Otherwise, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
  *      matching `contract_id`.
- *    - When found, fetch `GET /extended/v1/tx/{tx_id}` to obtain its `microblock_sequence`
- *      (e.g. `2147483647` for anchor blocks, `0..N` for microblocks) and construct the exact 4-part cursor
- *      (`block.height:microblock_sequence:block.tx_index:event_index`) for `getContractLogs`.
+ *    - When found, take `2147483647` as its `microblock_sequence` if its Bitcoin block is at or after epoch 2.5,
+ *      else fetch `GET /extended/v1/tx/{tx_id}` (e.g. `2147483647` for anchor blocks, `0..N` for microblocks),
+ *      and construct the exact 4-part cursor (`block.height:microblock_sequence:block.tx_index:event_index`)
+ *      for `getContractLogs`.
  * 4. If no transactions on the deployment page have matching logs, traverse forward in time (older -> newer) using `cursor.previous`.
  */
 export const getContractEventsFirstCursor = (
   contractId: string,
-  options?: { startBlock?: number },
+  options: { chainId: number; startBlock?: number },
 ): Effect.Effect<string | null, StacksApiError, StacksClient> =>
   Effect.gen(function* getContractEventsFirstCursor() {
     const client = yield* StacksClient;
@@ -242,7 +264,7 @@ export const getContractEventsFirstCursor = (
     const deploymentBlockHeight = contract.block.height;
 
     const initialBlockHeight =
-      options?.startBlock === undefined
+      options.startBlock === undefined
         ? deploymentBlockHeight
         : Math.max(deploymentBlockHeight, options.startBlock);
 
@@ -287,12 +309,13 @@ export const getContractEventsFirstCursor = (
         const itemBlockHeight = item.transaction.block.height;
 
         const isBeforeStart =
-          options?.startBlock !== undefined && itemBlockHeight < options.startBlock;
+          options.startBlock !== undefined && itemBlockHeight < options.startBlock;
 
         if (!isBeforeStart) {
           const cursorResult = yield* checkTransactionForMatchingEvent(
             item.transaction,
             contractId,
+            options.chainId,
           );
 
           if (cursorResult) {

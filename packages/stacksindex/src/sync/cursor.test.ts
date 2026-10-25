@@ -10,6 +10,7 @@ import { RateLimiter } from "effect/persistence";
 import { afterAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { StacksClient } from "../datasources/api/index.ts";
+import { MAINNET_CHAIN_ID, TESTNET_CHAIN_ID } from "../lib/network.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import {
   buildLogsCursor,
@@ -115,6 +116,9 @@ const runRequestExit = <A, E>(effect: Effect.Effect<A, E, StacksClient>) =>
 
 const contractId = "SP123.token";
 
+/** Last mainnet Bitcoin height before epoch 2.5, where microblocks were still allowed. */
+const PRE_EPOCH_2_5 = { height: 840_359 };
+
 const mockBody = <T>(data: T) => ({
   json: () => Promise.resolve(data),
 });
@@ -136,7 +140,9 @@ describe("contract events first cursor", () => {
       headers: { "content-type": "application/json" },
     });
 
-    const result = await runRequestExit(getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID }),
+    );
 
     await expectStatusError(result, {
       status: 404,
@@ -173,7 +179,9 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(contractId));
+    const result = await runRequest(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID }),
+    );
 
     expect(result).toBeNull();
   });
@@ -200,13 +208,28 @@ describe("contract events first cursor", () => {
             cursor: { next: null, previous: null, current: "curr" },
             results: [
               {
-                transaction: { tx_id: "tx-3", event_count: 1, block: { height: 100, tx_index: 2 } },
+                transaction: {
+                  tx_id: "tx-3",
+                  event_count: 1,
+                  block: { height: 100, tx_index: 2 },
+                  bitcoin_block: PRE_EPOCH_2_5,
+                },
               },
               {
-                transaction: { tx_id: "tx-2", event_count: 1, block: { height: 100, tx_index: 1 } },
+                transaction: {
+                  tx_id: "tx-2",
+                  event_count: 1,
+                  block: { height: 100, tx_index: 1 },
+                  bitcoin_block: PRE_EPOCH_2_5,
+                },
               },
               {
-                transaction: { tx_id: "tx-1", event_count: 2, block: { height: 100, tx_index: 0 } },
+                transaction: {
+                  tx_id: "tx-1",
+                  event_count: 2,
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: PRE_EPOCH_2_5,
+                },
               },
             ],
           }),
@@ -239,7 +262,9 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(contractId));
+    const result = await runRequest(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID }),
+    );
 
     expect(result).toBe("100:0:0:2");
   });
@@ -266,10 +291,20 @@ describe("contract events first cursor", () => {
             cursor: { next: null, previous: null, current: "curr" },
             results: [
               {
-                transaction: { tx_id: "tx-2", event_count: 1, block: { height: 200, tx_index: 1 } },
+                transaction: {
+                  tx_id: "tx-2",
+                  event_count: 1,
+                  block: { height: 200, tx_index: 1 },
+                  bitcoin_block: PRE_EPOCH_2_5,
+                },
               },
               {
-                transaction: { tx_id: "tx-1", event_count: 1, block: { height: 200, tx_index: 0 } },
+                transaction: {
+                  tx_id: "tx-1",
+                  event_count: 1,
+                  block: { height: 200, tx_index: 0 },
+                  bitcoin_block: PRE_EPOCH_2_5,
+                },
               },
             ],
           }),
@@ -323,7 +358,9 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(contractId));
+    const result = await runRequest(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID }),
+    );
 
     expect(result).toBe("200:0:1:1");
   });
@@ -350,10 +387,20 @@ describe("contract events first cursor", () => {
             cursor: { next: null, previous: null, current: "curr" },
             results: [
               {
-                transaction: { tx_id: "tx-2", event_count: 0, block: { height: 201, tx_index: 0 } },
+                transaction: {
+                  tx_id: "tx-2",
+                  event_count: 0,
+                  block: { height: 201, tx_index: 0 },
+                  bitcoin_block: PRE_EPOCH_2_5,
+                },
               },
               {
-                transaction: { tx_id: "tx-1", event_count: 0, block: { height: 200, tx_index: 3 } },
+                transaction: {
+                  tx_id: "tx-1",
+                  event_count: 0,
+                  block: { height: 200, tx_index: 3 },
+                  bitcoin_block: PRE_EPOCH_2_5,
+                },
               },
             ],
           }),
@@ -363,7 +410,9 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(contractId));
+    const result = await runRequest(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID }),
+    );
 
     expect(result).toBeNull();
   });
@@ -396,6 +445,7 @@ describe("contract events first cursor", () => {
                   tx_id: "tx-none",
                   event_count: 0,
                   block: { height: 1, tx_index: 0 },
+                  bitcoin_block: PRE_EPOCH_2_5,
                 },
               },
             ],
@@ -415,7 +465,14 @@ describe("contract events first cursor", () => {
             total: 60,
             cursor: { next: "1:0:0", previous: null, current: "page_2_cursor" },
             results: [
-              { transaction: { tx_id: "tx-1", event_count: 1, block: { height: 2, tx_index: 0 } } },
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  event_count: 1,
+                  block: { height: 2, tx_index: 0 },
+                  bitcoin_block: PRE_EPOCH_2_5,
+                },
+              },
             ],
           }),
         };
@@ -446,7 +503,9 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(contractId));
+    const result = await runRequest(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID }),
+    );
 
     expect(result).toBe("2:0:0:0");
   });
@@ -476,7 +535,9 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequestExit(getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID }),
+    );
 
     await expectStatusError(result, {
       status: 400,
@@ -507,7 +568,12 @@ describe("contract events first cursor", () => {
             cursor: { next: null, previous: null, current: "curr" },
             results: [
               {
-                transaction: { tx_id: "tx-1", event_count: 1, block: { height: 100, tx_index: 0 } },
+                transaction: {
+                  tx_id: "tx-1",
+                  event_count: 1,
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: PRE_EPOCH_2_5,
+                },
               },
             ],
           }),
@@ -548,7 +614,9 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequestExit(getContractEventsFirstCursor(contractId));
+    const result = await runRequestExit(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID }),
+    );
 
     await expectStatusError(result, {
       status: 400,
@@ -583,6 +651,7 @@ describe("contract events first cursor", () => {
                   tx_id: "tx-anchor",
                   event_count: 1,
                   block: { height: 132191, tx_index: 6 },
+                  bitcoin_block: PRE_EPOCH_2_5,
                 },
               },
             ],
@@ -627,7 +696,9 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(contractId));
+    const result = await runRequest(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID }),
+    );
 
     expect(result).toBe("132191:2147483647:6:0");
   });
@@ -658,6 +729,7 @@ describe("contract events first cursor", () => {
                   tx_id: "tx-mb",
                   event_count: 1,
                   block: { height: 147279, tx_index: 161 },
+                  bitcoin_block: PRE_EPOCH_2_5,
                 },
               },
             ],
@@ -702,9 +774,113 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(contractId));
+    const result = await runRequest(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID }),
+    );
 
     expect(result).toBe("147279:14:161:3");
+  });
+
+  test.each([
+    { name: "mainnet from epoch 2.5", chainId: MAINNET_CHAIN_ID, bitcoinHeight: 840_360 },
+    { name: "testnet from epoch 2.5", chainId: TESTNET_CHAIN_ID, bitcoinHeight: 6 },
+  ])("uses the anchor-block microblock_sequence without v1 on $name", async (chain) => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
+        return { statusCode: 200, body: mockBody({ block: { height: 100 } }) };
+      }
+
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  event_count: 1,
+                  block: { height: 100, tx_index: 4 },
+                  bitcoin_block: { height: chain.bitcoinHeight },
+                },
+              },
+            ],
+          }),
+        };
+      }
+
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              { event_index: 2, type: "contract_log", contract_log: { contract_id: contractId } },
+            ],
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const result = await runRequest(
+      getContractEventsFirstCursor(contractId, { chainId: chain.chainId }),
+    );
+
+    expect(result).toBe("100:2147483647:4:2");
+    expect(mockRequest.mock.calls.map(([url]) => String(url))).not.toContainEqual(
+      expect.stringContaining("/extended/v1/tx/"),
+    );
+  });
+
+  test("looks up microblock_sequence on a chain with an unknown epoch 2.5 height", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url.includes(`/extended/v3/smart-contracts/${contractId}`)) {
+        return { statusCode: 200, body: mockBody({ block: { height: 100 } }) };
+      }
+
+      if (url.includes(`/extended/v3/principals/${contractId}/transactions`)) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            cursor: { next: null, previous: null, current: "curr" },
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  event_count: 1,
+                  block: { height: 100, tx_index: 4 },
+                  bitcoin_block: { height: 900_000 },
+                },
+              },
+            ],
+          }),
+        };
+      }
+
+      if (url.includes("/extended/v3/transactions/tx-1/events")) {
+        return {
+          statusCode: 200,
+          body: mockBody({
+            cursor: { next: null, previous: null, current: "0" },
+            results: [
+              { event_index: 2, type: "contract_log", contract_log: { contract_id: contractId } },
+            ],
+          }),
+        };
+      }
+
+      if (url.includes("/extended/v1/tx/tx-1")) {
+        return { statusCode: 200, body: mockBody({ microblock_sequence: 14 }) };
+      }
+
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const result = await runRequest(getContractEventsFirstCursor(contractId, { chainId: 12_345 }));
+
+    expect(result).toBe("100:14:4:2");
   });
 
   test("uses startBlock when startBlock is greater than deployment block height", async () => {
@@ -737,6 +913,7 @@ describe("contract events first cursor", () => {
                   tx_id: "tx-150",
                   event_count: 1,
                   block: { height: 150, tx_index: 0 },
+                  bitcoin_block: PRE_EPOCH_2_5,
                 },
               },
             ],
@@ -769,7 +946,9 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(contractId, { startBlock: 150 }));
+    const result = await runRequest(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID, startBlock: 150 }),
+    );
 
     expect(result).toBe("150:0:0:0");
   });
@@ -804,6 +983,7 @@ describe("contract events first cursor", () => {
                   tx_id: "tx-100",
                   event_count: 1,
                   block: { height: 100, tx_index: 0 },
+                  bitcoin_block: PRE_EPOCH_2_5,
                 },
               },
             ],
@@ -836,7 +1016,9 @@ describe("contract events first cursor", () => {
       throw new Error(`Unexpected URL: ${url}`);
     });
 
-    const result = await runRequest(getContractEventsFirstCursor(contractId, { startBlock: 50 }));
+    const result = await runRequest(
+      getContractEventsFirstCursor(contractId, { chainId: MAINNET_CHAIN_ID, startBlock: 50 }),
+    );
 
     expect(result).toBe("100:0:0:0");
   });

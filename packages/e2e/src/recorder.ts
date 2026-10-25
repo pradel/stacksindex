@@ -145,7 +145,7 @@ const sanitizePrincipalTransactions = (body: JsonObject): JsonValue => {
           return item;
         }
 
-        const { block } = tx;
+        const { block, bitcoin_block: bitcoinBlock } = tx;
         const transaction: JsonObject = { tx_id: tx.tx_id, event_count: tx.event_count };
 
         if (isJsonObject(block)) {
@@ -153,6 +153,10 @@ const sanitizePrincipalTransactions = (body: JsonObject): JsonValue => {
             height: block.height,
             tx_index: block.tx_index,
           };
+        }
+
+        if (isJsonObject(bitcoinBlock)) {
+          transaction.bitcoin_block = { height: bitcoinBlock.height };
         }
 
         return { transaction };

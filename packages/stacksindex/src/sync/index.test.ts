@@ -141,6 +141,7 @@ const withDiscovery = (api: FakeApi, first: ChainEvent): StacksClientService => 
             tx_id: first.txId,
             event_count: 1,
             block: { height: first.height, tx_index: 0 },
+            bitcoin_block: { height: first.height },
           },
         },
       ],

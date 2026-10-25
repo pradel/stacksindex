@@ -426,7 +426,15 @@ describe("historical runtime", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -738,7 +746,15 @@ describe("historical runtime", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-a-init", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-a-init",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -762,7 +778,15 @@ describe("historical runtime", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-b-init", block: { height: 50, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-b-init",
+                  block: { height: 50, tx_index: 0 },
+                  bitcoin_block: { height: 50 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -1189,7 +1213,15 @@ describe("historical runtime", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -1332,7 +1364,15 @@ describe("historical runtime", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -1643,7 +1683,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-a-init", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-a-init",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -1667,7 +1715,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-b-init", block: { height: 50, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-b-init",
+                  block: { height: 50, tx_index: 0 },
+                  bitcoin_block: { height: 50 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -1828,7 +1884,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -2664,7 +2728,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -2898,7 +2970,15 @@ describe("historical runtime with handlers", () => {
               limit: 50,
               total: 1,
               cursor: { next: null, previous: null, current: "curr" },
-              results: [{ transaction: { tx_id: "tx-1", block: { height: 1234, tx_index: 0 } } }],
+              results: [
+                {
+                  transaction: {
+                    tx_id: "tx-1",
+                    block: { height: 1234, tx_index: 0 },
+                    bitcoin_block: { height: 1234 },
+                  },
+                },
+              ],
             }),
           };
         }
@@ -3287,7 +3367,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "100:0:0" },
-            results: [{ transaction: { tx_id: "tx-100", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-100",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -3421,7 +3509,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "100:0:0" },
-            results: [{ transaction: { tx_id: "tx-100", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-100",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -3603,7 +3699,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "200:0:0" },
-            results: [{ transaction: { tx_id: "tx-200", block: { height: 200, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-200",
+                  block: { height: 200, tx_index: 0 },
+                  bitcoin_block: { height: 200 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -3673,7 +3777,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "100:0:0" },
-            results: [{ transaction: { tx_id: "tx-100", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-100",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -3859,7 +3971,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "100:0:0" },
-            results: [{ transaction: { tx_id: "tx-100", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-100",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -4420,9 +4540,27 @@ describe("historical runtime with handlers", () => {
             total: 3,
             cursor: { next: null, previous: null, current: "100:0:0" },
             results: [
-              { transaction: { tx_id: "tx-100-3", block: { height: 100, tx_index: 30 } } },
-              { transaction: { tx_id: "tx-100-2", block: { height: 100, tx_index: 20 } } },
-              { transaction: { tx_id: "tx-100-1", block: { height: 100, tx_index: 10 } } },
+              {
+                transaction: {
+                  tx_id: "tx-100-3",
+                  block: { height: 100, tx_index: 30 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+              {
+                transaction: {
+                  tx_id: "tx-100-2",
+                  block: { height: 100, tx_index: 20 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+              {
+                transaction: {
+                  tx_id: "tx-100-1",
+                  block: { height: 100, tx_index: 10 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
             ],
           }),
         };
@@ -4624,9 +4762,27 @@ describe("historical runtime with handlers", () => {
             total: 3,
             cursor: { next: null, previous: null, current: "100:0:0" },
             results: [
-              { transaction: { tx_id: "tx-100-3", block: { height: 100, tx_index: 30 } } },
-              { transaction: { tx_id: "tx-100-2", block: { height: 100, tx_index: 20 } } },
-              { transaction: { tx_id: "tx-100-1", block: { height: 100, tx_index: 10 } } },
+              {
+                transaction: {
+                  tx_id: "tx-100-3",
+                  block: { height: 100, tx_index: 30 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+              {
+                transaction: {
+                  tx_id: "tx-100-2",
+                  block: { height: 100, tx_index: 20 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+              {
+                transaction: {
+                  tx_id: "tx-100-1",
+                  block: { height: 100, tx_index: 10 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
             ],
           }),
         };
@@ -4899,7 +5055,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1", block: { height: 50, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  block: { height: 50, tx_index: 0 },
+                  bitcoin_block: { height: 50 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -5150,7 +5314,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -5291,7 +5463,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
@@ -5385,7 +5565,15 @@ describe("historical runtime with handlers", () => {
             limit: 50,
             total: 1,
             cursor: { next: null, previous: null, current: "curr" },
-            results: [{ transaction: { tx_id: "tx-1", block: { height: 100, tx_index: 0 } } }],
+            results: [
+              {
+                transaction: {
+                  tx_id: "tx-1",
+                  block: { height: 100, tx_index: 0 },
+                  bitcoin_block: { height: 100 },
+                },
+              },
+            ],
           }),
         };
       }
