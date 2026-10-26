@@ -285,10 +285,25 @@ const mapResults = (
 const sanitizeBlock = (body: JsonObject): JsonValue =>
   pickFields(body, ["height", "hash", "index_block_hash", "burn_block_time", "burn_block_height"]);
 
-// `GET /extended/v2/blocks` pages (offset paging near the chain head).
+// `GET /extended/v2/blocks` pages: rows feed live heads and the blocks linking
+// A head to the anchor (`toLightBlock`), which also read the parent hash, the
+// Stacks block time, the tenure height and the transaction count.
+const sanitizeBlocksPageRow = (row: JsonObject): JsonValue =>
+  pickFields(row, [
+    "height",
+    "hash",
+    "index_block_hash",
+    "burn_block_time",
+    "burn_block_height",
+    "parent_block_hash",
+    "block_time",
+    "tenure_height",
+    "tx_count",
+  ]);
+
 const sanitizeBlocksPage = (body: JsonObject): JsonValue => ({
   ...pickFields(body, ["limit", "offset", "total"]),
-  results: mapResults(body, sanitizeBlock) ?? null,
+  results: mapResults(body, sanitizeBlocksPageRow) ?? null,
 });
 
 // `GET /extended/v3/blocks` pages: block sources read these rows' Stacks

@@ -213,7 +213,7 @@ the safe height with contracts:
    │ Window: the source's heights within 30 consecutive       │
    │ heights of its next one, skipping heights in `blocks`    │
    │ < 3 missing -> GET /extended/v2/blocks/{height} each     │
-   │               (404: skipped)                             │
+   │               (404: the window fails, progress stays)    │
    │ ≥ 3 missing -> GET /extended/v3/blocks                   │
    │                  ?cursor={highest missing}&limit={span}  │
    │              + GET /extended/v3/bitcoin-blocks           │
@@ -291,12 +291,12 @@ flowchart TD
   H[head from BlockHeads<br/>polling or websocket] --> D[repeated hashes dropped<br/>only the newest head kept]
   D --> S{head is the anchor<br/>or below it?}
   S -- yes --> H
-  S -- no --> P{blocks link the head to the anchor<br/>and cost fewer requests than<br/>one logs page per contract?}
+  S -- no --> P{blocks link the head to the anchor<br/>and cost fewer requests than<br/>one logs page per contract<br/>plus block source windows?}
   P -- yes --> B[per block: block transactions<br/>then each transaction's events]
   P -- no --> C[per contract: newest logs pages<br/>after verifying the anchor]
   B --> I[anchor = head, index up to head]
   C --> I
-  I --> E{every contract past its endBlock?}
+  I --> E{every contract and block source<br/>past its endBlock?}
   E -- no --> H
   E -- yes --> X[done]
 ```
@@ -391,8 +391,8 @@ The core handler contract is Effect-only: `CoreHandler` reads the batch transact
 
 ### Entrypoints
 
-- `stacksindex` — promise-native facade: `defineIndexer({ contracts, relations })` returns `{ contracts, handler, create }`. `create({ database, migrations, chain, api, finality, live, logLevel, telemetry, handlers })` owns the database and runtime lifecycle and returns `{ db, run, live, status, close, [Symbol.asyncDispose] }`. `run` returns a `RunResult`; `live` resolves when every contract reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter. `database` is `pglite(directory?)` or `postgres(connectionString)`.
-- `stacksindex/effect` — Effect-native facade: `defineIndexer` returns `{ contracts, Db, Client, handler, layer }`; `layer(options)` provides `Indexer | IndexerDatabase` and fails with `ConfigurationError | DatabaseError | MigrationError`. Also exports the `Indexer` service tag.
+- `stacksindex` — promise-native facade: `defineIndexer({ contracts?, blocks?, relations? })` returns `{ contracts, blocks, handler, create }`. `create({ database, migrations, chain, api, finality, live, logLevel, telemetry, handlers })` owns the database and runtime lifecycle and returns `{ db, run, live, status, close, [Symbol.asyncDispose] }`. `run` returns a `RunResult`; `live` resolves when every contract and block source reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter. `database` is `pglite(directory?)` or `postgres(connectionString)`.
+- `stacksindex/effect` — Effect-native facade: `defineIndexer({ contracts?, blocks?, relations? })` returns `{ contracts, blocks, Db, Client, handler, layer }`; `layer(options)` provides `Indexer | IndexerDatabase` and fails with `ConfigurationError | DatabaseError | MigrationError`. Also exports the `Indexer` service tag.
 - `stacksindex/clarity` — the Clarity codec: `decodeHex`, `cvToJSON`, `decodeClarityValue`, `decodeClarityWithSchema`, `encodeUint`, `ClarityTypeID`.
 
 ### Run result and status
@@ -404,7 +404,7 @@ The core handler contract is Effect-only: `CoreHandler` reads the batch transact
 The runtime is composed from Effect services and layers (internal; the facades build them):
 
 - `IndexerDatabase` — the Drizzle database; `IndexerDatabase.layer(database, { relations, migrations })` opens it, applies the sync store migrations then the user's, and `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service.
-- `Indexer` — `Indexer.layer({ chain, api, finality, live, contracts })` builds the Stacks API client and the in-memory `RunPhase`, and requires `IndexerDatabase`; the service exposes `run`, `live` and `status` effects with no arguments. `run` and `live` set the phase (`backfill`, then `done`, `failed`, or `idle` when interrupted; `runLive` sets `live` once it follows new heads) and add the `chain_id` attribute to every metric recorded inside through `Metric.CurrentMetricAttributes`. `status` combines the phase with the stored checkpoint, sync anchor and per-contract sync progress. `Indexer.layerWithDatabase({ database, migrations, relations, chain, api, finality, live, logLevel, telemetry, contracts })` provides the indexer, database, logger and, with `telemetry.otlp`, the metrics exporter in one layer.
+- `Indexer` — `Indexer.layer({ chain, api, finality, live, contracts, blocks })` builds the Stacks API client and the in-memory `RunPhase`, and requires `IndexerDatabase`; the service exposes `run`, `live` and `status` effects with no arguments. `run` and `live` set the phase (`backfill`, then `done`, `failed`, or `idle` when interrupted; `runLive` sets `live` once it follows new heads) and add the `chain_id` attribute to every metric recorded inside through `Metric.CurrentMetricAttributes`. `status` combines the phase with the stored checkpoint, sync anchor and per-contract and per-block-source sync progress. `Indexer.layerWithDatabase({ database, migrations, relations, chain, api, finality, live, logLevel, telemetry, contracts, blocks })` provides the indexer, database, logger and, with `telemetry.otlp`, the metrics exporter in one layer.
 - `Indexing` — `createIndexing({ contracts, client })` decodes and executes handlers inside `IndexerDatabase.transaction`.
 - `HandlerClient` — the read-only client pinned to the handled event's index block hash, provided per event.
 - `telemetryLayer(telemetry)` — `OtlpMetrics.layer` over the fetch HTTP client with protobuf serialization, posting to `${baseUrl}/v1/metrics`. Metrics are defined once in `lib/metrics.ts` and recorded in Effect's default `MetricRegistry`; per-contract series carry `contract` (definition name) and `contract_id`. Nothing is served over HTTP. Closing the layer flushes the last snapshot.

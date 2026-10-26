@@ -1,5 +1,4 @@
-import { Effect, Metric, Predicate } from "effect";
-import { HttpClientError } from "effect/http";
+import { Effect, Metric } from "effect";
 
 import { IndexerDatabase } from "../database/index.ts";
 import {
@@ -154,22 +153,22 @@ export function initBlockSyncState(
   });
 }
 
-const isNotFound = (error: StacksHttpError): boolean =>
-  HttpClientError.isHttpClientError(error) &&
-  Predicate.isTagged(error.reason, "StatusCodeError") &&
-  error.reason.response.status === 404;
-
-/** The canonical block at `height`, or `undefined` when there is none (e.g. height 0). */
+/**
+ * The canonical block at `height`. A missing block fails the window rather
+ * than being skipped: heights up to the pass's tip exist on the canonical
+ * chain, so a 404 (e.g. an API replica lagging behind the tip) must not let
+ * the source's progress pass the height.
+ */
 function fetchBlock(
   state: BlockSyncState,
   height: number,
-): Effect.Effect<StorableBlock | undefined, StacksHttpError, StacksClient> {
+): Effect.Effect<StorableBlock, StacksHttpError, StacksClient> {
   return Effect.gen(function* () {
     const client = yield* StacksClient;
     state.requests += 1;
 
     return yield* client.getBlock(height);
-  }).pipe(Effect.catchIf(isNotFound, () => Effect.succeed(undefined)));
+  });
 }
 
 /**
@@ -285,11 +284,7 @@ function fetchBlocks(
     }
 
     for (const height of missing) {
-      const block = yield* fetchBlock(state, height);
-
-      if (block !== undefined) {
-        blocks.push(block);
-      }
+      blocks.push(yield* fetchBlock(state, height));
     }
 
     return blocks;

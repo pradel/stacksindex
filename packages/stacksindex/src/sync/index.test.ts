@@ -842,19 +842,17 @@ describe("sync historical block sources", () => {
     });
   });
 
-  test("skips heights where the chain has no block", async () => {
+  test("fails without raising progress when the API has no block at a height", async () => {
     mineTo(130);
 
-    // Heights 90..99 are below the fake chain's first block.
-    await runBlockSync([{ name: "Early", interval: 40, startBlock: 50 }], 130);
+    // Height 50 is below the fake chain's first block: the API answers 404.
+    await expect(
+      runBlockSync([{ name: "Early", interval: 40, startBlock: 50 }], 130),
+    ).rejects.toMatchObject({ reason: { response: { status: 404 } } });
 
-    expect(blockRequests()).toStrictEqual([
-      "/extended/v2/blocks/50",
-      "/extended/v2/blocks/90",
-      "/extended/v2/blocks/130",
-    ]);
-    await expect(storedHeights()).resolves.toStrictEqual([130]);
-    await expect(getBlockProgress("Early")).resolves.toMatchObject({ syncedBlockHeight: 130n });
+    expect(blockRequests()).toStrictEqual(["/extended/v2/blocks/50"]);
+    await expect(storedHeights()).resolves.toStrictEqual([]);
+    await expect(getBlockProgress("Early")).resolves.toMatchObject({ syncedBlockHeight: 49n });
   });
 
   test("does not request heights already stored", async () => {
@@ -911,20 +909,23 @@ describe("sync historical block sources", () => {
     await expect(getBlockProgress("Every5")).resolves.toMatchObject({ syncedBlockHeight: 160n });
   });
 
-  test("reads heights a blocks page misses one by one", async () => {
+  test("reads heights a blocks page misses one by one, failing the window on a missing block", async () => {
     mineTo(110);
 
-    // 90 and 95 are below the fake chain's first block (100).
-    await runBlockSync([{ name: "Early", interval: 5, startBlock: 90 }], 110);
+    // 90 and 95 are below the fake chain's first block (100): the page lacks
+    // Them and reading them directly answers 404.
+    await expect(
+      runBlockSync([{ name: "Early", interval: 5, startBlock: 90 }], 110),
+    ).rejects.toMatchObject({ reason: { response: { status: 404 } } });
 
     expect(blockRequests()).toStrictEqual([
       "/extended/v3/blocks?cursor=110&limit=21",
       "/extended/v3/bitcoin-blocks?cursor=110&limit=11",
       "/extended/v2/blocks/90",
-      "/extended/v2/blocks/95",
     ]);
-    await expect(storedHeights()).resolves.toStrictEqual([100, 105, 110]);
-    await expect(getBlockProgress("Early")).resolves.toMatchObject({ syncedBlockHeight: 110n });
+    // The window stores nothing: its blocks and progress commit together.
+    await expect(storedHeights()).resolves.toStrictEqual([]);
+    await expect(getBlockProgress("Early")).resolves.toMatchObject({ syncedBlockHeight: 89n });
   });
 
   test("resumes from saved progress without new block requests", async () => {

@@ -195,7 +195,7 @@ describe("scenario recorder", () => {
     ).toStrictEqual(storedBlock(42));
   });
 
-  test("sanitizes every row of a blocks page and keeps its paging fields", () => {
+  test("sanitizes every row of a blocks page to the fields heads read and keeps its paging fields", () => {
     const body = {
       limit: 30,
       offset: 120,
@@ -210,7 +210,13 @@ describe("scenario recorder", () => {
       limit: 30,
       offset: 120,
       total: 1000,
-      results: [storedBlock(43), storedBlock(42)],
+      results: [43, 42].map((height) => ({
+        ...storedBlock(height),
+        parent_block_hash: "0xparent",
+        block_time: 1_700_000_000,
+        tenure_height: 200,
+        tx_count: 4,
+      })),
     });
   });
 

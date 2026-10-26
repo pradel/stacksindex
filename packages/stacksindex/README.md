@@ -215,7 +215,7 @@ await using app = await indexer.create({
   handlers: { satoshibles },
 });
 
-// Resolves once every contract reached its `endBlock`, or when `close()` is called.
+// Resolves once every contract and block source reached its `endBlock`, or when `close()` is called.
 await app.live();
 ```
 
@@ -500,14 +500,14 @@ The definition exposes `handler(name, fn)` and `create(options)` (promise) or `D
 
 ### `Indexer` (Promise)
 
-| Member                  | Description                                                                                                                                      |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `run()`                 | Syncs and indexes every contract up to the current chain tip; resolves with a `RunResult`.                                                       |
-| `live()`                | Runs `run`, then follows new blocks. Resolves when every contract reached its `endBlock` or on `close()`; rejects on a fatal error.              |
-| `db`                    | Database handle outside any batch, to query your tables (e.g. from an API) and the indexer's. On PGlite, queries wait for the batch in progress. |
-| `status()`              | Resolves with the current [`IndexerStatus`](#indexerstatus).                                                                                     |
-| `close()`               | Stops live sync, flushes pending metrics and releases database and runtime resources. Safe to call multiple times.                               |
-| `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                                       |
+| Member                  | Description                                                                                                                                          |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run()`                 | Syncs and indexes every contract and block source up to the current chain tip; resolves with a `RunResult`.                                          |
+| `live()`                | Runs `run`, then follows new blocks. Resolves when every contract and block source reached its `endBlock` or on `close()`; rejects on a fatal error. |
+| `db`                    | Database handle outside any batch, to query your tables (e.g. from an API) and the indexer's. On PGlite, queries wait for the batch in progress.     |
+| `status()`              | Resolves with the current [`IndexerStatus`](#indexerstatus).                                                                                         |
+| `close()`               | Stops live sync, flushes pending metrics and releases database and runtime resources. Safe to call multiple times.                                   |
+| `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                                           |
 
 ### RunResult
 
