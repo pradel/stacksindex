@@ -94,3 +94,12 @@ export class ReorgError extends Schema.TaggedError<ReorgError>()("ReorgError", {
   blockHeight: Schema.Number,
   message: Schema.String,
 }) {}
+
+/**
+ * Raised when another indexer of the same chain, in this process or another,
+ * is running against the database.
+ */
+export class LockError extends Schema.TaggedError<LockError>()("LockError", {
+  chainId: Schema.Number,
+  message: Schema.String,
+}) {}

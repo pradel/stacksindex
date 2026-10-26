@@ -177,7 +177,9 @@ await app.live();
 - **New blocks**: `"polling"` (default) asks the API for the latest block every `pollingInterval` milliseconds. `"websocket"` subscribes to new blocks on `/extended/v1/ws`; after 9 consecutive connection failures it falls back to polling for good.
 - **Fetching**: each new head is fetched the cheaper way. Block by block, it lists the block's transactions and their events. Contract by contract, it reads each contract's newest logs page. Several heads that arrive while one is processed are fetched together.
 - **Reorgs**: a head whose parent is the previous head needs no check. Otherwise the previous head's hash is compared with the canonical chain, and a reorged range is replayed as described in [Crash Recovery & Reorgs](#crash-recovery--reorgs).
-- **Errors**: API failures are retried with the next head; `live` fails only after 10 consecutive failures spanning 10 minutes. Handler, decode, database and finalized-reorg errors fail it at once.
+- **Errors**: a failed pass, the historical one before following heads included, is retried: with the next head, or after `pollingInterval` milliseconds for the historical pass. `live` fails only after 10 consecutive failed passes spanning 10 minutes. Configuration, handler, decode, database and finalized-reorg errors fail it at once.
+
+Each Stacks API request is retried 6 times over about 30 seconds on network errors, 30-second timeouts and 408/5xx responses, and on 429 after the `Retry-After` delay.
 
 Without an API key the Hiro API allows 50 requests per minute. Polling every 5 seconds uses 12 of them; lower `pollingInterval` only with an API key, or use the websocket.
 
@@ -240,7 +242,7 @@ await Effect.runPromise(
 - **`indexer.handler(name, fn)`** types a handler from its contract's definition: `(event) => Effect<void, E, R>`.
 - **`indexer.Db`** yields the database typed by `relations`; inside a handler it is the batch transaction. **`indexer.Client`** yields the read-only client pinned to the handled event's block (handlers only); its `callReadOnly` returns an `Effect`.
 - **`indexer.layer(options)`** takes the same options as `create` and provides `Indexer` and `IndexerDatabase`, Effect's pretty console logger and, with `telemetry.otlp`, the metrics exporter. It fails with `ConfigurationError`, `DatabaseError` or `MigrationError`. Services your handlers require beyond `IndexerDatabase` and `HandlerClient` become requirements of the layer: provide them to it.
-- **`Indexer`** is the service: `run` (`Effect<RunResult, IndexerError>`), `live` (`Effect<void, IndexerError>`; interrupting the fiber stops live sync) and `status` (the current [`IndexerStatus`](#indexerstatus)).
+- **`Indexer`** is the service: `run` (`Effect<RunResult, IndexerError>`), `live` (`Effect<void, IndexerError>`; interrupting the fiber stops live sync), `status` (the current [`IndexerStatus`](#indexerstatus)) and `reindex(clearTables?)` (see [Re-indexing](#re-indexing); `clearTables` is an `Effect` that can read `indexer.Db`).
 
 ---
 
@@ -276,21 +278,40 @@ Checkpoints and per-contract sync progress live in the indexer database, so `run
 
 Re-running on a schedule is cheap: a contract that is already synced costs a single request to the newest page of its logs, plus two requests per run (the chain tip and the reorg check). Events mined while a run is in progress are indexed by the next run, so handlers always see events in chain order.
 
-Every run, and every new head in live sync, checks for reorgs: it compares the hash of the chain tip saved by the previous pass with the canonical chain. When a reorg replaced stored blocks, the indexer rewinds to the newest stored block that is still canonical, refetches from there and replays the range through your handlers. Without a reorg nothing is replayed.
+Every run, and every new head in live sync, checks for reorgs: it compares the hash of the chain tip saved by the previous pass with the canonical chain. When the previous pass could not read the chain tip, the newest stored block at or below the checkpoint is checked instead. When a reorg replaced stored blocks, the indexer rewinds to the newest stored block that is still canonical, refetches from there and replays the range through your handlers. Without a reorg nothing is replayed.
 
 Set `finality` to the deepest reorg you want handled automatically (default `6`). A reorg that replaces a block at or below `finalizedBlockHeight` fails with `ReorgError` instead of silently changing data reported as final; re-sync from an empty indexer database to recover. With `finality: 0`, any reorg that reaches indexed blocks fails this way.
 
-Handler writes through `context.db` commit in the same transaction as the checkpoint, so a crash or a failed batch never applies an event twice. A rewind (a chain reorg, or a start without a sync anchor) re-runs handlers for the unfinalized blocks it replays without undoing their writes: keep writes replay-safe (upsert or insert-if-absent by primary key) for that window. Writes to other systems (another database, an HTTP call) are at-least-once.
+Handler writes through `context.db` commit in the same transaction as the checkpoint, so a crash or a failed batch never applies an event twice. A rewind after a chain reorg re-runs handlers for the unfinalized blocks it replays without undoing their writes: keep writes replay-safe (upsert or insert-if-absent by primary key) for that window. Writes to other systems (another database, an HTTP call) are at-least-once.
 
 ### Changing contracts
 
 Every contract resumes from one shared checkpoint, so the indexer records the contracts it was run with (`id`, `startBlock`, `endBlock`) in the database, and `run` and `live` compare them with the definition before sending any request:
 
 - Removing or renaming a contract is accepted.
-- Adding a contract fails with `ConfigurationError` when blocks it covers were already processed, because its events in those blocks would never reach its handler. Give it a `startBlock` above the block named in the error to index only newer events, or re-index from an empty database.
+- Adding a contract fails with `ConfigurationError` when blocks it covers were already processed, because its events in those blocks would never reach its handler. Give it a `startBlock` above the block named in the error to index only newer events, or [re-index](#re-indexing).
 - Changing the `startBlock` or `endBlock` of a contract that was already indexed fails the same way.
 
-Handler code and `print` schemas are not compared: a change applies to the events indexed after it. Re-index from an empty database to apply it to earlier events.
+Handler code and `print` schemas are not compared: a change applies to the events indexed after it. [Re-index](#re-indexing) to apply it to earlier events.
+
+### Re-indexing
+
+`reindex(clearTables?)` makes the next `run` or `live` replay every stored event through your handlers, without fetching it from the Stacks API again. `clearTables` empties the tables your handlers write, in the same transaction that resets the indexer, so a failure leaves both as they were:
+
+```ts
+await app.reindex(async (db) => {
+  await db.delete(mints);
+});
+await app.run();
+```
+
+Call it with the changed definition: contracts added since the last run, or whose `startBlock` or `endBlock` changed, are fetched again over their range; the others keep their fetched data. It rejects with `LockError` while `run` or `live` is running.
+
+### One indexer per database
+
+`run` and `live` hold a lock on the database for their chain until they end; another indexer of that chain, in this process or another, fails with `LockError` instead of writing the same tables. On Postgres it is a session-level advisory lock, released if the process dies, so connect directly or through a session-mode pooler (PgBouncer's transaction mode does not keep it). PGlite is opened by a single process and needs no lock.
+
+Opening the database applies the indexer's migrations, then yours; processes opening the same Postgres database at once apply them one after the other. A database upgraded by a newer stacksindex, or holding data in a format this version cannot read, fails to open with `MigrationError` instead of being misread.
 
 ---
 
@@ -457,14 +478,15 @@ The definition exposes `handler(name, fn)` and `create(options)` (promise) or `D
 
 ### `Indexer` (Promise)
 
-| Member                  | Description                                                                                                                                      |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `run()`                 | Syncs and indexes every contract up to the current chain tip; resolves with a `RunResult`.                                                       |
-| `live()`                | Runs `run`, then follows new blocks. Resolves when every contract reached its `endBlock` or on `close()`; rejects on a fatal error.              |
-| `db`                    | Database handle outside any batch, to query your tables (e.g. from an API) and the indexer's. On PGlite, queries wait for the batch in progress. |
-| `status()`              | Resolves with the current [`IndexerStatus`](#indexerstatus).                                                                                     |
-| `close()`               | Stops live sync, flushes pending metrics and releases database and runtime resources. Safe to call multiple times.                               |
-| `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                                       |
+| Member                  | Description                                                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run()`                 | Syncs and indexes every contract up to the current chain tip; resolves with a `RunResult`.                                                                |
+| `live()`                | Runs `run`, then follows new blocks. Resolves when every contract reached its `endBlock` or on `close()`; rejects on a fatal error.                       |
+| `db`                    | Database handle outside any batch, to query your tables (e.g. from an API) and the indexer's. On PGlite, queries wait for the batch in progress.          |
+| `status()`              | Resolves with the current [`IndexerStatus`](#indexerstatus).                                                                                              |
+| `reindex(clearTables?)` | Makes the next `run` or `live` replay every stored event; `clearTables(db)` empties your tables in the same transaction. See [Re-indexing](#re-indexing). |
+| `close()`               | Stops live sync, flushes pending metrics and releases database and runtime resources. Safe to call multiple times.                                        |
+| `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                                                |
 
 ### RunResult
 
@@ -496,7 +518,8 @@ Both entrypoints export the error classes, each with a `_tag` of the same name:
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ConfigurationError`    | `defineIndexer`, `create` or `layer` receives an invalid definition or option, or `run`/`live` gets contracts the database cannot index without missing events ([Changing contracts](#changing-contracts)). |
 | `DatabaseError`         | The database cannot be opened or a query fails.                                                                                                                                                             |
-| `MigrationError`        | The indexer's or your migrations fail to apply.                                                                                                                                                             |
+| `MigrationError`        | The indexer's or your migrations fail to apply, or the database was upgraded by a newer stacksindex or holds data in a format this version cannot read.                                                     |
+| `LockError`             | Another indexer of the chain is running against the database, or `reindex` is called while `run` or `live` is running.                                                                                      |
 | `EventDecodeError`      | A print does not match its contract's `print` schema (with `onInvalid: "fail"`).                                                                                                                            |
 | `HandlerExecutionError` | A handler throws or fails; carries `contract`, `contractId` and the `cause`.                                                                                                                                |
 | `ReorgError`            | A reorg replaces a finalized block.                                                                                                                                                                         |

@@ -1,14 +1,15 @@
 import type { AnyRelations } from "drizzle-orm";
-import { Cause, Context, Effect, Exit, Layer, Metric, Ref } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Metric, Ref, Scope, Semaphore } from "effect";
 import { Socket } from "effect/socket";
 
 import { IndexerDatabase } from "../database/index.ts";
 import { StacksClient } from "../datasources/api/index.ts";
-import type {
-  ConfigurationError,
-  DatabaseError,
-  MigrationError,
-  SyncStoreError,
+import {
+  type ConfigurationError,
+  type DatabaseError,
+  LockError,
+  type MigrationError,
+  type SyncStoreError,
 } from "../lib/errors.ts";
 import { loggerLayer } from "../logger/index.ts";
 import { Sync } from "../sync/index.ts";
@@ -20,6 +21,7 @@ import {
   resolveIndexerConfig,
 } from "./config.ts";
 import type { ContractSpec } from "./contracts.ts";
+import { resetIndexing } from "./definition.ts";
 import { runHistorical, type RunResult } from "./historical.ts";
 import { runLive } from "./realtime.ts";
 import { type IndexerStatus, readIndexerStatus, RunPhase } from "./status.ts";
@@ -47,6 +49,16 @@ export interface IndexerService {
   readonly live: Effect.Effect<void, IndexerError>;
   /** Current phase plus the stored checkpoint, anchor and per-contract sync progress. */
   readonly status: Effect.Effect<IndexerStatus, SyncStoreError>;
+  /**
+   * Makes the next `run` or `live` replay every stored event through the
+   * handlers, keeping the fetched chain data. `clearTables` empties the
+   * tables the handlers write, in the same transaction. Contracts added or
+   * whose block range changed are fetched again over their range. Fails with
+   * `LockError` while `run` or `live` is running.
+   */
+  readonly reindex: <E = never>(
+    clearTables?: Effect.Effect<void, E, IndexerDatabase>,
+  ) => Effect.Effect<void, E | LockError | SyncStoreError | DatabaseError>;
 }
 
 export class Indexer extends Context.Service<Indexer, IndexerService>()(
@@ -72,35 +84,73 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
               const webSocketConstructor = yield* Socket.WebSocketConstructor;
               const phase = yield* RunPhase;
 
-              // Concurrent calls share the phase: only a call starting while none
-              // Is active moves it to "backfill", and only the last call to end
+              // Concurrent calls share the phase and the database lock: only a
+              // Call starting while none is active takes the lock and moves the
+              // Phase to "backfill", and only the last call to end releases it and
               // Sets the outcome. `runLive` moves it to "live" once it follows new heads.
               const activeCalls = yield* Ref.make(0);
+              const lockScope = yield* Ref.make<Scope.Closeable | undefined>(undefined);
+              // Serializes taking and releasing the lock with `reindex`.
+              const gate = yield* Semaphore.make(1);
+
+              const lock = Effect.gen(function* () {
+                const scope = yield* Scope.make();
+
+                const locked = yield* IndexerDatabase.lock(config.chainId).pipe(
+                  Scope.provide(scope),
+                  Effect.provideService(IndexerDatabase, database),
+                  Effect.onError(() => Scope.close(scope, Exit.void)),
+                );
+
+                if (!locked) {
+                  yield* Scope.close(scope, Exit.void);
+
+                  return yield* new LockError({
+                    chainId: config.chainId,
+                    message: `Another indexer of chain ${config.chainId} is running against this database; stop it first.`,
+                  });
+                }
+
+                return scope;
+              });
 
               const trackRun = <A>(
                 effect: Effect.Effect<A, IndexerError, RunPhase>,
               ): Effect.Effect<A, IndexerError> =>
                 Effect.acquireUseRelease(
-                  Ref.getAndUpdate(activeCalls, (count) => count + 1).pipe(
-                    Effect.flatMap((active) =>
-                      active === 0 ? Ref.set(phase, "backfill") : Effect.void,
-                    ),
+                  gate.withPermits(1)(
+                    Effect.gen(function* () {
+                      if ((yield* Ref.get(activeCalls)) === 0) {
+                        yield* Ref.set(lockScope, yield* lock);
+                        yield* Ref.set(phase, "backfill");
+                      }
+
+                      yield* Ref.update(activeCalls, (count) => count + 1);
+                    }),
                   ),
                   () => effect,
                   (_, exit) =>
-                    Ref.updateAndGet(activeCalls, (count) => count - 1).pipe(
-                      Effect.flatMap((active) =>
-                        active === 0
-                          ? Ref.set(
-                              phase,
-                              Exit.isSuccess(exit)
-                                ? "done"
-                                : Cause.hasInterruptsOnly(exit.cause)
-                                  ? "idle"
-                                  : "failed",
-                            )
-                          : Effect.void,
-                      ),
+                    gate.withPermits(1)(
+                      Effect.gen(function* () {
+                        if ((yield* Ref.updateAndGet(activeCalls, (count) => count - 1)) > 0) {
+                          return;
+                        }
+
+                        yield* Ref.set(
+                          phase,
+                          Exit.isSuccess(exit)
+                            ? "done"
+                            : Cause.hasInterruptsOnly(exit.cause)
+                              ? "idle"
+                              : "failed",
+                        );
+
+                        const scope = yield* Ref.getAndSet(lockScope, undefined);
+
+                        if (scope !== undefined) {
+                          yield* Scope.close(scope, Exit.void);
+                        }
+                      }),
                     ),
                 ).pipe(
                   Effect.provideService(RunPhase, phase),
@@ -129,6 +179,28 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
                   Effect.provideService(IndexerDatabase, database),
                   Effect.provideService(RunPhase, phase),
                 ),
+                reindex: (clearTables) =>
+                  gate
+                    .withPermits(1)(
+                      Effect.gen(function* () {
+                        if ((yield* Ref.get(activeCalls)) > 0) {
+                          return yield* new LockError({
+                            chainId: config.chainId,
+                            message:
+                              "Cannot reindex while `run` or `live` is running; stop it first.",
+                          });
+                        }
+
+                        const scope = yield* lock;
+
+                        yield* resetIndexing(
+                          config.chainId,
+                          options.contracts,
+                          clearTables ?? Effect.void,
+                        ).pipe(Effect.ensuring(Scope.close(scope, Exit.void)));
+                      }),
+                    )
+                    .pipe(Effect.provideService(IndexerDatabase, database)),
               });
             }),
           ).pipe(

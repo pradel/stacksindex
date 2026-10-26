@@ -83,8 +83,11 @@ function getCanonicalBlockHash(
  * followed by orphaned ones) and everything above it is refetched and
  * replayed. A reorg that replaced the finalized block fails the run.
  *
- * Without an anchor (first run, or the tip could not be read) the stored chain
- * cannot be verified, so everything above the finalized block is replayed.
+ * Without an anchor (the previous pass could not read the chain tip, so its
+ * indexing was not capped) the newest stored block at or below the checkpoint
+ * stands in for it: nothing above the checkpoint was indexed. Only when no
+ * block is stored there is the unfinalized range rewound unverified; it holds
+ * no stored event, so nothing is replayed through handlers.
  *
  * `anchorIsCanonical` skips the canonical-hash request when the caller already
  * proved the anchor canonical, e.g. a new head whose parent is the anchor.
@@ -101,7 +104,7 @@ export function reconcileWithCanonicalChain(
   StacksClient | IndexerDatabase
 > {
   return Effect.gen(function* () {
-    const anchor = yield* syncStore.getSyncAnchor({ chainId });
+    const storedAnchor = yield* syncStore.getSyncAnchor({ chainId });
     const checkpoint = yield* syncStore.getCheckpoint({ chainId });
     const finalizedBlockHeight = checkpoint === null ? 0 : Number(checkpoint.finalizedBlockHeight);
 
@@ -109,25 +112,34 @@ export function reconcileWithCanonicalChain(
       yield* recordCheckpointMetrics(checkpoint);
     }
 
+    let anchor = storedAnchor;
+
     if (anchor === null) {
-      // Unverifiable: replay the unfinalized indexed range, if there is one.
       if (checkpoint === null || Number(checkpoint.blockHeight) <= finalizedBlockHeight) {
         return;
       }
 
-      const replayed = yield* rewind(chainId, finalizedBlockHeight);
+      const checkpointBlock = (yield* syncStore.getStoredBlocks({
+        chainId,
+        fromBlockHeight: finalizedBlockHeight,
+        toBlockHeight: Number(checkpoint.blockHeight),
+      })).at(-1);
 
-      if (replayed !== null) {
-        yield* Effect.logWarning(
-          `Discarded unfinalized data from block ${replayed.fromBlockHeight}; refetching from block ${replayed.toBlockHeight + 1}`,
-        ).pipe(Effect.annotateLogs({ chainId, phase: "init", ...replayed }));
+      if (checkpointBlock === undefined) {
+        yield* rewind(chainId, finalizedBlockHeight);
+
+        return;
       }
 
-      return;
+      yield* Effect.logInfo(
+        `No chain tip saved by the previous pass; verifying stored block ${checkpointBlock.height} instead`,
+      ).pipe(Effect.annotateLogs({ chainId, phase: "init", block: checkpointBlock.height }));
+
+      anchor = { blockHeight: checkpointBlock.height, blockHash: checkpointBlock.hash };
     }
 
     if (
-      options?.anchorIsCanonical === true ||
+      (storedAnchor !== null && options?.anchorIsCanonical === true) ||
       (yield* getCanonicalBlockHash(anchor.blockHeight)) === anchor.blockHash
     ) {
       yield* rewind(chainId, anchor.blockHeight);

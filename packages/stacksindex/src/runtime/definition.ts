@@ -6,6 +6,16 @@ import { syncStore } from "../sync-store/index.ts";
 import type { RecordedContract } from "../sync-store/schema.ts";
 import type { ContractSpec } from "./contracts.ts";
 
+/** The contracts in `specs` as `meta` records them, ordered by id. */
+const toRecordedContracts = (specs: readonly ContractSpec[]): RecordedContract[] =>
+  specs
+    .map((spec) => ({
+      id: spec.contractId,
+      startBlock: spec.startBlock ?? null,
+      endBlock: spec.endBlock ?? null,
+    }))
+    .toSorted((a, b) => (a.id < b.id ? -1 : 1));
+
 /**
  * Compares the defined contracts with the ones recorded in the database by
  * the previous `run` or `live`, then records them.
@@ -23,13 +33,7 @@ export function checkContractDefinitions(
   chainId: number,
   specs: readonly ContractSpec[],
 ): Effect.Effect<void, ConfigurationError | SyncStoreError | DatabaseError, IndexerDatabase> {
-  const contracts: RecordedContract[] = specs
-    .map((spec) => ({
-      id: spec.contractId,
-      startBlock: spec.startBlock ?? null,
-      endBlock: spec.endBlock ?? null,
-    }))
-    .toSorted((a, b) => (a.id < b.id ? -1 : 1));
+  const contracts = toRecordedContracts(specs);
 
   return IndexerDatabase.transaction(() =>
     Effect.gen(function* () {
@@ -90,7 +94,7 @@ export function checkContractDefinitions(
           message: [
             "The contracts differ from the ones this database was indexed with:",
             ...problems.map((problem) => `- ${problem}`),
-            "Revert the change, or re-index from an empty database to apply it.",
+            "Revert the change, or call `reindex` to index every stored event again with it.",
           ].join("\n"),
         });
       }
@@ -110,6 +114,50 @@ export function checkContractDefinitions(
         }),
       );
 
+      yield* syncStore.recordContracts({ chainId, contracts });
+    }),
+  );
+}
+
+/**
+ * Makes the next `run` or `live` index every stored event from the start
+ * with `specs`, keeping the fetched chain data: `clearTables` empties the
+ * tables the handlers write, then the checkpoint is deleted, contracts added
+ * or whose block range changed since they were recorded lose their sync
+ * progress (so they are fetched over their new range), and `specs` are
+ * recorded. All in one transaction.
+ */
+export function resetIndexing<E>(
+  chainId: number,
+  specs: readonly ContractSpec[],
+  clearTables: Effect.Effect<void, E, IndexerDatabase>,
+): Effect.Effect<void, E | SyncStoreError | DatabaseError, IndexerDatabase> {
+  const contracts = toRecordedContracts(specs);
+
+  return IndexerDatabase.transaction(() =>
+    Effect.gen(function* () {
+      yield* clearTables;
+
+      const recorded = yield* syncStore.getRecordedContracts({ chainId });
+
+      // Without a record, there is no known range for the progress to differ from.
+      if (recorded !== null) {
+        const recordedById = new Map(recorded.map((contract) => [contract.id, contract]));
+
+        yield* syncStore.deleteSyncProgress({
+          chainId,
+          contractIds: contracts.flatMap((contract) => {
+            const before = recordedById.get(contract.id);
+
+            return before?.startBlock === contract.startBlock &&
+              before.endBlock === contract.endBlock
+              ? []
+              : [contract.id];
+          }),
+        });
+      }
+
+      yield* syncStore.deleteCheckpoint({ chainId });
       yield* syncStore.recordContracts({ chainId, contracts });
     }),
   );
