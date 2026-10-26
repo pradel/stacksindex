@@ -74,6 +74,7 @@ describe("database", () => {
       "blocks",
       "checkpoints",
       "events",
+      "meta",
       "sync_anchors",
       "sync_progress",
       "transactions",

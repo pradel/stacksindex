@@ -282,6 +282,16 @@ Set `finality` to the deepest reorg you want handled automatically (default `6`)
 
 Handler writes through `context.db` commit in the same transaction as the checkpoint, so a crash or a failed batch never applies an event twice. A rewind (a chain reorg, or a start without a sync anchor) re-runs handlers for the unfinalized blocks it replays without undoing their writes: keep writes replay-safe (upsert or insert-if-absent by primary key) for that window. Writes to other systems (another database, an HTTP call) are at-least-once.
 
+### Changing contracts
+
+Every contract resumes from one shared checkpoint, so the indexer records the contracts it was run with (`id`, `startBlock`, `endBlock`) in the database, and `run` and `live` compare them with the definition before sending any request:
+
+- Removing or renaming a contract is accepted.
+- Adding a contract fails with `ConfigurationError` when blocks it covers were already processed, because its events in those blocks would never reach its handler. Give it a `startBlock` above the block named in the error to index only newer events, or re-index from an empty database.
+- Changing the `startBlock` or `endBlock` of a contract that was already indexed fails the same way.
+
+Handler code and `print` schemas are not compared: a change applies to the events indexed after it. Re-index from an empty database to apply it to earlier events.
+
 ---
 
 ## Monitoring
@@ -482,15 +492,15 @@ The definition exposes `handler(name, fn)` and `create(options)` (promise) or `D
 
 Both entrypoints export the error classes, each with a `_tag` of the same name:
 
-| Error                   | Raised when                                                                      |
-| ----------------------- | -------------------------------------------------------------------------------- |
-| `ConfigurationError`    | `defineIndexer`, `create` or `layer` receives an invalid definition or option.   |
-| `DatabaseError`         | The database cannot be opened or a query fails.                                  |
-| `MigrationError`        | The indexer's or your migrations fail to apply.                                  |
-| `EventDecodeError`      | A print does not match its contract's `print` schema (with `onInvalid: "fail"`). |
-| `HandlerExecutionError` | A handler throws or fails; carries `contract`, `contractId` and the `cause`.     |
-| `ReorgError`            | A reorg replaces a finalized block.                                              |
-| `ReadOnlyCallError`     | A read-only call returns a Clarity-level failure.                                |
+| Error                   | Raised when                                                                                                                                                                                                 |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ConfigurationError`    | `defineIndexer`, `create` or `layer` receives an invalid definition or option, or `run`/`live` gets contracts the database cannot index without missing events ([Changing contracts](#changing-contracts)). |
+| `DatabaseError`         | The database cannot be opened or a query fails.                                                                                                                                                             |
+| `MigrationError`        | The indexer's or your migrations fail to apply.                                                                                                                                                             |
+| `EventDecodeError`      | A print does not match its contract's `print` schema (with `onInvalid: "fail"`).                                                                                                                            |
+| `HandlerExecutionError` | A handler throws or fails; carries `contract`, `contractId` and the `cause`.                                                                                                                                |
+| `ReorgError`            | A reorg replaces a finalized block.                                                                                                                                                                         |
+| `ReadOnlyCallError`     | A read-only call returns a Clarity-level failure.                                                                                                                                                           |
 
 ### `stacksindex/clarity`
 

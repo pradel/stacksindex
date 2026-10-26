@@ -4,6 +4,7 @@ import { IndexerDatabase } from "../database/index.ts";
 import { type StacksApiError, StacksClient } from "../datasources/api/index.ts";
 import { Indexing } from "../indexing/index.ts";
 import type {
+  ConfigurationError,
   DatabaseError,
   EventDecodeError,
   FilterValidationError,
@@ -24,6 +25,7 @@ import type { ContractSyncSummary, SyncFilter, SyncService } from "../sync/index
 import { chunkEventsByBlock } from "./batches.ts";
 import type { IndexerError, ResolvedIndexerConfig } from "./config.ts";
 import { type ContractSpec, type ResolvedContract, resolveContracts } from "./contracts.ts";
+import { checkContractDefinitions } from "./definition.ts";
 import {
   computeRunProgress,
   createEtaEstimator,
@@ -466,11 +468,21 @@ export interface PreparedContracts {
   readonly syncFilters: readonly SyncFilter[];
 }
 
-/** Resolves `"latest"` end blocks and indexes the contracts by id. */
+/**
+ * Checks the contracts against the ones the database was indexed with, then
+ * resolves `"latest"` end blocks and indexes the contracts by id.
+ */
 export function prepareContracts(
   specs: readonly ContractSpec[],
-): Effect.Effect<PreparedContracts, StacksApiError | FilterValidationError, StacksClient> {
+  chainId: number,
+): Effect.Effect<
+  PreparedContracts,
+  ConfigurationError | StacksApiError | FilterValidationError | SyncStoreError | DatabaseError,
+  StacksClient | IndexerDatabase
+> {
   return Effect.gen(function* () {
+    yield* checkContractDefinitions(chainId, specs);
+
     const contracts = yield* resolveContracts(specs);
 
     return {
@@ -665,7 +677,7 @@ export function runHistorical(
   sync: SyncService,
 ): Effect.Effect<RunResult, IndexerError, StacksClient | IndexerDatabase> {
   return Effect.gen(function* () {
-    const prepared = yield* prepareContracts(specs);
+    const prepared = yield* prepareContracts(specs, config.chainId);
 
     return yield* runPreparedHistorical(prepared, config, sync);
   });
