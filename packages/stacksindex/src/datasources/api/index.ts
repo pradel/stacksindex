@@ -48,6 +48,18 @@ type BlockApiResponse =
 
 type GetBlockQuery = paths["/extended/v2/blocks/{height_or_hash}"]["get"]["parameters"]["query"];
 
+export type StacksBlocksApiResponse =
+  paths["/extended/v3/blocks"]["get"]["responses"]["200"]["content"]["application/json"];
+
+/** `cursor` is a block height (the newest returned); the API caps `limit` at 30. */
+type GetStacksBlocksQuery = paths["/extended/v3/blocks"]["get"]["parameters"]["query"];
+
+export type BitcoinBlocksApiResponse =
+  paths["/extended/v3/bitcoin-blocks"]["get"]["responses"]["200"]["content"]["application/json"];
+
+/** `cursor` is a Bitcoin block height (the newest returned). */
+type GetBitcoinBlocksQuery = paths["/extended/v3/bitcoin-blocks"]["get"]["parameters"]["query"];
+
 export type BlockTransactionsApiResponse =
   paths["/extended/v3/blocks/{height_or_hash}/transactions"]["get"]["responses"]["200"]["content"]["application/json"];
 
@@ -147,6 +159,14 @@ export interface StacksClientService {
     heightOrHash: string | number,
     options?: GetBlockQuery,
   ) => Effect.Effect<BlockApiResponse, StacksHttpError>;
+  /** Canonical Stacks blocks, newest first, from the height in `cursor` (`GET /extended/v3/blocks`). */
+  readonly getStacksBlocks: (
+    options?: GetStacksBlocksQuery,
+  ) => Effect.Effect<StacksBlocksApiResponse, StacksHttpError>;
+  /** Bitcoin blocks, newest first, from the height in `cursor` (`GET /extended/v3/bitcoin-blocks`). */
+  readonly getBitcoinBlocks: (
+    options?: GetBitcoinBlocksQuery,
+  ) => Effect.Effect<BitcoinBlocksApiResponse, StacksHttpError>;
   readonly getBlockTransactions: (
     heightOrHash: string | number,
     options?: GetBlockTransactionsQuery,
@@ -413,6 +433,10 @@ export class StacksClient extends Context.Service<StacksClient, StacksClientServ
         getBlocks: (options) => get<BlocksApiResponse>("getBlocks", "/extended/v2/blocks", options),
         getBlock: (heightOrHash, options) =>
           get<BlockApiResponse>("getBlock", `/extended/v2/blocks/${heightOrHash}`, options),
+        getStacksBlocks: (options) =>
+          get<StacksBlocksApiResponse>("getStacksBlocks", "/extended/v3/blocks", options),
+        getBitcoinBlocks: (options) =>
+          get<BitcoinBlocksApiResponse>("getBitcoinBlocks", "/extended/v3/bitcoin-blocks", options),
         getBlockTransactions: (heightOrHash, options) =>
           get<BlockTransactionsApiResponse>(
             "getBlockTransactions",

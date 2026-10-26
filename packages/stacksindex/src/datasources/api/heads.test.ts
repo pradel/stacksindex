@@ -50,6 +50,9 @@ type HeadRow = Pick<
   | "block_time"
   | "tenure_height"
   | "tx_count"
+  | "index_block_hash"
+  | "burn_block_time"
+  | "burn_block_height"
 >;
 
 const blockRow = (height: number, hash: string): HeadRow => ({
@@ -60,6 +63,9 @@ const blockRow = (height: number, hash: string): HeadRow => ({
   block_time: 1_792_000_000 + height,
   tenure_height: 259_000 + height,
   tx_count: 3,
+  index_block_hash: `0xindex${height}`,
+  burn_block_time: 1_792_000_100 + height,
+  burn_block_height: 900_000 + height,
 });
 
 const lightBlock = (height: number, hash: string, txCount = 3): LightBlock => ({
@@ -69,6 +75,18 @@ const lightBlock = (height: number, hash: string, txCount = 3): LightBlock => ({
   blockTime: 1_792_000_000 + height,
   tenureHeight: 259_000 + height,
   txCount,
+});
+
+/** A head read from `GET /extended/v2/blocks`, which also carries what storing it needs. */
+const polledBlock = (height: number, hash: string): LightBlock => ({
+  ...lightBlock(height, hash),
+  stored: {
+    height,
+    hash,
+    index_block_hash: `0xindex${height}`,
+    burn_block_time: 1_792_000_100 + height,
+    burn_block_height: 900_000 + height,
+  },
 });
 
 /** Hiro `block` notification frame as observed on `wss://api.hiro.so/extended/v1/ws`. */
@@ -105,6 +123,8 @@ const makeClient = (getBlocks: StacksClientService["getBlocks"]): StacksClientSe
   getStatus: notUsed,
   getBlocks,
   getBlock: notUsed,
+  getStacksBlocks: notUsed,
+  getBitcoinBlocks: notUsed,
   getBlockTransactions: notUsed,
   getV1Transaction: notUsed,
   getTransactionsBatch: notUsed,
@@ -292,14 +312,14 @@ describe("blockHeads polling", () => {
 
     await runHeads(pollingConfig, client, ({ emitted }) =>
       Effect.gen(function* () {
-        expect(yield* Queue.take(emitted)).toStrictEqual(lightBlock(10, "0xa"));
+        expect(yield* Queue.take(emitted)).toStrictEqual(polledBlock(10, "0xa"));
         expect(tip.polls).toBe(1);
 
         yield* TestClock.adjust(1000);
         tip.row = blockRow(11, "0xb");
         yield* TestClock.adjust(1000);
 
-        expect(yield* Queue.take(emitted)).toStrictEqual(lightBlock(11, "0xb"));
+        expect(yield* Queue.take(emitted)).toStrictEqual(polledBlock(11, "0xb"));
         expect(tip.polls).toBe(3);
       }),
     );
@@ -325,7 +345,7 @@ describe("blockHeads polling", () => {
 
         yield* TestClock.adjust(1000);
 
-        expect(yield* Queue.take(emitted)).toStrictEqual(lightBlock(10, "0xa"));
+        expect(yield* Queue.take(emitted)).toStrictEqual(polledBlock(10, "0xa"));
         expect(script.polls).toBe(2);
       }),
     );
@@ -404,7 +424,7 @@ describe("blockHeads websocket", () => {
         first.open();
         expect(JSON.parse(yield* Queue.take(first.sent))).toStrictEqual(SUBSCRIBE_REQUEST);
         // The connection polls once to recover heads missed while disconnected.
-        expect(yield* Queue.take(emitted)).toStrictEqual(lightBlock(10, "0xa"));
+        expect(yield* Queue.take(emitted)).toStrictEqual(polledBlock(10, "0xa"));
 
         first.receive(JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }));
         first.receive(blockNotification(11, "0xb", ["0xtx1", "0xtx2"]));
@@ -431,7 +451,7 @@ describe("blockHeads websocket", () => {
 
         second.open();
         expect(JSON.parse(yield* Queue.take(second.sent))).toStrictEqual(SUBSCRIBE_REQUEST);
-        expect(yield* Queue.take(emitted)).toStrictEqual(lightBlock(12, "0xc"));
+        expect(yield* Queue.take(emitted)).toStrictEqual(polledBlock(12, "0xc"));
       }),
     );
   });
@@ -507,13 +527,13 @@ describe("blockHeads websocket", () => {
         expect(fallback.level).toBe("WARN");
         expect(fallback.annotations).toMatchObject({ chainId: CHAIN_ID, phase: "heads" });
         // No connection ever opened, so every poll comes from the fallback.
-        expect(yield* Queue.take(emitted)).toStrictEqual(lightBlock(10, "0xa"));
+        expect(yield* Queue.take(emitted)).toStrictEqual(polledBlock(10, "0xa"));
         expect(tip.polls).toBe(1);
 
         tip.row = blockRow(11, "0xb");
         yield* TestClock.adjust(webSocketConfig.pollingInterval);
 
-        expect(yield* Queue.take(emitted)).toStrictEqual(lightBlock(11, "0xb"));
+        expect(yield* Queue.take(emitted)).toStrictEqual(polledBlock(11, "0xb"));
         expect(tip.polls).toBe(2);
         expect(yield* Queue.size(sockets)).toBe(0);
       }),

@@ -4,7 +4,7 @@ import process from "node:process";
 import { Cause, Effect, Exit, Fiber } from "effect";
 import { Indexer, pglite } from "stacksindex/effect";
 
-import { PoolHandler } from "./handler.ts";
+import { PoolHandler, PoolSnapshotsHandler } from "./handler.ts";
 import { indexer } from "./indexer.ts";
 
 const apiKey = process.env.HIRO_API_KEY;
@@ -35,7 +35,7 @@ const fiber = Effect.runFork(
         api: { apiKey },
         live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },
         logLevel: "Info",
-        handlers: { pool: PoolHandler },
+        handlers: { pool: PoolHandler, poolSnapshots: PoolSnapshotsHandler },
       }),
     ),
   ),

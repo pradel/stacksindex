@@ -4,6 +4,13 @@ import type { ClarityJsonValue } from "../codec/index.ts";
 import { type StacksApiError, StacksClient } from "../datasources/api/index.ts";
 import { ConfigurationError, FilterValidationError } from "../lib/errors.ts";
 import type { CoreHandler } from "../lib/types.ts";
+import {
+  type BlockDefinitions,
+  type BlockSourceSpec,
+  isBlockHeight,
+  type ResolvedBlockSource,
+  validateBlockDefinitions,
+} from "./blocks.ts";
 
 /** What to do with a print that does not match the contract's `print` schema. */
 export type OnInvalid = "fail" | "skip";
@@ -45,9 +52,6 @@ export interface ResolvedContract extends Omit<ContractSpec, "endBlock"> {
 
 const CONTRACT_ID = /^S[0-9A-Z]+\.[a-zA-Z][a-zA-Z0-9_-]*$/u;
 
-const isBlockHeight = (value: unknown): value is number =>
-  Predicate.isNumber(value) && Number.isSafeInteger(value) && value >= 0;
-
 /**
  * Checks a contract definition map, throwing `ConfigurationError` on the
  * first problem so mistakes surface when the definition module loads.
@@ -56,11 +60,6 @@ export function validateContractDefinitions(
   contracts: Readonly<Record<string, ContractDefinitionBase>>,
 ): void {
   const names = Object.keys(contracts);
-
-  if (names.length === 0) {
-    throw new ConfigurationError({ message: "Define at least one contract in `contracts`." });
-  }
-
   const nameById = new Map<string, string>();
 
   for (const name of names) {
@@ -117,16 +116,70 @@ export function validateContractDefinitions(
 }
 
 /**
+ * Checks a whole definition: its contracts, its block sources, that it has at
+ * least one of them, and that every name is unique across both, since the
+ * names key one `handlers` record.
+ */
+export function validateIndexerDefinition(definition: {
+  readonly contracts?: Readonly<Record<string, ContractDefinitionBase>>;
+  readonly blocks?: BlockDefinitions;
+}): void {
+  const contracts = definition.contracts ?? {};
+  const blocks = definition.blocks ?? {};
+
+  validateContractDefinitions(contracts);
+  validateBlockDefinitions(blocks);
+
+  const blockNames = Object.keys(blocks);
+
+  if (Object.keys(contracts).length === 0 && blockNames.length === 0) {
+    throw new ConfigurationError({
+      message: "Define at least one contract in `contracts` or block source in `blocks`.",
+    });
+  }
+
+  for (const name of blockNames) {
+    if (Object.hasOwn(contracts, name)) {
+      throw new ConfigurationError({
+        message: `blocks.${name}: the name is already used by contracts.${name}; names must be unique across \`contracts\` and \`blocks\`.`,
+      });
+    }
+  }
+}
+
+/** Contracts and block sources paired with their handlers, as the facades build them. */
+export interface SourceSpecs {
+  readonly contracts: ContractSpec[];
+  readonly blocks: BlockSourceSpec[];
+}
+
+/** Contracts and block sources whose `"latest"` end blocks are resolved. */
+export interface ResolvedSources {
+  readonly contracts: ResolvedContract[];
+  readonly blocks: ResolvedBlockSource[];
+}
+
+interface SourceRange {
+  readonly name: string;
+  readonly startBlock?: number;
+  readonly endBlock?: number | "latest";
+}
+
+/**
  * Resolves `"latest"` end blocks to the chain tip read now, and re-checks
  * the start/end ordering against it.
  */
-export function resolveContracts(
+export function resolveSources(
   contracts: readonly ContractSpec[],
-): Effect.Effect<ResolvedContract[], StacksApiError | FilterValidationError, StacksClient> {
+  blocks: readonly BlockSourceSpec[],
+): Effect.Effect<ResolvedSources, StacksApiError | FilterValidationError, StacksClient> {
   return Effect.gen(function* () {
     let latestBlockHeight: number | undefined = undefined;
 
-    if (contracts.some((contract) => contract.endBlock === "latest")) {
+    if (
+      contracts.some((contract) => contract.endBlock === "latest") ||
+      blocks.some((source) => source.endBlock === "latest")
+    ) {
       const client = yield* StacksClient;
       const status = yield* client.getStatus();
       latestBlockHeight = status.chain_tip?.block_height;
@@ -142,24 +195,38 @@ export function resolveContracts(
       );
     }
 
-    const resolved: ResolvedContract[] = [];
+    const resolveEndBlock = (
+      kind: "contracts" | "blocks",
+      source: SourceRange,
+    ): Effect.Effect<number | undefined, FilterValidationError> => {
+      const endBlock = source.endBlock === "latest" ? latestBlockHeight : source.endBlock;
+
+      return source.startBlock !== undefined &&
+        endBlock !== undefined &&
+        source.startBlock > endBlock
+        ? Effect.fail(
+            new FilterValidationError({
+              message: `Start block (${source.startBlock}) is after end block (${endBlock}) for ${kind}.${source.name}.`,
+            }),
+          )
+        : Effect.succeed(endBlock);
+    };
+
+    const resolvedContracts: ResolvedContract[] = [];
 
     for (const contract of contracts) {
-      const endBlock = contract.endBlock === "latest" ? latestBlockHeight : contract.endBlock;
-
-      if (
-        contract.startBlock !== undefined &&
-        endBlock !== undefined &&
-        contract.startBlock > endBlock
-      ) {
-        return yield* new FilterValidationError({
-          message: `Start block (${contract.startBlock}) is after end block (${endBlock}) for contracts.${contract.name}.`,
-        });
-      }
-
-      resolved.push({ ...contract, endBlock });
+      resolvedContracts.push({
+        ...contract,
+        endBlock: yield* resolveEndBlock("contracts", contract),
+      });
     }
 
-    return resolved;
+    const resolvedBlocks: ResolvedBlockSource[] = [];
+
+    for (const source of blocks) {
+      resolvedBlocks.push({ ...source, endBlock: yield* resolveEndBlock("blocks", source) });
+    }
+
+    return { contracts: resolvedContracts, blocks: resolvedBlocks };
   });
 }

@@ -32,6 +32,8 @@ export interface IndexerStatus {
   anchor: { blockHeight: number } | null;
   /** Sync progress of every defined contract, keyed by definition name. */
   contracts: Record<string, ContractStatus>;
+  /** Sync progress of every defined block source, keyed by definition name. */
+  blocks: Record<string, BlockSourceStatus>;
 }
 
 export interface ContractStatus {
@@ -41,18 +43,30 @@ export interface ContractStatus {
   isComplete: boolean;
 }
 
+export interface BlockSourceStatus {
+  /**
+   * Every block the source runs at, at or below this height, is stored;
+   * `null` before the source's first sync.
+   */
+  syncedBlockHeight: number | null;
+  /** True once the source synced through its `endBlock`. */
+  isComplete: boolean;
+}
+
 /** Reads the phase and the stored progress; the database is the source of truth across restarts. */
 export const readIndexerStatus = (
   chainId: number,
   contracts: readonly { readonly name: string; readonly contractId: string }[],
+  blocks: readonly { readonly name: string }[],
 ): Effect.Effect<IndexerStatus, SyncStoreError, IndexerDatabase | RunPhase> =>
   Effect.gen(function* () {
     const phase = yield* Ref.get(yield* RunPhase);
 
-    const [checkpoint, anchor, progress] = yield* Effect.all([
+    const [checkpoint, anchor, progress, blockProgress] = yield* Effect.all([
       syncStore.getCheckpoint({ chainId }),
       syncStore.getSyncAnchor({ chainId }),
       syncStore.listSyncProgress({ chainId }),
+      syncStore.listBlockSyncProgress({ chainId }),
     ]);
 
     const progressById = new Map(progress.map((row) => [row.contractId, row]));
@@ -62,6 +76,18 @@ export const readIndexerStatus = (
       const row = progressById.get(contract.contractId);
 
       contractStatuses[contract.name] = {
+        syncedBlockHeight: row === undefined ? null : Number(row.syncedBlockHeight),
+        isComplete: row?.isComplete ?? false,
+      };
+    }
+
+    const blockProgressByName = new Map(blockProgress.map((row) => [row.name, row]));
+    const blockStatuses: Record<string, BlockSourceStatus> = {};
+
+    for (const source of blocks) {
+      const row = blockProgressByName.get(source.name);
+
+      blockStatuses[source.name] = {
         syncedBlockHeight: row === undefined ? null : Number(row.syncedBlockHeight),
         isComplete: row?.isComplete ?? false,
       };
@@ -81,5 +107,6 @@ export const readIndexerStatus = (
             },
       anchor: anchor === null ? null : { blockHeight: anchor.blockHeight },
       contracts: contractStatuses,
+      blocks: blockStatuses,
     };
   });

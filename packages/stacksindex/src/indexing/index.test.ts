@@ -24,6 +24,8 @@ const makeStacksClient = (overrides: Partial<StacksClientService> = {}): StacksC
   getStatus: notUsed,
   getBlocks: notUsed,
   getBlock: notUsed,
+  getStacksBlocks: notUsed,
+  getBitcoinBlocks: notUsed,
   getBlockTransactions: notUsed,
   getV1Transaction: notUsed,
   getTransactionsBatch: notUsed,
@@ -143,7 +145,7 @@ describe("indexing engine", () => {
       block: { height: 100, time: 1000, hash: "0xblock-100", indexBlockHash: "0xindex-100" },
       tx: { index: 0, sender: "SP sender" },
     } satisfies PrintEvent);
-    expect(counts).toStrictEqual(new Map([[CONTRACT_ID, 1]]));
+    expect(counts).toStrictEqual(new Map([["token", 1]]));
   });
 
   test("the handler client pins calls to the event's index block hash", async () => {
@@ -373,7 +375,7 @@ describe("print decoding", () => {
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith(expect.objectContaining({ txId: "tx-good" }));
-    expect(counts).toStrictEqual(new Map([[CONTRACT_ID, 1]]));
+    expect(counts).toStrictEqual(new Map([["token", 1]]));
   });
 
   test("treats a value that is not valid Clarity as a decode issue", async () => {

@@ -259,14 +259,84 @@ const sanitizeTransactionsBatch = (body: JsonObject): JsonValue => {
   return { results };
 };
 
-// Only the fields consumed by encodeBlock are kept (blockTime and
-// TenureHeight are derived from the burn block, not the Stacks block).
-const sanitizeBlock = (body: JsonObject): JsonValue => ({
-  height: body.height,
-  hash: body.hash,
-  burn_block_time: body.burn_block_time,
-  burn_block_height: body.burn_block_height,
+/** Copies `fields` of `body`; fields a fixture lacks stay absent. */
+const pickFields = (body: JsonObject, fields: readonly string[]): JsonObject => {
+  const picked: JsonObject = {};
+
+  for (const field of fields) {
+    if (field in body) {
+      picked[field] = body[field];
+    }
+  }
+
+  return picked;
+};
+
+const mapResults = (
+  body: JsonObject,
+  sanitizeRow: (row: JsonObject) => JsonValue,
+): JsonValue | undefined =>
+  Array.isArray(body.results)
+    ? body.results.map((item) => (isJsonObject(item) ? sanitizeRow(item) : item))
+    : body.results;
+
+// Only the fields consumed by encodeBlock (and the reorg check's `hash`) are
+// Kept; blockTime and TenureHeight are derived from the burn block.
+const sanitizeBlock = (body: JsonObject): JsonValue =>
+  pickFields(body, ["height", "hash", "index_block_hash", "burn_block_time", "burn_block_height"]);
+
+// `GET /extended/v2/blocks` pages: rows feed live heads and the blocks linking
+// A head to the anchor (`toLightBlock`), which also read the parent hash, the
+// Stacks block time, the tenure height and the transaction count.
+const sanitizeBlocksPageRow = (row: JsonObject): JsonValue =>
+  pickFields(row, [
+    "height",
+    "hash",
+    "index_block_hash",
+    "burn_block_time",
+    "burn_block_height",
+    "parent_block_hash",
+    "block_time",
+    "tenure_height",
+    "tx_count",
+  ]);
+
+const sanitizeBlocksPage = (body: JsonObject): JsonValue => ({
+  ...pickFields(body, ["limit", "offset", "total"]),
+  results: mapResults(body, sanitizeBlocksPageRow) ?? null,
 });
+
+// `GET /extended/v3/blocks` pages: block sources read these rows' Stacks
+// Fields and their burn block height.
+const sanitizeV3BlockRow = (row: JsonObject): JsonValue => {
+  const sanitized = pickFields(row, ["height", "hash", "index_hash", "tenure_height"]);
+  const { bitcoin_block: bitcoinBlock } = row;
+
+  if (isJsonObject(bitcoinBlock)) {
+    sanitized.bitcoin_block = pickFields(bitcoinBlock, ["height"]);
+  }
+
+  return sanitized;
+};
+
+const sanitizeV3BlocksPage = (body: JsonObject): JsonValue => ({
+  ...pickFields(body, ["cursor", "limit", "total"]),
+  results: mapResults(body, sanitizeV3BlockRow) ?? null,
+});
+
+// `GET /extended/v3/bitcoin-blocks` pages: burn block times of block sources.
+const sanitizeBitcoinBlocksPage = (body: JsonObject): JsonValue => ({
+  ...pickFields(body, ["cursor", "limit", "total"]),
+  results: mapResults(body, (row) => pickFields(row, ["height", "time"])) ?? null,
+});
+
+const urlPathname = (rawUrl: string): string => {
+  try {
+    return new URL(rawUrl).pathname;
+  } catch {
+    return rawUrl.split("?")[0];
+  }
+};
 
 const sanitizeStatus = (body: JsonObject): JsonValue => {
   const sanitized: JsonObject = {
@@ -324,6 +394,20 @@ export function sanitizePayload(rawUrl: string, body: JsonValue): JsonValue {
 
   if (rawUrl.includes("/extended/v2/blocks/")) {
     return sanitizeBlock(body);
+  }
+
+  const pathname = urlPathname(rawUrl);
+
+  if (pathname.endsWith("/extended/v2/blocks")) {
+    return sanitizeBlocksPage(body);
+  }
+
+  if (pathname.endsWith("/extended/v3/blocks")) {
+    return sanitizeV3BlocksPage(body);
+  }
+
+  if (pathname.endsWith("/extended/v3/bitcoin-blocks")) {
+    return sanitizeBitcoinBlocksPage(body);
   }
 
   if (rawUrl.endsWith("/extended")) {

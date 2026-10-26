@@ -14,7 +14,8 @@ import { Metric } from "effect";
  * through `Metric.CurrentMetricAttributes`. Metrics with per-contract series
  * take the `contract` (definition name) and `contract_id` attributes from
  * `contractAttributes`: build the labelled metric once per contract with
- * `Metric.withAttributes`, not on every update.
+ * `Metric.withAttributes`, not on every update. Per-block-source series take
+ * the `blocks` attribute (definition name) from `blockSourceAttributes`.
  */
 
 /** Attributes of a per-contract series: the definition name and the contract id. */
@@ -22,6 +23,9 @@ export const contractAttributes = (name: string, contractId: string) => ({
   contract: name,
   contract_id: contractId,
 });
+
+/** Attributes of a per-block-source series: the definition name. */
+export const blockSourceAttributes = (name: string) => ({ blocks: name });
 
 /** Millisecond buckets for I/O-bound work. */
 const DURATION_MS_BOUNDARIES = [

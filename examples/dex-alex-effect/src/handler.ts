@@ -2,8 +2,8 @@ import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
-import { indexer } from "./indexer.ts";
-import { poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
+import { indexer, POOL_CONTRACT } from "./indexer.ts";
+import { poolSnapshotTable, poolTable, swapTable, type Token, tokenTable } from "./schema.ts";
 
 /** Rows are keyed by address and chain. */
 const CHAIN_ID = 1n;
@@ -235,5 +235,88 @@ export const PoolHandler = indexer.handler("pool", (event) =>
     if (pool && (!pool.tokenX || !pool.tokenY)) {
       yield* syncPoolTokens(event.contractId, data["pool-token"]);
     }
+  }),
+);
+
+/**
+ * Runs every `POOL_SNAPSHOT_INTERVAL` blocks and records each pool's balances.
+ * `indexer.Client` reads the contract at the snapshot block, so a replayed
+ * block reads the same state; the upsert keyed by pool and height keeps a
+ * rewind from duplicating rows.
+ */
+export const PoolSnapshotsHandler = indexer.handler("poolSnapshots", (event) =>
+  Effect.gen(function* () {
+    const db = yield* indexer.Db;
+    const client = yield* indexer.Client;
+
+    const poolCount = yield* client.callReadOnly({
+      abi: fixedWeightPoolAbi,
+      contractId: POOL_CONTRACT,
+      functionName: "get-pool-count",
+    });
+
+    for (let poolId = 1n; poolId <= poolCount; poolId += 1n) {
+      const contractsResult = yield* client.callReadOnly({
+        abi: fixedWeightPoolAbi,
+        contractId: POOL_CONTRACT,
+        functionName: "get-pool-contracts",
+        functionArgs: [poolId],
+      });
+
+      if (contractsResult.ok === undefined) {
+        return yield* Effect.fail(
+          new Error(
+            `Failed to fetch pool contracts for pool ${poolId}: contract returned error ${contractsResult.error}`,
+          ),
+        );
+      }
+
+      const pool = contractsResult.ok;
+
+      const detailsResult = yield* client.callReadOnly({
+        abi: fixedWeightPoolAbi,
+        contractId: POOL_CONTRACT,
+        functionName: "get-pool-details",
+        functionArgs: [pool["token-x"], pool["token-y"], pool["weight-x"], pool["weight-y"]],
+      });
+
+      if (detailsResult.ok === undefined) {
+        return yield* Effect.fail(
+          new Error(
+            `Failed to fetch pool details for pool ${poolId}: contract returned error ${detailsResult.error}`,
+          ),
+        );
+      }
+
+      const details = detailsResult.ok;
+
+      const balances = {
+        balanceX: details["balance-x"],
+        balanceY: details["balance-y"],
+        totalSupply: details["total-supply"],
+      };
+
+      yield* db
+        .insert(poolSnapshotTable)
+        .values({
+          poolAddress: details["pool-token"],
+          chainId: CHAIN_ID,
+          blockHeight: BigInt(event.block.height),
+          blockTime: BigInt(event.block.time),
+          ...balances,
+        })
+        .onConflictDoUpdate({
+          target: [
+            poolSnapshotTable.poolAddress,
+            poolSnapshotTable.chainId,
+            poolSnapshotTable.blockHeight,
+          ],
+          set: { blockTime: BigInt(event.block.time), ...balances },
+        });
+    }
+
+    yield* Effect.logDebug("Pool snapshots recorded").pipe(
+      Effect.annotateLogs({ blockHeight: event.block.height, pools: poolCount }),
+    );
   }),
 );

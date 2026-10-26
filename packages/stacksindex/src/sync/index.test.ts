@@ -1,14 +1,17 @@
 // oxlint-disable typescript/no-unsafe-assignment
 
+import { eq } from "drizzle-orm";
 import { Deferred, Effect, Fiber, Logger, Metric, References, Stream } from "effect";
 import { TestClock } from "effect/testing";
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-import type { StacksClientService } from "../datasources/api/index.ts";
+import { StacksClient, type StacksClientService } from "../datasources/api/index.ts";
 import { syncBlock, syncErrors, syncEvents, syncPages } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
+import { blocksTable } from "../sync-store/schema.ts";
+import { createFakeChain, type FakeChain } from "../test-utils/fake-chain.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
-import { createSync, type SyncFilter } from "./index.ts";
+import { type BlockSyncFilter, createSync, type SyncEvent, type SyncFilter } from "./index.ts";
 
 const CHAIN_ID = 1;
 
@@ -100,6 +103,8 @@ const makeFakeApi = (chain: readonly ChainEvent[], limit = 2): FakeApi => {
       getStatus: notUsed,
       getBlocks: notUsed,
       getBlock: notUsed,
+      getStacksBlocks: notUsed,
+      getBitcoinBlocks: notUsed,
       getBlockTransactions: notUsed,
       getV1Transaction: notUsed,
       getTransactionsBatch: (txIds: string[]) => {
@@ -649,5 +654,419 @@ describe("sync historical", () => {
       block: 200,
       durationMs: 11_000,
     });
+  });
+});
+
+describe("sync historical block sources", () => {
+  // oxlint-disable-next-line init-declarations
+  let testDb: TestDatabase;
+  // oxlint-disable-next-line init-declarations
+  let chain: FakeChain;
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase();
+    // The HTTP client may keep the first `fetch` it sees; delegate to the current test's chain.
+    vi.stubGlobal("fetch", (input: string | URL | Request) => chain.fetch(input));
+  });
+
+  beforeEach(async () => {
+    await testDb.cleanup();
+    // Blocks below 100 do not exist: requests for them get a 404.
+    chain = createFakeChain({ baseHeight: 100 });
+  });
+
+  afterAll(async () => {
+    vi.unstubAllGlobals();
+    await testDb.close();
+  });
+
+  const mineTo = (height: number) => {
+    while (chain.blocks[chain.blocks.length - 1].height < height) {
+      chain.mine();
+    }
+  };
+
+  /** Heights from `from` to `to` (inclusive) that are `step` apart; empty when `to < from`. */
+  const range = (from: number, to: number, step = 1) =>
+    Array.from(
+      { length: Math.max(Math.floor((to - from) / step) + 1, 0) },
+      (_, index) => from + index * step,
+    );
+
+  const runBlockSync = (
+    blocks: readonly BlockSyncFilter[],
+    tipBlockHeight: number | undefined,
+    options: {
+      readonly filters?: readonly SyncFilter[];
+      /** Called on each `safe` event, before the sync stores anything more. */
+      readonly onSafe?: (safeBlockHeight: number) => Promise<void>;
+    } = {},
+  ) =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* StacksClient;
+        const events: SyncEvent[] = [];
+
+        yield* createSync({ chainId: CHAIN_ID, client, database: testDb.db })
+          .historical(options.filters ?? [], { blocks, tipBlockHeight })
+          .pipe(
+            Stream.runForEach((event) =>
+              Effect.promise(async () => {
+                events.push(event);
+
+                if (event.type === "safe") {
+                  await options.onSafe?.(event.safeBlockHeight);
+                }
+              }),
+            ),
+          );
+
+        return events;
+      }).pipe(
+        Effect.provide(StacksClient.layer({ baseUrl: "https://api.example.com" })),
+        Effect.provideService(References.MinimumLogLevel, "None"),
+      ),
+    );
+
+  const storedHeights = async () =>
+    (await testDb.db.select().from(blocksTable).orderBy(blocksTable.height)).map((row) =>
+      Number(row.height),
+    );
+
+  const blockRequests = () =>
+    chain.requests.filter((request) => /^\/extended\/v[23]\/(?:bitcoin-)?blocks/u.test(request));
+
+  const getBlockProgress = (name: string) =>
+    testDb.run(syncStore.getBlockSyncProgress({ chainId: CHAIN_ID, name }));
+
+  test("stores the source's heights up to endBlock, paging windows of three or more", async () => {
+    mineTo(200);
+
+    const events = await runBlockSync(
+      [{ name: "Weekly", interval: 7, startBlock: 103, endBlock: 150 }],
+      200,
+    );
+
+    await expect(storedHeights()).resolves.toStrictEqual(range(103, 150, 7));
+    // Window 103..132 holds 103, 110, 117, 124, 131: one Stacks page and one
+    // Bitcoin page, down from 131. Window 138..150 holds 138, 145: read one by one.
+    expect(blockRequests()).toStrictEqual([
+      "/extended/v3/blocks?cursor=131&limit=29",
+      "/extended/v3/bitcoin-blocks?cursor=131&limit=29",
+      "/extended/v2/blocks/138",
+      "/extended/v2/blocks/145",
+    ]);
+    // A paged block is stored as the single-block endpoint serves it, with its Bitcoin time.
+    await expect(
+      testDb.db.select().from(blocksTable).where(eq(blocksTable.height, 117n)),
+    ).resolves.toStrictEqual([
+      {
+        chainId: 1n,
+        height: 117n,
+        hash: "0x117",
+        indexBlockHash: "index-0x117",
+        blockTime: 1170n,
+        tenureHeight: 117n,
+      },
+    ]);
+    await expect(getBlockProgress("Weekly")).resolves.toMatchObject({
+      interval: 7n,
+      startBlock: 103n,
+      syncedBlockHeight: 150n,
+      isComplete: true,
+    });
+    expect(events.map((event) => event.type)).toStrictEqual(["started", "safe", "completed"]);
+    expect(events[0]).toMatchObject({
+      blocks: [{ name: "Weekly", doneAtStart: false, lastBlockHeight: 102 }],
+    });
+    expect(events[1]).toMatchObject({ safeBlockHeight: 137 });
+    expect(events.at(-1)).toMatchObject({
+      blocks: [
+        {
+          name: "Weekly",
+          doneAtStart: false,
+          lastBlockHeight: 150,
+          initialBlockHeight: 102,
+          requests: 4,
+          blocksFetched: 7,
+        },
+      ],
+    });
+  });
+
+  test("stores the block fields the API serves", async () => {
+    mineTo(120);
+
+    await runBlockSync([{ name: "Once", interval: 1, startBlock: 110, endBlock: 110 }], 120);
+
+    await expect(testDb.db.select().from(blocksTable)).resolves.toStrictEqual([
+      {
+        chainId: 1n,
+        height: 110n,
+        hash: "0x110",
+        indexBlockHash: "index-0x110",
+        blockTime: 1100n,
+        tenureHeight: 110n,
+      },
+    ]);
+  });
+
+  test("stops at the tip when it is below endBlock", async () => {
+    mineTo(200);
+
+    await runBlockSync([{ name: "Every10", interval: 10, startBlock: 100, endBlock: 300 }], 200);
+
+    await expect(storedHeights()).resolves.toStrictEqual(range(100, 200, 10));
+    await expect(getBlockProgress("Every10")).resolves.toMatchObject({
+      syncedBlockHeight: 200n,
+      isComplete: false,
+    });
+  });
+
+  test("reads windows of fewer than three missing heights block by block", async () => {
+    mineTo(200);
+
+    await runBlockSync([{ name: "Every30", interval: 30, startBlock: 105 }], 200);
+
+    expect(blockRequests()).toStrictEqual([
+      "/extended/v2/blocks/105",
+      "/extended/v2/blocks/135",
+      "/extended/v2/blocks/165",
+      "/extended/v2/blocks/195",
+    ]);
+    await expect(storedHeights()).resolves.toStrictEqual([105, 135, 165, 195]);
+    // Without an endBlock the source is synced to the tip, never complete.
+    await expect(getBlockProgress("Every30")).resolves.toMatchObject({
+      syncedBlockHeight: 200n,
+      isComplete: false,
+    });
+  });
+
+  test("fails without raising progress when the API has no block at a height", async () => {
+    mineTo(130);
+
+    // Height 50 is below the fake chain's first block: the API answers 404.
+    await expect(
+      runBlockSync([{ name: "Early", interval: 40, startBlock: 50 }], 130),
+    ).rejects.toMatchObject({ reason: { response: { status: 404 } } });
+
+    expect(blockRequests()).toStrictEqual(["/extended/v2/blocks/50"]);
+    await expect(storedHeights()).resolves.toStrictEqual([]);
+    await expect(getBlockProgress("Early")).resolves.toMatchObject({ syncedBlockHeight: 49n });
+  });
+
+  test("does not request heights already stored", async () => {
+    mineTo(200);
+
+    const storedRow = (height: number) => ({
+      chainId: 1n,
+      height: BigInt(height),
+      hash: `0x${height}`,
+      indexBlockHash: `index-0x${height}`,
+      blockTime: BigInt(height * 10),
+      tenureHeight: BigInt(height),
+    });
+
+    await testDb.db.insert(blocksTable).values([110, 120, 140].map(storedRow));
+
+    await runBlockSync(
+      [
+        { name: "OneMissing", interval: 10, startBlock: 110, endBlock: 130 },
+        { name: "AllStored", interval: 30, startBlock: 110, endBlock: 140 },
+      ],
+      200,
+    );
+
+    // 110 and 120 are stored: the window's only missing height is read directly.
+    expect(blockRequests()).toStrictEqual(["/extended/v2/blocks/130"]);
+    await expect(storedHeights()).resolves.toStrictEqual([110, 120, 130, 140]);
+    await expect(getBlockProgress("OneMissing")).resolves.toMatchObject({
+      syncedBlockHeight: 130n,
+      isComplete: true,
+    });
+    await expect(getBlockProgress("AllStored")).resolves.toMatchObject({
+      syncedBlockHeight: 140n,
+      isComplete: true,
+    });
+  });
+
+  test("stores the right blocks when the head moved after the tip was read", async () => {
+    mineTo(160);
+    const tip = 160;
+    // Ten blocks land between the tip read and the first blocks page.
+    mineTo(170);
+
+    await runBlockSync([{ name: "Every5", interval: 5, startBlock: 120 }], tip);
+
+    // Nothing above the tip is stored, nothing at or below it is missed.
+    await expect(storedHeights()).resolves.toStrictEqual(range(120, 160, 5));
+    expect(blockRequests()).toStrictEqual([
+      "/extended/v3/blocks?cursor=145&limit=26",
+      "/extended/v3/bitcoin-blocks?cursor=145&limit=26",
+      "/extended/v3/blocks?cursor=160&limit=11",
+      "/extended/v3/bitcoin-blocks?cursor=160&limit=11",
+    ]);
+    await expect(getBlockProgress("Every5")).resolves.toMatchObject({ syncedBlockHeight: 160n });
+  });
+
+  test("reads heights a blocks page misses one by one, failing the window on a missing block", async () => {
+    mineTo(110);
+
+    // 90 and 95 are below the fake chain's first block (100): the page lacks
+    // Them and reading them directly answers 404.
+    await expect(
+      runBlockSync([{ name: "Early", interval: 5, startBlock: 90 }], 110),
+    ).rejects.toMatchObject({ reason: { response: { status: 404 } } });
+
+    expect(blockRequests()).toStrictEqual([
+      "/extended/v3/blocks?cursor=110&limit=21",
+      "/extended/v3/bitcoin-blocks?cursor=110&limit=11",
+      "/extended/v2/blocks/90",
+    ]);
+    // The window stores nothing: its blocks and progress commit together.
+    await expect(storedHeights()).resolves.toStrictEqual([]);
+    await expect(getBlockProgress("Early")).resolves.toMatchObject({ syncedBlockHeight: 89n });
+  });
+
+  test("resumes from saved progress without new block requests", async () => {
+    mineTo(200);
+    const source = { name: "Every10", interval: 10, startBlock: 100 };
+
+    await runBlockSync([source], 200);
+    chain.requests.length = 0;
+
+    const resumed = await runBlockSync([source], 200);
+
+    expect(blockRequests()).toStrictEqual([]);
+    expect(resumed.map((event) => event.type)).toStrictEqual(["started", "completed"]);
+    expect(resumed[0]).toMatchObject({ blocks: [{ doneAtStart: true, lastBlockHeight: 200 }] });
+
+    mineTo(215);
+    chain.requests.length = 0;
+    await runBlockSync([source], 215);
+
+    expect(blockRequests()).toStrictEqual(["/extended/v2/blocks/210"]);
+    await expect(storedHeights()).resolves.toStrictEqual(range(100, 210, 10));
+    await expect(getBlockProgress("Every10")).resolves.toMatchObject({ syncedBlockHeight: 215n });
+  });
+
+  test("restarts from startBlock when the interval changes", async () => {
+    mineTo(200);
+
+    await runBlockSync([{ name: "Source", interval: 10, startBlock: 100, endBlock: 150 }], 200);
+    chain.requests.length = 0;
+
+    const events = await runBlockSync(
+      [{ name: "Source", interval: 25, startBlock: 100, endBlock: 150 }],
+      200,
+    );
+
+    // 100 and 150 are already stored; 125 is new to the changed interval.
+    expect(blockRequests()).toStrictEqual(["/extended/v2/blocks/125"]);
+    expect(events[0]).toMatchObject({ blocks: [{ doneAtStart: false, lastBlockHeight: 99 }] });
+    await expect(getBlockProgress("Source")).resolves.toMatchObject({
+      interval: 25n,
+      startBlock: 100n,
+      syncedBlockHeight: 150n,
+      isComplete: true,
+    });
+  });
+
+  test("restarts from startBlock when startBlock changes", async () => {
+    mineTo(200);
+
+    await runBlockSync([{ name: "Source", interval: 30, startBlock: 120, endBlock: 180 }], 200);
+    chain.requests.length = 0;
+
+    await runBlockSync([{ name: "Source", interval: 30, startBlock: 105, endBlock: 180 }], 200);
+
+    expect(blockRequests()).toStrictEqual([
+      "/extended/v2/blocks/105",
+      "/extended/v2/blocks/135",
+      "/extended/v2/blocks/165",
+    ]);
+    await expect(storedHeights()).resolves.toStrictEqual([105, 120, 135, 150, 165, 180]);
+    await expect(getBlockProgress("Source")).resolves.toMatchObject({
+      interval: 30n,
+      startBlock: 105n,
+      syncedBlockHeight: 180n,
+      isComplete: true,
+    });
+  });
+
+  test("does not advance a source without a chain tip", async () => {
+    mineTo(200);
+
+    const fresh = await runBlockSync([{ name: "Fresh", interval: 10, startBlock: 120 }], undefined);
+
+    expect(blockRequests()).toStrictEqual([]);
+    expect(fresh.at(-1)).toMatchObject({ blocks: [{ name: "Fresh", lastBlockHeight: 119 }] });
+    await expect(getBlockProgress("Fresh")).resolves.toMatchObject({
+      syncedBlockHeight: 119n,
+      isComplete: false,
+    });
+
+    await testDb.run(
+      syncStore.upsertBlockSyncProgress({
+        chainId: CHAIN_ID,
+        name: "Fresh",
+        interval: 10,
+        startBlock: 120,
+        syncedBlockHeight: 150,
+        isComplete: false,
+      }),
+    );
+
+    const resumed = await runBlockSync(
+      [{ name: "Fresh", interval: 10, startBlock: 120 }],
+      undefined,
+    );
+
+    expect(blockRequests()).toStrictEqual([]);
+    expect(resumed.at(-1)).toMatchObject({ blocks: [{ lastBlockHeight: 150 }] });
+    await expect(getBlockProgress("Fresh")).resolves.toMatchObject({ syncedBlockHeight: 150n });
+  });
+
+  test("emits safe heights at which both contract events and source blocks are stored", async () => {
+    // The contract prints at 150, then the chain grows to 200.
+    mineTo(149);
+    chain.mine([{ txId: "tx-150", events: [{ contractId: CONTRACT_ID, eventIndex: 0 }] }]);
+    mineTo(200);
+
+    await testDb.run(
+      syncStore.upsertSyncProgress({
+        contractId: CONTRACT_ID,
+        chainId: CHAIN_ID,
+        cursor: null,
+        syncedBlockHeight: 120,
+      }),
+    );
+
+    const checkedSafeHeights: number[] = [];
+
+    await runBlockSync([{ name: "Every", interval: 1, startBlock: 101, endBlock: 200 }], 200, {
+      filters: [{ name: "token", contractId: CONTRACT_ID }],
+      onSafe: async (safe) => {
+        checkedSafeHeights.push(safe);
+
+        // Every source block up to the safe height is stored.
+        expect((await storedHeights()).filter((height) => height <= safe)).toStrictEqual(
+          range(101, safe),
+        );
+
+        // The contract's event is stored before the safe height passes it.
+        const eventHeights = (
+          await testDb.run(syncStore.getEvents({ chainId: CHAIN_ID, fromBlockHeight: 0 }))
+        ).map((stored) => Number(stored.blockHeight));
+
+        expect(eventHeights.filter((height) => height <= safe)).toStrictEqual(
+          [150].filter((height) => height <= safe),
+        );
+      },
+    });
+
+    expect(checkedSafeHeights.length).toBeGreaterThan(0);
+    expect(checkedSafeHeights).toStrictEqual(checkedSafeHeights.toSorted((a, b) => a - b));
+    await expect(storedHeights()).resolves.toStrictEqual(range(101, 200));
   });
 });

@@ -4,6 +4,7 @@ import type { Database } from "../database/index.ts";
 import { defaultWebSocketUrl, type HeadsTransport } from "../datasources/api/heads.ts";
 import type { StacksApiError } from "../datasources/api/index.ts";
 import {
+  type BlockHandlerExecutionError,
   ConfigurationError,
   type DatabaseError,
   type EventDecodeError,
@@ -92,6 +93,7 @@ export interface ResolvedIndexerConfig {
 export type IndexerError =
   | StacksApiError
   | HandlerExecutionError
+  | BlockHandlerExecutionError
   | EventDecodeError
   | ReorgError
   | FilterValidationError

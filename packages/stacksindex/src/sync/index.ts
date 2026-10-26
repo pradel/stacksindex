@@ -27,7 +27,17 @@ import {
   syncTransactions,
 } from "../lib/metrics.ts";
 import { syncStore } from "../sync-store/index.ts";
+import {
+  type BlockSyncFilter,
+  type BlockSyncState,
+  type BlockSyncSummary,
+  initBlockSyncState,
+  syncBlockWindow,
+  toBlockSyncSummary,
+} from "./blocks.ts";
 import { getContractEventsFirstCursor, parseLogsCursor } from "./cursor.ts";
+
+export type { BlockSyncFilter, BlockSyncSummary } from "./blocks.ts";
 
 /**
  * Max transaction ids per `GET /extended/v3/transactions/batch` call.
@@ -96,27 +106,50 @@ export interface ContractSyncSummary {
 /**
  * Values emitted by `SyncService.historical`.
  *
- * - `started`: initial per-contract snapshot, emitted before any fetch.
- * - `safe`: a block height whose events are all durably stored for every
- *   active contract.
- * - `completed`: final per-contract snapshot, emitted once every contract is
- *   synced.
+ * - `started`: initial per-contract and per-block-source snapshots, emitted
+ *   before any fetch.
+ * - `safe`: a block height whose events and block source blocks are all
+ *   durably stored for every active contract and block source.
+ * - `completed`: final snapshots, emitted once everything is synced.
  */
 export type SyncEvent =
-  | { readonly type: "started"; readonly contracts: readonly ContractSyncSummary[] }
+  | {
+      readonly type: "started";
+      readonly contracts: readonly ContractSyncSummary[];
+      readonly blocks: readonly BlockSyncSummary[];
+    }
   | {
       readonly type: "safe";
       readonly safeBlockHeight: number;
       readonly contracts: readonly ContractSyncSummary[];
+      readonly blocks: readonly BlockSyncSummary[];
     }
-  | { readonly type: "completed"; readonly contracts: readonly ContractSyncSummary[] };
+  | {
+      readonly type: "completed";
+      readonly contracts: readonly ContractSyncSummary[];
+      readonly blocks: readonly BlockSyncSummary[];
+    };
+
+export interface HistoricalSyncOptions {
+  /** Block sources to sync alongside the contracts. */
+  readonly blocks?: readonly BlockSyncFilter[];
+  /**
+   * Chain tip read for the pass: block sources sync up to it. Without it they
+   * stay at their synced height.
+   */
+  readonly tipBlockHeight?: number;
+}
 
 export interface SyncService {
   /**
-   * Streams safe-to-index block heights for `filters` in ascending order.
-   * The stream fails on any sync error and ends once every contract is synced.
+   * Streams safe-to-index block heights for `filters` and the block sources
+   * in ascending order. The stream fails on any sync error and ends once
+   * every contract and block source is synced.
    */
-  readonly historical: (filters: readonly SyncFilter[]) => Stream.Stream<SyncEvent, SyncError>;
+  readonly historical: (
+    filters: readonly SyncFilter[],
+    options?: HistoricalSyncOptions,
+  ) => Stream.Stream<SyncEvent, SyncError>;
 }
 
 type InitError = StacksApiError | InvalidCursorError | SyncStoreError;
@@ -205,10 +238,19 @@ function makeContractSyncState(filter: SyncFilter, syncedBlockHeight: number): C
   };
 }
 
-function getSafeBlockHeight(states: ContractSyncState[]): number | undefined {
+function getSafeBlockHeight(
+  states: readonly ContractSyncState[],
+  blockStates: readonly BlockSyncState[],
+): number | undefined {
   let minHeight: number | undefined = undefined;
 
   for (const state of states) {
+    if (!state.done && (minHeight === undefined || state.syncedBlockHeight < minHeight)) {
+      minHeight = state.syncedBlockHeight;
+    }
+  }
+
+  for (const state of blockStates) {
     if (!state.done && (minHeight === undefined || state.syncedBlockHeight < minHeight)) {
       minHeight = state.syncedBlockHeight;
     }
@@ -829,12 +871,19 @@ function syncCatchUpPage(
 }
 
 /**
- * Picks the next contract to advance. Fair scheduling: always the lowest
- * position so a single busy contract cannot starve others.
+ * Picks the next contract or block source to advance. Fair scheduling: always
+ * the lowest position so a single busy one cannot starve others; a contract
+ * goes first on a tie.
  */
 function pickNextState(
   states: ContractSyncState[],
-): Effect.Effect<ContractSyncState | undefined, InvalidCursorError> {
+  blockStates: BlockSyncState[],
+): Effect.Effect<
+  | { readonly type: "contract"; readonly state: ContractSyncState }
+  | { readonly type: "blocks"; readonly state: BlockSyncState }
+  | undefined,
+  InvalidCursorError
+> {
   return Effect.gen(function* () {
     let next: ContractSyncState | undefined = undefined;
     let nextHeight = Number.MAX_SAFE_INTEGER;
@@ -853,7 +902,23 @@ function pickNextState(
       }
     }
 
-    return next;
+    let nextBlocks: BlockSyncState | undefined = undefined;
+
+    for (const state of blockStates) {
+      if (
+        !state.done &&
+        state.syncedBlockHeight + 1 < nextHeight &&
+        (nextBlocks === undefined || state.syncedBlockHeight < nextBlocks.syncedBlockHeight)
+      ) {
+        nextBlocks = state;
+      }
+    }
+
+    if (nextBlocks !== undefined) {
+      return { type: "blocks", state: nextBlocks } as const;
+    }
+
+    return next === undefined ? undefined : ({ type: "contract", state: next } as const);
   });
 }
 
@@ -866,65 +931,92 @@ export const createSync = ({
   client: StacksClientService;
   database: IndexerDb;
 }): SyncService => ({
-  historical: (filters) =>
+  historical: (filters, options) =>
     Stream.callback<SyncEvent, SyncError>(
       (queue) =>
         Effect.gen(function* () {
           const states = yield* initializeContractStates(filters, chainId);
 
-          yield* Queue.offer(queue, {
-            type: "started",
+          const blockStates = yield* Effect.forEach(
+            options?.blocks ?? [],
+            (filter) => initBlockSyncState(filter, chainId, options?.tipBlockHeight),
+            { concurrency: INITIALIZE_CONCURRENCY },
+          );
+
+          const snapshot = () => ({
             contracts: states.map(toContractSyncSummary),
+            blocks: blockStates.map(toBlockSyncSummary),
           });
 
-          for (;;) {
-            const state = yield* pickNextState(states);
+          yield* Queue.offer(queue, { type: "started", ...snapshot() });
 
-            if (state === undefined) {
+          for (;;) {
+            const picked = yield* pickNextState(states, blockStates);
+
+            if (picked === undefined) {
               break;
             }
 
-            const { cursor } = state;
-            const [pendingPage] = state.pendingPages;
+            // Whether the step stored anything that can raise the safe height.
+            let stored = true;
 
-            if (pendingPage !== undefined) {
-              state.pendingPages.shift();
-              yield* syncCatchUpPage(state, pendingPage, chainId);
-            } else if (cursor === null) {
-              // The backfill reached its newest page: fetch the newest events.
-              yield* catchUp(state, chainId);
+            if (picked.type === "blocks") {
+              const { state } = picked;
+
+              yield* syncBlockWindow(state, chainId);
+
+              if (state.done) {
+                yield* Effect.logInfo(`Sync complete for block source ${state.filter.name}`).pipe(
+                  Effect.annotateLogs({
+                    chainId,
+                    blocks: state.filter.name,
+                    phase: "sync",
+                    block: state.syncedBlockHeight,
+                  }),
+                );
+              }
             } else {
-              yield* syncBackfillPage(state, cursor, chainId);
+              const { state } = picked;
+              const { cursor } = state;
+              const [pendingPage] = state.pendingPages;
+
+              if (pendingPage !== undefined) {
+                state.pendingPages.shift();
+                yield* syncCatchUpPage(state, pendingPage, chainId);
+              } else if (cursor === null) {
+                // The backfill reached its newest page: fetch the newest events.
+                // A catch-up check stores nothing, so it cannot raise the safe height.
+                yield* catchUp(state, chainId);
+                stored = false;
+              } else {
+                yield* syncBackfillPage(state, cursor, chainId);
+              }
+
+              if (state.done) {
+                yield* Effect.logInfo(`Sync complete for ${state.contractId}`).pipe(
+                  Effect.annotateLogs({
+                    chainId,
+                    contractId: state.contractId,
+                    phase: "sync",
+                    block: state.syncedBlockHeight,
+                  }),
+                );
+              }
             }
 
-            if (state.done) {
-              yield* Effect.logInfo(`Sync complete for ${state.contractId}`).pipe(
-                Effect.annotateLogs({
-                  chainId,
-                  contractId: state.contractId,
-                  phase: "sync",
-                  block: state.syncedBlockHeight,
-                }),
-              );
-            }
+            // Incremental indexing: notify indexer fiber of current safe block height.
+            const safeHeight = getSafeBlockHeight(states, blockStates);
 
-            // Incremental indexing: notify indexer fiber of current safe block
-            // Height. A catch-up check stores nothing, so it cannot raise it.
-            const safeHeight = getSafeBlockHeight(states);
-
-            if (safeHeight !== undefined && (pendingPage !== undefined || cursor !== null)) {
+            if (safeHeight !== undefined && stored) {
               yield* Queue.offer(queue, {
                 type: "safe",
                 safeBlockHeight: safeHeight,
-                contracts: states.map(toContractSyncSummary),
+                ...snapshot(),
               });
             }
           }
 
-          yield* Queue.offer(queue, {
-            type: "completed",
-            contracts: states.map(toContractSyncSummary),
-          });
+          yield* Queue.offer(queue, { type: "completed", ...snapshot() });
         }).pipe(
           Effect.provideService(IndexerDatabase, database),
           Effect.provideService(StacksClient, StacksClient.of(client)),

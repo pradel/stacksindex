@@ -16,13 +16,14 @@ import type {
 } from "../datasources/api/index.ts";
 import { HandlerClient } from "../indexing/client.ts";
 import { ConfigurationError } from "../lib/errors.ts";
-import type { CoreHandler, PrintEvent } from "../lib/types.ts";
+import type { BlockEvent, CoreBlockHandler, CoreHandler, PrintEvent } from "../lib/types.ts";
+import type { BlockDefinitions } from "../runtime/blocks.ts";
 import type { IndexerRuntimeOptions } from "../runtime/config.ts";
 import {
   type ContractDefinitionBase,
-  type ContractSpec,
   type DecodeIssue,
-  validateContractDefinitions,
+  type SourceSpecs,
+  validateIndexerDefinition,
 } from "../runtime/contracts.ts";
 import { Indexer as IndexerService, type IndexerStatus, type RunResult } from "../runtime/index.ts";
 import { toThenable } from "./thenable.ts";
@@ -166,16 +167,49 @@ export type EventHandler<
   context: HandlerContext<TRelations>,
 ) => Promise<void> | void;
 
-/** One handler per defined contract. */
-export type Handlers<TContracts extends ContractDefinitions, TRelations extends AnyRelations> = {
-  readonly [TName in keyof TContracts]: EventHandler<TContracts[TName], TRelations>;
+/** Handles a block source run: once per block the source runs at. */
+export type BlockHandler<
+  TRelations extends AnyRelations = EmptyRelations,
+  TName extends string = string,
+> = (event: BlockEvent<TName>, context: HandlerContext<TRelations>) => Promise<void> | void;
+
+/** A definition map with no entries: the default when `contracts` or `blocks` is omitted. */
+// oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty definition map is the intent
+export type EmptyDefinitions = Readonly<Record<never, never>>;
+
+/** Any contract or block source handler, as `toSpecs` reads them from `handlers`. */
+type AnySourceHandler<TRelations extends AnyRelations> =
+  | EventHandler<ContractDefinition, TRelations>
+  | BlockHandler<TRelations, never>;
+
+/** The handler of the contract or block source named `TName`. */
+export type SourceHandler<
+  TContracts extends ContractDefinitions,
+  TName extends PropertyKey,
+  TRelations extends AnyRelations,
+> = TName extends keyof TContracts
+  ? EventHandler<TContracts[TName], TRelations>
+  : BlockHandler<TRelations, TName & string>;
+
+/** One handler per defined contract and block source. */
+export type Handlers<
+  TContracts extends ContractDefinitions,
+  TRelations extends AnyRelations,
+  TBlocks extends BlockDefinitions = EmptyDefinitions,
+> = {
+  readonly [TName in keyof TContracts | keyof TBlocks]: SourceHandler<
+    TContracts,
+    TName,
+    TRelations
+  >;
 };
 
 export interface CreateOptions<
   TContracts extends ContractDefinitions,
   TRelations extends AnyRelations,
+  TBlocks extends BlockDefinitions = EmptyDefinitions,
 > extends IndexerRuntimeOptions {
-  readonly handlers: Handlers<TContracts, TRelations>;
+  readonly handlers: Handlers<TContracts, TRelations, TBlocks>;
 }
 
 /**
@@ -188,15 +222,15 @@ export interface Indexer<TRelations extends AnyRelations = EmptyRelations> {
    * the indexer's. On PGlite, queries wait for the batch in progress.
    */
   readonly db: IndexerDb<TRelations>;
-  /** Syncs and indexes every contract up to the current chain tip. */
+  /** Syncs and indexes every contract and block source up to the current chain tip. */
   run: () => Promise<RunResult>;
   /**
    * Runs `run`, then follows new blocks and indexes them as they arrive.
-   * Resolves once every contract reached its `endBlock`, or when `close()` is
-   * called; rejects on a fatal error.
+   * Resolves once every contract and block source reached its `endBlock`, or
+   * when `close()` is called; rejects on a fatal error.
    */
   live: () => Promise<void>;
-  /** Current phase plus the stored checkpoint, anchor and per-contract sync progress. */
+  /** Current phase plus the stored checkpoint, anchor and per-contract and per-block-source sync progress. */
   status: () => Promise<IndexerStatus>;
   /** Flush pending metrics and release the database and runtime. Safe to call multiple times. */
   close: () => Promise<void>;
@@ -206,18 +240,20 @@ export interface Indexer<TRelations extends AnyRelations = EmptyRelations> {
 export interface IndexerDefinition<
   TContracts extends ContractDefinitions,
   TRelations extends AnyRelations,
+  TBlocks extends BlockDefinitions = EmptyDefinitions,
 > {
   readonly contracts: TContracts;
+  readonly blocks: TBlocks;
   /** Types a handler defined apart from `create`, e.g. in its own module. */
-  handler<TName extends keyof TContracts & string>(
+  handler<TName extends (keyof TContracts | keyof TBlocks) & string>(
     name: TName,
-    handler: EventHandler<TContracts[TName], TRelations>,
-  ): EventHandler<TContracts[TName], TRelations>;
+    handler: SourceHandler<TContracts, TName, TRelations>,
+  ): SourceHandler<TContracts, TName, TRelations>;
   /**
    * Opens the database, applies the indexer's migrations and `migrations`,
    * and resolves once the indexer is ready.
    */
-  create(options: CreateOptions<TContracts, TRelations>): Promise<Indexer<TRelations>>;
+  create(options: CreateOptions<TContracts, TRelations, TBlocks>): Promise<Indexer<TRelations>>;
 }
 
 const makeLogger = (runSync: (effect: Effect.Effect<void>) => void): Logger => {
@@ -275,103 +311,154 @@ const standardDecoder =
  * Runs a promise handler inside the batch fiber: awaited queries run with its
  * services, so `context.db` uses the open transaction connection.
  */
+const runPromiseHandler = <TRelations extends AnyRelations>(
+  call: (context: HandlerContext<TRelations>) => Promise<void> | void,
+): Effect.Effect<void, unknown, IndexerDatabase | HandlerClient> =>
+  Effect.gen(function* () {
+    const services = yield* Effect.context<IndexerDatabase | HandlerClient>();
+    const run = Effect.runPromiseWith(services);
+    const runSync = Effect.runSyncWith(services);
+    // SAFETY: The database was opened with the `relations` the handlers are typed with.
+    const db = toThenable(Context.get(services, IndexerDatabase), run) as IndexerDb<TRelations>;
+    const thenableClient: unknown = toThenable(Context.get(services, HandlerClient), run);
+    // SAFETY: toThenable wraps the Effect client so every method returns a thenable at run time.
+    const client = thenableClient as IndexingClient;
+
+    const logger = makeLogger((effect) => {
+      runSync(effect);
+    });
+
+    yield* Effect.tryPromise({
+      try: () => Promise.resolve(call({ db, client, logger })),
+      catch: (err) => err,
+    });
+  });
+
 const toCoreHandler =
   <TRelations extends AnyRelations>(
     handler: EventHandler<ContractDefinition, TRelations>,
   ): CoreHandler =>
   (event) =>
-    Effect.gen(function* () {
-      const services = yield* Effect.context<IndexerDatabase | HandlerClient>();
-      const run = Effect.runPromiseWith(services);
-      const runSync = Effect.runSyncWith(services);
-      // SAFETY: The database was opened with the `relations` the handlers are typed with.
-      const db = toThenable(Context.get(services, IndexerDatabase), run) as IndexerDb<TRelations>;
-      const thenableClient: unknown = toThenable(Context.get(services, HandlerClient), run);
-      // SAFETY: toThenable wraps the Effect client so every method returns a thenable at run time.
-      const client = thenableClient as IndexingClient;
-      // SAFETY: The runtime parsed `data` with this contract's `print` schema, which `EventHandler` types it with.
-      const typedEvent = event as PrintEvent;
+    // SAFETY: The runtime parsed `data` with this contract's `print` schema, which `EventHandler` types it with.
+    runPromiseHandler<TRelations>((context) => handler(event as PrintEvent, context));
 
-      const logger = makeLogger((effect) => {
-        runSync(effect);
-      });
+const toCoreBlockHandler =
+  <TRelations extends AnyRelations>(handler: BlockHandler<TRelations>): CoreBlockHandler =>
+  (event) =>
+    runPromiseHandler<TRelations>((context) => handler(event, context));
 
-      yield* Effect.tryPromise({
-        try: () => Promise.resolve(handler(typedEvent, { db, client, logger })),
-        catch: (err) => err,
-      });
-    });
-
-const toContractSpecs = <TContracts extends ContractDefinitions, TRelations extends AnyRelations>(
-  contracts: TContracts,
-  handlers: Handlers<TContracts, TRelations>,
-): ContractSpec[] => {
+/** Pairs every contract and block source with its handler, rejecting unknown or missing ones. */
+const toSpecs = <TRelations extends AnyRelations>(
+  contracts: ContractDefinitions,
+  blocks: BlockDefinitions,
+  handlers: Readonly<Partial<Record<string, AnySourceHandler<TRelations>>>>,
+): SourceSpecs => {
   for (const name of Object.keys(handlers)) {
-    if (!Object.hasOwn(contracts, name)) {
-      throw new ConfigurationError({ message: `handlers.${name}: no contract named "${name}".` });
+    if (!Object.hasOwn(contracts, name) && !Object.hasOwn(blocks, name)) {
+      throw new ConfigurationError({
+        message: `handlers.${name}: no contract or block source named "${name}".`,
+      });
     }
   }
 
-  return Object.entries(contracts).map(([name, contract]) => {
-    const handler: EventHandler<ContractDefinition, TRelations> | undefined = handlers[name];
+  const handlerOf = (name: string): AnySourceHandler<TRelations> => {
+    const handler = handlers[name];
 
     if (!Predicate.isFunction(handler)) {
       throw new ConfigurationError({ message: `handlers.${name}: missing handler.` });
     }
 
-    return {
-      name,
-      contractId: contract.id,
-      startBlock: contract.startBlock,
-      endBlock: contract.endBlock,
-      onInvalid: contract.onInvalid ?? "fail",
-      decode: contract.print === undefined ? undefined : standardDecoder(contract.print),
-      handler: toCoreHandler(handler),
-    };
-  });
+    return handler;
+  };
+
+  return {
+    contracts: Object.entries(contracts).map(([name, contract]) => {
+      // SAFETY: `Handlers` types the handler of a contract name as its `EventHandler`.
+      const handler = handlerOf(name) as EventHandler<ContractDefinition, TRelations>;
+
+      return {
+        name,
+        contractId: contract.id,
+        startBlock: contract.startBlock,
+        endBlock: contract.endBlock,
+        onInvalid: contract.onInvalid ?? "fail",
+        decode: contract.print === undefined ? undefined : standardDecoder(contract.print),
+        handler: toCoreHandler(handler),
+      };
+    }),
+    blocks: Object.entries(blocks).map(([name, source]) => {
+      // SAFETY: `Handlers` types the handler of a block source name as a `BlockHandler`.
+      const handler = handlerOf(name) as BlockHandler<TRelations>;
+
+      return {
+        name,
+        interval: source.interval ?? 1,
+        startBlock: source.startBlock,
+        endBlock: source.endBlock,
+        handler: toCoreBlockHandler(handler),
+      };
+    }),
+  };
 };
 
 /**
- * Defines the contracts to index and, optionally, the drizzle `relations`
- * typing `db.query`. Throws `ConfigurationError` on an invalid definition.
+ * Defines the contracts and block sources to index and, optionally, the
+ * drizzle `relations` typing `db.query`. Throws `ConfigurationError` on an
+ * invalid definition.
  */
 export function defineIndexer<
-  const TContracts extends ContractDefinitions,
   TRelations extends AnyRelations,
+  const TContracts extends ContractDefinitions = EmptyDefinitions,
+  const TBlocks extends BlockDefinitions = EmptyDefinitions,
 >(definition: {
-  readonly contracts: TContracts;
+  readonly contracts?: TContracts;
+  readonly blocks?: TBlocks;
   readonly relations: TRelations;
-}): IndexerDefinition<TContracts, TRelations>;
-
-export function defineIndexer<const TContracts extends ContractDefinitions>(definition: {
-  readonly contracts: TContracts;
-}): IndexerDefinition<TContracts, EmptyRelations>;
+}): IndexerDefinition<TContracts, TRelations, TBlocks>;
 
 export function defineIndexer<
-  const TContracts extends ContractDefinitions,
-  TRelations extends AnyRelations,
+  const TContracts extends ContractDefinitions = EmptyDefinitions,
+  const TBlocks extends BlockDefinitions = EmptyDefinitions,
 >(definition: {
-  readonly contracts: TContracts;
+  readonly contracts?: TContracts;
+  readonly blocks?: TBlocks;
+}): IndexerDefinition<TContracts, EmptyRelations, TBlocks>;
+
+export function defineIndexer<
+  TRelations extends AnyRelations,
+  const TContracts extends ContractDefinitions,
+  const TBlocks extends BlockDefinitions,
+>(definition: {
+  readonly contracts?: TContracts;
+  readonly blocks?: TBlocks;
   readonly relations?: TRelations;
-}): IndexerDefinition<TContracts, TRelations> {
-  validateContractDefinitions(definition.contracts);
+}): IndexerDefinition<TContracts, TRelations, TBlocks> {
+  validateIndexerDefinition(definition);
+
+  // SAFETY: An omitted map is the empty definition its type parameter defaults to.
+  const contracts = (definition.contracts ?? {}) as TContracts;
+  // SAFETY: As above.
+  const blocks = (definition.blocks ?? {}) as TBlocks;
 
   return {
-    contracts: definition.contracts,
+    contracts,
+    blocks,
     handler: (_name, handler) => handler,
-    create: (options) => createIndexer(definition.contracts, definition.relations, options),
+    create: (options) => createIndexer(contracts, blocks, definition.relations, options),
   };
 }
 
 async function createIndexer<
   TContracts extends ContractDefinitions,
   TRelations extends AnyRelations,
+  TBlocks extends BlockDefinitions,
 >(
   contracts: TContracts,
+  blocks: TBlocks,
   relations: TRelations | undefined,
-  options: CreateOptions<TContracts, TRelations>,
+  options: CreateOptions<TContracts, TRelations, TBlocks>,
 ): Promise<Indexer<TRelations>> {
-  const specs = toContractSpecs(contracts, options.handlers);
+  const specs = toSpecs<TRelations>(contracts, blocks, options.handlers);
 
   const runtime = ManagedRuntime.make(
     IndexerService.layerWithDatabase({
@@ -384,7 +471,8 @@ async function createIndexer<
       live: options.live,
       logLevel: options.logLevel,
       telemetry: options.telemetry,
-      contracts: specs,
+      contracts: specs.contracts,
+      blocks: specs.blocks,
     }),
   );
 

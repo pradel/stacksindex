@@ -1,4 +1,4 @@
-import type { PrintEvent } from "stacksindex";
+import type { BlockEvent, PrintEvent } from "stacksindex";
 import type { ClarityJsonValue } from "stacksindex/clarity";
 
 export interface RecordedTraceEvent {
@@ -16,8 +16,26 @@ export interface RecordedTraceEvent {
   recordedAt: number;
 }
 
+/** A block source run, as its handler received it. */
+export interface RecordedBlockEvent {
+  name: string;
+  blockHeight: number;
+  blockTime: number;
+  hash: string;
+  indexBlockHash: string;
+}
+
+/** One handler call, in delivery order: a print of a contract or a block source run. */
+export type TraceEntry =
+  | { type: "print"; blockHeight: number; contractId: string }
+  | { type: "block"; blockHeight: number; name: string };
+
 export interface TraceCollector {
   record: (event: PrintEvent) => void;
+  recordBlock: (event: BlockEvent) => void;
+  getBlockEvents: () => RecordedBlockEvent[];
+  /** Every recorded print and block source run, in delivery order. */
+  getSequence: () => TraceEntry[];
   getEvents: () => RecordedTraceEvent[];
   getEventsForContract: (contractId: string) => RecordedTraceEvent[];
   assertChronologicalOrder: () => void;
@@ -35,9 +53,16 @@ export interface TraceCollector {
 
 export function createTraceCollector(): TraceCollector {
   const events: RecordedTraceEvent[] = [];
+  const blockEvents: RecordedBlockEvent[] = [];
+  const sequence: TraceEntry[] = [];
 
   return {
     record(event: PrintEvent) {
+      sequence.push({
+        type: "print",
+        blockHeight: event.block.height,
+        contractId: event.contractId,
+      });
       events.push({
         contractId: event.contractId,
         blockHeight: event.block.height,
@@ -52,6 +77,25 @@ export function createTraceCollector(): TraceCollector {
         decoded: event.data,
         recordedAt: Date.now(),
       });
+    },
+
+    recordBlock(event: BlockEvent) {
+      sequence.push({ type: "block", blockHeight: event.block.height, name: event.name });
+      blockEvents.push({
+        name: event.name,
+        blockHeight: event.block.height,
+        blockTime: event.block.time,
+        hash: event.block.hash,
+        indexBlockHash: event.block.indexBlockHash,
+      });
+    },
+
+    getBlockEvents() {
+      return [...blockEvents];
+    },
+
+    getSequence() {
+      return [...sequence];
     },
 
     getEvents() {
@@ -128,6 +172,8 @@ export function createTraceCollector(): TraceCollector {
 
     clear() {
       events.length = 0;
+      blockEvents.length = 0;
+      sequence.length = 0;
     },
   };
 }

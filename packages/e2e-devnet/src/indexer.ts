@@ -2,6 +2,7 @@ import type { RecordedTraceEvent, TraceCollector } from "indexer-e2e/src/tracer.
 import {
   defineIndexer,
   pglite,
+  type BlockEvent,
   type Database,
   type HandlerContext,
   type Indexer,
@@ -19,6 +20,12 @@ export interface ContractRange {
   endBlock?: number | "latest";
 }
 
+export interface BlockRange {
+  interval?: number;
+  startBlock: number;
+  endBlock?: number | "latest";
+}
+
 export type DevnetHandler = (event: PrintEvent, context: HandlerContext) => Promise<void> | void;
 
 /** Definition name of a contract: its `<contract-name>` segment. */
@@ -28,10 +35,12 @@ export function contractName(contractId: string): string {
 
 /**
  * Indexer reading the devnet API, on a fresh in-memory database by default.
- * Every contract gets `handler`; with `trace`, events are recorded first.
+ * Every contract gets `handler`; with `trace`, prints and block source runs
+ * (`blocks`, keyed by definition name) are recorded first.
  */
 export function createDevnetIndexer(options: {
-  contracts: ContractRange[];
+  contracts?: ContractRange[];
+  blocks?: Record<string, BlockRange>;
   trace?: TraceCollector;
   handler?: DevnetHandler;
   live?: LiveOptions;
@@ -39,18 +48,26 @@ export function createDevnetIndexer(options: {
   migrations?: string;
 }): Promise<Indexer> {
   const contracts = Object.fromEntries(
-    options.contracts.map((range) => [
+    (options.contracts ?? []).map((range) => [
       contractName(range.contractId),
       { id: range.contractId, startBlock: range.startBlock, endBlock: range.endBlock },
     ]),
   );
 
-  const handler: DevnetHandler = async (event, context) => {
+  const blocks = options.blocks ?? {};
+
+  const handler = async (event: PrintEvent | BlockEvent, context: HandlerContext) => {
+    if (event.type === "block") {
+      options.trace?.recordBlock(event);
+
+      return;
+    }
+
     options.trace?.record(event);
     await options.handler?.(event, context);
   };
 
-  return defineIndexer({ contracts }).create({
+  return defineIndexer({ contracts, blocks }).create({
     database: options.database ?? pglite(),
     migrations: options.migrations,
     // Clarinet devnet uses the testnet chain id; only the API URL differs.
@@ -58,7 +75,9 @@ export function createDevnetIndexer(options: {
     api: { url: DEVNET_API_URL },
     live: options.live,
     logLevel: "Warn",
-    handlers: Object.fromEntries(Object.keys(contracts).map((name) => [name, handler])),
+    handlers: Object.fromEntries(
+      [...Object.keys(contracts), ...Object.keys(blocks)].map((name) => [name, handler]),
+    ),
   });
 }
 

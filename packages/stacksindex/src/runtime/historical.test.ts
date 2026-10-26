@@ -44,9 +44,8 @@ import {
   TransactionBatchError,
 } from "../lib/errors.ts";
 import { indexingBatchDuration, indexingBlock, indexingEvents } from "../lib/metrics.ts";
-import type { CoreHandler, PrintEvent } from "../lib/types.ts";
+import type { PrintEvent } from "../lib/types.ts";
 import { defineIndexer } from "../promise/index.ts";
-import { toThenable } from "../promise/thenable.ts";
 import { syncStore } from "../sync-store/index.ts";
 import {
   blocksTable,
@@ -55,48 +54,11 @@ import {
   transactionsTable,
 } from "../sync-store/schema.ts";
 import { parseLogsCursor, parseTransactionCursor } from "../sync/cursor.ts";
+import { contractSpec, makeRuntime } from "../test-utils/historical-runtime.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { freshDatabase } from "../test/fresh-database.ts";
-import type { ContractSpec } from "./contracts.ts";
-import { Indexer, type IndexerError, type IndexerOptions, type RunResult } from "./index.ts";
-
-/** A contract as tests pass it to `makeRuntime().run`; the name defaults to the id's contract name. */
-interface TestContract {
-  readonly contractId: string;
-  readonly handler: CoreHandler;
-  readonly name?: string;
-  readonly startBlock?: number;
-  readonly endBlock?: number | "latest";
-}
-
-const contractSpec = ({ name, ...contract }: TestContract): ContractSpec => ({
-  name: name ?? contract.contractId.slice(contract.contractId.indexOf(".") + 1),
-  onInvalid: "fail",
-  ...contract,
-});
-
-const makeRuntime = (input: { db: IndexerDb } & IndexerOptions) => ({
-  run: (contracts: readonly TestContract[]) =>
-    toThenable(
-      Effect.gen(function* () {
-        const indexer = yield* Indexer;
-
-        return yield* indexer.run;
-      }).pipe(
-        Effect.provide(
-          Indexer.layer({
-            chain: input.chain,
-            api: input.api,
-            finality: input.finality,
-            contracts: contracts.map(contractSpec),
-          }),
-        ),
-        Effect.provideService(IndexerDatabase, input.db),
-        Effect.provideService(References.MinimumLogLevel, "None"),
-      ),
-    ),
-});
+import { Indexer, type IndexerError, type RunResult } from "./index.ts";
 
 interface Dictionary<TValue> {
   [key: string]: TValue;

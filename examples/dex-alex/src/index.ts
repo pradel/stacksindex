@@ -3,7 +3,7 @@ import process from "node:process";
 
 import { pglite, type Indexer } from "stacksindex";
 
-import { poolHandler } from "./handler.ts";
+import { poolHandler, poolSnapshotsHandler } from "./handler.ts";
 import { indexer } from "./indexer.ts";
 import type { relations } from "./schema.ts";
 
@@ -60,7 +60,7 @@ try {
     api: { apiKey },
     live: { transport: process.env.STACKS_TRANSPORT === "websocket" ? "websocket" : "polling" },
     telemetry: otlpBaseUrl ? { otlp: { baseUrl: otlpBaseUrl } } : undefined,
-    handlers: { pool: poolHandler },
+    handlers: { pool: poolHandler, poolSnapshots: poolSnapshotsHandler },
   });
 
   await (isLive ? app.live() : app.run());

@@ -25,12 +25,14 @@ import {
   livePassDuration,
   syncErrors,
 } from "../lib/metrics.ts";
-import { estimateBlockRequests, syncBlock } from "../sync-realtime/block.ts";
+import { estimateBlockRequests, needsBlockRequest, syncBlock } from "../sync-realtime/block.ts";
 import { syncStore } from "../sync-store/index.ts";
 import type { SyncService } from "../sync/index.ts";
+import { type BlockSourceSpec, nextBlockSourceHeight, type ResolvedBlockSource } from "./blocks.ts";
 import type { IndexerError, ResolvedIndexerConfig } from "./config.ts";
 import type { ContractSpec } from "./contracts.ts";
 import {
+  getSyncingBlockSources,
   getSyncingContracts,
   indexEventsUpTo,
   type PreparedContracts,
@@ -94,6 +96,7 @@ function followHeads<A, E, R>(
 function isTransientError(error: IndexerError): boolean {
   return !(
     Predicate.isTagged(error, "HandlerExecutionError") ||
+    Predicate.isTagged(error, "BlockHandlerExecutionError") ||
     Predicate.isTagged(error, "EventDecodeError") ||
     Predicate.isTagged(error, "ReorgError") ||
     Predicate.isTagged(error, "SyncStoreError") ||
@@ -104,18 +107,19 @@ function isTransientError(error: IndexerError): boolean {
 }
 
 /**
- * Height at which every contract is complete, or `undefined` when at least
- * one contract is open-ended and `live` follows the chain indefinitely.
+ * Height at which every contract and block source is complete, or
+ * `undefined` when at least one is open-ended and `live` follows the chain
+ * indefinitely.
  */
 function getEndBlockHeight(prepared: PreparedContracts): number | undefined {
   let endHeight = 0;
 
-  for (const contract of prepared.contracts) {
-    if (contract.endBlock === undefined) {
+  for (const source of [...prepared.contracts, ...prepared.blocks]) {
+    if (source.endBlock === undefined) {
       return undefined;
     }
 
-    endHeight = Math.max(endHeight, contract.endBlock);
+    endHeight = Math.max(endHeight, source.endBlock);
   }
 
   return endHeight;
@@ -179,11 +183,65 @@ function getLinkedBlocks(
   });
 }
 
+/** Block sources running at a height in `(fromHeight, toHeight]`. */
+function countRunningBlockSources(
+  sources: readonly ResolvedBlockSource[],
+  fromHeight: number,
+  toHeight: number,
+): number {
+  let count = 0;
+
+  for (const source of sources) {
+    const next = nextBlockSourceHeight(source, fromHeight);
+
+    if (next !== undefined && next <= toHeight) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Whether every contract and block source is synced through `blockHeight`
+ * with no backfill in flight, so the previous pass completed.
+ */
+function isSyncedThrough(options: {
+  readonly chainId: number;
+  readonly contractIds: readonly string[];
+  readonly blockSources: readonly ResolvedBlockSource[];
+  readonly blockHeight: number;
+}): Effect.Effect<boolean, SyncStoreError, IndexerDatabase> {
+  const { chainId, blockHeight } = options;
+
+  return Effect.gen(function* () {
+    for (const contractId of options.contractIds) {
+      const progress = yield* syncStore.getSyncProgress({ chainId, contractId });
+
+      if (progress?.cursor !== null || Number(progress.syncedBlockHeight) < blockHeight) {
+        return false;
+      }
+    }
+
+    for (const source of options.blockSources) {
+      const progress = yield* syncStore.getBlockSyncProgress({ chainId, name: source.name });
+
+      if (progress === null || Number(progress.syncedBlockHeight) < blockHeight) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
 /**
  * Picks the cheaper way to fetch `head`. The per-block path needs blocks that
- * link the head to the anchor and every syncing contract synced through the
- * anchor (the previous pass completed); it is taken only when it costs fewer
- * requests than one logs page per syncing contract.
+ * link the head to the anchor and every syncing contract and block source
+ * synced through the anchor (the previous pass completed); it is taken only
+ * when it costs fewer requests than the per-contract path: one logs page per
+ * syncing contract, plus one block request per block source running in the
+ * gap.
  */
 function planFetch(options: {
   readonly chainId: number;
@@ -204,10 +262,17 @@ function planFetch(options: {
       (contract) => contract.contractId,
     );
 
-    // Every block costs at least one request, plus one to list them.
-    const minimumBlockRequests = gap === 1 ? 1 : gap + 1;
+    const blockSources = getSyncingBlockSources(options.prepared, anchor.blockHeight + 1);
 
-    if (gap > MAX_BLOCKS_PER_FETCH || minimumBlockRequests >= contractIds.length) {
+    const contractsRequests =
+      contractIds.length + countRunningBlockSources(blockSources, anchor.blockHeight, head.height);
+
+    // With contracts, every block costs at least one request, plus one to list
+    // Them; block sources alone need only the list.
+    const listRequests = gap === 1 ? 0 : 1;
+    const minimumBlockRequests = contractIds.length === 0 ? listRequests : gap + listRequests;
+
+    if (gap > MAX_BLOCKS_PER_FETCH || minimumBlockRequests >= contractsRequests) {
       return {
         type: "contracts",
         anchorIsCanonical: gap === 1 && head.parentHash === anchor.blockHash,
@@ -220,21 +285,26 @@ function planFetch(options: {
       return { type: "contracts", anchorIsCanonical: false } as const;
     }
 
-    for (const contractId of contractIds) {
-      const progress = yield* syncStore.getSyncProgress({ chainId, contractId });
-
-      if (progress?.cursor !== null || Number(progress.syncedBlockHeight) < anchor.blockHeight) {
-        return { type: "contracts", anchorIsCanonical: true } as const;
-      }
+    if (
+      !(yield* isSyncedThrough({
+        chainId,
+        contractIds,
+        blockSources,
+        blockHeight: anchor.blockHeight,
+      }))
+    ) {
+      return { type: "contracts", anchorIsCanonical: true } as const;
     }
 
     let requests = 0;
 
     for (const block of blocks) {
-      requests += estimateBlockRequests(block);
+      requests +=
+        (contractIds.length > 0 ? estimateBlockRequests(block) : 0) +
+        (needsBlockRequest(block, blockSources) ? 1 : 0);
     }
 
-    return requests < contractIds.length
+    return requests < contractsRequests
       ? ({ type: "blocks", blocks, requests } as const)
       : ({ type: "contracts", anchorIsCanonical: true } as const);
   });
@@ -250,7 +320,7 @@ function syncBlocksAndIndexTo(options: {
   readonly prepared: PreparedContracts;
   readonly head: LightBlock;
   readonly blocks: readonly LightBlock[];
-  readonly eventsByContract: Map<string, number>;
+  readonly eventsByName: Map<string, number>;
 }): Effect.Effect<void, IndexerError, StacksClient | IndexerDatabase | Indexing> {
   const { config, prepared, head } = options;
   const { chainId } = config;
@@ -263,14 +333,19 @@ function syncBlocksAndIndexTo(options: {
     });
 
     for (const block of options.blocks) {
-      yield* syncBlock({ chainId, block, filters: prepared.syncFilters });
+      yield* syncBlock({
+        chainId,
+        block,
+        filters: prepared.syncFilters,
+        blockSources: prepared.blockSyncFilters,
+      });
     }
 
     yield* indexEventsUpTo(
       head.height,
-      prepared.contractsById,
+      prepared,
       chainId,
-      options.eventsByContract,
+      options.eventsByName,
       config.finality,
       head.height,
     );
@@ -305,7 +380,7 @@ function processHead(options: {
     yield* Metric.update(liveBlockArrivalLatency, Math.max(0, now - head.blockTime * 1000));
 
     const plan = yield* planFetch({ chainId, prepared, anchor, head });
-    const eventsByContract = new Map<string, number>();
+    const eventsByName = new Map<string, number>();
 
     // A one-shot run reports per-contract sync progress at info. A live pass
     // Reports one line per head instead, so its per-contract chatter is only
@@ -314,14 +389,14 @@ function processHead(options: {
 
     const pass =
       plan.type === "blocks"
-        ? syncBlocksAndIndexTo({ config, prepared, head, blocks: plan.blocks, eventsByContract })
+        ? syncBlocksAndIndexTo({ config, prepared, head, blocks: plan.blocks, eventsByName })
         : syncAndIndexTo({
             chainId,
             finality: config.finality,
             sync: options.sync,
             prepared,
             tip: { blockHeight: head.height, blockHash: head.hash },
-            eventsByContract,
+            eventsByName,
             logProgress: false,
             anchorIsCanonical: plan.anchorIsCanonical,
           });
@@ -341,7 +416,7 @@ function processHead(options: {
 
     let events = 0;
 
-    for (const count of eventsByContract.values()) {
+    for (const count of eventsByName.values()) {
       events += count;
     }
 
@@ -365,12 +440,14 @@ function processHead(options: {
 }
 
 /**
- * Runs a historical pass, then follows new chain heads until every filter
- * reaches its `endBlock`. Heads arriving while one is processed collapse to the
- * newest: each pass catches up over the whole range since the previous one.
+ * Runs a historical pass, then follows new chain heads until every filter and
+ * block source reaches its `endBlock`. Heads arriving while one is processed
+ * collapse to the newest: each pass catches up over the whole range since the
+ * previous one.
  */
 export function runLive(
   specs: readonly ContractSpec[],
+  blockSpecs: readonly BlockSourceSpec[],
   config: ResolvedIndexerConfig,
   sync: SyncService,
 ): Effect.Effect<
@@ -381,7 +458,7 @@ export function runLive(
   const { chainId } = config;
 
   return Effect.gen(function* () {
-    const prepared = yield* prepareContracts(specs);
+    const prepared = yield* prepareContracts(specs, blockSpecs);
 
     yield* runPreparedHistorical(prepared, config, sync);
 
@@ -393,9 +470,9 @@ export function runLive(
     const anchor = yield* syncStore.getSyncAnchor({ chainId });
 
     if (anchor !== null && isComplete(anchor.blockHeight)) {
-      yield* Effect.logInfo("Every contract reached its end block; live indexing complete").pipe(
-        Effect.annotateLogs({ chainId, phase: "live", block: anchor.blockHeight }),
-      );
+      yield* Effect.logInfo(
+        "Every contract and block source reached its end block; live indexing complete",
+      ).pipe(Effect.annotateLogs({ chainId, phase: "live", block: anchor.blockHeight }));
 
       return;
     }
@@ -455,12 +532,12 @@ export function runLive(
       blockHeads({ chainId, ...config.live }).pipe(
         Stream.buffer({ capacity: 1, strategy: "sliding" }),
         Stream.runForEachWhile(handleHead),
-        Effect.provide(Indexing.layer({ contracts: prepared.contracts })),
+        Effect.provide(Indexing.layer({ contracts: prepared.contracts, blocks: prepared.blocks })),
       ),
     );
 
-    yield* Effect.logInfo("Every contract reached its end block; live indexing complete").pipe(
-      Effect.annotateLogs({ chainId, phase: "live" }),
-    );
+    yield* Effect.logInfo(
+      "Every contract and block source reached its end block; live indexing complete",
+    ).pipe(Effect.annotateLogs({ chainId, phase: "live" }));
   }).pipe(Effect.annotateLogs({ service: "indexer" }), Effect.withLogSpan("liveIndexing"));
 }

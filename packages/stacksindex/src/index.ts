@@ -3,9 +3,11 @@
 export { defineIndexer } from "./promise/index.ts";
 
 export type {
+  BlockHandler,
   ContractDefinition,
   ContractDefinitions,
   CreateOptions,
+  EmptyDefinitions,
   EventHandler,
   HandlerContext,
   Handlers,
@@ -16,19 +18,24 @@ export type {
   Logger,
   LogValue,
   PrintData,
+  SourceHandler,
 } from "./promise/index.ts";
 
 export { pglite, postgres } from "./database/index.ts";
 
 export type { Database, IndexerDb } from "./database/index.ts";
 
-export type { PrintEvent } from "./lib/types.ts";
+export type { BlockEvent, EventBlock, PrintEvent } from "./lib/types.ts";
 
 export type { ChainOption } from "./lib/network.ts";
 
 export type { OnInvalid } from "./runtime/contracts.ts";
 
+export type { BlockDefinition, BlockDefinitions } from "./runtime/blocks.ts";
+
 export type {
+  BlockSourceRunResult,
+  BlockSourceStatus,
   ContractRunResult,
   ContractStatus,
   IndexerError,
@@ -45,6 +52,7 @@ export {
   ConfigurationError,
   DatabaseError,
   EventDecodeError,
+  BlockHandlerExecutionError,
   HandlerExecutionError,
   MigrationError,
   ReorgError,

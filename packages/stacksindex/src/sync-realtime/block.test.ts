@@ -2,12 +2,12 @@ import { Effect, Layer, References, Stream } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase } from "../database/index.ts";
-import { toLightBlock } from "../datasources/api/heads.ts";
+import { type LightBlock, toLightBlock } from "../datasources/api/heads.ts";
 import { StacksClient } from "../datasources/api/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { blocksTable, eventsTable, transactionsTable } from "../sync-store/schema.ts";
-import { Sync, type SyncFilter } from "../sync/index.ts";
-import { createFakeChain, type FakeChain } from "../test-utils/fake-chain.ts";
+import { type BlockSyncFilter, Sync, type SyncFilter } from "../sync/index.ts";
+import { createFakeChain, type FakeBlock, type FakeChain } from "../test-utils/fake-chain.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { estimateBlockRequests, syncBlock } from "./block.ts";
 
@@ -24,6 +24,37 @@ const FILTERS: readonly SyncFilter[] = [
   { name: "pool", contractId: POOL, endBlock: 102 },
   { name: "late", contractId: LATE, startBlock: 103 },
 ];
+
+/** Runs at 101 and 103 within the scenario's blocks. */
+const EVERY_OTHER: BlockSyncFilter = {
+  name: "everyOther",
+  interval: 2,
+  startBlock: 101,
+  endBlock: 103,
+};
+
+/** A head as a websocket notification announces it: without its `/extended/v2/blocks` row. */
+const notifiedHead = (block: FakeBlock): LightBlock =>
+  toLightBlock({
+    height: block.height,
+    hash: block.hash,
+    parent_block_hash: block.parentHash,
+    block_time: block.blockTime,
+    tenure_height: block.height,
+    txs: block.transactions.map((transaction) => transaction.txId),
+  });
+
+/** A head read from `/extended/v2/blocks`: it carries what storing it needs. */
+const polledHead = (block: FakeBlock): LightBlock => ({
+  ...notifiedHead(block),
+  stored: {
+    height: block.height,
+    hash: block.hash,
+    index_block_hash: `index-${block.hash}`,
+    burn_block_time: block.blockTime,
+    burn_block_height: block.height,
+  },
+});
 
 /** Blocks covering what both fetch paths must agree on. */
 const mineScenario = (chain: FakeChain) => {
@@ -253,6 +284,95 @@ describe("per-block sync", () => {
 
     expect(stored).toBe(1);
     expect(eventsRequests).toStrictEqual(["/extended/v3/transactions/tx-104-log/events?limit=100"]);
+  });
+
+  const seedBlockSource = (source: BlockSyncFilter) =>
+    testDb.run(
+      syncStore.upsertBlockSyncProgress({
+        chainId: 1,
+        name: source.name,
+        interval: source.interval,
+        startBlock: source.startBlock,
+        syncedBlockHeight: BASE_HEIGHT,
+        isComplete: false,
+      }),
+    );
+
+  const storedBlocks = async () =>
+    (
+      await testDb.db
+        .select({
+          height: blocksTable.height,
+          hash: blocksTable.hash,
+          indexBlockHash: blocksTable.indexBlockHash,
+          blockTime: blocksTable.blockTime,
+        })
+        .from(blocksTable)
+        .orderBy(blocksTable.height)
+    ).map((block) => ({
+      ...block,
+      height: Number(block.height),
+      blockTime: Number(block.blockTime),
+    }));
+
+  test("stores the blocks a block source runs at without fetching transactions", async () => {
+    await seedBlockSource(EVERY_OTHER);
+
+    const [block101, block102, block103] = chain.blocks.filter(
+      (block) => block.height > BASE_HEIGHT,
+    );
+
+    const sync = (block: LightBlock) =>
+      run(syncBlock({ chainId: 1, filters: [], blockSources: [EVERY_OTHER], block }));
+
+    // A websocket head has no block row: it is fetched by hash.
+    await expect(sync(notifiedHead(block101))).resolves.toBe(0);
+    expect(chain.requests).toStrictEqual(["/extended/v2/blocks/0x101"]);
+
+    const progress101 = await testDb.run(
+      syncStore.getBlockSyncProgress({ chainId: 1, name: EVERY_OTHER.name }),
+    );
+
+    expect(progress101).toMatchObject({ syncedBlockHeight: 101n, isComplete: false });
+
+    // Polled heads carry their row; 102 is not a source height.
+    await sync(polledHead(block102));
+    await sync(polledHead(block103));
+
+    expect(chain.requests).toStrictEqual(["/extended/v2/blocks/0x101"]);
+    await expect(storedBlocks()).resolves.toStrictEqual([
+      { height: 101, hash: "0x101", indexBlockHash: "index-0x101", blockTime: 1010 },
+      { height: 103, hash: "0x103", indexBlockHash: "index-0x103", blockTime: 1030 },
+    ]);
+    await expect(
+      testDb.run(syncStore.getBlockSyncProgress({ chainId: 1, name: EVERY_OTHER.name })),
+    ).resolves.toMatchObject({ syncedBlockHeight: 103n, isComplete: true });
+  });
+
+  test("stores a block source's block from a matched transaction without a block request", async () => {
+    await seedProgress();
+    await seedBlockSource(EVERY_OTHER);
+
+    const [block101] = chain.blocks.filter((block) => block.height > BASE_HEIGHT);
+
+    await run(
+      syncBlock({
+        chainId: 1,
+        filters: FILTERS,
+        blockSources: [EVERY_OTHER],
+        block: notifiedHead(block101),
+      }),
+    );
+
+    expect(
+      chain.requests.filter((request) => request.startsWith("/extended/v2/blocks")),
+    ).toStrictEqual([]);
+    await expect(storedBlocks()).resolves.toStrictEqual([
+      { height: 101, hash: "0x101", indexBlockHash: "index-0x101", blockTime: 1010 },
+    ]);
+    await expect(
+      testDb.run(syncStore.getBlockSyncProgress({ chainId: 1, name: EVERY_OTHER.name })),
+    ).resolves.toMatchObject({ syncedBlockHeight: 101n, isComplete: false });
   });
 
   test("estimates one transactions page plus one events page per transaction", () => {

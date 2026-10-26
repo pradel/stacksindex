@@ -4,6 +4,7 @@ import { IndexerDatabase } from "../database/index.ts";
 import { type StacksApiError, StacksClient } from "../datasources/api/index.ts";
 import { Indexing } from "../indexing/index.ts";
 import type {
+  BlockHandlerExecutionError,
   DatabaseError,
   EventDecodeError,
   FilterValidationError,
@@ -12,18 +13,31 @@ import type {
 } from "../lib/errors.ts";
 import { SLOW_OPERATION_MILLIS } from "../lib/logging.ts";
 import {
+  blockSourceAttributes,
   chainTipBlock,
   contractAttributes,
   indexingBatchDuration,
   indexingEvents,
   syncBlock,
 } from "../lib/metrics.ts";
-import type { StoredEvent } from "../sync-store/decode.ts";
+import type {
+  IndexRow,
+  StoredBlockSourceRow,
+  StoredEvent,
+  StoredSourceBlock,
+} from "../sync-store/decode.ts";
 import { syncStore } from "../sync-store/index.ts";
-import type { ContractSyncSummary, SyncFilter, SyncService } from "../sync/index.ts";
+import type {
+  BlockSyncFilter,
+  BlockSyncSummary,
+  ContractSyncSummary,
+  SyncFilter,
+  SyncService,
+} from "../sync/index.ts";
 import { chunkEventsByBlock } from "./batches.ts";
+import { type BlockSourceSpec, isBlockSourceHeight, type ResolvedBlockSource } from "./blocks.ts";
 import type { IndexerError, ResolvedIndexerConfig } from "./config.ts";
-import { type ContractSpec, type ResolvedContract, resolveContracts } from "./contracts.ts";
+import { type ContractSpec, type ResolvedContract, resolveSources } from "./contracts.ts";
 import {
   computeRunProgress,
   createEtaEstimator,
@@ -34,6 +48,14 @@ import {
 } from "./progress.ts";
 import { reconcileWithCanonicalChain, recordCheckpointMetrics } from "./reorg.ts";
 
+/** Failures of indexing stored rows: handlers, print decoding and the store. */
+type IndexingError =
+  | HandlerExecutionError
+  | BlockHandlerExecutionError
+  | EventDecodeError
+  | SyncStoreError
+  | DatabaseError;
+
 /** Outcome of one contract within a `run`. */
 export interface ContractRunResult {
   /** Number of events passed to the contract's handler during this run. */
@@ -42,8 +64,16 @@ export interface ContractRunResult {
   blockHeight?: number;
 }
 
+/** Outcome of one block source within a `run`. */
+export interface BlockSourceRunResult {
+  /** Number of blocks passed to the source's handler during this run. */
+  eventsProcessed: number;
+  /** Height through which every block the source runs at is stored, when known. */
+  blockHeight?: number;
+}
+
 export interface RunResult {
-  /** Total number of events passed to handlers during this run. */
+  /** Total number of events (prints and block source runs) passed to handlers during this run. */
   eventsProcessed: number;
   /** Height through which every event has been indexed. `undefined` before the first batch. */
   blockHeight?: number;
@@ -51,42 +81,62 @@ export interface RunResult {
   finalizedBlockHeight?: number;
   /** Per contract, keyed by definition name. */
   contracts: Record<string, ContractRunResult>;
-}
-
-const indexingEventsByContract = new Map<string, typeof indexingEvents>();
-
-/** `indexingEvents` labelled for one contract, built once per contract. */
-function contractIndexingEvents(contract: ResolvedContract): typeof indexingEvents {
-  const key = `${contract.name}\u0000${contract.contractId}`;
-  let metric = indexingEventsByContract.get(key);
-
-  if (metric === undefined) {
-    metric = Metric.withAttributes(
-      indexingEvents,
-      contractAttributes(contract.name, contract.contractId),
-    );
-    indexingEventsByContract.set(key, metric);
-  }
-
-  return metric;
+  /** Per block source, keyed by definition name. */
+  blocks: Record<string, BlockSourceRunResult>;
 }
 
 /**
- * Indexes one block-aligned batch of stored events together with the new
- * checkpoint, in a single transaction.
+ * Merges stored events and block source blocks, both ascending by height,
+ * into indexing order: a block's prints, then each source running at it in
+ * definition order.
+ */
+function mergeRows(
+  events: readonly StoredEvent[],
+  blocks: readonly StoredSourceBlock[],
+  sources: readonly ResolvedBlockSource[],
+): readonly IndexRow[] {
+  if (blocks.length === 0) {
+    return events;
+  }
+
+  const rows: IndexRow[] = [];
+  let eventIndex = 0;
+
+  for (const block of blocks) {
+    while (eventIndex < events.length && events[eventIndex].blockHeight <= block.blockHeight) {
+      rows.push(events[eventIndex]);
+      eventIndex += 1;
+    }
+
+    const height = Number(block.blockHeight);
+
+    for (const source of sources) {
+      if (isBlockSourceHeight(source, height)) {
+        const row: StoredBlockSourceRow = { ...block, eventType: "block", source: source.name };
+        rows.push(row);
+      }
+    }
+  }
+
+  for (; eventIndex < events.length; eventIndex += 1) {
+    rows.push(events[eventIndex]);
+  }
+
+  return rows;
+}
+
+/**
+ * Indexes one block-aligned batch of stored events and block source runs
+ * together with the new checkpoint, in a single transaction.
  */
 function indexBatch(
-  batch: StoredEvent[],
-  contractsById: Map<string, ResolvedContract>,
+  batch: IndexRow[],
+  prepared: PreparedContracts,
   chainId: number,
-  eventsByContract: Map<string, number>,
+  eventsByName: Map<string, number>,
   finalizedBlockHeight: number,
   finalizedBlockTime: number,
-): Effect.Effect<
-  void,
-  HandlerExecutionError | EventDecodeError | SyncStoreError | DatabaseError,
-  Indexing | IndexerDatabase
-> {
+): Effect.Effect<void, IndexingError, Indexing | IndexerDatabase> {
   const lastRow = batch[batch.length - 1];
 
   const checkpoint = {
@@ -98,7 +148,11 @@ function indexBatch(
   };
 
   const inRange = batch.filter((row) => {
-    const contract = contractsById.get(row.contractId);
+    if (row.eventType === "block") {
+      return true;
+    }
+
+    const contract = prepared.contractsById.get(row.contractId);
     const rowBlockHeight = Number(row.blockHeight);
 
     return !(
@@ -108,7 +162,7 @@ function indexBatch(
   });
 
   return Effect.gen(function* () {
-    const batchEventsByContract = yield* IndexerDatabase.transaction(() =>
+    const batchEventsByName = yield* IndexerDatabase.transaction(() =>
       Effect.gen(function* () {
         const indexing = yield* Indexing;
         const counts = yield* indexing.executeBatch(inRange);
@@ -120,12 +174,12 @@ function indexBatch(
     );
 
     // Counted once committed, so a rolled-back batch is not reported.
-    for (const [contractId, count] of batchEventsByContract) {
-      eventsByContract.set(contractId, (eventsByContract.get(contractId) ?? 0) + count);
-      const contract = contractsById.get(contractId);
+    for (const [name, count] of batchEventsByName) {
+      eventsByName.set(name, (eventsByName.get(name) ?? 0) + count);
+      const metric = prepared.indexingEventsByName.get(name);
 
-      if (contract !== undefined) {
-        yield* Metric.update(contractIndexingEvents(contract), count);
+      if (metric !== undefined) {
+        yield* Metric.update(metric, count);
       }
     }
 
@@ -172,16 +226,16 @@ export function readChainTip(
  * warns when one takes longer than expected.
  */
 function indexBatches(options: {
-  batches: StoredEvent[][];
-  contractsById: Map<string, ResolvedContract>;
+  batches: IndexRow[][];
+  prepared: PreparedContracts;
   chainId: number;
-  eventsByContract: Map<string, number>;
+  eventsByName: Map<string, number>;
   finalityThreshold: number;
   finalizedBlockHeight: number;
   finalizedBlockTime: number;
 }): Effect.Effect<
   { finalizedBlockHeight: number; finalizedBlockTime: number; indexedDurationMs: number },
-  HandlerExecutionError | EventDecodeError | SyncStoreError | DatabaseError,
+  IndexingError,
   Indexing | IndexerDatabase
 > {
   return Effect.gen(function* () {
@@ -205,9 +259,9 @@ function indexBatches(options: {
       const [batchDuration] = yield* Effect.timed(
         indexBatch(
           batch,
-          options.contractsById,
+          options.prepared,
           options.chainId,
-          options.eventsByContract,
+          options.eventsByName,
           finalizedBlockHeight,
           finalizedBlockTime,
         ),
@@ -237,36 +291,131 @@ function indexBatches(options: {
   });
 }
 
+/** Most events, and most block source blocks, read into memory for one indexing page. */
+export const INDEX_PAGE_ROWS = 10_000;
+
+interface IndexPage {
+  readonly rows: readonly IndexRow[];
+  /** Every row up to this height is in `rows`. */
+  readonly endBlockHeight: number;
+}
+
 /**
- * Indexes every stored event with height `> checkpoint` and `<= toBlockHeight`.
- * Events are split into block-aligned batches so each transaction stays
- * bounded and every checkpoint refers to a fully processed block.
+ * Reads the rows to index in `[fromBlockHeight, toBlockHeight]`, at most
+ * `pageRows` events and `pageRows` block source blocks, ending on a block
+ * boundary. A full events page ends before its last block, which may hold
+ * more events, unless that block is the only one, which is then read whole.
+ */
+function readIndexPage(options: {
+  readonly chainId: number;
+  readonly prepared: PreparedContracts;
+  readonly fromBlockHeight: number;
+  readonly toBlockHeight: number;
+  readonly pageRows: number;
+}): Effect.Effect<IndexPage, SyncStoreError, IndexerDatabase> {
+  const { chainId, prepared, fromBlockHeight, toBlockHeight, pageRows } = options;
+
+  return Effect.gen(function* () {
+    const range = { chainId, fromBlockHeight, toBlockHeight, limit: pageRows };
+    let events = yield* syncStore.getEvents(range);
+    const blocks = yield* syncStore.getSourceBlocks({ ...range, sources: prepared.blocks });
+    let endBlockHeight = toBlockHeight;
+    let isSingleBlock = false;
+
+    if (events.length === pageRows) {
+      const lastHeight = Number(events[events.length - 1].blockHeight);
+      isSingleBlock = Number(events[0].blockHeight) === lastHeight;
+      endBlockHeight = isSingleBlock ? lastHeight : lastHeight - 1;
+    }
+
+    if (blocks.length === pageRows) {
+      endBlockHeight = Math.min(endBlockHeight, Number(blocks[blocks.length - 1].blockHeight));
+    }
+
+    if (isSingleBlock && endBlockHeight === Number(events[0].blockHeight)) {
+      events = yield* syncStore.getEvents({
+        chainId,
+        fromBlockHeight,
+        toBlockHeight: endBlockHeight,
+      });
+    }
+
+    const end = BigInt(endBlockHeight);
+
+    return {
+      rows: mergeRows(
+        events.filter((row) => row.blockHeight <= end),
+        blocks.filter((row) => row.blockHeight <= end),
+        prepared.blocks,
+      ),
+      endBlockHeight,
+    };
+  });
+}
+
+/**
+ * Indexes every stored event and block source block with height
+ * `> checkpoint` and `<= toBlockHeight`, reading them in pages of at most
+ * `pageRows` events and blocks so memory stays bounded.
+ */
+export function indexEventsUpTo(
+  toBlockHeight: number,
+  prepared: PreparedContracts,
+  chainId: number,
+  eventsByName: Map<string, number>,
+  finality: number,
+  chainTipHeight: number | undefined,
+  pageRows: number = INDEX_PAGE_ROWS,
+): Effect.Effect<void, IndexingError, Indexing | IndexerDatabase> {
+  return Effect.gen(function* () {
+    for (;;) {
+      const hasMore = yield* indexPage({
+        toBlockHeight,
+        prepared,
+        chainId,
+        eventsByName,
+        finality,
+        chainTipHeight,
+        pageRows,
+      });
+
+      if (!hasMore) {
+        return;
+      }
+    }
+  });
+}
+
+/**
+ * Indexes the next page of rows above the checkpoint, up to `toBlockHeight`.
+ * Rows are split into block-aligned batches so each transaction stays bounded
+ * and every checkpoint refers to a fully processed block. Resolves whether
+ * rows up to `toBlockHeight` remain.
  *
  * The finalized marker advances to the newest committed block that is at least
  * `finality` blocks behind the confirmation height. The confirmation height is
  * the chain tip when it was read for the run, capped by the safe height during
- * incremental steps; without a tip it falls back to the newest stored
- * event-bearing block on the final `MAX_SAFE_INTEGER` pass. It never refers to
- * data that is not yet committed.
+ * incremental steps; without a tip it falls back to the newest block of the
+ * page on the final `MAX_SAFE_INTEGER` pass. It never refers to data that is
+ * not yet committed.
  */
-export function indexEventsUpTo(
-  toBlockHeight: number,
-  contractsById: Map<string, ResolvedContract>,
-  chainId: number,
-  eventsByContract: Map<string, number>,
-  finality: number,
-  chainTipHeight: number | undefined,
-): Effect.Effect<
-  void,
-  HandlerExecutionError | EventDecodeError | SyncStoreError | DatabaseError,
-  Indexing | IndexerDatabase
-> {
+function indexPage(options: {
+  readonly toBlockHeight: number;
+  readonly prepared: PreparedContracts;
+  readonly chainId: number;
+  readonly eventsByName: Map<string, number>;
+  readonly finality: number;
+  readonly chainTipHeight: number | undefined;
+  readonly pageRows: number;
+}): Effect.Effect<boolean, IndexingError, Indexing | IndexerDatabase> {
+  const { toBlockHeight, prepared, chainId, eventsByName, finality, chainTipHeight } = options;
+
   return Effect.gen(function* () {
     const checkpoint = yield* syncStore.getCheckpoint({ chainId });
     const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
 
     if (fromBlockHeight >= toBlockHeight) {
-      return;
+      return false;
     }
 
     const confirmationHeight =
@@ -274,10 +423,12 @@ export function indexEventsUpTo(
         ? chainTipHeight
         : Math.min(toBlockHeight, chainTipHeight ?? toBlockHeight);
 
-    const rows = yield* syncStore.getEvents({
+    const { rows, endBlockHeight } = yield* readIndexPage({
       chainId,
+      prepared,
       fromBlockHeight: fromBlockHeight + 1,
       toBlockHeight,
+      pageRows: options.pageRows,
     });
 
     if (rows.length === 0) {
@@ -305,7 +456,7 @@ export function indexEventsUpTo(
         }
       }
 
-      return;
+      return false;
     }
 
     const batches = chunkEventsByBlock(rows);
@@ -345,9 +496,9 @@ export function indexEventsUpTo(
       indexedDurationMs,
     } = yield* indexBatches({
       batches,
-      contractsById,
+      prepared,
       chainId,
-      eventsByContract,
+      eventsByName,
       finalityThreshold,
       finalizedBlockHeight,
       finalizedBlockTime,
@@ -370,6 +521,8 @@ export function indexEventsUpTo(
         finalizedBlockTime,
       }),
     );
+
+    return endBlockHeight < toBlockHeight;
   });
 }
 
@@ -386,14 +539,55 @@ interface ContractRunSummary {
   readonly transactionsFetched: number;
 }
 
+/** Per-block-source figures of a run, as logged. */
+interface BlockSourceRunSummary {
+  readonly name: string;
+  readonly upToDate: boolean;
+  readonly interval: number;
+  readonly startBlock: number;
+  readonly endBlock?: number;
+  readonly lastBlockHeight?: number;
+  readonly eventsProcessed: number;
+  readonly requests: number;
+  readonly blocksFetched: number;
+}
+
+/** Run-wide counts and block range of the summary line. */
+interface RunTally {
+  upToDate: number;
+  fromBlock?: number;
+  toBlock?: number;
+}
+
+/** Adds a contract's or block source's status and known bounds to `tally`. */
+function addToTally(
+  tally: RunTally,
+  upToDate: boolean,
+  lower: number | undefined,
+  upper: number | undefined,
+): void {
+  if (upToDate) {
+    tally.upToDate += 1;
+  }
+
+  if (lower !== undefined) {
+    tally.fromBlock = tally.fromBlock === undefined ? lower : Math.min(tally.fromBlock, lower);
+  }
+
+  if (upper !== undefined) {
+    tally.toBlock = tally.toBlock === undefined ? upper : Math.max(tally.toBlock, upper);
+  }
+}
+
 /**
  * Logs the run summary: one `info` line with run totals and block range, then
- * one `debug` line per contract. Unknown bounds are annotated as `null` rather
- * than omitted so the shape is stable.
+ * one `debug` line per contract and block source. Unknown bounds are
+ * annotated as `null` rather than omitted so the shape is stable.
  */
 function logRunSummary(options: {
   chainId: number;
   contracts: readonly ContractRunSummary[];
+  blocks: readonly BlockSourceRunSummary[];
   eventsProcessed: number;
   finalizedBlockHeight: number | undefined;
   durationMs: number;
@@ -401,28 +595,18 @@ function logRunSummary(options: {
   return Effect.gen(function* () {
     let pagesFetched = 0;
     let transactionsFetched = 0;
-    let upToDate = 0;
-    let fromBlock: number | undefined = undefined;
-    let toBlock: number | undefined = undefined;
+    const tally: RunTally = { upToDate: 0 };
 
     for (const contract of options.contracts) {
       pagesFetched += contract.pagesFetched;
       transactionsFetched += contract.transactionsFetched;
 
-      if (contract.upToDate) {
-        upToDate += 1;
-      }
-
-      const lower = contract.startBlock ?? contract.lastBlockHeight;
-      const upper = contract.endBlock ?? contract.lastBlockHeight;
-
-      if (lower !== undefined) {
-        fromBlock = fromBlock === undefined ? lower : Math.min(fromBlock, lower);
-      }
-
-      if (upper !== undefined) {
-        toBlock = toBlock === undefined ? upper : Math.max(toBlock, upper);
-      }
+      addToTally(
+        tally,
+        contract.upToDate,
+        contract.startBlock ?? contract.lastBlockHeight,
+        contract.endBlock ?? contract.lastBlockHeight,
+      );
 
       yield* Effect.logDebug(`Completed contract ${contract.name}`).pipe(
         Effect.annotateLogs({
@@ -441,37 +625,86 @@ function logRunSummary(options: {
       );
     }
 
+    for (const source of options.blocks) {
+      addToTally(
+        tally,
+        source.upToDate,
+        source.startBlock,
+        source.endBlock ?? source.lastBlockHeight,
+      );
+
+      yield* Effect.logDebug(`Completed block source ${source.name}`).pipe(
+        Effect.annotateLogs({
+          chainId: options.chainId,
+          blocks: source.name,
+          phase: "run",
+          status: source.upToDate ? "up-to-date" : "completed",
+          interval: source.interval,
+          startBlock: source.startBlock,
+          endBlock: source.endBlock ?? null,
+          lastBlockHeight: source.lastBlockHeight ?? null,
+          eventsProcessed: source.eventsProcessed,
+          requests: source.requests,
+          blocksFetched: source.blocksFetched,
+        }),
+      );
+    }
+
     yield* Effect.logInfo("Historical indexing complete").pipe(
       Effect.annotateLogs({
         chainId: options.chainId,
         phase: "run",
         durationMs: options.durationMs,
         contracts: options.contracts.length,
-        upToDate,
+        blockSources: options.blocks.length,
+        upToDate: tally.upToDate,
         eventsProcessed: options.eventsProcessed,
         pagesFetched,
         transactionsFetched,
-        fromBlock: fromBlock ?? null,
-        toBlock: toBlock ?? null,
+        fromBlock: tally.fromBlock ?? null,
+        toBlock: tally.toBlock ?? null,
         finalizedBlockHeight: options.finalizedBlockHeight ?? null,
       }),
     );
   });
 }
 
-/** Contracts resolved once per `run` or `live` call. */
+/** Contracts and block sources resolved once per `run` or `live` call. */
 export interface PreparedContracts {
   readonly contracts: readonly ResolvedContract[];
   readonly contractsById: Map<string, ResolvedContract>;
   readonly syncFilters: readonly SyncFilter[];
+  readonly blocks: readonly ResolvedBlockSource[];
+  readonly blockSyncFilters: readonly BlockSyncFilter[];
+  /** `indexingEvents` labelled for each contract and block source, by definition name. */
+  readonly indexingEventsByName: Map<string, typeof indexingEvents>;
 }
 
 /** Resolves `"latest"` end blocks and indexes the contracts by id. */
 export function prepareContracts(
   specs: readonly ContractSpec[],
+  blockSpecs: readonly BlockSourceSpec[] = [],
 ): Effect.Effect<PreparedContracts, StacksApiError | FilterValidationError, StacksClient> {
   return Effect.gen(function* () {
-    const contracts = yield* resolveContracts(specs);
+    const { contracts, blocks } = yield* resolveSources(specs, blockSpecs);
+    const indexingEventsByName = new Map<string, typeof indexingEvents>();
+
+    for (const contract of contracts) {
+      indexingEventsByName.set(
+        contract.name,
+        Metric.withAttributes(
+          indexingEvents,
+          contractAttributes(contract.name, contract.contractId),
+        ),
+      );
+    }
+
+    for (const source of blocks) {
+      indexingEventsByName.set(
+        source.name,
+        Metric.withAttributes(indexingEvents, blockSourceAttributes(source.name)),
+      );
+    }
 
     return {
       contracts,
@@ -482,6 +715,14 @@ export function prepareContracts(
         startBlock: contract.startBlock,
         endBlock: contract.endBlock,
       })),
+      blocks,
+      blockSyncFilters: blocks.map((source) => ({
+        name: source.name,
+        interval: source.interval,
+        startBlock: source.startBlock,
+        endBlock: source.endBlock,
+      })),
+      indexingEventsByName,
     };
   });
 }
@@ -496,11 +737,44 @@ export function getSyncingContracts(
   );
 }
 
+/** Block sources whose end block is not below `blockHeight`. */
+export function getSyncingBlockSources(
+  prepared: PreparedContracts,
+  blockHeight: number,
+): ResolvedBlockSource[] {
+  return prepared.blocks.filter(
+    (source) => source.endBlock === undefined || source.endBlock >= blockHeight,
+  );
+}
+
 export interface SyncPassResult {
   /** Per-contract snapshots taken before anything was fetched. */
   readonly startedContracts: readonly ContractSyncSummary[];
   /** Per-contract snapshots once every contract is synced. */
   readonly completedContracts: readonly ContractSyncSummary[];
+  /** Per-block-source snapshots taken before anything was fetched. */
+  readonly startedBlocks: readonly BlockSyncSummary[];
+  /** Per-block-source snapshots once every block source is synced. */
+  readonly completedBlocks: readonly BlockSyncSummary[];
+}
+
+/**
+ * Height indexing must not pass in a pass without a chain tip: block sources
+ * cannot be bounded then and stay at their synced height, so indexing past it
+ * would skip their blocks. `undefined` when no block source holds it back.
+ */
+function getBlockSourcesCap(blocks: readonly BlockSyncSummary[]): number | undefined {
+  let cap: number | undefined = undefined;
+
+  for (const source of blocks) {
+    const isComplete = source.endBlock !== undefined && source.lastBlockHeight >= source.endBlock;
+
+    if (!isComplete && (cap === undefined || source.lastBlockHeight < cap)) {
+      cap = source.lastBlockHeight;
+    }
+  }
+
+  return cap;
 }
 
 /**
@@ -513,6 +787,8 @@ export interface SyncPassResult {
  * events up to the tip are stored once the sync ends. Events above it may
  * still be missing for contracts fetched earlier in the pass; indexing them
  * now would move the checkpoint past events that only the next pass stores.
+ * Block sources sync up to the tip, and without one they hold indexing at
+ * their synced height.
  */
 export function syncAndIndexTo(options: {
   readonly chainId: number;
@@ -521,8 +797,8 @@ export function syncAndIndexTo(options: {
   readonly prepared: PreparedContracts;
   /** Chain tip anchoring this pass; `undefined` when it could not be read. */
   readonly tip: ChainTip | undefined;
-  /** Per-contract count of events passed to handlers, updated in place. */
-  readonly eventsByContract: Map<string, number>;
+  /** Per-definition-name count of events passed to handlers, updated in place. */
+  readonly eventsByName: Map<string, number>;
   /** Logs aggregate progress at `info` while the pass runs. */
   readonly logProgress: boolean;
   /** The caller proved the stored anchor canonical (e.g. `tip` builds on it). */
@@ -540,19 +816,19 @@ export function syncAndIndexTo(options: {
     }
 
     const chainTipHeight = tip?.blockHeight;
-    const indexingCap = chainTipHeight ?? Number.MAX_SAFE_INTEGER;
+    let indexingCap = chainTipHeight ?? Number.MAX_SAFE_INTEGER;
 
     const indexSafeHeight = (safeBlockHeight: number) =>
       indexEventsUpTo(
         Math.min(safeBlockHeight, indexingCap),
-        prepared.contractsById,
+        prepared,
         chainId,
-        options.eventsByContract,
+        options.eventsByName,
         options.finality,
         chainTipHeight,
       );
 
-    const progressState = yield* Ref.make<ProgressTrackerState>({ contracts: [] });
+    const progressState = yield* Ref.make<ProgressTrackerState>({ contracts: [], blocks: [] });
 
     const logProgress = options.logProgress
       ? logRunProgress({
@@ -565,6 +841,8 @@ export function syncAndIndexTo(options: {
 
     let startedContracts: readonly ContractSyncSummary[] = [];
     let completedContracts: readonly ContractSyncSummary[] = [];
+    let startedBlocks: readonly BlockSyncSummary[] = [];
+    let completedBlocks: readonly BlockSyncSummary[] = [];
 
     yield* Effect.scoped(
       Effect.gen(function* consumeSyncEvents() {
@@ -576,44 +854,71 @@ export function syncAndIndexTo(options: {
           );
         }
 
-        yield* options.sync.historical(prepared.syncFilters).pipe(
-          Stream.runForEach((event) =>
-            Match.value(event).pipe(
-              Match.when({ type: "started" }, (started) =>
-                Effect.gen(function* () {
-                  startedContracts = started.contracts;
-                  yield* Ref.set(progressState, { contracts: started.contracts });
-                  // First progress line: the already-synced fraction.
-                  yield* logProgress;
-                }),
+        yield* options.sync
+          .historical(prepared.syncFilters, {
+            blocks: prepared.blockSyncFilters,
+            tipBlockHeight: chainTipHeight,
+          })
+          .pipe(
+            Stream.runForEach((event) =>
+              Match.value(event).pipe(
+                Match.when({ type: "started" }, (started) =>
+                  Effect.gen(function* () {
+                    startedContracts = started.contracts;
+                    startedBlocks = started.blocks;
+
+                    if (chainTipHeight === undefined) {
+                      const cap = getBlockSourcesCap(started.blocks);
+
+                      if (cap !== undefined) {
+                        indexingCap = cap;
+
+                        yield* Effect.logWarning(
+                          `Block sources cannot sync without the chain tip; indexing stays at or below block ${cap}`,
+                        ).pipe(Effect.annotateLogs({ chainId, phase: "run", block: cap }));
+                      }
+                    }
+
+                    yield* Ref.set(progressState, {
+                      contracts: started.contracts,
+                      blocks: started.blocks,
+                    });
+                    // First progress line: the already-synced fraction.
+                    yield* logProgress;
+                  }),
+                ),
+                Match.when({ type: "safe" }, (safe) =>
+                  Effect.gen(function* () {
+                    yield* Ref.set(progressState, {
+                      contracts: safe.contracts,
+                      blocks: safe.blocks,
+                      safeBlockHeight: safe.safeBlockHeight,
+                    });
+                    yield* indexSafeHeight(safe.safeBlockHeight);
+                  }),
+                ),
+                Match.when({ type: "completed" }, (completed) =>
+                  Effect.gen(function* () {
+                    completedContracts = completed.contracts;
+                    completedBlocks = completed.blocks;
+                    yield* Ref.set(progressState, {
+                      contracts: completed.contracts,
+                      blocks: completed.blocks,
+                    });
+                  }),
+                ),
+                Match.exhaustive,
               ),
-              Match.when({ type: "safe" }, (safe) =>
-                Effect.gen(function* () {
-                  yield* Ref.set(progressState, {
-                    contracts: safe.contracts,
-                    safeBlockHeight: safe.safeBlockHeight,
-                  });
-                  yield* indexSafeHeight(safe.safeBlockHeight);
-                }),
-              ),
-              Match.when({ type: "completed" }, (completed) =>
-                Effect.gen(function* () {
-                  completedContracts = completed.contracts;
-                  yield* Ref.set(progressState, { contracts: completed.contracts });
-                }),
-              ),
-              Match.exhaustive,
             ),
-          ),
-        );
+          );
 
         if (options.logProgress) {
           // The interval logger may last have run before the final pages.
-          const { contracts } = yield* Ref.get(progressState);
+          const { contracts, blocks = [] } = yield* Ref.get(progressState);
 
-          if (contracts.length > 0) {
+          if (contracts.length > 0 || blocks.length > 0) {
             yield* recordRunProgress(
-              computeRunProgress({ contracts, tipBlockHeight: chainTipHeight }),
+              computeRunProgress({ contracts, blocks, tipBlockHeight: chainTipHeight }),
             );
           }
         }
@@ -655,19 +960,88 @@ export function syncAndIndexTo(options: {
       }),
     );
 
-    return { startedContracts, completedContracts };
+    return { startedContracts, completedContracts, startedBlocks, completedBlocks };
   });
 }
 
 export function runHistorical(
   specs: readonly ContractSpec[],
+  blockSpecs: readonly BlockSourceSpec[],
   config: ResolvedIndexerConfig,
   sync: SyncService,
 ): Effect.Effect<RunResult, IndexerError, StacksClient | IndexerDatabase> {
   return Effect.gen(function* () {
-    const prepared = yield* prepareContracts(specs);
+    const prepared = yield* prepareContracts(specs, blockSpecs);
 
     return yield* runPreparedHistorical(prepared, config, sync);
+  });
+}
+
+/**
+ * Warns about history that indexing already passed for a contract or block
+ * source without sync progress (newly added, or a block source whose
+ * `interval` or `startBlock` changed): indexing resumes after the checkpoint,
+ * so their events or blocks at or below it are never handled.
+ */
+function warnSkippedHistory(
+  chainId: number,
+  prepared: PreparedContracts,
+): Effect.Effect<void, SyncStoreError, IndexerDatabase> {
+  return Effect.gen(function* () {
+    const checkpoint = yield* syncStore.getCheckpoint({ chainId });
+
+    if (checkpoint === null) {
+      return;
+    }
+
+    const checkpointHeight = Number(checkpoint.blockHeight);
+    const contractProgress = yield* syncStore.listSyncProgress({ chainId });
+    const blockProgress = yield* syncStore.listBlockSyncProgress({ chainId });
+    const syncedContractIds = new Set(contractProgress.map((row) => row.contractId));
+    const blockProgressByName = new Map(blockProgress.map((row) => [row.name, row]));
+    const advice = "Re-sync from an empty indexer database (and reset handler tables) to cover it.";
+
+    for (const contract of prepared.contracts) {
+      const startsAfter =
+        contract.startBlock !== undefined && contract.startBlock > checkpointHeight;
+
+      if (!syncedContractIds.has(contract.contractId) && !startsAfter) {
+        yield* Effect.logWarning(
+          `contracts.${contract.name} has no sync progress, but indexing is already at block ${checkpointHeight}: its events at or below it will not be handled. ${advice}`,
+        ).pipe(
+          Effect.annotateLogs({
+            chainId,
+            phase: "init",
+            contract: contract.name,
+            block: checkpointHeight,
+          }),
+        );
+      }
+    }
+
+    for (const source of prepared.blocks) {
+      const row = blockProgressByName.get(source.name);
+
+      const isSynced =
+        row !== undefined &&
+        Number(row.interval) === source.interval &&
+        Number(row.startBlock) === source.startBlock;
+
+      if (!isSynced && source.startBlock <= checkpointHeight) {
+        const skippedTo = Math.min(source.endBlock ?? checkpointHeight, checkpointHeight);
+
+        yield* Effect.logWarning(
+          `blocks.${source.name} has no sync progress for its interval and startBlock, but indexing is already at block ${checkpointHeight}: it will not run at blocks ${source.startBlock} to ${skippedTo}. ${advice}`,
+        ).pipe(
+          Effect.annotateLogs({
+            chainId,
+            phase: "init",
+            blocks: source.name,
+            block: checkpointHeight,
+          }),
+        );
+      }
+    }
   });
 }
 
@@ -691,54 +1065,30 @@ export function runPreparedHistorical(
         chainId,
         phase: "run",
         contracts: prepared.contracts.map((contract) => contract.name),
+        blocks: prepared.blocks.map((source) => source.name),
         finality: config.finality,
       }),
     );
 
-    const eventsByContract = new Map<string, number>();
+    yield* warnSkippedHistory(chainId, prepared);
 
-    const { startedContracts, completedContracts } = yield* syncAndIndexTo({
+    const eventsByName = new Map<string, number>();
+
+    const pass = yield* syncAndIndexTo({
       chainId,
       finality: config.finality,
       sync,
       prepared,
       tip,
-      eventsByContract,
+      eventsByName,
       logProgress: true,
-    }).pipe(Effect.provide(Indexing.layer({ contracts: prepared.contracts })));
-
-    const finalContracts = completedContracts.length > 0 ? completedContracts : startedContracts;
-
-    const syncSummaries = new Map(
-      finalContracts.map((contract) => [contract.contractId, contract]),
+    }).pipe(
+      Effect.provide(Indexing.layer({ contracts: prepared.contracts, blocks: prepared.blocks })),
     );
 
-    let eventsProcessed = 0;
-    const contracts: Record<string, ContractRunResult> = {};
-    const summaries: ContractRunSummary[] = [];
-
-    for (const contract of prepared.contracts) {
-      const summary = syncSummaries.get(contract.contractId);
-      const contractEvents = eventsByContract.get(contract.contractId) ?? 0;
-      eventsProcessed += contractEvents;
-
-      contracts[contract.name] =
-        summary?.lastBlockHeight === undefined
-          ? { eventsProcessed: contractEvents }
-          : { eventsProcessed: contractEvents, blockHeight: summary.lastBlockHeight };
-
-      summaries.push({
-        name: contract.name,
-        contractId: contract.contractId,
-        upToDate: summary?.doneAtStart ?? false,
-        startBlock: summary?.startBlock,
-        endBlock: summary?.endBlock,
-        lastBlockHeight: summary?.lastBlockHeight,
-        eventsProcessed: contractEvents,
-        pagesFetched: summary?.pagesFetched ?? 0,
-        transactionsFetched: summary?.transactionsFetched ?? 0,
-      });
-    }
+    const contractResults = summarizeContracts(prepared, pass, eventsByName);
+    const blockResults = summarizeBlockSources(prepared, pass, eventsByName);
+    const eventsProcessed = contractResults.eventsProcessed + blockResults.eventsProcessed;
 
     const finalCheckpoint = yield* syncStore.getCheckpoint({ chainId });
     const blockHeight = finalCheckpoint ? Number(finalCheckpoint.blockHeight) : undefined;
@@ -751,12 +1101,102 @@ export function runPreparedHistorical(
 
     yield* logRunSummary({
       chainId,
-      contracts: summaries,
+      contracts: contractResults.summaries,
+      blocks: blockResults.summaries,
       eventsProcessed,
       finalizedBlockHeight,
       durationMs: completedAtMillis - startedAtMillis,
     });
 
-    return { eventsProcessed, blockHeight, finalizedBlockHeight, contracts };
+    return {
+      eventsProcessed,
+      blockHeight,
+      finalizedBlockHeight,
+      contracts: contractResults.results,
+      blocks: blockResults.results,
+    };
   }).pipe(Effect.annotateLogs({ service: "indexer" }), Effect.withLogSpan("historicalIndexing"));
+}
+
+/** Per-source run results and logged summaries, and the events their handlers received. */
+interface RunSummaries<TResult, TSummary> {
+  readonly results: Record<string, TResult>;
+  readonly summaries: TSummary[];
+  readonly eventsProcessed: number;
+}
+
+function summarizeContracts(
+  prepared: PreparedContracts,
+  pass: SyncPassResult,
+  eventsByName: ReadonlyMap<string, number>,
+): RunSummaries<ContractRunResult, ContractRunSummary> {
+  const finalContracts =
+    pass.completedContracts.length > 0 ? pass.completedContracts : pass.startedContracts;
+
+  const syncSummaries = new Map(finalContracts.map((contract) => [contract.contractId, contract]));
+  let eventsProcessed = 0;
+  const results: Record<string, ContractRunResult> = {};
+  const summaries: ContractRunSummary[] = [];
+
+  for (const contract of prepared.contracts) {
+    const summary = syncSummaries.get(contract.contractId);
+    const contractEvents = eventsByName.get(contract.name) ?? 0;
+    eventsProcessed += contractEvents;
+
+    results[contract.name] =
+      summary?.lastBlockHeight === undefined
+        ? { eventsProcessed: contractEvents }
+        : { eventsProcessed: contractEvents, blockHeight: summary.lastBlockHeight };
+
+    summaries.push({
+      name: contract.name,
+      contractId: contract.contractId,
+      upToDate: summary?.doneAtStart ?? false,
+      startBlock: summary?.startBlock,
+      endBlock: summary?.endBlock,
+      lastBlockHeight: summary?.lastBlockHeight,
+      eventsProcessed: contractEvents,
+      pagesFetched: summary?.pagesFetched ?? 0,
+      transactionsFetched: summary?.transactionsFetched ?? 0,
+    });
+  }
+
+  return { results, summaries, eventsProcessed };
+}
+
+function summarizeBlockSources(
+  prepared: PreparedContracts,
+  pass: SyncPassResult,
+  eventsByName: ReadonlyMap<string, number>,
+): RunSummaries<BlockSourceRunResult, BlockSourceRunSummary> {
+  const finalBlocks = pass.completedBlocks.length > 0 ? pass.completedBlocks : pass.startedBlocks;
+  const syncSummaries = new Map(finalBlocks.map((source) => [source.name, source]));
+  let eventsProcessed = 0;
+  const results: Record<string, BlockSourceRunResult> = {};
+  const summaries: BlockSourceRunSummary[] = [];
+
+  for (const source of prepared.blocks) {
+    const summary = syncSummaries.get(source.name);
+    const sourceEvents = eventsByName.get(source.name) ?? 0;
+    eventsProcessed += sourceEvents;
+
+    results[source.name] =
+      summary === undefined
+        ? { eventsProcessed: sourceEvents }
+        : { eventsProcessed: sourceEvents, blockHeight: summary.lastBlockHeight };
+
+    summaries.push({
+      name: source.name,
+      upToDate: summary?.doneAtStart ?? false,
+      interval: source.interval,
+      startBlock: source.startBlock,
+      endBlock: source.endBlock,
+      lastBlockHeight: summary?.lastBlockHeight,
+      eventsProcessed: sourceEvents,
+      requests: summary?.requests ?? 0,
+      blocksFetched: summary?.blocksFetched ?? 0,
+    });
+  }
+
+  return { results, summaries, eventsProcessed };
 }

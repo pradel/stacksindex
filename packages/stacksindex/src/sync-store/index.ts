@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, inArray, lt, lte } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, lte, or, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
 import { IndexerDatabase } from "../database/index.ts";
@@ -8,16 +8,26 @@ import type {
   StorableTransaction,
 } from "../datasources/api/index.ts";
 import { SyncStoreError } from "../lib/errors.ts";
-import { decodeStoredEvents, type StoredEvent } from "./decode.ts";
+import type { BlockSourceRange } from "../runtime/blocks.ts";
+import {
+  decodeStoredEvents,
+  decodeStoredSourceBlocks,
+  type StoredEvent,
+  type StoredSourceBlock,
+} from "./decode.ts";
 import { encodeBlock, encodeEvent, encodeTransaction } from "./encode.ts";
 import {
   blocksTable,
+  blockSyncProgressTable,
   checkpointsTable,
   eventsTable,
   syncAnchorsTable,
   syncProgressTable,
   transactionsTable,
 } from "./schema.ts";
+
+/** `limit` of a query that returns every matching row. */
+const NO_LIMIT = Number.MAX_SAFE_INTEGER;
 
 export const syncStore = {
   insertBlocks: ({
@@ -269,6 +279,236 @@ export const syncStore = {
       ),
     ),
 
+  getBlockSyncProgress: ({
+    name,
+    chainId,
+  }: {
+    name: string;
+    chainId: number;
+  }): Effect.Effect<
+    typeof blockSyncProgressTable.$inferSelect | null,
+    SyncStoreError,
+    IndexerDatabase
+  > =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      const [row] = yield* db
+        .select()
+        .from(blockSyncProgressTable)
+        .where(
+          and(
+            eq(blockSyncProgressTable.chainId, BigInt(chainId)),
+            eq(blockSyncProgressTable.name, name),
+          ),
+        )
+        .limit(1);
+
+      return row ?? null;
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "getBlockSyncProgress", cause }),
+      ),
+    ),
+
+  /** Every block source's sync progress on the chain, ordered by name. */
+  listBlockSyncProgress: ({
+    chainId,
+  }: {
+    chainId: number;
+  }): Effect.Effect<
+    (typeof blockSyncProgressTable.$inferSelect)[],
+    SyncStoreError,
+    IndexerDatabase
+  > =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      return yield* db
+        .select()
+        .from(blockSyncProgressTable)
+        .where(eq(blockSyncProgressTable.chainId, BigInt(chainId)))
+        .orderBy(blockSyncProgressTable.name);
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "listBlockSyncProgress", cause }),
+      ),
+    ),
+
+  upsertBlockSyncProgress: ({
+    name,
+    chainId,
+    interval,
+    startBlock,
+    syncedBlockHeight,
+    isComplete,
+  }: {
+    name: string;
+    chainId: number;
+    interval: number;
+    startBlock: number;
+    syncedBlockHeight: number;
+    isComplete: boolean;
+  }): Effect.Effect<void, SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      const values = {
+        interval: BigInt(interval),
+        startBlock: BigInt(startBlock),
+        syncedBlockHeight: BigInt(syncedBlockHeight),
+        isComplete,
+      };
+
+      yield* db
+        .insert(blockSyncProgressTable)
+        .values({ chainId: BigInt(chainId), name, ...values })
+        .onConflictDoUpdate({
+          target: [blockSyncProgressTable.chainId, blockSyncProgressTable.name],
+          set: values,
+        });
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "upsertBlockSyncProgress", cause }),
+      ),
+    ),
+
+  /**
+   * Raises `syncedBlockHeight` to `blockHeight` for the given block sources
+   * that are still syncing and lower than it, completing those that reach
+   * their `endBlock`. Callers must have stored every block those sources run
+   * at up to `blockHeight`.
+   */
+  raiseBlockSyncedBlockHeight: ({
+    chainId,
+    sources,
+    blockHeight,
+  }: {
+    chainId: number;
+    sources: readonly { readonly name: string; readonly endBlock?: number }[];
+    blockHeight: number;
+  }): Effect.Effect<void, SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      for (const source of sources) {
+        yield* db
+          .update(blockSyncProgressTable)
+          .set({
+            syncedBlockHeight: BigInt(blockHeight),
+            isComplete: source.endBlock !== undefined && blockHeight >= source.endBlock,
+          })
+          .where(
+            and(
+              eq(blockSyncProgressTable.chainId, BigInt(chainId)),
+              eq(blockSyncProgressTable.name, source.name),
+              eq(blockSyncProgressTable.isComplete, false),
+              lt(blockSyncProgressTable.syncedBlockHeight, BigInt(blockHeight)),
+            ),
+          );
+      }
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "raiseBlockSyncedBlockHeight", cause }),
+      ),
+    ),
+
+  /** Heights of the stored blocks within `[fromBlockHeight, toBlockHeight]`, ascending. */
+  getStoredBlockHeights: ({
+    chainId,
+    fromBlockHeight,
+    toBlockHeight,
+  }: {
+    chainId: number;
+    fromBlockHeight: number;
+    toBlockHeight: number;
+  }): Effect.Effect<number[], SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      const rows = yield* db
+        .select({ height: blocksTable.height })
+        .from(blocksTable)
+        .where(
+          and(
+            eq(blocksTable.chainId, BigInt(chainId)),
+            gte(blocksTable.height, BigInt(fromBlockHeight)),
+            lte(blocksTable.height, BigInt(toBlockHeight)),
+          ),
+        )
+        .orderBy(blocksTable.height);
+
+      return rows.map((row) => Number(row.height));
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "getStoredBlockHeights", cause }),
+      ),
+    ),
+
+  /**
+   * Stored blocks within `[fromBlockHeight, toBlockHeight]` that at least one
+   * of `sources` runs at, ascending by height; the first `limit` when set.
+   */
+  getSourceBlocks: ({
+    chainId,
+    fromBlockHeight,
+    toBlockHeight,
+    sources,
+    limit = NO_LIMIT,
+  }: {
+    chainId: number;
+    fromBlockHeight: number;
+    toBlockHeight?: number;
+    sources: readonly BlockSourceRange[];
+    limit?: number;
+  }): Effect.Effect<readonly StoredSourceBlock[], SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      if (sources.length === 0) {
+        return [];
+      }
+
+      const db = yield* IndexerDatabase;
+
+      const matchesSource = or(
+        ...sources.map((source) =>
+          and(
+            gte(blocksTable.height, BigInt(source.startBlock)),
+            source.endBlock === undefined
+              ? undefined
+              : lte(blocksTable.height, BigInt(source.endBlock)),
+            sql`(${blocksTable.height} - ${BigInt(source.startBlock)}) % ${BigInt(source.interval)} = 0`,
+          ),
+        ),
+      );
+
+      const rows = yield* db
+        .select({
+          blockHeight: blocksTable.height,
+          blockTime: blocksTable.blockTime,
+          blockHash: blocksTable.hash,
+          indexBlockHash: blocksTable.indexBlockHash,
+        })
+        .from(blocksTable)
+        .where(
+          and(
+            eq(blocksTable.chainId, BigInt(chainId)),
+            gte(blocksTable.height, BigInt(fromBlockHeight)),
+            toBlockHeight === undefined
+              ? undefined
+              : lte(blocksTable.height, BigInt(toBlockHeight)),
+            matchesSource,
+          ),
+        )
+        .orderBy(blocksTable.height)
+        .limit(limit);
+
+      return yield* decodeStoredSourceBlocks(rows);
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "getSourceBlocks", cause }),
+      ),
+    ),
+
   insertEvents: ({
     events,
     chainId,
@@ -299,14 +539,17 @@ export const syncStore = {
         );
     }),
 
+  /** Stored events with their transaction and block, in indexing order; the first `limit` when set. */
   getEvents: ({
     chainId,
     fromBlockHeight,
     toBlockHeight,
+    limit = NO_LIMIT,
   }: {
     chainId: number;
     fromBlockHeight: number;
     toBlockHeight?: number;
+    limit?: number;
   }): Effect.Effect<readonly StoredEvent[], SyncStoreError, IndexerDatabase> =>
     Effect.gen(function* () {
       const db = yield* IndexerDatabase;
@@ -354,6 +597,7 @@ export const syncStore = {
         )
         .where(and(...conditions))
         .orderBy(eventsTable.blockHeight, transactionsTable.txIndex, eventsTable.eventIndex)
+        .limit(limit)
         .pipe(
           Effect.mapError(
             (cause: unknown) => new SyncStoreError({ operation: "getEvents", cause }),
@@ -431,10 +675,12 @@ export const syncStore = {
 
   /**
    * Discards all sync data above `blockHeight` and lowers the affected
-   * `sync_progress` rows to it, so the next sync refetches that range from the
-   * canonical chain: the affected contracts drop their forward cursor and
-   * catch up from the newest events down to `blockHeight`. A checkpoint above
-   * `blockHeight` is lowered to it so the range is replayed through handlers.
+   * `sync_progress` and `block_sync_progress` rows to it, so the next sync
+   * refetches that range from the canonical chain: the affected contracts drop
+   * their forward cursor and catch up from the newest events down to
+   * `blockHeight`, and block sources refetch their blocks above it. A
+   * checkpoint above `blockHeight` is lowered to it so the range is replayed
+   * through handlers.
    * Handler writes are not rolled back, so handlers must be idempotent.
    *
    * Returns the replayed range, or `null` when no indexed data was discarded.
@@ -487,6 +733,16 @@ export const syncStore = {
             and(
               eq(syncProgressTable.chainId, BigInt(chainId)),
               gt(syncProgressTable.syncedBlockHeight, height),
+            ),
+          );
+
+        yield* db
+          .update(blockSyncProgressTable)
+          .set({ syncedBlockHeight: height, isComplete: false })
+          .where(
+            and(
+              eq(blockSyncProgressTable.chainId, BigInt(chainId)),
+              gt(blockSyncProgressTable.syncedBlockHeight, height),
             ),
           );
 

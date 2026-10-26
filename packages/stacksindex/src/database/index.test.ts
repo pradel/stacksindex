@@ -71,6 +71,7 @@ describe("database", () => {
 
     await expect(tablesIn(indexer, "stacksindex")).resolves.toStrictEqual([
       "__drizzle_migrations",
+      "block_sync_progress",
       "blocks",
       "checkpoints",
       "events",
