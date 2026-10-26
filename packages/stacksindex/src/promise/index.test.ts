@@ -1,3 +1,4 @@
+import type { EmptyRelations } from "drizzle-orm";
 import { Effect, Schema } from "effect";
 import {
   afterAll,
@@ -209,7 +210,7 @@ describe("promise indexer", () => {
       logLevel: "None",
       handlers: {
         every: async (event, { client }) => {
-          expectTypeOf(event).toEqualTypeOf<BlockEvent>();
+          expectTypeOf(event).toEqualTypeOf<BlockEvent<"every">>();
           received.push(event);
           await client.callReadOnly({ contractId: CONTRACT_ID, functionName: "get-total-supply" });
         },
@@ -235,14 +236,14 @@ describe("promise indexer", () => {
     });
   });
 
-  test("types handlers by source: block sources get BlockEvent and are required", () => {
+  test("types handlers by source: block sources get BlockEvent named by the source and are required", () => {
     const definition = defineIndexer({
       contracts: { token: { id: CONTRACT_ID } },
       blocks: { every: { startBlock: BASE_HEIGHT } },
     });
 
     definition.handler("every", (event) => {
-      expectTypeOf(event).toEqualTypeOf<BlockEvent>();
+      expectTypeOf(event).toEqualTypeOf<BlockEvent<"every">>();
     });
     definition.handler("token", (event) => {
       expectTypeOf(event).toEqualTypeOf<PrintEvent>();
@@ -250,7 +251,7 @@ describe("promise indexer", () => {
 
     type CreateHandlers = Parameters<typeof definition.create>[0]["handlers"];
 
-    expectTypeOf<CreateHandlers["every"]>().toEqualTypeOf<BlockHandler>();
+    expectTypeOf<CreateHandlers["every"]>().toEqualTypeOf<BlockHandler<EmptyRelations, "every">>();
   });
 
   test("defineIndexer throws ConfigurationError for an invalid definition", () => {

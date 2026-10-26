@@ -54,7 +54,9 @@ export type EventHandler<
  * Handles a block source run: once per block the source runs at. Services are
  * provided as for `EventHandler`.
  */
-export type BlockHandler<E = never, R = never> = (event: BlockEvent) => Effect.Effect<void, E, R>;
+export type BlockHandler<E = never, R = never, TName extends string = string> = (
+  event: BlockEvent<TName>,
+) => Effect.Effect<void, E, R>;
 
 /** The handler of the contract or block source named `TName`. */
 export type SourceHandler<
@@ -62,7 +64,9 @@ export type SourceHandler<
   TName extends PropertyKey,
   E = never,
   R = never,
-> = TName extends keyof TContracts ? EventHandler<TContracts[TName], E, R> : BlockHandler<E, R>;
+> = TName extends keyof TContracts
+  ? EventHandler<TContracts[TName], E, R>
+  : BlockHandler<E, R, TName & string>;
 
 /** One handler per defined contract and block source. */
 export type Handlers<
@@ -142,7 +146,7 @@ const schemaDecoder =
 /** Any contract or block source handler, as `toSpecs` reads them from `handlers`. */
 type AnySourceHandler =
   | EventHandler<ContractDefinition, unknown, unknown>
-  | BlockHandler<unknown, unknown>;
+  | BlockHandler<unknown, unknown, never>;
 
 /** Pairs every contract and block source with its handler, rejecting unknown or missing ones. */
 const toSpecs = (

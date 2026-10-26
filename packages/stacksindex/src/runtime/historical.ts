@@ -4,6 +4,7 @@ import { IndexerDatabase } from "../database/index.ts";
 import { type StacksApiError, StacksClient } from "../datasources/api/index.ts";
 import { Indexing } from "../indexing/index.ts";
 import type {
+  BlockHandlerExecutionError,
   DatabaseError,
   EventDecodeError,
   FilterValidationError,
@@ -46,6 +47,14 @@ import {
   recordRunProgress,
 } from "./progress.ts";
 import { reconcileWithCanonicalChain, recordCheckpointMetrics } from "./reorg.ts";
+
+/** Failures of indexing stored rows: handlers, print decoding and the store. */
+type IndexingError =
+  | HandlerExecutionError
+  | BlockHandlerExecutionError
+  | EventDecodeError
+  | SyncStoreError
+  | DatabaseError;
 
 /** Outcome of one contract within a `run`. */
 export interface ContractRunResult {
@@ -127,11 +136,7 @@ function indexBatch(
   eventsByName: Map<string, number>,
   finalizedBlockHeight: number,
   finalizedBlockTime: number,
-): Effect.Effect<
-  void,
-  HandlerExecutionError | EventDecodeError | SyncStoreError | DatabaseError,
-  Indexing | IndexerDatabase
-> {
+): Effect.Effect<void, IndexingError, Indexing | IndexerDatabase> {
   const lastRow = batch[batch.length - 1];
 
   const checkpoint = {
@@ -230,7 +235,7 @@ function indexBatches(options: {
   finalizedBlockTime: number;
 }): Effect.Effect<
   { finalizedBlockHeight: number; finalizedBlockTime: number; indexedDurationMs: number },
-  HandlerExecutionError | EventDecodeError | SyncStoreError | DatabaseError,
+  IndexingError,
   Indexing | IndexerDatabase
 > {
   return Effect.gen(function* () {
@@ -286,18 +291,72 @@ function indexBatches(options: {
   });
 }
 
+/** Most events, and most block source blocks, read into memory for one indexing page. */
+export const INDEX_PAGE_ROWS = 10_000;
+
+interface IndexPage {
+  readonly rows: readonly IndexRow[];
+  /** Every row up to this height is in `rows`. */
+  readonly endBlockHeight: number;
+}
+
+/**
+ * Reads the rows to index in `[fromBlockHeight, toBlockHeight]`, at most
+ * `pageRows` events and `pageRows` block source blocks, ending on a block
+ * boundary. A full events page ends before its last block, which may hold
+ * more events, unless that block is the only one, which is then read whole.
+ */
+function readIndexPage(options: {
+  readonly chainId: number;
+  readonly prepared: PreparedContracts;
+  readonly fromBlockHeight: number;
+  readonly toBlockHeight: number;
+  readonly pageRows: number;
+}): Effect.Effect<IndexPage, SyncStoreError, IndexerDatabase> {
+  const { chainId, prepared, fromBlockHeight, toBlockHeight, pageRows } = options;
+
+  return Effect.gen(function* () {
+    const range = { chainId, fromBlockHeight, toBlockHeight, limit: pageRows };
+    let events = yield* syncStore.getEvents(range);
+    const blocks = yield* syncStore.getSourceBlocks({ ...range, sources: prepared.blocks });
+    let endBlockHeight = toBlockHeight;
+    let isSingleBlock = false;
+
+    if (events.length === pageRows) {
+      const lastHeight = Number(events[events.length - 1].blockHeight);
+      isSingleBlock = Number(events[0].blockHeight) === lastHeight;
+      endBlockHeight = isSingleBlock ? lastHeight : lastHeight - 1;
+    }
+
+    if (blocks.length === pageRows) {
+      endBlockHeight = Math.min(endBlockHeight, Number(blocks[blocks.length - 1].blockHeight));
+    }
+
+    if (isSingleBlock && endBlockHeight === Number(events[0].blockHeight)) {
+      events = yield* syncStore.getEvents({
+        chainId,
+        fromBlockHeight,
+        toBlockHeight: endBlockHeight,
+      });
+    }
+
+    const end = BigInt(endBlockHeight);
+
+    return {
+      rows: mergeRows(
+        events.filter((row) => row.blockHeight <= end),
+        blocks.filter((row) => row.blockHeight <= end),
+        prepared.blocks,
+      ),
+      endBlockHeight,
+    };
+  });
+}
+
 /**
  * Indexes every stored event and block source block with height
- * `> checkpoint` and `<= toBlockHeight`. Rows are split into block-aligned
- * batches so each transaction stays bounded and every checkpoint refers to a
- * fully processed block.
- *
- * The finalized marker advances to the newest committed block that is at least
- * `finality` blocks behind the confirmation height. The confirmation height is
- * the chain tip when it was read for the run, capped by the safe height during
- * incremental steps; without a tip it falls back to the newest stored
- * event-bearing block on the final `MAX_SAFE_INTEGER` pass. It never refers to
- * data that is not yet committed.
+ * `> checkpoint` and `<= toBlockHeight`, reading them in pages of at most
+ * `pageRows` events and blocks so memory stays bounded.
  */
 export function indexEventsUpTo(
   toBlockHeight: number,
@@ -306,17 +365,57 @@ export function indexEventsUpTo(
   eventsByName: Map<string, number>,
   finality: number,
   chainTipHeight: number | undefined,
-): Effect.Effect<
-  void,
-  HandlerExecutionError | EventDecodeError | SyncStoreError | DatabaseError,
-  Indexing | IndexerDatabase
-> {
+  pageRows: number = INDEX_PAGE_ROWS,
+): Effect.Effect<void, IndexingError, Indexing | IndexerDatabase> {
+  return Effect.gen(function* () {
+    for (;;) {
+      const hasMore = yield* indexPage({
+        toBlockHeight,
+        prepared,
+        chainId,
+        eventsByName,
+        finality,
+        chainTipHeight,
+        pageRows,
+      });
+
+      if (!hasMore) {
+        return;
+      }
+    }
+  });
+}
+
+/**
+ * Indexes the next page of rows above the checkpoint, up to `toBlockHeight`.
+ * Rows are split into block-aligned batches so each transaction stays bounded
+ * and every checkpoint refers to a fully processed block. Resolves whether
+ * rows up to `toBlockHeight` remain.
+ *
+ * The finalized marker advances to the newest committed block that is at least
+ * `finality` blocks behind the confirmation height. The confirmation height is
+ * the chain tip when it was read for the run, capped by the safe height during
+ * incremental steps; without a tip it falls back to the newest block of the
+ * page on the final `MAX_SAFE_INTEGER` pass. It never refers to data that is
+ * not yet committed.
+ */
+function indexPage(options: {
+  readonly toBlockHeight: number;
+  readonly prepared: PreparedContracts;
+  readonly chainId: number;
+  readonly eventsByName: Map<string, number>;
+  readonly finality: number;
+  readonly chainTipHeight: number | undefined;
+  readonly pageRows: number;
+}): Effect.Effect<boolean, IndexingError, Indexing | IndexerDatabase> {
+  const { toBlockHeight, prepared, chainId, eventsByName, finality, chainTipHeight } = options;
+
   return Effect.gen(function* () {
     const checkpoint = yield* syncStore.getCheckpoint({ chainId });
     const fromBlockHeight = checkpoint ? Number(checkpoint.blockHeight) : 0;
 
     if (fromBlockHeight >= toBlockHeight) {
-      return;
+      return false;
     }
 
     const confirmationHeight =
@@ -324,13 +423,13 @@ export function indexEventsUpTo(
         ? chainTipHeight
         : Math.min(toBlockHeight, chainTipHeight ?? toBlockHeight);
 
-    const range = { chainId, fromBlockHeight: fromBlockHeight + 1, toBlockHeight };
-
-    const rows = mergeRows(
-      yield* syncStore.getEvents(range),
-      yield* syncStore.getSourceBlocks({ ...range, sources: prepared.blocks }),
-      prepared.blocks,
-    );
+    const { rows, endBlockHeight } = yield* readIndexPage({
+      chainId,
+      prepared,
+      fromBlockHeight: fromBlockHeight + 1,
+      toBlockHeight,
+      pageRows: options.pageRows,
+    });
 
     if (rows.length === 0) {
       // No new events, but the existing checkpoint block can still become
@@ -357,7 +456,7 @@ export function indexEventsUpTo(
         }
       }
 
-      return;
+      return false;
     }
 
     const batches = chunkEventsByBlock(rows);
@@ -422,6 +521,8 @@ export function indexEventsUpTo(
         finalizedBlockTime,
       }),
     );
+
+    return endBlockHeight < toBlockHeight;
   });
 }
 
@@ -877,6 +978,74 @@ export function runHistorical(
 }
 
 /**
+ * Warns about history that indexing already passed for a contract or block
+ * source without sync progress (newly added, or a block source whose
+ * `interval` or `startBlock` changed): indexing resumes after the checkpoint,
+ * so their events or blocks at or below it are never handled.
+ */
+function warnSkippedHistory(
+  chainId: number,
+  prepared: PreparedContracts,
+): Effect.Effect<void, SyncStoreError, IndexerDatabase> {
+  return Effect.gen(function* () {
+    const checkpoint = yield* syncStore.getCheckpoint({ chainId });
+
+    if (checkpoint === null) {
+      return;
+    }
+
+    const checkpointHeight = Number(checkpoint.blockHeight);
+    const contractProgress = yield* syncStore.listSyncProgress({ chainId });
+    const blockProgress = yield* syncStore.listBlockSyncProgress({ chainId });
+    const syncedContractIds = new Set(contractProgress.map((row) => row.contractId));
+    const blockProgressByName = new Map(blockProgress.map((row) => [row.name, row]));
+    const advice = "Re-sync from an empty indexer database (and reset handler tables) to cover it.";
+
+    for (const contract of prepared.contracts) {
+      const startsAfter =
+        contract.startBlock !== undefined && contract.startBlock > checkpointHeight;
+
+      if (!syncedContractIds.has(contract.contractId) && !startsAfter) {
+        yield* Effect.logWarning(
+          `contracts.${contract.name} has no sync progress, but indexing is already at block ${checkpointHeight}: its events at or below it will not be handled. ${advice}`,
+        ).pipe(
+          Effect.annotateLogs({
+            chainId,
+            phase: "init",
+            contract: contract.name,
+            block: checkpointHeight,
+          }),
+        );
+      }
+    }
+
+    for (const source of prepared.blocks) {
+      const row = blockProgressByName.get(source.name);
+
+      const isSynced =
+        row !== undefined &&
+        Number(row.interval) === source.interval &&
+        Number(row.startBlock) === source.startBlock;
+
+      if (!isSynced && source.startBlock <= checkpointHeight) {
+        const skippedTo = Math.min(source.endBlock ?? checkpointHeight, checkpointHeight);
+
+        yield* Effect.logWarning(
+          `blocks.${source.name} has no sync progress for its interval and startBlock, but indexing is already at block ${checkpointHeight}: it will not run at blocks ${source.startBlock} to ${skippedTo}. ${advice}`,
+        ).pipe(
+          Effect.annotateLogs({
+            chainId,
+            phase: "init",
+            blocks: source.name,
+            block: checkpointHeight,
+          }),
+        );
+      }
+    }
+  });
+}
+
+/**
  * Syncs and indexes prepared contracts up to the chain tip read at the start
  * of the pass, then logs and returns the run summary.
  */
@@ -900,6 +1069,8 @@ export function runPreparedHistorical(
         finality: config.finality,
       }),
     );
+
+    yield* warnSkippedHistory(chainId, prepared);
 
     const eventsByName = new Map<string, number>();
 

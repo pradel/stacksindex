@@ -47,11 +47,11 @@ export interface PrintEvent<TData = ClarityJsonValue> {
   };
 }
 
-/** A block matched by a block interval source (`blocks`). */
-export interface BlockEvent {
+/** A block matched by a block interval source (`blocks`); `TName` is the source's name. */
+export interface BlockEvent<TName extends string = string> {
   readonly type: "block";
   /** Definition name of the block source (the key in `blocks`). */
-  readonly name: string;
+  readonly name: TName;
   readonly block: EventBlock;
 }
 

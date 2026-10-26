@@ -3,7 +3,11 @@ import { Cause, Context, Duration, Effect, Layer, Metric } from "effect";
 import { type ClarityJsonValue, decodeHex } from "../codec/index.ts";
 import type { IndexerDatabase } from "../database/index.ts";
 import { readOnly, StacksClient, type StacksClientService } from "../datasources/api/index.ts";
-import { EventDecodeError, HandlerExecutionError } from "../lib/errors.ts";
+import {
+  BlockHandlerExecutionError,
+  EventDecodeError,
+  HandlerExecutionError,
+} from "../lib/errors.ts";
 import {
   blockSourceAttributes,
   contractAttributes,
@@ -34,7 +38,7 @@ export interface IndexingService {
     rows: readonly IndexRow[],
   ) => Effect.Effect<
     Map<string, number>,
-    HandlerExecutionError | EventDecodeError,
+    HandlerExecutionError | BlockHandlerExecutionError | EventDecodeError,
     IndexerDatabase
   >;
 }
@@ -135,15 +139,15 @@ export const createIndexing = ({
 
   /**
    * Runs `handler` with the read-only client pinned to `block`, timing it and
-   * turning a failure into `HandlerExecutionError` for `source`.
+   * turning a failure into the error `toError` builds from its cause.
    */
-  const runHandler = (
+  const runHandler = <E>(
     handler: () => Effect.Effect<void, unknown, IndexerDatabase | HandlerClient>,
     block: EventBlock,
     runtime: ContractRuntime | BlockSourceRuntime,
-    source: { readonly contract: string; readonly contractId?: string },
+    toError: (cause: unknown) => E,
     annotate: AnnotateLogs,
-  ): Effect.Effect<void, HandlerExecutionError, IndexerDatabase> => {
+  ): Effect.Effect<void, E, IndexerDatabase> => {
     // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event's block unless overridden.
     const client: IndexingClient = {
       // oxlint-disable-next-line typescript/no-explicit-any
@@ -174,10 +178,7 @@ export const createIndexing = ({
           yield* Metric.update(runtime.errors, 1);
           yield* Effect.logError(cause).pipe(annotate);
 
-          return yield* new HandlerExecutionError({
-            ...source,
-            cause: Cause.squash(cause),
-          });
+          return yield* Effect.fail(toError(Cause.squash(cause)));
         });
       }),
     );
@@ -210,7 +211,12 @@ export const createIndexing = ({
               () => spec.handler(event),
               event.block,
               runtime,
-              { contract: spec.name, contractId: spec.contractId },
+              (cause) =>
+                new HandlerExecutionError({
+                  contract: spec.name,
+                  contractId: spec.contractId,
+                  cause,
+                }),
               eventAnnotations(row, spec.name),
             ).pipe(Effect.as(spec.name)),
       ),
@@ -220,7 +226,7 @@ export const createIndexing = ({
   /** Runs one block source at its block; resolves its name when its handler ran. */
   const executeBlock = (
     row: StoredBlockSourceRow,
-  ): Effect.Effect<string | undefined, HandlerExecutionError, IndexerDatabase> => {
+  ): Effect.Effect<string | undefined, BlockHandlerExecutionError, IndexerDatabase> => {
     const annotate: AnnotateLogs = Effect.annotateLogs({
       phase: "index",
       blocks: row.source,
@@ -239,7 +245,12 @@ export const createIndexing = ({
       () => runtime.spec.handler(event),
       event.block,
       runtime,
-      { contract: row.source },
+      (cause) =>
+        new BlockHandlerExecutionError({
+          name: row.source,
+          blockHeight: Number(row.blockHeight),
+          cause,
+        }),
       annotate,
     ).pipe(Effect.as(row.source));
   };

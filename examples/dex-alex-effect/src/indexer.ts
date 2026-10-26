@@ -43,9 +43,22 @@ const PoolBalanceLog = Schema.Struct({
 /** The pool prints the indexer handles; every other print is skipped (`onInvalid: "skip"`). */
 export const PoolLog = Schema.Union([PoolCreatedLog, PoolBalanceLog]);
 
+/**
+ * Nakamoto produces a Stacks block about every 8 seconds, so 450 blocks is
+ * roughly one hour. The interval counts blocks, not time: it drifts with the
+ * block rate.
+ */
+export const POOL_SNAPSHOT_INTERVAL = 450;
+
+/** A recent Nakamoto height: about a month of hourly snapshots as of late 2026. */
+export const POOL_SNAPSHOT_START_BLOCK = 9_000_000;
+
 export const indexer = defineIndexer({
   relations,
   contracts: {
     pool: { id: POOL_CONTRACT, print: PoolLog, onInvalid: "skip" },
+  },
+  blocks: {
+    poolSnapshots: { interval: POOL_SNAPSHOT_INTERVAL, startBlock: POOL_SNAPSHOT_START_BLOCK },
   },
 });

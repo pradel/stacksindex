@@ -168,10 +168,10 @@ export type EventHandler<
 ) => Promise<void> | void;
 
 /** Handles a block source run: once per block the source runs at. */
-export type BlockHandler<TRelations extends AnyRelations = EmptyRelations> = (
-  event: BlockEvent,
-  context: HandlerContext<TRelations>,
-) => Promise<void> | void;
+export type BlockHandler<
+  TRelations extends AnyRelations = EmptyRelations,
+  TName extends string = string,
+> = (event: BlockEvent<TName>, context: HandlerContext<TRelations>) => Promise<void> | void;
 
 /** A definition map with no entries: the default when `contracts` or `blocks` is omitted. */
 // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty definition map is the intent
@@ -180,7 +180,7 @@ export type EmptyDefinitions = Readonly<Record<never, never>>;
 /** Any contract or block source handler, as `toSpecs` reads them from `handlers`. */
 type AnySourceHandler<TRelations extends AnyRelations> =
   | EventHandler<ContractDefinition, TRelations>
-  | BlockHandler<TRelations>;
+  | BlockHandler<TRelations, never>;
 
 /** The handler of the contract or block source named `TName`. */
 export type SourceHandler<
@@ -189,7 +189,7 @@ export type SourceHandler<
   TRelations extends AnyRelations,
 > = TName extends keyof TContracts
   ? EventHandler<TContracts[TName], TRelations>
-  : BlockHandler<TRelations>;
+  : BlockHandler<TRelations, TName & string>;
 
 /** One handler per defined contract and block source. */
 export type Handlers<

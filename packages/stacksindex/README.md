@@ -191,12 +191,12 @@ With the Effect API the handler returns an `Effect` and reads `Db` and `Client` 
 - **Names**: `handlers` is one record keyed by contract and block source names, so names must be unique across `contracts` and `blocks`. `contracts` is optional when `blocks` defines a source.
 - **Ordering**: within a block, every print is handled first (by transaction and event index), then each block source running at that height, in definition order.
 - **Cost**: the backfill reads blocks in windows of 30 heights. With an `interval` below ~15, a window costs about 2 requests: one page of Stacks blocks plus their Bitcoin block times, which are often cached from the previous window. With larger intervals it costs 1 request per height the source runs at. An `interval` of 1 over 320k blocks takes ≈ 10.7k to 21.3k requests, about 3.6 to 7 hours at the unauthenticated 50 requests per minute; set `api.apiKey` or a larger `interval` for long ranges.
-- **Limitation**: adding a source, or lowering `startBlock` below the indexing checkpoint, does not replay past heights. Re-sync from an empty database to cover them.
+- **Limitation**: adding a source, or lowering `startBlock` below the indexing checkpoint, does not replay past heights; the run logs a warning naming the skipped range (contracts added later get the same warning). Re-sync from an empty database to cover them.
 
 | Property | Type                                     | Description                                                                          |
 | -------- | ---------------------------------------- | ------------------------------------------------------------------------------------ |
 | `type`   | `"block"`                                | Event kind.                                                                          |
-| `name`   | `string`                                 | Source name (the key in `blocks`).                                                   |
+| `name`   | `TName`                                  | Source name (the key in `blocks`), typed as that key in its handler.                 |
 | `block`  | `{ height, time, hash, indexBlockHash }` | The block; `time` (Bitcoin block time) in Unix seconds. `indexBlockHash` pins calls. |
 
 ---
@@ -537,15 +537,16 @@ The definition exposes `handler(name, fn)` and `create(options)` (promise) or `D
 
 Both entrypoints export the error classes, each with a `_tag` of the same name:
 
-| Error                   | Raised when                                                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `ConfigurationError`    | `defineIndexer`, `create` or `layer` receives an invalid definition or option.                                            |
-| `DatabaseError`         | The database cannot be opened or a query fails.                                                                           |
-| `MigrationError`        | The indexer's or your migrations fail to apply.                                                                           |
-| `EventDecodeError`      | A print does not match its contract's `print` schema (with `onInvalid: "fail"`).                                          |
-| `HandlerExecutionError` | A handler throws or fails; carries `contract` (definition name), `contractId` (absent for block sources) and the `cause`. |
-| `ReorgError`            | A reorg replaces a finalized block.                                                                                       |
-| `ReadOnlyCallError`     | A read-only call returns a Clarity-level failure.                                                                         |
+| Error                        | Raised when                                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `ConfigurationError`         | `defineIndexer`, `create` or `layer` receives an invalid definition or option.                            |
+| `DatabaseError`              | The database cannot be opened or a query fails.                                                           |
+| `MigrationError`             | The indexer's or your migrations fail to apply.                                                           |
+| `EventDecodeError`           | A print does not match its contract's `print` schema (with `onInvalid: "fail"`).                          |
+| `HandlerExecutionError`      | A contract's handler throws or fails; carries `contract` (definition name), `contractId` and the `cause`. |
+| `BlockHandlerExecutionError` | A block source's handler throws or fails; carries `name` (source name), `blockHeight` and the `cause`.    |
+| `ReorgError`                 | A reorg replaces a finalized block.                                                                       |
+| `ReadOnlyCallError`          | A read-only call returns a Clarity-level failure.                                                         |
 
 ### `stacksindex/clarity`
 

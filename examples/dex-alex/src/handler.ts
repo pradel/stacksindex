@@ -2,8 +2,15 @@ import { eq } from "drizzle-orm";
 import type { IndexerDb, IndexingClient, Logger } from "stacksindex";
 
 import { fixedWeightPoolAbi, sip010Abi } from "./abi.ts";
-import { indexer } from "./indexer.ts";
-import { poolTable, type relations, swapTable, type Token, tokenTable } from "./schema.ts";
+import { indexer, POOL_CONTRACT } from "./indexer.ts";
+import {
+  poolSnapshotTable,
+  poolTable,
+  type relations,
+  swapTable,
+  type Token,
+  tokenTable,
+} from "./schema.ts";
 
 /** The handler's `db`: the batch transaction, typed with `relations`. */
 type AppDatabase = IndexerDb<typeof relations>;
@@ -226,3 +233,78 @@ export const poolHandler = indexer.handler("pool", async (event, { db, client, l
     await syncPoolTokens(services, event.contractId, log.poolToken);
   }
 });
+
+/**
+ * Runs every `POOL_SNAPSHOT_INTERVAL` blocks and records each pool's balances.
+ * `client` reads the contract at the snapshot block, so a replayed block
+ * reads the same state; the upsert keyed by pool and height keeps a rewind
+ * from duplicating rows.
+ */
+export const poolSnapshotsHandler = indexer.handler(
+  "poolSnapshots",
+  async (event, { db, client, logger }) => {
+    const poolCount = await client.callReadOnly({
+      abi: fixedWeightPoolAbi,
+      contractId: POOL_CONTRACT,
+      functionName: "get-pool-count",
+    });
+
+    for (let poolId = 1n; poolId <= poolCount; poolId += 1n) {
+      const contractsResult = await client.callReadOnly({
+        abi: fixedWeightPoolAbi,
+        contractId: POOL_CONTRACT,
+        functionName: "get-pool-contracts",
+        functionArgs: [poolId],
+      });
+
+      if (contractsResult.ok === undefined) {
+        throw new Error(
+          `Failed to fetch pool contracts for pool ${poolId}: contract returned error ${contractsResult.error}`,
+        );
+      }
+
+      const pool = contractsResult.ok;
+
+      const detailsResult = await client.callReadOnly({
+        abi: fixedWeightPoolAbi,
+        contractId: POOL_CONTRACT,
+        functionName: "get-pool-details",
+        functionArgs: [pool["token-x"], pool["token-y"], pool["weight-x"], pool["weight-y"]],
+      });
+
+      if (detailsResult.ok === undefined) {
+        throw new Error(
+          `Failed to fetch pool details for pool ${poolId}: contract returned error ${detailsResult.error}`,
+        );
+      }
+
+      const details = detailsResult.ok;
+
+      const balances = {
+        balanceX: details["balance-x"],
+        balanceY: details["balance-y"],
+        totalSupply: details["total-supply"],
+      };
+
+      await db
+        .insert(poolSnapshotTable)
+        .values({
+          poolAddress: details["pool-token"],
+          chainId: CHAIN_ID,
+          blockHeight: BigInt(event.block.height),
+          blockTime: BigInt(event.block.time),
+          ...balances,
+        })
+        .onConflictDoUpdate({
+          target: [
+            poolSnapshotTable.poolAddress,
+            poolSnapshotTable.chainId,
+            poolSnapshotTable.blockHeight,
+          ],
+          set: { blockTime: BigInt(event.block.time), ...balances },
+        });
+    }
+
+    logger.debug("Pool snapshots recorded", { blockHeight: event.block.height, pools: poolCount });
+  },
+);

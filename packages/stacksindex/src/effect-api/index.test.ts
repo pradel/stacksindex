@@ -260,7 +260,7 @@ describe("effect indexer", () => {
 
     const handler = blocksOnly.handler("every", (event) =>
       Effect.gen(function* () {
-        expectTypeOf(event).toEqualTypeOf<BlockEvent>();
+        expectTypeOf(event).toEqualTypeOf<BlockEvent<"every">>();
         received.push(event);
 
         const client = yield* blocksOnly.Client;
@@ -304,9 +304,9 @@ describe("effect indexer", () => {
     });
   });
 
-  test("types block source handlers with BlockEvent", () => {
+  test("types block source handlers with BlockEvent named by the source", () => {
     withBlocks.handler("every", (event) => {
-      expectTypeOf(event).toEqualTypeOf<BlockEvent>();
+      expectTypeOf(event).toEqualTypeOf<BlockEvent<"every">>();
 
       return Effect.void;
     });
@@ -316,7 +316,7 @@ describe("effect indexer", () => {
       handlers: {
         token: () => Effect.void,
         every: (event) => {
-          expectTypeOf(event).toEqualTypeOf<BlockEvent>();
+          expectTypeOf(event).toEqualTypeOf<BlockEvent<"every">>();
 
           return Effect.gen(function* () {
             yield* Greeting;

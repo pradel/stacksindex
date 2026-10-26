@@ -12,7 +12,12 @@ import {
 } from "vite-plus/test";
 
 import { IndexerDatabase } from "../database/index.ts";
-import { EventDecodeError, HandlerExecutionError, ReorgError } from "../lib/errors.ts";
+import {
+  BlockHandlerExecutionError,
+  EventDecodeError,
+  HandlerExecutionError,
+  ReorgError,
+} from "../lib/errors.ts";
 import { liveConsecutiveFailures, liveIsRealtime, syncErrors } from "../lib/metrics.ts";
 import type { BlockEvent, PrintEvent } from "../lib/types.ts";
 import { defineIndexer } from "../promise/index.ts";
@@ -135,6 +140,14 @@ const failureOf = (exit: Exit.Exit<void, unknown>) =>
 
 const failOnBlock = (height: number) => (event: PrintEvent<unknown>) =>
   event.block.height === height ? Effect.fail(new Error("boom")) : Effect.void;
+
+/** A block source handler recording each height it runs at into `attempts`, failing at `height`. */
+const failBlockAt = (height: number, failure: Error, attempts: number[]) => (event: BlockEvent) =>
+  Effect.suspend(() => {
+    attempts.push(event.block.height);
+
+    return event.block.height === height ? Effect.fail(failure) : Effect.void;
+  });
 
 /** A `print` decoder that accepts every value until `schemaChanged()` turns true. */
 const decodeUntil =
@@ -481,6 +494,39 @@ describe("live indexing", () => {
 
     expect(failure).toBeInstanceOf(HandlerExecutionError);
     expect(failure).toMatchObject({ contractId: CONTRACT_ID });
+  });
+
+  test("fails at once when a block source's handler fails", async () => {
+    const attempts: number[] = [];
+    const failure = new Error("boom");
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine();
+      },
+      () => {
+        chain.mine();
+      },
+    ]);
+
+    const exit = await runLive(testDb, [], {
+      blocks: [
+        {
+          name: "every",
+          interval: 1,
+          startBlock: 100,
+          endBlock: 102,
+          handler: failBlockAt(101, failure, attempts),
+        },
+      ],
+    });
+
+    const error = failureOf(exit);
+
+    expect(error).toBeInstanceOf(BlockHandlerExecutionError);
+    expect(error).toMatchObject({ name: "every", blockHeight: 101, cause: failure });
+    // Not retried: block 101 ran once and 102 never did.
+    expect(attempts).toStrictEqual([100, 101]);
   });
 
   test("fails at once when a print does not match its schema", async () => {

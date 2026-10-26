@@ -89,7 +89,7 @@ The definition name (the key in `contracts`) identifies the contract in handlers
 - `interval` (positive integer, default `1`), `startBlock` (required), `endBlock` (height or `"latest"`)
 - A source runs at every height `startBlock + k * interval` (k ≥ 0) up to `endBlock`
 
-Names are unique across `contracts` and `blocks`, since `handlers` is one record keyed by both. At least one contract or block source is required. Adding a source or lowering `startBlock` below the checkpoint does not replay past heights; re-sync from an empty database for that.
+Names are unique across `contracts` and `blocks`, since `handlers` is one record keyed by both. At least one contract or block source is required. Adding a source or lowering `startBlock` below the checkpoint does not replay past heights; each run warns about such a source (and about a contract without sync progress) before syncing. Re-sync from an empty database for that.
 
 ### Schema
 
@@ -377,11 +377,11 @@ BlockEvent {
 
 ### Indexing order
 
-A batch merges stored events and matching blocks (`getSourceBlocks`, `(height - startBlock) % interval = 0`) into one sequence: by block height, every print first (tx index, event index), then each block source running at that height in definition order.
+A batch merges stored events and matching blocks (`getSourceBlocks`, `(height - startBlock) % interval = 0`) into one sequence: by block height, every print first (tx index, event index), then each block source running at that height in definition order. Rows are read in pages of at most 10,000 events and 10,000 blocks, each ending on a block boundary (a block holding more events than a page is read whole), so memory stays bounded however far indexing lags behind the sync.
 
 ### Decode step
 
-`Indexing.executeBatch` decodes every print's hex with the Clarity codec (`stacksindex/clarity`), runs the contract's `decode` (the `print` schema), then calls the handler. A mismatch fails the batch with `EventDecodeError { contract, contractId, txId, eventIndex, message, cause }` under `onInvalid: "fail"`; under `"skip"` it is logged at warning level, skipped and not counted. A handler failure becomes `HandlerExecutionError { contract, contractId?, cause }`; `contractId` is absent for block sources.
+`Indexing.executeBatch` decodes every print's hex with the Clarity codec (`stacksindex/clarity`), runs the contract's `decode` (the `print` schema), then calls the handler. A mismatch fails the batch with `EventDecodeError { contract, contractId, txId, eventIndex, message, cause }` under `onInvalid: "fail"`; under `"skip"` it is logged at warning level, skipped and not counted. A contract handler failure becomes `HandlerExecutionError { contract, contractId, cause }`, a block source handler failure `BlockHandlerExecutionError { name, blockHeight, cause }`.
 
 ### Handlers
 

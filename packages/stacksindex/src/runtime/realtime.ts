@@ -96,6 +96,7 @@ function followHeads<A, E, R>(
 function isTransientError(error: IndexerError): boolean {
   return !(
     Predicate.isTagged(error, "HandlerExecutionError") ||
+    Predicate.isTagged(error, "BlockHandlerExecutionError") ||
     Predicate.isTagged(error, "EventDecodeError") ||
     Predicate.isTagged(error, "ReorgError") ||
     Predicate.isTagged(error, "SyncStoreError") ||

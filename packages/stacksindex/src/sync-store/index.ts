@@ -26,6 +26,9 @@ import {
   transactionsTable,
 } from "./schema.ts";
 
+/** `limit` of a query that returns every matching row. */
+const NO_LIMIT = Number.MAX_SAFE_INTEGER;
+
 export const syncStore = {
   insertBlocks: ({
     blocks,
@@ -444,18 +447,20 @@ export const syncStore = {
 
   /**
    * Stored blocks within `[fromBlockHeight, toBlockHeight]` that at least one
-   * of `sources` runs at, ascending by height.
+   * of `sources` runs at, ascending by height; the first `limit` when set.
    */
   getSourceBlocks: ({
     chainId,
     fromBlockHeight,
     toBlockHeight,
     sources,
+    limit = NO_LIMIT,
   }: {
     chainId: number;
     fromBlockHeight: number;
     toBlockHeight?: number;
     sources: readonly BlockSourceRange[];
+    limit?: number;
   }): Effect.Effect<readonly StoredSourceBlock[], SyncStoreError, IndexerDatabase> =>
     Effect.gen(function* () {
       if (sources.length === 0) {
@@ -494,7 +499,8 @@ export const syncStore = {
             matchesSource,
           ),
         )
-        .orderBy(blocksTable.height);
+        .orderBy(blocksTable.height)
+        .limit(limit);
 
       return yield* decodeStoredSourceBlocks(rows);
     }).pipe(
@@ -533,14 +539,17 @@ export const syncStore = {
         );
     }),
 
+  /** Stored events with their transaction and block, in indexing order; the first `limit` when set. */
   getEvents: ({
     chainId,
     fromBlockHeight,
     toBlockHeight,
+    limit = NO_LIMIT,
   }: {
     chainId: number;
     fromBlockHeight: number;
     toBlockHeight?: number;
+    limit?: number;
   }): Effect.Effect<readonly StoredEvent[], SyncStoreError, IndexerDatabase> =>
     Effect.gen(function* () {
       const db = yield* IndexerDatabase;
@@ -588,6 +597,7 @@ export const syncStore = {
         )
         .where(and(...conditions))
         .orderBy(eventsTable.blockHeight, transactionsTable.txIndex, eventsTable.eventIndex)
+        .limit(limit)
         .pipe(
           Effect.mapError(
             (cause: unknown) => new SyncStoreError({ operation: "getEvents", cause }),

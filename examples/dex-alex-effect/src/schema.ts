@@ -61,12 +61,31 @@ export const swapTable = pgTable(
   ],
 );
 
+/** Pool balances read every `poolSnapshots` interval, one row per pool and block. */
+export const poolSnapshotTable = pgTable(
+  "pool_snapshot",
+  (table) => ({
+    poolAddress: table.text("pool_address").notNull(),
+    chainId: table.bigint({ mode: "bigint" }).notNull(),
+    blockHeight: table.bigint({ mode: "bigint" }).notNull(),
+    blockTime: table.bigint({ mode: "bigint" }).notNull(),
+    balanceX: table.bigint({ mode: "bigint" }).notNull(),
+    balanceY: table.bigint({ mode: "bigint" }).notNull(),
+    totalSupply: table.bigint({ mode: "bigint" }).notNull(),
+  }),
+  (table) => [
+    primaryKey({
+      columns: [table.poolAddress, table.chainId, table.blockHeight],
+    }),
+  ],
+);
+
 /**
  * Passed to `defineIndexer`, types `indexer.Db`'s `db.query.<table>`.
  * Rows are keyed by address and chain, so every join matches both.
  */
 export const relations = defineRelations(
-  { token: tokenTable, pool: poolTable, swap: swapTable },
+  { token: tokenTable, pool: poolTable, swap: swapTable, poolSnapshot: poolSnapshotTable },
   (r) => ({
     pool: {
       xToken: r.one.token({
@@ -81,10 +100,20 @@ export const relations = defineRelations(
         from: [r.pool.address, r.pool.chainId],
         to: [r.swap.poolAddress, r.swap.chainId],
       }),
+      snapshots: r.many.poolSnapshot({
+        from: [r.pool.address, r.pool.chainId],
+        to: [r.poolSnapshot.poolAddress, r.poolSnapshot.chainId],
+      }),
     },
     swap: {
       pool: r.one.pool({
         from: [r.swap.poolAddress, r.swap.chainId],
+        to: [r.pool.address, r.pool.chainId],
+      }),
+    },
+    poolSnapshot: {
+      pool: r.one.pool({
+        from: [r.poolSnapshot.poolAddress, r.poolSnapshot.chainId],
         to: [r.pool.address, r.pool.chainId],
       }),
     },

@@ -8,7 +8,8 @@ The same ALEX DEX pool indexer as [`examples/dex-alex`](../dex-alex), written wi
 - **Effect Schema**: The contract's `print` schema decodes each print into a typed `event.data`. Prints the indexer does not handle are skipped with `onInvalid: "skip"`.
 - **Atomic Writes**: Handlers write through `yield* indexer.Db`, the batch transaction in the same database as the indexer, so each batch of writes commits with the indexer checkpoint. `migrations: "./drizzle"` applies the app's migrations to `public`.
 - **Typed Relational Queries**: `relations` passed to `defineIndexer` types `indexer.Db`'s `db.query`.
-- **Pinned Read-Only Calls**: `yield* indexer.Client` calls contracts at the handled event's block.
+- **Pinned Read-Only Calls**: `yield* indexer.Client` calls contracts at the handled event's or block's height.
+- **Block Interval Source**: The `poolSnapshots` block source runs every 450 blocks (about an hour at ~8 s per Nakamoto block; the interval counts blocks, so it drifts with the block rate) from height 9,000,000. Its handler reads every pool's balances with `get-pool-details` at that block and upserts a `pool_snapshot` row per pool and height.
 - **Graceful Shutdown**: The run fiber is interrupted on `SIGINT` / `SIGTERM` so scopes finalize.
 
 ## Running the Example

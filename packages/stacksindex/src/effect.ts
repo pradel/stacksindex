@@ -52,6 +52,7 @@ export {
   ConfigurationError,
   DatabaseError,
   EventDecodeError,
+  BlockHandlerExecutionError,
   HandlerExecutionError,
   MigrationError,
   ReorgError,

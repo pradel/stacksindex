@@ -65,6 +65,38 @@ export const fixedWeightPoolAbi = {
         },
       },
     },
+    {
+      name: "get-pool-details",
+      access: "read_only",
+      args: [
+        { name: "token-x", type: "principal" },
+        { name: "token-y", type: "principal" },
+        { name: "weight-x", type: "uint128" },
+        { name: "weight-y", type: "uint128" },
+      ],
+      outputs: {
+        type: {
+          response: {
+            ok: {
+              tuple: [
+                { name: "balance-x", type: "uint128" },
+                { name: "balance-y", type: "uint128" },
+                { name: "fee-rate-x", type: "uint128" },
+                { name: "fee-rate-y", type: "uint128" },
+                { name: "fee-rebate", type: "uint128" },
+                { name: "fee-to-address", type: "principal" },
+                { name: "oracle-average", type: "uint128" },
+                { name: "oracle-enabled", type: "bool" },
+                { name: "oracle-resilient", type: "uint128" },
+                { name: "pool-token", type: "principal" },
+                { name: "total-supply", type: "uint128" },
+              ],
+            },
+            error: "uint128",
+          },
+        },
+      },
+    },
   ],
   variables: [],
   maps: [],

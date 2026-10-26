@@ -1,13 +1,24 @@
 import { Schema } from "effect";
 
-/** Raised when a handler fails or throws; `cause` is what it failed with. */
+/** Raised when a contract's handler fails or throws; `cause` is what it failed with. */
 export class HandlerExecutionError extends Schema.TaggedError<HandlerExecutionError>()(
   "HandlerExecutionError",
   {
-    /** Definition name of the contract or block source (the key in `contracts` or `blocks`). */
+    /** Definition name of the contract. */
     contract: Schema.String,
-    /** The contract identifier; absent for a block source. */
-    contractId: Schema.optional(Schema.String),
+    contractId: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+/** Raised when a block source's handler fails or throws; `cause` is what it failed with. */
+export class BlockHandlerExecutionError extends Schema.TaggedError<BlockHandlerExecutionError>()(
+  "BlockHandlerExecutionError",
+  {
+    /** Definition name of the block source (the key in `blocks`). */
+    name: Schema.String,
+    /** Height of the block the handler ran at. */
+    blockHeight: Schema.Number,
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
