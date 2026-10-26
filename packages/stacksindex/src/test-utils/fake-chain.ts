@@ -281,6 +281,58 @@ export function createFakeChain(options: { readonly baseHeight: number }): FakeC
   };
 
   /**
+   * Block lists. `GET /extended/v2/blocks` pages by offset;
+   * `GET /extended/v3/blocks` and `/extended/v3/bitcoin-blocks` by `cursor`,
+   * the newest height returned. Every fake Stacks block is anchored to the
+   * Bitcoin block of the same height. `undefined` for other paths.
+   */
+  const routeBlockLists = (chain: FakeChain, path: string, params: URLSearchParams) => {
+    if (path === "/extended/v2/blocks") {
+      return listBlocks(chain, params);
+    }
+
+    if (path !== "/extended/v3/blocks" && path !== "/extended/v3/bitcoin-blocks") {
+      return undefined;
+    }
+
+    const limit = Number(params.get("limit") ?? 20);
+    const cursor = params.get("cursor");
+
+    const rows = blocks
+      .filter((candidate) => cursor === null || candidate.height <= Number(cursor))
+      .toReversed()
+      .slice(0, limit);
+
+    const envelope = {
+      total: blocks.length,
+      limit,
+      cursor: { next: null, previous: null, current: cursor },
+    };
+
+    return path === "/extended/v3/blocks"
+      ? json({
+          ...envelope,
+          results: rows.map((candidate) => ({
+            height: candidate.height,
+            hash: candidate.hash,
+            index_hash: `index-${candidate.hash}`,
+            time: candidate.blockTime,
+            tenure_height: candidate.height,
+            tx_count: candidate.transactions.length,
+            bitcoin_block: { height: candidate.height, hash: `btc-${candidate.hash}` },
+          })),
+        })
+      : json({
+          ...envelope,
+          results: rows.map((candidate) => ({
+            height: candidate.height,
+            hash: `btc-${candidate.hash}`,
+            time: candidate.blockTime,
+          })),
+        });
+  };
+
+  /**
    * First-event discovery endpoints. Contracts are deployed at the base block
    * and their principal transactions are always empty, as for a contract whose
    * logs only come from calls made by other contracts: discovery finds nothing.
@@ -319,16 +371,18 @@ export function createFakeChain(options: { readonly baseHeight: number }): FakeC
       return discovery;
     }
 
-    if (path === "/extended/v2/blocks") {
-      return listBlocks(chain, params);
-    }
-
     const block = /^\/extended\/v2\/blocks\/(?<id>[^/]+)$/u.exec(path)?.groups?.id;
 
     if (block !== undefined) {
       const found = findBlock(block);
 
       return found === undefined ? notFound() : json(blockRow(found));
+    }
+
+    const blockList = routeBlockLists(chain, path, params);
+
+    if (blockList !== undefined) {
+      return blockList;
     }
 
     const logsContract = /^\/extended\/v2\/smart-contracts\/(?<id>[^/]+)\/logs$/u.exec(path)?.groups

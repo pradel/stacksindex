@@ -13,6 +13,15 @@ import {
   transactionsTable,
 } from "./schema.ts";
 
+const blockRow = (height: number, chainId = 1n) => ({
+  chainId,
+  height: BigInt(height),
+  hash: `block-${height}`,
+  indexBlockHash: `index-block-${height}`,
+  blockTime: BigInt(height * 10),
+  tenureHeight: BigInt(height),
+});
+
 const block = {
   canonical: true,
   height: 7443118,
@@ -824,6 +833,188 @@ describe("syncStore", () => {
           isComplete: false,
         },
       ]);
+    });
+  });
+
+  describe("block sync progress", () => {
+    const upsert = (name: string, syncedBlockHeight: number, isComplete = false, chainId = 1) =>
+      testDb.run(
+        syncStore.upsertBlockSyncProgress({
+          chainId,
+          name,
+          interval: 10,
+          startBlock: 100,
+          syncedBlockHeight,
+          isComplete,
+        }),
+      );
+
+    test("returns null for a source without progress", async () => {
+      await expect(
+        testDb.run(syncStore.getBlockSyncProgress({ chainId: 1, name: "Hourly" })),
+      ).resolves.toBeNull();
+    });
+
+    test("upserts progress per chain and name", async () => {
+      await upsert("Hourly", 99);
+      await upsert("Hourly", 150, true);
+      await upsert("Daily", 120);
+      await upsert("Hourly", 300, false, 2);
+
+      await expect(
+        testDb.run(syncStore.getBlockSyncProgress({ chainId: 1, name: "Hourly" })),
+      ).resolves.toStrictEqual({
+        chainId: 1n,
+        name: "Hourly",
+        interval: 10n,
+        startBlock: 100n,
+        syncedBlockHeight: 150n,
+        isComplete: true,
+      });
+      await expect(
+        testDb.run(syncStore.listBlockSyncProgress({ chainId: 1 })),
+      ).resolves.toMatchObject([
+        { name: "Daily", syncedBlockHeight: 120n },
+        { name: "Hourly", syncedBlockHeight: 150n },
+      ]);
+    });
+
+    test("raises only incomplete sources below the height, completing those at endBlock", async () => {
+      await upsert("Behind", 100);
+      await upsert("EndsAt150", 100);
+      await upsert("Ahead", 200);
+      await upsert("Done", 120, true);
+
+      await testDb.run(
+        syncStore.raiseBlockSyncedBlockHeight({
+          chainId: 1,
+          sources: [
+            { name: "Behind" },
+            { name: "EndsAt150", endBlock: 150 },
+            { name: "Ahead" },
+            { name: "Done", endBlock: 120 },
+          ],
+          blockHeight: 150,
+        }),
+      );
+
+      const rows = await testDb.run(syncStore.listBlockSyncProgress({ chainId: 1 }));
+
+      expect(
+        rows.map(({ name, syncedBlockHeight, isComplete }) => ({
+          name,
+          syncedBlockHeight,
+          isComplete,
+        })),
+      ).toStrictEqual([
+        { name: "Ahead", syncedBlockHeight: 200n, isComplete: false },
+        { name: "Behind", syncedBlockHeight: 150n, isComplete: false },
+        { name: "Done", syncedBlockHeight: 120n, isComplete: true },
+        { name: "EndsAt150", syncedBlockHeight: 150n, isComplete: true },
+      ]);
+    });
+
+    test("rewindTo lowers block source progress above the height and reopens it", async () => {
+      await upsert("Above", 300, true);
+      await upsert("Below", 150);
+
+      await testDb.run(syncStore.rewindTo({ chainId: 1, blockHeight: 200 }));
+
+      const rows = await testDb.run(syncStore.listBlockSyncProgress({ chainId: 1 }));
+
+      expect(rows).toMatchObject([
+        { name: "Above", syncedBlockHeight: 200n, isComplete: false },
+        { name: "Below", syncedBlockHeight: 150n, isComplete: false },
+      ]);
+    });
+  });
+
+  describe("getStoredBlockHeights", () => {
+    test("returns stored heights within the inclusive range on the chain, ascending", async () => {
+      await testDb.db
+        .insert(blocksTable)
+        .values([blockRow(130), blockRow(99), blockRow(100), blockRow(120), blockRow(131)]);
+      await testDb.db.insert(blocksTable).values(blockRow(110, 2n));
+
+      await expect(
+        testDb.run(
+          syncStore.getStoredBlockHeights({ chainId: 1, fromBlockHeight: 100, toBlockHeight: 130 }),
+        ),
+      ).resolves.toStrictEqual([100, 120, 130]);
+    });
+  });
+
+  describe("getSourceBlocks", () => {
+    const sourceHeights = async (
+      sources: { interval: number; startBlock: number; endBlock?: number }[],
+      fromBlockHeight: number,
+      toBlockHeight?: number,
+    ) =>
+      (
+        await testDb.run(
+          syncStore.getSourceBlocks({ chainId: 1, fromBlockHeight, toBlockHeight, sources }),
+        )
+      ).map((row) => Number(row.blockHeight));
+
+    beforeEach(async () => {
+      await testDb.db
+        .insert(blocksTable)
+        .values(Array.from({ length: 61 }, (_, index) => blockRow(100 + index)));
+      await testDb.db.insert(blocksTable).values(blockRow(103, 2n));
+    });
+
+    test("returns the stored blocks a source runs at from an unaligned startBlock", async () => {
+      await expect(sourceHeights([{ interval: 10, startBlock: 103 }], 0)).resolves.toStrictEqual([
+        103, 113, 123, 133, 143, 153,
+      ]);
+    });
+
+    test("returns no block past the source's endBlock or below its startBlock", async () => {
+      await expect(
+        sourceHeights([{ interval: 5, startBlock: 110, endBlock: 125 }], 0),
+      ).resolves.toStrictEqual([110, 115, 120, 125]);
+    });
+
+    test("bounds results by the inclusive height range", async () => {
+      await expect(
+        sourceHeights([{ interval: 1, startBlock: 100 }], 104, 107),
+      ).resolves.toStrictEqual([104, 105, 106, 107]);
+    });
+
+    test("returns each block once when several sources run at it", async () => {
+      await expect(
+        sourceHeights(
+          [
+            { interval: 20, startBlock: 100 },
+            { interval: 30, startBlock: 100 },
+          ],
+          0,
+        ),
+      ).resolves.toStrictEqual([100, 120, 130, 140, 160]);
+    });
+
+    test("returns the block fields handlers read", async () => {
+      await expect(
+        testDb.run(
+          syncStore.getSourceBlocks({
+            chainId: 1,
+            fromBlockHeight: 103,
+            toBlockHeight: 103,
+            sources: [{ interval: 1, startBlock: 0 }],
+          }),
+        ),
+      ).resolves.toStrictEqual([
+        {
+          blockHeight: 103n,
+          blockTime: 1030n,
+          blockHash: "block-103",
+          indexBlockHash: "index-block-103",
+        },
+      ]);
+    });
+
+    test("returns nothing without sources", async () => {
+      await expect(sourceHeights([], 0)).resolves.toStrictEqual([]);
     });
   });
 

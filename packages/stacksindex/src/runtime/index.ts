@@ -13,6 +13,7 @@ import type {
 import { loggerLayer } from "../logger/index.ts";
 import { Sync } from "../sync/index.ts";
 import { telemetryLayer } from "../telemetry/index.ts";
+import type { BlockSourceSpec } from "./blocks.ts";
 import {
   type IndexerError,
   type IndexerOptions,
@@ -26,26 +27,26 @@ import { type IndexerStatus, readIndexerStatus, RunPhase } from "./status.ts";
 
 export type { IndexerError, IndexerOptions, IndexerRuntimeOptions, LiveOptions } from "./config.ts";
 
-export type { ContractRunResult, RunResult } from "./historical.ts";
+export type { BlockSourceRunResult, ContractRunResult, RunResult } from "./historical.ts";
 
-export type { ContractStatus, IndexerPhase, IndexerStatus } from "./status.ts";
+export type { BlockSourceStatus, ContractStatus, IndexerPhase, IndexerStatus } from "./status.ts";
 
 export type { OtlpOptions, TelemetryOptions } from "../telemetry/index.ts";
 
-/** The indexer, bound to the contracts and handlers it was built with. */
+/** The indexer, bound to the contracts, block sources and handlers it was built with. */
 export interface IndexerService {
   /**
-   * Syncs and indexes every contract up to the chain tip read at the start of
-   * the run, then returns.
+   * Syncs and indexes every contract and block source up to the chain tip
+   * read at the start of the run, then returns.
    */
   readonly run: Effect.Effect<RunResult, IndexerError>;
   /**
    * Runs `run`, then follows new blocks and indexes them as they arrive. Ends
-   * once every contract reached its `endBlock`; runs until interrupted when a
-   * contract has none.
+   * once every contract and block source reached its `endBlock`; runs until
+   * interrupted when one has none.
    */
   readonly live: Effect.Effect<void, IndexerError>;
-  /** Current phase plus the stored checkpoint, anchor and per-contract sync progress. */
+  /** Current phase plus the stored checkpoint, anchor and per-contract and per-block-source sync progress. */
   readonly status: Effect.Effect<IndexerStatus, SyncStoreError>;
 }
 
@@ -53,7 +54,10 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
   "stacksindex/runtime/Indexer",
 ) {
   static readonly layer = (
-    options: IndexerOptions & { readonly contracts: readonly ContractSpec[] },
+    options: IndexerOptions & {
+      readonly contracts: readonly ContractSpec[];
+      readonly blocks?: readonly BlockSourceSpec[];
+    },
   ): Layer.Layer<Indexer, ConfigurationError, IndexerDatabase> =>
     Layer.unwrap(
       resolveIndexerConfig({
@@ -111,21 +115,23 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
                   })),
                 );
 
+              const blocks = options.blocks ?? [];
+
               return Indexer.of({
                 run: trackRun(
-                  runHistorical(options.contracts, config, sync).pipe(
+                  runHistorical(options.contracts, blocks, config, sync).pipe(
                     Effect.provideService(StacksClient, client),
                     Effect.provideService(IndexerDatabase, database),
                   ),
                 ),
                 live: trackRun(
-                  runLive(options.contracts, config, sync).pipe(
+                  runLive(options.contracts, blocks, config, sync).pipe(
                     Effect.provideService(StacksClient, client),
                     Effect.provideService(IndexerDatabase, database),
                     Effect.provideService(Socket.WebSocketConstructor, webSocketConstructor),
                   ),
                 ),
-                status: readIndexerStatus(config.chainId, options.contracts).pipe(
+                status: readIndexerStatus(config.chainId, options.contracts, blocks).pipe(
                   Effect.provideService(IndexerDatabase, database),
                   Effect.provideService(RunPhase, phase),
                 ),
@@ -153,6 +159,7 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
     options: IndexerRuntimeOptions & {
       readonly relations?: AnyRelations;
       readonly contracts: readonly ContractSpec[];
+      readonly blocks?: readonly BlockSourceSpec[];
     },
   ): Layer.Layer<Indexer | IndexerDatabase, ConfigurationError | DatabaseError | MigrationError> =>
     Indexer.layer({
@@ -161,6 +168,7 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
       finality: options.finality,
       live: options.live,
       contracts: options.contracts,
+      blocks: options.blocks,
     }).pipe(
       // Built after the database and released before it, after the indexer.
       Layer.provide(telemetryLayer(options.telemetry)),

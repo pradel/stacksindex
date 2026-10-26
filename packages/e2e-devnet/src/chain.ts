@@ -137,10 +137,20 @@ export async function contractDeployHeight(contractId: string): Promise<number> 
   return contract.block.height;
 }
 
-export async function blockHash(height: number): Promise<string> {
-  const block = await getJson<{ hash: string }>(`/extended/v2/blocks/${height}`);
+/** `GET /extended/v2/blocks/{height}` fields the scenarios compare with indexed blocks. */
+export interface ApiBlock {
+  height: number;
+  hash: string;
+  index_block_hash: string;
+  burn_block_time: number;
+}
 
-  return block.hash;
+export async function getBlock(height: number): Promise<ApiBlock> {
+  return getJson<ApiBlock>(`/extended/v2/blocks/${height}`);
+}
+
+export async function blockHash(height: number): Promise<string> {
+  return (await getBlock(height)).hash;
 }
 
 /**

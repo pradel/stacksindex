@@ -12,10 +12,11 @@ import {
 
 import { pglite } from "../database/index.ts";
 import { ConfigurationError, EventDecodeError } from "../lib/errors.ts";
+import type { BlockEvent, PrintEvent } from "../lib/types.ts";
 import { syncProgressTable } from "../sync-store/schema.ts";
 import { createFakeChain, type FakeChain } from "../test-utils/fake-chain.ts";
 import { freshDatabase } from "../test/fresh-database.ts";
-import { defineIndexer, type Indexer } from "./index.ts";
+import { type BlockHandler, defineIndexer, type Indexer } from "./index.ts";
 
 const CONTRACT_ID = "SP123.token";
 
@@ -33,13 +34,27 @@ const seedProgress = (indexer: Indexer) =>
 describe("promise indexer", () => {
   // oxlint-disable-next-line init-declarations
   let chain: FakeChain;
+  /** Read-only calls, as decoded `pathname?search`. */
+  let callReads: string[] = [];
 
   beforeAll(() => {
     // The HTTP client may keep the first `fetch` it sees; delegate to the current test's chain.
-    vi.stubGlobal("fetch", (input: string | URL | Request) => chain.fetch(input));
+    vi.stubGlobal("fetch", (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+
+      if (url.pathname.startsWith("/v2/contracts/call-read/")) {
+        callReads.push(decodeURIComponent(`${url.pathname}${url.search}`));
+
+        // Every read-only call answers `(ok true)`.
+        return Promise.resolve(Response.json({ okay: true, result: "0x0703" }));
+      }
+
+      return chain.fetch(input);
+    });
   });
 
   beforeEach(() => {
+    callReads = [];
     chain = createFakeChain({ baseHeight: BASE_HEIGHT - 1 });
     // Prints `(ok true)`.
     chain.mine([{ txId: "tx-100", events: [{ contractId: CONTRACT_ID, eventIndex: 0 }] }]);
@@ -124,8 +139,11 @@ describe("promise indexer", () => {
     ).rejects.toStrictEqual(new ConfigurationError({ message: "handlers.pool: missing handler." }));
   });
 
-  test("create rejects with ConfigurationError for a handler without a contract", async () => {
-    const definition = defineIndexer({ contracts: { token: { id: CONTRACT_ID } } });
+  test("create rejects with ConfigurationError for a handler without a contract or block source", async () => {
+    const definition = defineIndexer({
+      contracts: { token: { id: CONTRACT_ID } },
+      blocks: { every: { startBlock: BASE_HEIGHT } },
+    });
 
     await expect(
       definition.create({
@@ -133,13 +151,106 @@ describe("promise indexer", () => {
         logLevel: "None",
         handlers: {
           token: () => undefined,
-          // @ts-expect-error -- `pool` is not a defined contract
+          every: () => undefined,
+          // @ts-expect-error -- `pool` is not a defined contract or block source
           pool: () => undefined,
         },
       }),
     ).rejects.toStrictEqual(
-      new ConfigurationError({ message: 'handlers.pool: no contract named "pool".' }),
+      new ConfigurationError({
+        message: 'handlers.pool: no contract or block source named "pool".',
+      }),
     );
+  });
+
+  test("create rejects with ConfigurationError when a block source has no handler", async () => {
+    const definition = defineIndexer({
+      contracts: { token: { id: CONTRACT_ID } },
+      blocks: { every: { startBlock: BASE_HEIGHT } },
+    });
+
+    await expect(
+      definition.create({
+        database: pglite(),
+        logLevel: "None",
+        // @ts-expect-error -- every defined block source needs a handler
+        handlers: { token: () => undefined },
+      }),
+    ).rejects.toStrictEqual(
+      new ConfigurationError({ message: "handlers.every: missing handler." }),
+    );
+  });
+
+  test("defineIndexer rejects a block source reusing a contract name or with an invalid interval", () => {
+    expect(() =>
+      defineIndexer({
+        contracts: { token: { id: CONTRACT_ID } },
+        blocks: { token: { startBlock: BASE_HEIGHT } },
+      }),
+    ).toThrow(
+      new ConfigurationError({
+        message:
+          "blocks.token: the name is already used by contracts.token; names must be unique across `contracts` and `blocks`.",
+      }),
+    );
+    expect(() => defineIndexer({ blocks: { every: { interval: 0, startBlock: 1 } } })).toThrow(
+      new ConfigurationError({
+        message: "blocks.every: `interval` must be a positive integer, got 0.",
+      }),
+    );
+  });
+
+  test("block handlers get the block and a client pinned to it", async () => {
+    const definition = defineIndexer({ blocks: { every: { startBlock: BASE_HEIGHT } } });
+    const received: BlockEvent[] = [];
+
+    await using indexer = await definition.create({
+      database: await freshDatabase(),
+      logLevel: "None",
+      handlers: {
+        every: async (event, { client }) => {
+          expectTypeOf(event).toEqualTypeOf<BlockEvent>();
+          received.push(event);
+          await client.callReadOnly({ contractId: CONTRACT_ID, functionName: "get-total-supply" });
+        },
+      },
+    });
+
+    await expect(indexer.run()).resolves.toMatchObject({
+      eventsProcessed: 1,
+      blocks: { every: { eventsProcessed: 1, blockHeight: BASE_HEIGHT } },
+    });
+    expect(received).toStrictEqual([
+      {
+        type: "block",
+        name: "every",
+        block: { height: 100, time: 1000, hash: "0x100", indexBlockHash: "index-0x100" },
+      },
+    ]);
+    expect(callReads).toStrictEqual([
+      "/v2/contracts/call-read/SP123/token/get-total-supply?tip=index-0x100",
+    ]);
+    await expect(indexer.status()).resolves.toMatchObject({
+      blocks: { every: { syncedBlockHeight: BASE_HEIGHT, isComplete: false } },
+    });
+  });
+
+  test("types handlers by source: block sources get BlockEvent and are required", () => {
+    const definition = defineIndexer({
+      contracts: { token: { id: CONTRACT_ID } },
+      blocks: { every: { startBlock: BASE_HEIGHT } },
+    });
+
+    definition.handler("every", (event) => {
+      expectTypeOf(event).toEqualTypeOf<BlockEvent>();
+    });
+    definition.handler("token", (event) => {
+      expectTypeOf(event).toEqualTypeOf<PrintEvent>();
+    });
+
+    type CreateHandlers = Parameters<typeof definition.create>[0]["handlers"];
+
+    expectTypeOf<CreateHandlers["every"]>().toEqualTypeOf<BlockHandler>();
   });
 
   test("defineIndexer throws ConfigurationError for an invalid definition", () => {

@@ -5,25 +5,33 @@ import type { IndexerDatabase } from "../database/index.ts";
 import { readOnly, StacksClient, type StacksClientService } from "../datasources/api/index.ts";
 import { EventDecodeError, HandlerExecutionError } from "../lib/errors.ts";
 import {
+  blockSourceAttributes,
   contractAttributes,
   indexingHandlerDuration,
   indexingHandlerErrors,
 } from "../lib/metrics.ts";
-import type { IndexingClient, PrintEvent } from "../lib/types.ts";
+import type { BlockEvent, EventBlock, IndexingClient, PrintEvent } from "../lib/types.ts";
+import type { ResolvedBlockSource } from "../runtime/blocks.ts";
 import type { DecodeIssue, ResolvedContract } from "../runtime/contracts.ts";
-import { type StoredEvent, storedEventToPrintEvent } from "../sync-store/decode.ts";
+import {
+  type IndexRow,
+  type StoredBlockSourceRow,
+  storedBlockToBlockEvent,
+  type StoredEvent,
+  storedEventToPrintEvent,
+} from "../sync-store/decode.ts";
 import { HandlerClient } from "./client.ts";
 
 export interface IndexingService {
   /**
-   * Decodes every event in `events` and runs its contract's handler using the
-   * ambient `IndexerDatabase`, so callers wrap it in
-   * `IndexerDatabase.transaction` to commit the batch atomically. Returns the
-   * number of events passed to handlers per contract id; prints skipped by
-   * `onInvalid: "skip"` are not counted.
+   * Runs every row's handler using the ambient `IndexerDatabase`: decodes a
+   * print and runs its contract's handler, or runs a block source's handler
+   * at its block. Callers wrap it in `IndexerDatabase.transaction` to commit
+   * the batch atomically. Returns the number of events passed to handlers per
+   * definition name; prints skipped by `onInvalid: "skip"` are not counted.
    */
   readonly executeBatch: (
-    events: readonly StoredEvent[],
+    rows: readonly IndexRow[],
   ) => Effect.Effect<
     Map<string, number>,
     HandlerExecutionError | EventDecodeError,
@@ -33,6 +41,7 @@ export interface IndexingService {
 
 export interface IndexingOptions {
   contracts: readonly ResolvedContract[];
+  blocks?: readonly ResolvedBlockSource[];
   client: StacksClientService;
 }
 
@@ -42,6 +51,15 @@ interface ContractRuntime {
   readonly errors: typeof indexingHandlerErrors;
 }
 
+interface BlockSourceRuntime {
+  readonly spec: ResolvedBlockSource;
+  readonly duration: typeof indexingHandlerDuration;
+  readonly errors: typeof indexingHandlerErrors;
+}
+
+/** Annotates the logs of a handler call: a print's contract and position, or a block source's run. */
+type AnnotateLogs = <A, E, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+
 const decodeValue = (hex: string): Effect.Effect<ClarityJsonValue, DecodeIssue> =>
   Effect.try({
     try: () => decodeHex(hex),
@@ -50,10 +68,12 @@ const decodeValue = (hex: string): Effect.Effect<ClarityJsonValue, DecodeIssue> 
 
 export const createIndexing = ({
   contracts,
+  blocks = [],
   client: stacksClient,
 }: IndexingOptions): IndexingService => {
-  // Labelled once per contract so the per-event path does not allocate them.
+  // Labelled once per contract and block source so the per-event path does not allocate them.
   const runtimes = new Map<string, ContractRuntime>();
+  const blockRuntimes = new Map<string, BlockSourceRuntime>();
 
   for (const spec of contracts) {
     const attributes = contractAttributes(spec.name, spec.contractId);
@@ -65,7 +85,17 @@ export const createIndexing = ({
     });
   }
 
-  const logAnnotations = (row: StoredEvent, contract: string) =>
+  for (const spec of blocks) {
+    const attributes = blockSourceAttributes(spec.name);
+
+    blockRuntimes.set(spec.name, {
+      spec,
+      duration: Metric.withAttributes(indexingHandlerDuration, attributes),
+      errors: Metric.withAttributes(indexingHandlerErrors, attributes),
+    });
+  }
+
+  const eventAnnotations = (row: StoredEvent, contract: string): AnnotateLogs =>
     Effect.annotateLogs({
       phase: "index",
       contract,
@@ -89,7 +119,7 @@ export const createIndexing = ({
         spec.onInvalid === "skip"
           ? Effect.logWarning(
               `Skipped a print that does not match its schema: ${issue.message}`,
-            ).pipe(logAnnotations(row, spec.name), Effect.as(undefined))
+            ).pipe(eventAnnotations(row, spec.name), Effect.as(undefined))
           : Effect.fail(
               new EventDecodeError({
                 contract: spec.name,
@@ -103,26 +133,28 @@ export const createIndexing = ({
       ),
     );
 
+  /**
+   * Runs `handler` with the read-only client pinned to `block`, timing it and
+   * turning a failure into `HandlerExecutionError` for `source`.
+   */
   const runHandler = (
-    row: StoredEvent,
-    runtime: ContractRuntime,
-    event: PrintEvent<unknown>,
+    handler: () => Effect.Effect<void, unknown, IndexerDatabase | HandlerClient>,
+    block: EventBlock,
+    runtime: ContractRuntime | BlockSourceRuntime,
+    source: { readonly contract: string; readonly contractId?: string },
+    annotate: AnnotateLogs,
   ): Effect.Effect<void, HandlerExecutionError, IndexerDatabase> => {
-    const { spec } = runtime;
-
     // SAFETY: `readOnly` runtime-dispatches on the presence of `abi`, mirroring both overloads, and pins the call to the event's block unless overridden.
     const client: IndexingClient = {
       // oxlint-disable-next-line typescript/no-explicit-any
       callReadOnly: ((options: any) =>
         readOnly(stacksClient.callReadFunction, {
           ...options,
-          tip: options.tip ?? event.block.indexBlockHash,
+          tip: options.tip ?? block.indexBlockHash,
         })) as IndexingClient["callReadOnly"],
     };
 
-    const call = Effect.suspend(() => spec.handler(event)).pipe(
-      Effect.provideService(HandlerClient, client),
-    );
+    const call = Effect.suspend(handler).pipe(Effect.provideService(HandlerClient, client));
 
     return Effect.gen(function* () {
       // Failed calls are timed too: a slow handler that then throws is still slow.
@@ -130,9 +162,7 @@ export const createIndexing = ({
       yield* Metric.update(runtime.duration, Duration.toMillis(duration));
       yield* exit;
     }).pipe(
-      Effect.tap(() =>
-        Effect.logDebug("Executed event handler").pipe(logAnnotations(row, spec.name)),
-      ),
+      Effect.tap(() => Effect.logDebug("Executed event handler").pipe(annotate)),
       Effect.withLogSpan("executeEvent"),
       Effect.catchCause((cause) => {
         if (Cause.hasInterruptsOnly(cause)) {
@@ -142,11 +172,10 @@ export const createIndexing = ({
 
         return Effect.gen(function* () {
           yield* Metric.update(runtime.errors, 1);
-          yield* Effect.logError(cause).pipe(logAnnotations(row, spec.name));
+          yield* Effect.logError(cause).pipe(annotate);
 
           return yield* new HandlerExecutionError({
-            contract: spec.name,
-            contractId: spec.contractId,
+            ...source,
             cause: Cause.squash(cause),
           });
         });
@@ -154,36 +183,78 @@ export const createIndexing = ({
     );
   };
 
-  /** Runs one stored event; resolves whether its handler ran. */
-  const executeRow = (
+  /** Runs one stored event; resolves its contract's name when its handler ran. */
+  const executeEvent = (
     row: StoredEvent,
-  ): Effect.Effect<boolean, HandlerExecutionError | EventDecodeError, IndexerDatabase> => {
+  ): Effect.Effect<
+    string | undefined,
+    HandlerExecutionError | EventDecodeError,
+    IndexerDatabase
+  > => {
     const runtime = runtimes.get(row.contractId);
 
     if (runtime === undefined) {
       return Effect.logDebug("No handler for event").pipe(
-        logAnnotations(row, row.contractId),
-        Effect.as(false),
+        eventAnnotations(row, row.contractId),
+        Effect.as(undefined),
       );
     }
+
+    const { spec } = runtime;
 
     return decodeEvent(row, runtime).pipe(
       Effect.flatMap((event) =>
         event === undefined
-          ? Effect.succeed(false)
-          : runHandler(row, runtime, event).pipe(Effect.as(true)),
+          ? Effect.succeed(undefined)
+          : runHandler(
+              () => spec.handler(event),
+              event.block,
+              runtime,
+              { contract: spec.name, contractId: spec.contractId },
+              eventAnnotations(row, spec.name),
+            ).pipe(Effect.as(spec.name)),
       ),
     );
   };
 
+  /** Runs one block source at its block; resolves its name when its handler ran. */
+  const executeBlock = (
+    row: StoredBlockSourceRow,
+  ): Effect.Effect<string | undefined, HandlerExecutionError, IndexerDatabase> => {
+    const annotate: AnnotateLogs = Effect.annotateLogs({
+      phase: "index",
+      blocks: row.source,
+      blockHeight: Number(row.blockHeight),
+    });
+
+    const runtime = blockRuntimes.get(row.source);
+
+    if (runtime === undefined) {
+      return Effect.logDebug("No handler for block source").pipe(annotate, Effect.as(undefined));
+    }
+
+    const event: BlockEvent = storedBlockToBlockEvent(row);
+
+    return runHandler(
+      () => runtime.spec.handler(event),
+      event.block,
+      runtime,
+      { contract: row.source },
+      annotate,
+    ).pipe(Effect.as(row.source));
+  };
+
   return {
-    executeBatch(events) {
+    executeBatch(rows) {
       return Effect.gen(function* () {
         const counts = new Map<string, number>();
 
-        for (const row of events) {
-          if (yield* executeRow(row)) {
-            counts.set(row.contractId, (counts.get(row.contractId) ?? 0) + 1);
+        for (const row of rows) {
+          const name =
+            row.eventType === "block" ? yield* executeBlock(row) : yield* executeEvent(row);
+
+          if (name !== undefined) {
+            counts.set(name, (counts.get(name) ?? 0) + 1);
           }
         }
 
@@ -198,13 +269,16 @@ export class Indexing extends Context.Service<Indexing, IndexingService>()(
 ) {
   static readonly layer = (options: {
     contracts: readonly ResolvedContract[];
+    blocks?: readonly ResolvedBlockSource[];
   }): Layer.Layer<Indexing, never, StacksClient> =>
     Layer.effect(
       Indexing,
       Effect.gen(function* () {
         const client = yield* StacksClient;
 
-        return Indexing.of(createIndexing({ contracts: options.contracts, client }));
+        return Indexing.of(
+          createIndexing({ contracts: options.contracts, blocks: options.blocks, client }),
+        );
       }),
     );
 }

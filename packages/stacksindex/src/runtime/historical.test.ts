@@ -44,7 +44,7 @@ import {
   TransactionBatchError,
 } from "../lib/errors.ts";
 import { indexingBatchDuration, indexingBlock, indexingEvents } from "../lib/metrics.ts";
-import type { CoreHandler, PrintEvent } from "../lib/types.ts";
+import type { BlockEvent, CoreHandler, PrintEvent } from "../lib/types.ts";
 import { defineIndexer } from "../promise/index.ts";
 import { toThenable } from "../promise/thenable.ts";
 import { syncStore } from "../sync-store/index.ts";
@@ -55,9 +55,11 @@ import {
   transactionsTable,
 } from "../sync-store/schema.ts";
 import { parseLogsCursor, parseTransactionCursor } from "../sync/cursor.ts";
+import { createFakeChain, type FakeChain } from "../test-utils/fake-chain.ts";
 import { expectStatusError } from "../test-utils/http-errors.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { freshDatabase } from "../test/fresh-database.ts";
+import type { BlockSourceSpec } from "./blocks.ts";
 import type { ContractSpec } from "./contracts.ts";
 import { Indexer, type IndexerError, type IndexerOptions, type RunResult } from "./index.ts";
 
@@ -77,7 +79,7 @@ const contractSpec = ({ name, ...contract }: TestContract): ContractSpec => ({
 });
 
 const makeRuntime = (input: { db: IndexerDb } & IndexerOptions) => ({
-  run: (contracts: readonly TestContract[]) =>
+  run: (contracts: readonly TestContract[], blocks: readonly BlockSourceSpec[] = []) =>
     toThenable(
       Effect.gen(function* () {
         const indexer = yield* Indexer;
@@ -90,6 +92,7 @@ const makeRuntime = (input: { db: IndexerDb } & IndexerOptions) => ({
             api: input.api,
             finality: input.finality,
             contracts: contracts.map(contractSpec),
+            blocks,
           }),
         ),
         Effect.provideService(IndexerDatabase, input.db),
@@ -5872,5 +5875,239 @@ describe("historical runtime with handlers", () => {
     const result = await Effect.runPromiseExit(runtime.run([{ contractId, handler: noopHandler }]));
 
     expect(result).toBeTaggedError(new SyncStoreError({ operation: "getSyncProgress" }));
+  });
+});
+
+describe("historical runtime with block sources", () => {
+  const contractId = "SP123.token";
+  // oxlint-disable-next-line init-declarations
+  let testDb: TestDatabase;
+  // oxlint-disable-next-line init-declarations
+  let chain: FakeChain;
+  /** When set, the chain tip read (`GET /extended`) fails with a 404. */
+  let tipUnavailable = false;
+  /** Handler runs in order: `print:<height>:<eventIndex>` or `<source>:<height>`. */
+  let calls: string[] = [];
+  /** Every block event handlers received, in order. */
+  let received: BlockEvent[] = [];
+
+  const blockSource = (
+    name: string,
+    range: Pick<BlockSourceSpec, "interval" | "startBlock" | "endBlock">,
+  ): BlockSourceSpec => ({
+    name,
+    ...range,
+    handler: (event: BlockEvent) =>
+      Effect.sync(() => {
+        calls.push(`${event.name}:${event.block.height}`);
+        received.push(event);
+      }),
+  });
+
+  const printHandler = (event: PrintEvent<unknown>) =>
+    Effect.sync(() => {
+      calls.push(`print:${event.block.height}:${event.eventIndex}`);
+    });
+
+  const mineTo = (height: number) => {
+    while (chain.blocks[chain.blocks.length - 1].height < height) {
+      chain.mine();
+    }
+  };
+
+  /** Marks the contract synced below the first block, so `run` catches it up from the head. */
+  const seedContractProgress = () =>
+    testDb.run(
+      syncStore.upsertSyncProgress({ contractId, chainId: 1, cursor: null, syncedBlockHeight: 99 }),
+    );
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase();
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await testDb.cleanup();
+    calls = [];
+    received = [];
+    tipUnavailable = false;
+    chain = createFakeChain({ baseHeight: 100 });
+    // The HTTP client may keep the first `fetch` it sees: serve the chain through `mockFetch`.
+    vi.stubGlobal("fetch", mockFetch);
+    mockRequest.mockImplementation((url: string) =>
+      tipUnavailable && new URL(url).pathname === "/extended"
+        ? new Response(JSON.stringify({ error: "down" }), { status: 404 })
+        : chain.fetch(url),
+    );
+  });
+
+  afterAll(async () => {
+    vi.unstubAllGlobals();
+    await testDb.close();
+  });
+
+  test("runs a blocks-only indexer at startBlock + k * interval up to endBlock or the tip", async () => {
+    mineTo(160);
+
+    const result = await makeRuntime({ db: testDb.db }).run(
+      [],
+      [
+        blockSource("Every7", { interval: 7, startBlock: 103, endBlock: 150 }),
+        blockSource("Every25", { interval: 25, startBlock: 100 }),
+      ],
+    );
+
+    expect(calls).toStrictEqual([
+      "Every25:100",
+      "Every7:103",
+      "Every7:110",
+      "Every7:117",
+      "Every7:124",
+      "Every25:125",
+      "Every7:131",
+      "Every7:138",
+      "Every7:145",
+      "Every25:150",
+    ]);
+    // 131 comes from a blocks page, 145 from the single-block endpoint.
+    expect(
+      received.filter((event) => event.block.height === 131 || event.block.height === 145),
+    ).toStrictEqual([
+      {
+        type: "block",
+        name: "Every7",
+        block: { height: 131, hash: "0x131", indexBlockHash: "index-0x131", time: 1310 },
+      },
+      {
+        type: "block",
+        name: "Every7",
+        block: { height: 145, hash: "0x145", indexBlockHash: "index-0x145", time: 1450 },
+      },
+    ]);
+    expect(result).toMatchObject({
+      eventsProcessed: 10,
+      blockHeight: 150,
+      contracts: {},
+      blocks: {
+        Every7: { eventsProcessed: 7, blockHeight: 150 },
+        Every25: { eventsProcessed: 3, blockHeight: 160 },
+      },
+    });
+  });
+
+  test("runs a block's prints first, then its sources in definition order", async () => {
+    mineTo(119);
+    chain.mine([
+      {
+        txId: "tx-120",
+        events: [
+          { contractId, eventIndex: 0 },
+          { contractId, eventIndex: 1 },
+        ],
+      },
+    ]);
+    mineTo(140);
+    await seedContractProgress();
+
+    const result = await makeRuntime({ db: testDb.db }).run(
+      [{ contractId, handler: printHandler }],
+      [
+        blockSource("Zeta", { interval: 20, startBlock: 100, endBlock: 140 }),
+        blockSource("Alpha", { interval: 10, startBlock: 110, endBlock: 140 }),
+      ],
+    );
+
+    expect(calls).toStrictEqual([
+      "Zeta:100",
+      "Alpha:110",
+      "print:120:0",
+      "print:120:1",
+      "Zeta:120",
+      "Alpha:120",
+      "Alpha:130",
+      "Zeta:140",
+      "Alpha:140",
+    ]);
+    expect(result).toMatchObject({
+      eventsProcessed: 9,
+      contracts: { token: { eventsProcessed: 2 } },
+      blocks: {
+        Zeta: { eventsProcessed: 3, blockHeight: 140 },
+        Alpha: { eventsProcessed: 4, blockHeight: 140 },
+      },
+    });
+  });
+
+  test("indexes nothing new on a second run over the same chain", async () => {
+    mineTo(150);
+    const sources = [blockSource("Every10", { interval: 10, startBlock: 100 })];
+    const runtime = makeRuntime({ db: testDb.db });
+
+    await runtime.run([], sources);
+    calls = [];
+    const requestsBefore = chain.requests.length;
+
+    const second = await runtime.run([], sources);
+
+    expect(calls).toStrictEqual([]);
+    expect(second).toMatchObject({
+      eventsProcessed: 0,
+      blockHeight: 150,
+      blocks: { Every10: { eventsProcessed: 0, blockHeight: 150 } },
+    });
+    // Only the chain tip read and the anchor check: no block is fetched again.
+    expect(chain.requests.slice(requestsBefore)).toStrictEqual([
+      "/extended",
+      "/extended/v2/blocks/150",
+    ]);
+  });
+
+  test("does not index past an incomplete source's synced height without a chain tip", async () => {
+    mineTo(130);
+    await seedContractProgress();
+    const contracts = [{ contractId, handler: printHandler }];
+    const sources = [blockSource("Every10", { interval: 10, startBlock: 100 })];
+    // Finality 0: the tipless run drops the anchor, and the next run replays
+    // Everything above the finalized height; keep that range empty.
+    const runtime = makeRuntime({ db: testDb.db, finality: 0 });
+
+    await runtime.run(contracts, sources);
+
+    expect(calls).toStrictEqual(["Every10:100", "Every10:110", "Every10:120", "Every10:130"]);
+
+    // The contract prints at 170 while the tip cannot be read.
+    mineTo(169);
+    chain.mine([{ txId: "tx-170", events: [{ contractId, eventIndex: 0 }] }]);
+    mineTo(180);
+    calls = [];
+    tipUnavailable = true;
+
+    const blind = await runtime.run(contracts, sources);
+
+    // The print at 170 is stored but stays unindexed: the source never synced past 130.
+    expect(calls).toStrictEqual([]);
+    expect(blind).toMatchObject({
+      eventsProcessed: 0,
+      blockHeight: 130,
+      blocks: { Every10: { eventsProcessed: 0, blockHeight: 130 } },
+    });
+
+    tipUnavailable = false;
+    const caughtUp = await runtime.run(contracts, sources);
+
+    expect(calls).toStrictEqual([
+      "Every10:140",
+      "Every10:150",
+      "Every10:160",
+      "print:170:0",
+      "Every10:170",
+      "Every10:180",
+    ]);
+    expect(caughtUp).toMatchObject({
+      eventsProcessed: 6,
+      blockHeight: 180,
+      contracts: { token: { eventsProcessed: 1 } },
+      blocks: { Every10: { eventsProcessed: 5, blockHeight: 180 } },
+    });
   });
 });

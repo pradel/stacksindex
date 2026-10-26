@@ -70,6 +70,30 @@ export const syncProgressTable = stacksindexSchema.table(
   ],
 );
 
+/**
+ * Per block source (keyed by definition name): every block it runs at, at or
+ * below `syncedBlockHeight`, is stored in `blocks`. `interval` and
+ * `startBlock` record the definition the progress was made for, so a changed
+ * definition starts over (blocks already stored are not fetched again).
+ */
+export const blockSyncProgressTable = stacksindexSchema.table(
+  "block_sync_progress",
+  (table) => ({
+    chainId: table.bigint({ mode: "bigint" }).notNull(),
+    name: text("name").notNull(),
+    interval: table.bigint({ mode: "bigint" }).notNull(),
+    startBlock: table.bigint({ mode: "bigint" }).notNull(),
+    syncedBlockHeight: table.bigint({ mode: "bigint" }).notNull(),
+    isComplete: boolean("is_complete").notNull().default(false),
+  }),
+  (table) => [
+    primaryKey({
+      name: "block_sync_progress_pkey",
+      columns: [table.chainId, table.name],
+    }),
+  ],
+);
+
 export const eventsTable = stacksindexSchema.table(
   "events",
   (table) => ({

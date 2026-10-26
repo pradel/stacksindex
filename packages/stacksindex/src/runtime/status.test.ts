@@ -93,6 +93,7 @@ describe("indexer status", () => {
         token: { syncedBlockHeight: BASE_HEIGHT - 1, isComplete: false },
         pool: { syncedBlockHeight: null, isComplete: false },
       },
+      blocks: {},
     });
   });
 
@@ -115,6 +116,7 @@ describe("indexer status", () => {
       },
       anchor: { blockHeight: BASE_HEIGHT },
       contracts: { token: { syncedBlockHeight: BASE_HEIGHT, isComplete: false } },
+      blocks: {},
     });
   });
 

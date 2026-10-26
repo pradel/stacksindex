@@ -7,12 +7,20 @@ import {
   type SmartContractLogEvent,
   type StacksApiError,
   StacksClient,
+  type StorableBlock,
+  type StorableTransaction,
   type TransactionEventsResponse,
 } from "../datasources/api/index.ts";
 import type { DatabaseError, SyncStoreError } from "../lib/errors.ts";
-import { contractAttributes, syncBlock as syncBlockGauge, syncEvents } from "../lib/metrics.ts";
+import {
+  blockSourceAttributes,
+  contractAttributes,
+  syncBlock as syncBlockGauge,
+  syncEvents,
+} from "../lib/metrics.ts";
+import { isBlockSourceHeight } from "../runtime/blocks.ts";
 import { syncStore } from "../sync-store/index.ts";
-import type { SyncFilter } from "../sync/index.ts";
+import type { BlockSyncFilter, SyncFilter } from "../sync/index.ts";
 
 type BlockTransaction = BlockTransactionsApiResponse["results"][number];
 
@@ -68,6 +76,20 @@ function getContractMetrics(filter: SyncFilter) {
   }
 
   return metrics;
+}
+
+/** Per-block-source sync gauges, labelled once per source. */
+const blockSourceGauges = new Map<string, Metric.Metric<number, Metric.GaugeState<number>>>();
+
+function getBlockSourceGauge(name: string) {
+  let gauge = blockSourceGauges.get(name);
+
+  if (gauge === undefined) {
+    gauge = Metric.withAttributes(syncBlockGauge, blockSourceAttributes(name));
+    blockSourceGauges.set(name, gauge);
+  }
+
+  return gauge;
 }
 
 /**
@@ -147,19 +169,65 @@ function fetchTransactionLogs(
 }
 
 /**
+ * The data needed to store `block`: from a transaction of the block, else
+ * from its `/extended/v2/blocks` row when it came with one, else fetched.
+ */
+function getStorableBlock(
+  block: LightBlock,
+  transaction: StorableTransaction | undefined,
+): Effect.Effect<StorableBlock, StacksApiError, StacksClient> {
+  if (transaction !== undefined) {
+    return Effect.succeed({
+      height: block.height,
+      hash: block.hash,
+      index_block_hash: transaction.block.index_hash,
+      burn_block_time: transaction.bitcoin_block.time,
+      burn_block_height: transaction.bitcoin_block.height,
+    });
+  }
+
+  if (block.stored !== undefined) {
+    return Effect.succeed(block.stored);
+  }
+
+  return Effect.gen(function* () {
+    const client = yield* StacksClient;
+
+    return yield* client.getBlock(block.hash);
+  });
+}
+
+/**
+ * Whether storing `block` for a block source running at it costs a request:
+ * its `/extended/v2/blocks` row is missing, and no transaction may provide it.
+ */
+export function needsBlockRequest(
+  block: LightBlock,
+  blockSources: readonly BlockSyncFilter[],
+): boolean {
+  return (
+    block.stored === undefined &&
+    blockSources.some((source) => isBlockSourceHeight(source, block.height))
+  );
+}
+
+/**
  * Fetches every smart contract log `block` holds for the filters' contracts
  * and stores it with its transaction and block, as a contract-log sync would.
- * Every filter syncing at `block.height` is then synced through it, in the
+ * The block is also stored when a block source runs at it. Every filter and
+ * block source syncing at `block.height` is then synced through it, in the
  * same transaction. Returns the number of stored events.
  *
  * Only successful transactions with events of a type that may hold logs are
  * queried: the API keeps no events for aborted ones, matching the contract
  * logs endpoint, and `MAY_HOLD_LOGS` rules out the types that never print.
+ * Without a syncing contract, no transaction is fetched.
  */
 export function syncBlock(options: {
   readonly chainId: number;
   readonly block: LightBlock;
   readonly filters: readonly SyncFilter[];
+  readonly blockSources?: readonly BlockSyncFilter[];
 }): Effect.Effect<
   number,
   StacksApiError | SyncStoreError | DatabaseError,
@@ -174,8 +242,12 @@ export function syncBlock(options: {
         (filter.endBlock === undefined || filter.endBlock >= block.height),
     );
 
+    const syncingSources = (options.blockSources ?? []).filter(
+      (source) => source.endBlock === undefined || source.endBlock >= block.height,
+    );
+
     const contractIds = new Set(syncing.map((filter) => filter.contractId));
-    const transactions = yield* fetchBlockTransactions(block);
+    const transactions = contractIds.size === 0 ? [] : yield* fetchBlockTransactions(block);
 
     const logsByTransaction = yield* Effect.forEach(
       transactions.filter(
@@ -197,23 +269,24 @@ export function syncBlock(options: {
       logs.map((event) => ({ event, blockHeight: block.height })),
     );
 
+    const [first] = matched;
+
+    const isSourceBlock = syncingSources.some((source) =>
+      isBlockSourceHeight(source, block.height),
+    );
+
+    const storable =
+      first !== undefined || isSourceBlock
+        ? yield* getStorableBlock(block, first?.transaction ?? transactions[0])
+        : undefined;
+
     yield* IndexerDatabase.transaction(() =>
       Effect.gen(function* () {
-        const [first] = matched;
+        if (storable !== undefined) {
+          yield* syncStore.insertBlocks({ chainId, blocks: [storable] });
+        }
 
         if (first !== undefined) {
-          yield* syncStore.insertBlocks({
-            chainId,
-            blocks: [
-              {
-                height: block.height,
-                hash: block.hash,
-                index_block_hash: first.transaction.block.index_hash,
-                burn_block_time: first.transaction.bitcoin_block.time,
-                burn_block_height: first.transaction.bitcoin_block.height,
-              },
-            ],
-          });
           yield* syncStore.insertTransactions({
             chainId,
             transactions: matched.map(({ transaction }) => transaction),
@@ -224,6 +297,11 @@ export function syncBlock(options: {
         yield* syncStore.raiseSyncedBlockHeight({
           chainId,
           contractIds: [...contractIds],
+          blockHeight: block.height,
+        });
+        yield* syncStore.raiseBlockSyncedBlockHeight({
+          chainId,
+          sources: syncingSources,
           blockHeight: block.height,
         });
       }),
@@ -249,6 +327,13 @@ export function syncBlock(options: {
       // Live blocks sit above the anchor, which no syncing contract has passed,
       // So the raise above moved every syncing contract to this block.
       yield* Metric.update(metrics.block, block.height);
+    }
+
+    // A source starting above this block keeps its higher synced height.
+    for (const source of syncingSources) {
+      if (source.startBlock <= block.height) {
+        yield* Metric.update(getBlockSourceGauge(source.name), block.height);
+      }
     }
 
     return events.length;

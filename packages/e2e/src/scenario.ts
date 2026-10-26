@@ -6,6 +6,7 @@ import { sql, type SQL } from "drizzle-orm";
 import {
   defineIndexer,
   pglite,
+  type BlockEvent,
   type Database,
   type Indexer,
   type IndexerDb,
@@ -14,7 +15,12 @@ import {
 } from "stacksindex";
 import { expect } from "vite-plus/test";
 
-import { createTraceCollector, type RecordedTraceEvent, type TraceCollector } from "./tracer.ts";
+import {
+  createTraceCollector,
+  type RecordedBlockEvent,
+  type RecordedTraceEvent,
+  type TraceCollector,
+} from "./tracer.ts";
 
 function isRowsResult<Row>(value: unknown): value is { rows: Row[] } {
   return (
@@ -109,10 +115,17 @@ export interface ScenarioContract {
   endBlock?: number | "latest";
 }
 
+export interface ScenarioBlockSource {
+  interval?: number;
+  startBlock: number;
+  endBlock?: number | "latest";
+}
+
 export interface ScenarioOutcome {
   result: RunResult;
   tracer: TraceCollector;
   events: RecordedTraceEvent[];
+  blockEvents: RecordedBlockEvent[];
 }
 
 /** Definition name used for a contract: its `<contract-name>` segment. */
@@ -122,33 +135,40 @@ export function contractName(contractId: string): string {
 
 export async function runScenario(options: {
   database: ScenarioDatabase;
-  contracts: ScenarioContract[];
+  contracts?: ScenarioContract[];
+  /** Block sources keyed by definition name. */
+  blocks?: Record<string, ScenarioBlockSource>;
 }): Promise<ScenarioOutcome> {
   const tracer = createTraceCollector();
 
   const contracts = Object.fromEntries(
-    options.contracts.map((contract) => [
+    (options.contracts ?? []).map((contract) => [
       contractName(contract.contractId),
       { id: contract.contractId, startBlock: contract.startBlock, endBlock: contract.endBlock },
     ]),
   );
 
+  const blocks = options.blocks ?? {};
+
+  const handle = (event: PrintEvent | BlockEvent) => {
+    if (event.type === "block") {
+      tracer.recordBlock(event);
+    } else {
+      tracer.record(event);
+    }
+  };
+
   const handlers = Object.fromEntries(
-    Object.keys(contracts).map((name) => [
-      name,
-      (event: PrintEvent) => {
-        tracer.record(event);
-      },
-    ]),
+    [...Object.keys(contracts), ...Object.keys(blocks)].map((name) => [name, handle]),
   );
 
   const app = await options.database.open((database) =>
-    defineIndexer({ contracts }).create({ database, logLevel: "None", handlers }),
+    defineIndexer({ contracts, blocks }).create({ database, logLevel: "None", handlers }),
   );
 
   const result = await app.run();
 
-  return { result, tracer, events: tracer.getEvents() };
+  return { result, tracer, events: tracer.getEvents(), blockEvents: tracer.getBlockEvents() };
 }
 
 export interface ExpectedSyncProgress {
@@ -187,7 +207,26 @@ export async function expectCheckpoint(database: IndexerDb, height: number): Pro
   expect(Number(rows[0].blockHeight)).toBe(height);
 }
 
+export async function expectBlockSourceProgress(
+  database: IndexerDb,
+  name: string,
+  expected: { syncedBlockHeight: number; isComplete: boolean },
+): Promise<void> {
+  const rows = await selectRows<{
+    syncedBlockHeight: string | number | bigint;
+    isComplete: boolean;
+  }>(
+    database,
+    sql`select "syncedBlockHeight", "is_complete" as "isComplete" from "stacksindex"."block_sync_progress" where "name" = ${name}`,
+  );
+
+  expect(rows).toHaveLength(1);
+  expect(Number(rows[0].syncedBlockHeight)).toBe(expected.syncedBlockHeight);
+  expect(rows[0].isComplete).toBe(expected.isComplete);
+}
+
 const TABLE_COUNT_QUERIES = {
+  block_sync_progress: sql`select count(*) as "count" from "stacksindex"."block_sync_progress"`,
   blocks: sql`select count(*) as "count" from "stacksindex"."blocks"`,
   checkpoints: sql`select count(*) as "count" from "stacksindex"."checkpoints"`,
   events: sql`select count(*) as "count" from "stacksindex"."events"`,

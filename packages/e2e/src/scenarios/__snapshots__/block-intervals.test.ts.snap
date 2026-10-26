@@ -1,0 +1,19 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`e2E: Block interval sources scenario > runs each block source at its heights, after the prints of the block, and resumes without fetching blocks 1`] = `
+{
+  "endpoints": {
+    "GET /extended": 2,
+    "GET /extended/v1/tx/:tx_id": 1,
+    "GET /extended/v2/blocks/:height_or_hash": 3,
+    "GET /extended/v2/smart-contracts/:contract_id/logs": 2,
+    "GET /extended/v3/bitcoin-blocks": 3,
+    "GET /extended/v3/blocks": 2,
+    "GET /extended/v3/principals/:principal/transactions": 1,
+    "GET /extended/v3/smart-contracts/:contract_id": 1,
+    "GET /extended/v3/transactions/:tx_id/events": 1,
+    "GET /extended/v3/transactions/batch": 2,
+  },
+  "totalCalls": 18,
+}
+`;

@@ -34,6 +34,8 @@ const makeClient = (
 ): StacksClientService => ({
   getStatus: notUsed,
   getBlocks: notUsed,
+  getStacksBlocks: notUsed,
+  getBitcoinBlocks: notUsed,
   getBlock: (height) => {
     requested.push(Number(height));
     const hash = canonical[Number(height)];
@@ -179,6 +181,37 @@ describe("canonical chain reconciliation", () => {
       checkpoint: 400,
       synced: 400,
     });
+  });
+
+  test("lowers block source progress above the rewind height", async () => {
+    await seed({ blockHeight: 450, blockHash: "tip-450" });
+
+    const seedBlockSource = (name: string, syncedBlockHeight: number, isComplete: boolean) =>
+      testDb.run(
+        syncStore.upsertBlockSyncProgress({
+          chainId: CHAIN_ID,
+          name,
+          interval: 100,
+          startBlock: 100,
+          syncedBlockHeight,
+          isComplete,
+        }),
+      );
+
+    await seedBlockSource("completed", 500, true);
+    await seedBlockSource("behind", 200, false);
+
+    await reconcile({ 200: "old-200", 300: "old-300", 400: "new-400", 450: "new-450" });
+
+    const progress = await testDb.run(syncStore.listBlockSyncProgress({ chainId: CHAIN_ID }));
+
+    // The completed source must sync 400 and 500 again; the one behind keeps its height.
+    expect(
+      progress.map((row) => [row.name, Number(row.syncedBlockHeight), row.isComplete]),
+    ).toStrictEqual([
+      ["behind", 200, false],
+      ["completed", 300, false],
+    ]);
   });
 
   test("fails without changing data when the finalized block was replaced", async () => {

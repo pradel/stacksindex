@@ -46,7 +46,7 @@ PostgreSQL tables defined by the user's schema, in the same database as the sync
 
 ## Configuration
 
-Users configure the indexer with four elements:
+Users configure the indexer with five elements:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -55,6 +55,8 @@ Users configure the indexer with four elements:
 │  Chain          │  Stacks chain, API endpoint and settings  │
 ├─────────────────┼───────────────────────────────────────────┤
 │  Contracts      │  Named contract IDs, ranges, schemas      │
+├─────────────────┼───────────────────────────────────────────┤
+│  Block sources  │  Named handlers run every N blocks        │
 ├─────────────────┼───────────────────────────────────────────┤
 │  Schema         │  Output table definitions                 │
 ├─────────────────┼───────────────────────────────────────────┤
@@ -72,13 +74,22 @@ Define the Stacks chain to connect to (`chain`: `"mainnet"`, `"testnet"` or `{ i
 
 ### Contracts
 
-`defineIndexer({ contracts, relations? })` names every contract to capture:
+`defineIndexer({ contracts?, blocks?, relations? })` names every contract to capture:
 
 - Contract ID (`id`, e.g. `SP6P4EJF0VG8V0RB3TQQKJBHDQKEF6NVRD1KZE3C.satoshibles`)
 - Block range (`startBlock`/`endBlock`)
 - Optional `print` schema (Standard Schema for the promise API, Effect `Schema` for the Effect API) and `onInvalid` (`"fail"` or `"skip"`)
 
 The definition name (the key in `contracts`) identifies the contract in handlers, events, run results, status and metrics. `defineIndexer` validates ids, duplicates and ranges synchronously, throwing `ConfigurationError`.
+
+### Block sources
+
+`blocks` names handlers that run every N blocks, without contract events:
+
+- `interval` (positive integer, default `1`), `startBlock` (required), `endBlock` (height or `"latest"`)
+- A source runs at every height `startBlock + k * interval` (k ≥ 0) up to `endBlock`
+
+Names are unique across `contracts` and `blocks`, since `handlers` is one record keyed by both. At least one contract or block source is required. Adding a source or lowering `startBlock` below the checkpoint does not replay past heights; re-sync from an empty database for that.
 
 ### Schema
 
@@ -92,8 +103,8 @@ Define output tables using standard SQL types:
 
 Define transformation logic:
 
-- One handler per contract name, passed as `handlers` to `create`/`layer` (exhaustive at compile time); `indexer.handler(name, fn)` types one defined in its own module
-- Receives the decoded event (`PrintEvent`, `data` typed by the contract's `print` schema)
+- One handler per contract and block source name, passed as `handlers` to `create`/`layer` (exhaustive at compile time); `indexer.handler(name, fn)` types one defined in its own module
+- Receives the decoded event (`PrintEvent`, `data` typed by the contract's `print` schema) or a `BlockEvent` for a block source
 - Has access to:
   - `db`: the indexer database scoped to the batch transaction, which also stores the checkpoint; typed with the definition's Drizzle `relations` (`context.db` in the promise API, `yield* indexer.Db` in the Effect API)
   - `client`: provides `callReadOnly(options)` pinned to the event's block for time-travel contract state lookups (supports both typed with `abi` and untyped calls). The node pins reads by index block hash only, so `tip` defaults to the event's `block.indexBlockHash`, stored with its block during sync; an explicit `tip` must be an index block hash (`context.client`, or `yield* indexer.Client`)
@@ -194,6 +205,27 @@ Key differences from EVM:
    └──────────────────────────────────────────────────────────┘
 ```
 
+Block sources sync in their own windows (`sync/blocks.ts`), sharing the scheduler and
+the safe height with contracts:
+
+```
+   ┌──────────────────────────────────────────────────────────┐
+   │ Window: the source's heights within 30 consecutive       │
+   │ heights of its next one, skipping heights in `blocks`    │
+   │ < 3 missing -> GET /extended/v2/blocks/{height} each     │
+   │               (404: skipped)                             │
+   │ ≥ 3 missing -> GET /extended/v3/blocks                   │
+   │                  ?cursor={highest missing}&limit={span}  │
+   │              + GET /extended/v3/bitcoin-blocks           │
+   │                  ?cursor={highest btc height}&limit=…    │
+   │                (burn times; cached from the last window) │
+   │   heights still missing -> v2 single block requests      │
+   │ Store blocks + block_sync_progress in one transaction    │
+   └──────────────────────────────────────────────────────────┘
+```
+
+A source syncs up to `min(endBlock, tip)`; without a chain tip it does not advance, and indexing is held at the lowest synced height of incomplete sources. Progress is reset to `startBlock - 1` when the stored `interval` or `startBlock` differ. With an `interval` below ~15 the backfill costs about 2 requests per 30-height window (1 Stacks page, plus Bitcoin times that are often cached in Nakamoto), otherwise 1 request per matching height.
+
 ### Pagination Cursor
 
 The Stacks API v2 uses a cursor with the structure:
@@ -275,10 +307,10 @@ flowchart TD
 
 **Fetch path.** Ponder fetches every block with one `eth_getLogs` filtered by address. The Stacks API has no per-block filtered events endpoint: block transaction summaries carry no events, and a contract's print events may come from transactions calling other contracts. So each head picks the cheaper of:
 
-- **Per block** (`sync-realtime/block.ts`): for every block between the anchor and the head, `GET /extended/v3/blocks/{hash}/transactions` (50 per page), then `GET /extended/v3/transactions/{tx_id}/events` (100 per page) for each successful `contract_call` or `smart_contract` transaction with events, keeping the watched contracts' logs. Other types run no Clarity code and the node attaches no prints to them near the chain tip, so they cost no request (pre-epoch-2.5 coinbases carried pox-2/pox-3 `handle-unlock` prints, but this path only covers recent blocks). Cost ≈ `Σ (1 + contract calls and deployments with events)`, estimated as `Σ (1 + tx_count)`. Requires the blocks to link the head to the anchor (`GET /extended/v2/blocks`, at most 30) and every syncing contract synced through the anchor.
-- **Per contract**: the historical catch-up, one newest logs page per syncing contract.
+- **Per block** (`sync-realtime/block.ts`): for every block between the anchor and the head, `GET /extended/v3/blocks/{hash}/transactions` (50 per page), then `GET /extended/v3/transactions/{tx_id}/events` (100 per page) for each successful `contract_call` or `smart_contract` transaction with events, keeping the watched contracts' logs. Other types run no Clarity code and the node attaches no prints to them near the chain tip, so they cost no request (pre-epoch-2.5 coinbases carried pox-2/pox-3 `handle-unlock` prints, but this path only covers recent blocks). Transactions are fetched only while a contract syncs. Blocks a block source runs at are stored from a matched transaction, else from the `/extended/v2/blocks` row that linked the head, else `GET /extended/v2/blocks/{hash}` (websocket heads carry no row). Cost ≈ `Σ (1 + contract calls and deployments with events)`, estimated as `Σ (1 + tx_count)` when contracts sync, plus one request per block needing a block request. Requires the blocks to link the head to the anchor (`GET /extended/v2/blocks`, at most 30) and every syncing contract and block source synced through the anchor.
+- **Per contract**: the historical catch-up, one newest logs page per syncing contract, plus the block source windows; its cost counts each block source with a height in (anchor, head].
 
-Both store the same rows, and the per-block path raises every syncing contract's `syncedBlockHeight` with each block.
+Both store the same rows, and the per-block path raises every syncing contract's `syncedBlockHeight` and block source's progress with each block.
 
 **Reorgs.** A head built on the anchor (or blocks linking it) proves the anchor canonical without a request. Otherwise the anchor check of `reconcileWithCanonicalChain` runs, and a reorged range is rewound and replayed like at the start of a run.
 
@@ -304,6 +336,10 @@ ContractSpec {
 
 The sync layer receives `SyncFilter`s (`name`, `contractId`, block range) derived from the specs.
 
+### BlockSourceSpec
+
+The runtime form of a block source (`runtime/blocks.ts`): `BlockSourceSpec { name, interval, startBlock, endBlock?, handler }`, resolved once per run (`"latest"` to the tip) into a `ResolvedBlockSource`. The sync layer receives `BlockSyncFilter`s; `isBlockSourceHeight` and `nextBlockSourceHeight` compute matching heights.
+
 ### PrintEvent
 
 Event passed to contract handlers, built from the stored event, its transaction and block:
@@ -327,9 +363,25 @@ PrintEvent<TData> {
 }
 ```
 
+### BlockEvent
+
+Event passed to block source handlers, built from the stored block:
+
+```typescript
+BlockEvent {
+    type: "block"
+    name: string                     // Source name (the key in `blocks`)
+    block: { height, time, hash, indexBlockHash }   // time: Bitcoin block time, Unix seconds
+}
+```
+
+### Indexing order
+
+A batch merges stored events and matching blocks (`getSourceBlocks`, `(height - startBlock) % interval = 0`) into one sequence: by block height, every print first (tx index, event index), then each block source running at that height in definition order.
+
 ### Decode step
 
-`Indexing.executeBatch` decodes every print's hex with the Clarity codec (`stacksindex/clarity`), runs the contract's `decode` (the `print` schema), then calls the handler. A mismatch fails the batch with `EventDecodeError { contract, contractId, txId, eventIndex, message, cause }` under `onInvalid: "fail"`; under `"skip"` it is logged at warning level, skipped and not counted. A handler failure becomes `HandlerExecutionError { contract, contractId, cause }`.
+`Indexing.executeBatch` decodes every print's hex with the Clarity codec (`stacksindex/clarity`), runs the contract's `decode` (the `print` schema), then calls the handler. A mismatch fails the batch with `EventDecodeError { contract, contractId, txId, eventIndex, message, cause }` under `onInvalid: "fail"`; under `"skip"` it is logged at warning level, skipped and not counted. A handler failure becomes `HandlerExecutionError { contract, contractId?, cause }`; `contractId` is absent for block sources.
 
 ### Handlers
 
@@ -345,7 +397,7 @@ The core handler contract is Effect-only: `CoreHandler` reads the batch transact
 
 ### Run result and status
 
-`RunResult { eventsProcessed, blockHeight?, finalizedBlockHeight?, contracts }` and `IndexerStatus { chainId, phase, ready, checkpoint, anchor, contracts }`; both `contracts` are records keyed by definition name (`{ eventsProcessed, blockHeight? }` and `{ syncedBlockHeight, isComplete }`), the status listing every defined contract.
+`RunResult { eventsProcessed, blockHeight?, finalizedBlockHeight?, contracts, blocks }` and `IndexerStatus { chainId, phase, ready, checkpoint, anchor, contracts, blocks }`; `contracts` and `blocks` are records keyed by name (`{ eventsProcessed, blockHeight? }` and `{ syncedBlockHeight, isComplete }`), the status listing every defined contract and block source. `eventsProcessed` counts block source runs.
 
 ### Services
 
@@ -390,9 +442,11 @@ On startup, the indexer:
 2. Verifies the previous anchor against the canonical chain and discards stored
    data that may belong to an orphaned fork (see Reorgs)
 3. Saves the chain tip as the new anchor
-4. Reads `sync_progress` for each contract
+4. Reads `sync_progress` for each contract and `block_sync_progress` for each
+   block source
 5. Resumes backfilling from the saved cursor, or catches up from the newest
-   events down to `syncedBlockHeight`
+   events down to `syncedBlockHeight`; block sources resume after their
+   `syncedBlockHeight`
 6. Resumes indexing from the checkpoint block
 
 ### Reorgs
@@ -407,8 +461,9 @@ the anchor height (`GET /extended/v2/blocks/{height}`) and compares its hash:
   Stored blocks are a canonical prefix followed by orphaned blocks, so a binary
   search over the stored blocks between `finalizedBlockHeight` and the anchor
   finds the highest one that is still canonical. Everything above it is
-  deleted, the affected contracts' `syncedBlockHeight` is lowered to it and their
-  forward cursor dropped, and the checkpoint is lowered so the range is
+  deleted, the affected contracts' `syncedBlockHeight` and block sources'
+  `block_sync_progress` are lowered to it, contracts' forward cursors dropped,
+  and the checkpoint is lowered so the range is
   refetched and replayed through handlers.
 - **The finalized block itself was replaced:** the run fails with `ReorgError`
   and changes nothing. Data at or below `finalizedBlockHeight` was reported as
@@ -455,9 +510,9 @@ primary key). Writes for events that disappear in a reorg are not undone.
 
 ## Summary
 
-| Component  | Purpose                          | Storage / Tech                                                                     |
-| ---------- | -------------------------------- | ---------------------------------------------------------------------------------- |
-| Syncer     | Fetch events, txs, blocks        | `stacksindex.events`, `stacksindex.transactions`, `stacksindex.blocks`             |
-| Sync Store | Cache raw Stacks data            | PostgreSQL / PGlite, `stacksindex` schema                                          |
-| Indexer    | Execute handlers, transform data | user tables (`public`)                                                             |
-| Checkpoint | Track progress, enable recovery  | `stacksindex.checkpoints`, `stacksindex.sync_progress`, `stacksindex.sync_anchors` |
+| Component  | Purpose                          | Storage / Tech                                                                                                        |
+| ---------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Syncer     | Fetch events, txs, blocks        | `stacksindex.events`, `stacksindex.transactions`, `stacksindex.blocks`                                                |
+| Sync Store | Cache raw Stacks data            | PostgreSQL / PGlite, `stacksindex` schema                                                                             |
+| Indexer    | Execute handlers, transform data | user tables (`public`)                                                                                                |
+| Checkpoint | Track progress, enable recovery  | `stacksindex.checkpoints`, `stacksindex.sync_progress`, `stacksindex.block_sync_progress`, `stacksindex.sync_anchors` |

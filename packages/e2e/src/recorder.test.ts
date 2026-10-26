@@ -168,6 +168,119 @@ describe("scenario recorder", () => {
     });
   });
 
+  const blockRow = (height: number) => ({
+    canonical: true,
+    height,
+    hash: `0xhash${height}`,
+    block_time: 1_700_000_000,
+    tenure_height: 200,
+    index_block_hash: `0xindex${height}`,
+    parent_block_hash: "0xparent",
+    burn_block_time: 1_700_000_100,
+    burn_block_height: 900,
+    tx_count: 4,
+  });
+
+  const storedBlock = (height: number) => ({
+    height,
+    hash: `0xhash${height}`,
+    index_block_hash: `0xindex${height}`,
+    burn_block_time: 1_700_000_100,
+    burn_block_height: 900,
+  });
+
+  test("sanitizes a single block to the fields stored for it", () => {
+    expect(
+      sanitizePayload("https://api.hiro.so/extended/v2/blocks/42", blockRow(42)),
+    ).toStrictEqual(storedBlock(42));
+  });
+
+  test("sanitizes every row of a blocks page and keeps its paging fields", () => {
+    const body = {
+      limit: 30,
+      offset: 120,
+      total: 1000,
+      next_cursor: "0xnext",
+      results: [blockRow(43), blockRow(42)],
+    };
+
+    expect(
+      sanitizePayload("https://api.hiro.so/extended/v2/blocks?limit=30&offset=120", body),
+    ).toStrictEqual({
+      limit: 30,
+      offset: 120,
+      total: 1000,
+      results: [storedBlock(43), storedBlock(42)],
+    });
+  });
+
+  test("sanitizes v3 blocks and bitcoin-blocks pages to the fields block sources read", () => {
+    const cursor = { next: "41", previous: "45", current: "43" };
+
+    const blocks = {
+      total: 1000,
+      limit: 2,
+      cursor,
+      results: [
+        {
+          height: 43,
+          hash: "0xhash43",
+          index_hash: "0xindex43",
+          time: 1_700_000_000,
+          time_iso: "2023-11-14T22:13:20.000Z",
+          tenure_height: 40,
+          tx_count: 2,
+          bitcoin_block: { height: 900, hash: "0xbtc900" },
+        },
+      ],
+    };
+
+    expect(
+      sanitizePayload("https://api.hiro.so/extended/v3/blocks?cursor=43&limit=2", blocks),
+    ).toStrictEqual({
+      total: 1000,
+      limit: 2,
+      cursor,
+      results: [
+        {
+          height: 43,
+          hash: "0xhash43",
+          index_hash: "0xindex43",
+          tenure_height: 40,
+          bitcoin_block: { height: 900 },
+        },
+      ],
+    });
+
+    const bitcoinBlocks = {
+      total: 500,
+      limit: 2,
+      cursor,
+      results: [
+        {
+          height: 900,
+          hash: "0xbtc900",
+          time: 1_700_000_100,
+          time_iso: "2023-11-14T22:15:00.000Z",
+          projected_time: null,
+          stacks_block_count: 3,
+        },
+      ],
+    };
+
+    expect(
+      sanitizePayload(
+        "https://api.hiro.so/extended/v3/bitcoin-blocks?cursor=900&limit=2",
+        bitcoinBlocks,
+      ),
+    ).toStrictEqual({
+      total: 500,
+      limit: 2,
+      cursor,
+      results: [{ height: 900, time: 1_700_000_100 }],
+    });
+  });
+
   test("falls through to live fetch when a request is missing from fixtures", async () => {
     const fixturePath = createFixturePath();
     fs.writeFileSync(fixturePath, JSON.stringify({}));

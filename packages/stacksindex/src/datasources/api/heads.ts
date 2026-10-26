@@ -13,6 +13,7 @@ import {
   StacksClient,
   type StacksClientService,
   type StacksHttpError,
+  type StorableBlock,
 } from "./index.ts";
 
 export interface LightBlock {
@@ -23,6 +24,11 @@ export interface LightBlock {
   readonly tenureHeight: number;
   /** Transactions in the block; used to estimate per-block fetch cost. */
   readonly txCount: number;
+  /**
+   * What storing the block needs, carried by `/extended/v2/blocks` rows but
+   * not by websocket notifications.
+   */
+  readonly stored?: StorableBlock;
 }
 
 export type HeadsTransport = "polling" | "websocket";
@@ -61,14 +67,29 @@ type BlockNotification = typeof BlockNotificationSchema.Type;
 /** A `/extended/v2/blocks` row or a websocket `block` notification. */
 export type LightBlockSource = BlockRow | BlockNotification;
 
-export const toLightBlock = (block: LightBlockSource): LightBlock => ({
-  height: block.height,
-  hash: block.hash,
-  parentHash: block.parent_block_hash,
-  blockTime: block.block_time,
-  tenureHeight: block.tenure_height,
-  txCount: "tx_count" in block ? block.tx_count : block.txs.length,
-});
+export const toLightBlock = (block: LightBlockSource): LightBlock => {
+  const light = {
+    height: block.height,
+    hash: block.hash,
+    parentHash: block.parent_block_hash,
+    blockTime: block.block_time,
+    tenureHeight: block.tenure_height,
+  };
+
+  return "txs" in block
+    ? { ...light, txCount: block.txs.length }
+    : {
+        ...light,
+        txCount: block.tx_count,
+        stored: {
+          height: block.height,
+          hash: block.hash,
+          index_block_hash: block.index_block_hash,
+          burn_block_time: block.burn_block_time,
+          burn_block_height: block.burn_block_height,
+        },
+      };
+};
 
 /**
  * Websocket endpoint served next to the API: `https` becomes `wss`, `http`

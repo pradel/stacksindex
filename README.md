@@ -20,6 +20,7 @@ Three entrypoints ship with the package:
 - **Simple & Open-Source**: Focused on developer simplicity with zero unnecessary abstractions.
 - **Reliable Historical Backfill**: Automatically discovers contract deployment blocks and initial event cursors to paginate backwards or forwards seamlessly.
 - **Live Sync**: After the backfill, follow new blocks by polling the API or over its websocket, fetching each block's events or each contract's newest logs, whichever costs fewer requests.
+- **Block Intervals**: Run a handler every N blocks, without any contract event, e.g. to snapshot state with time-travel read-only calls.
 - **Embedded or External Database**: First-class support for embedded [PGlite](https://pglite.electric-sql.com/) (zero configuration) or production PostgreSQL via [Drizzle ORM](https://orm.drizzle.team/).
 - **Time-Travel Read-Only Calls**: Query contract state (`client.callReadOnly`) automatically pinned to the exact block height of the event being processed.
 - **Clarity Codec Built-in**: Prints are decoded to plain JavaScript values and parsed by an optional schema into typed `event.data`; the codec ships as `stacksindex/clarity`.
@@ -92,7 +93,7 @@ const result = await app.run();
 console.log(`Indexed ${result.eventsProcessed} events`);
 ```
 
-`defineIndexer` validates the contracts synchronously and throws `ConfigurationError` on an invalid id (`<principal>.<contract-name>`), a duplicate id, or invalid `startBlock`/`endBlock`. `create` requires a handler for every contract (checked at compile time) and owns the database lifecycle: call `app.close()` (or use `await using` as above) to release resources.
+`defineIndexer` validates the contracts and block sources synchronously and throws `ConfigurationError` on an invalid id (`<principal>.<contract-name>`), a duplicate id, invalid `startBlock`/`endBlock`/`interval`, a name used in both `contracts` and `blocks`, or a definition without any contract or block source. `create` requires a handler for every contract and block source (checked at compile time) and owns the database lifecycle: call `app.close()` (or use `await using` as above) to release resources.
 
 ---
 
@@ -153,6 +154,50 @@ A print that doesn't match fails the batch with `EventDecodeError` (`contract`, 
 | `raw`        | `{ hex, repr, topic }`                   | The print as the Stacks API returned it.                                           |
 | `block`      | `{ height, time, hash, indexBlockHash }` | Block of the event; `time` in Unix seconds. `indexBlockHash` pins read-only calls. |
 | `tx`         | `{ index, sender }`                      | Position of the transaction in its block and its sender.                           |
+
+---
+
+## Block Intervals
+
+A block source runs a handler every `interval` blocks, independently of contract events. It runs at every height `startBlock + k * interval` (k ≥ 0) up to `endBlock`.
+
+```ts
+import { defineIndexer } from "stacksindex";
+
+const indexer = defineIndexer({
+  blocks: {
+    hourly: {
+      interval: 360, // default 1: every block
+      startBlock: 3_000_000, // required
+      endBlock: "latest", // optional: a height or "latest"
+    },
+  },
+});
+
+const hourly = indexer.handler("hourly", async (event, { db, client }) => {
+  const supply = await client.callReadOnly({
+    contractId: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-abtc",
+    functionName: "get-total-supply",
+  }); // pinned to event.block.indexBlockHash
+  if (typeof supply === "object" && supply !== null && "ok" in supply) {
+    // `snapshots` is one of your tables
+    await db.insert(snapshots).values({ height: event.block.height, supply: String(supply.ok) });
+  }
+});
+```
+
+With the Effect API the handler returns an `Effect` and reads `Db` and `Client` from its context, like a contract handler.
+
+- **Names**: `handlers` is one record keyed by contract and block source names, so names must be unique across `contracts` and `blocks`. `contracts` is optional when `blocks` defines a source.
+- **Ordering**: within a block, every print is handled first (by transaction and event index), then each block source running at that height, in definition order.
+- **Cost**: the backfill reads blocks in windows of 30 heights. With an `interval` below ~15, a window costs about 2 requests: one page of Stacks blocks plus their Bitcoin block times, which are often cached from the previous window. With larger intervals it costs 1 request per height the source runs at. An `interval` of 1 over 320k blocks takes ≈ 10.7k to 21.3k requests, about 3.6 to 7 hours at the unauthenticated 50 requests per minute; set `api.apiKey` or a larger `interval` for long ranges.
+- **Limitation**: adding a source, or lowering `startBlock` below the indexing checkpoint, does not replay past heights. Re-sync from an empty database to cover them.
+
+| Property | Type                                     | Description                                                                          |
+| -------- | ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| `type`   | `"block"`                                | Event kind.                                                                          |
+| `name`   | `string`                                 | Source name (the key in `blocks`).                                                   |
+| `block`  | `{ height, time, hash, indexBlockHash }` | The block; `time` (Bitcoin block time) in Unix seconds. `indexBlockHash` pins calls. |
 
 ---
 
@@ -336,7 +381,7 @@ await Effect.runPromise(program.pipe(Effect.provide(Layer.mergeAll(IndexerLive, 
 
 ### Metrics
 
-Every series carries a `chain_id` attribute (`"1"` for mainnet). Per-contract series carry `contract` with the definition name (the key in `contracts`) and `contract_id` with the contract ID. Effect's exporter sends each metric's unit as a `unit` attribute as well.
+Every series carries a `chain_id` attribute (`"1"` for mainnet). Per-contract series carry `contract` with the definition name (the key in `contracts`) and `contract_id` with the contract ID. Block source series (`sync.block`, `sync.complete`, `indexing.events`, `indexing.handler.duration`, `indexing.handler.errors`) carry `blocks` with the source name instead. Effect's exporter sends each metric's unit as a `unit` attribute as well.
 
 Names follow OpenTelemetry conventions. Prometheus renders dots as underscores and appends type and unit suffixes: `stacksindex.sync.pages` becomes `stacksindex_sync_pages_total`, `stacksindex.indexing.handler.duration` becomes `stacksindex_indexing_handler_duration_milliseconds` (with `_bucket`, `_sum` and `_count` series), and `stacksindex.indexing.block_timestamp` becomes `stacksindex_indexing_block_timestamp_seconds`. Durations are in milliseconds.
 
@@ -400,9 +445,9 @@ The exporter logs its target once at `Info` when the indexer starts. Failed expo
 
 ## API Reference
 
-### `defineIndexer({ contracts, relations? })`
+### `defineIndexer({ contracts?, blocks?, relations? })`
 
-`relations` (from drizzle's `defineRelations`) types `db.query`. Each entry of `contracts` is keyed by its definition name:
+`relations` (from drizzle's `defineRelations`) types `db.query`. At least one contract or block source is required. Each entry of `contracts` is keyed by its definition name:
 
 | Property     | Type                 | Default                 | Description                                                                                  |
 | ------------ | -------------------- | ----------------------- | -------------------------------------------------------------------------------------------- |
@@ -412,6 +457,14 @@ The exporter logs its target once at `Info` when the indexer starts. Failed expo
 | `print`      | `Schema`             | `undefined`             | Standard Schema (promise) or Effect `Schema` (Effect) parsing every print into `event.data`. |
 | `onInvalid`  | `"fail" \| "skip"`   | `"fail"`                | On a `print` mismatch: fail with `EventDecodeError`, or log and skip the event.              |
 
+Each entry of `blocks` is keyed by its source name, unique across `contracts` and `blocks` (see [Block Intervals](#block-intervals)):
+
+| Property     | Type                 | Default    | Description                                                                      |
+| ------------ | -------------------- | ---------- | -------------------------------------------------------------------------------- |
+| `interval`   | `number`             | `1`        | Run every `interval` blocks (positive integer).                                  |
+| `startBlock` | `number`             | _Required_ | First height the source runs at; it runs at `startBlock + k * interval`.         |
+| `endBlock`   | `number \| "latest"` | _None_     | Block height to stop at, or `"latest"` for the chain tip read when a run starts. |
+
 The definition exposes `handler(name, fn)` and `create(options)` (promise) or `Db`, `Client`, `handler(name, fn)` and `layer(options)` (Effect).
 
 ### `create(options)` / `layer(options)`
@@ -419,7 +472,7 @@ The definition exposes `handler(name, fn)` and `create(options)` (promise) or `D
 | Option                          | Type                                             | Default                          | Description                                                                                                                                        |
 | ------------------------------- | ------------------------------------------------ | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `database`                      | `Database`                                       | _Required_                       | Indexer storage: `pglite(directory?)` (in memory without a directory) or `postgres(connectionString)`.                                             |
-| `handlers`                      | `{ [name]: handler }`                            | _Required_                       | One handler per defined contract.                                                                                                                  |
+| `handlers`                      | `{ [name]: handler }`                            | _Required_                       | One handler per defined contract and block source.                                                                                                 |
 | `migrations`                    | `string`                                         | `undefined`                      | Folder of your drizzle-kit migrations, applied when the database opens, after the indexer's own.                                                   |
 | `chain`                         | `"mainnet" \| "testnet" \| { id, apiUrl }`       | `"mainnet"`                      | `"mainnet"` (chain `1`, `https://api.hiro.so`), `"testnet"` (chain `2147483648`, `https://api.testnet.hiro.so`), or a custom chain ID and API URL. |
 | `api.url`                       | `string`                                         | _Chain default_                  | Stacks API URL; overrides the chain's.                                                                                                             |
@@ -460,10 +513,11 @@ The definition exposes `handler(name, fn)` and `create(options)` (promise) or `D
 
 | Property               | Type                                              | Description                                                                            |
 | ---------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `eventsProcessed`      | `number`                                          | Total events passed to handlers during the run.                                        |
+| `eventsProcessed`      | `number`                                          | Total events passed to handlers during the run, block source runs included.            |
 | `blockHeight`          | `number \| undefined`                             | Height through which every event has been indexed; `undefined` before the first batch. |
 | `finalizedBlockHeight` | `number \| undefined`                             | Highest finalized block after the run; `undefined` when no checkpoint exists.          |
 | `contracts`            | `Record<name, { eventsProcessed, blockHeight? }>` | Per contract, keyed by definition name: events handled and highest processed block.    |
+| `blocks`               | `Record<name, { eventsProcessed, blockHeight? }>` | Per block source, keyed by name: handler runs and highest processed block.             |
 
 ### IndexerStatus
 
@@ -475,22 +529,23 @@ The definition exposes `handler(name, fn)` and `create(options)` (promise) or `D
 | `checkpoint` | `{ blockHeight, blockTime, finalizedBlockHeight } \| null` | Height through which every event has been indexed; `null` before the first batch. Survives restarts.                           |
 | `anchor`     | `{ blockHeight } \| null`                                  | Chain tip read at the start of the latest pass.                                                                                |
 | `contracts`  | `Record<name, { syncedBlockHeight, isComplete }>`          | Stored sync progress of every defined contract, keyed by definition name; `syncedBlockHeight` is `null` before its first sync. |
+| `blocks`     | `Record<name, { syncedBlockHeight, isComplete }>`          | Stored sync progress of every block source, keyed by name; `syncedBlockHeight` is `null` before its first sync.                |
 
-`phase` is in memory and starts at `"idle"` in every new process; `checkpoint`, `anchor` and `contracts` are read from the indexer database.
+`phase` is in memory and starts at `"idle"` in every new process; `checkpoint`, `anchor`, `contracts` and `blocks` are read from the indexer database.
 
 ### Errors
 
 Both entrypoints export the error classes, each with a `_tag` of the same name:
 
-| Error                   | Raised when                                                                      |
-| ----------------------- | -------------------------------------------------------------------------------- |
-| `ConfigurationError`    | `defineIndexer`, `create` or `layer` receives an invalid definition or option.   |
-| `DatabaseError`         | The database cannot be opened or a query fails.                                  |
-| `MigrationError`        | The indexer's or your migrations fail to apply.                                  |
-| `EventDecodeError`      | A print does not match its contract's `print` schema (with `onInvalid: "fail"`). |
-| `HandlerExecutionError` | A handler throws or fails; carries `contract`, `contractId` and the `cause`.     |
-| `ReorgError`            | A reorg replaces a finalized block.                                              |
-| `ReadOnlyCallError`     | A read-only call returns a Clarity-level failure.                                |
+| Error                   | Raised when                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `ConfigurationError`    | `defineIndexer`, `create` or `layer` receives an invalid definition or option.                                            |
+| `DatabaseError`         | The database cannot be opened or a query fails.                                                                           |
+| `MigrationError`        | The indexer's or your migrations fail to apply.                                                                           |
+| `EventDecodeError`      | A print does not match its contract's `print` schema (with `onInvalid: "fail"`).                                          |
+| `HandlerExecutionError` | A handler throws or fails; carries `contract` (definition name), `contractId` (absent for block sources) and the `cause`. |
+| `ReorgError`            | A reorg replaces a finalized block.                                                                                       |
+| `ReadOnlyCallError`     | A read-only call returns a Clarity-level failure.                                                                         |
 
 ### `stacksindex/clarity`
 

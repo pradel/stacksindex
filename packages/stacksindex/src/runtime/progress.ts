@@ -1,14 +1,15 @@
 import { Clock, Duration, Effect, Metric, Ref } from "effect";
 
 import { historicalCompletedBlocks, historicalTotalBlocks } from "../lib/metrics.ts";
-import type { ContractSyncSummary } from "../sync/index.ts";
+import type { BlockSyncSummary, ContractSyncSummary } from "../sync/index.ts";
 
 /** How often the runtime logs aggregate progress while a run is in flight. */
 export const PROGRESS_LOG_INTERVAL = Duration.seconds(5);
 
-/** Latest per-contract snapshots, updated from `SyncEvent`s as they arrive. */
+/** Latest per-contract and per-block-source snapshots, updated from `SyncEvent`s as they arrive. */
 export interface ProgressTrackerState {
   readonly contracts: readonly ContractSyncSummary[];
+  readonly blocks?: readonly BlockSyncSummary[];
   readonly safeBlockHeight?: number;
 }
 
@@ -25,17 +26,26 @@ export interface RunProgress {
   readonly toBlock: number | undefined;
 }
 
+/** The fields of a contract or block source snapshot that progress is computed from. */
+type RangeSummary = Pick<
+  ContractSyncSummary,
+  "doneAtStart" | "startBlock" | "endBlock" | "lastBlockHeight" | "initialBlockHeight"
+>;
+
 /**
- * Aggregates per-contract sync summaries into run progress.
+ * Aggregates per-contract and per-block-source sync summaries into run
+ * progress.
  *
- * A contract contributes to the percentage only when both bounds are known: a
- * lower bound (`startBlock`, or the height at which the run started syncing)
- * and a target (`endBlock`, or the chain tip read once per run). Contracts that
- * are already up to date count as fully completed. The percentage is omitted
- * rather than faked when any contract is unbounded.
+ * A contract or block source contributes to the percentage only when both
+ * bounds are known: a lower bound (`startBlock`, or the height at which the
+ * run started syncing) and a target (`endBlock`, or the chain tip read once
+ * per run). Those already up to date count as fully completed. The percentage
+ * is omitted rather than faked when any of them is unbounded. Block sources
+ * count in `activeContracts` and `doneContracts` like contracts.
  */
 export function computeRunProgress(options: {
   contracts: readonly ContractSyncSummary[];
+  blocks?: readonly BlockSyncSummary[];
   tipBlockHeight?: number;
 }): RunProgress {
   let completedBlocks = 0;
@@ -49,19 +59,15 @@ export function computeRunProgress(options: {
   let fromBlock: number | undefined = undefined;
   let toBlock: number | undefined = undefined;
 
-  for (const contract of options.contracts) {
-    pagesFetched += contract.pagesFetched;
-    transactionsFetched += contract.transactionsFetched;
-    eventsStored += contract.eventsStored;
-
-    if (contract.doneAtStart) {
+  const addRange = (summary: RangeSummary) => {
+    if (summary.doneAtStart) {
       doneContracts += 1;
     } else {
       activeContracts += 1;
     }
 
-    const lower = contract.startBlock ?? contract.initialBlockHeight;
-    const target = contract.endBlock ?? options.tipBlockHeight;
+    const lower = summary.startBlock ?? summary.initialBlockHeight;
+    const target = summary.endBlock ?? options.tipBlockHeight;
 
     if (lower !== undefined) {
       fromBlock = fromBlock === undefined ? lower : Math.min(fromBlock, lower);
@@ -77,16 +83,30 @@ export function computeRunProgress(options: {
       const range = Math.max(target - lower + 1, 0);
       totalBlocks += range;
 
-      if (contract.doneAtStart) {
+      if (summary.doneAtStart) {
         completedBlocks += range;
       } else {
-        const syncedTo = contract.lastBlockHeight ?? lower - 1;
+        const syncedTo = summary.lastBlockHeight ?? lower - 1;
         completedBlocks += Math.min(Math.max(syncedTo - lower + 1, 0), range);
       }
     }
+  };
+
+  for (const contract of options.contracts) {
+    pagesFetched += contract.pagesFetched;
+    transactionsFetched += contract.transactionsFetched;
+    eventsStored += contract.eventsStored;
+    addRange(contract);
   }
 
-  const boundsAreKnown = boundedContracts > 0 && boundedContracts === options.contracts.length;
+  const blocks = options.blocks ?? [];
+
+  for (const source of blocks) {
+    addRange(source);
+  }
+
+  const boundsAreKnown =
+    boundedContracts > 0 && boundedContracts === options.contracts.length + blocks.length;
 
   const percent =
     boundsAreKnown && totalBlocks > 0
@@ -229,14 +249,15 @@ export function logRunProgress(options: {
   estimator: EtaEstimator;
 }): Effect.Effect<void> {
   return Effect.gen(function* () {
-    const { contracts, safeBlockHeight } = yield* Ref.get(options.state);
+    const { contracts, blocks = [], safeBlockHeight } = yield* Ref.get(options.state);
 
-    if (contracts.length === 0) {
+    if (contracts.length === 0 && blocks.length === 0) {
       return;
     }
 
     const progress = computeRunProgress({
       contracts,
+      blocks,
       tipBlockHeight: options.tipBlockHeight,
     });
 

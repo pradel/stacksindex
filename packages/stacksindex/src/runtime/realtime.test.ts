@@ -1,4 +1,5 @@
 import { Cause, Effect, Exit, Fiber, Metric, References } from "effect";
+import type { Socket } from "effect/socket";
 import {
   afterAll,
   afterEach,
@@ -13,13 +14,14 @@ import {
 import { IndexerDatabase } from "../database/index.ts";
 import { EventDecodeError, HandlerExecutionError, ReorgError } from "../lib/errors.ts";
 import { liveConsecutiveFailures, liveIsRealtime, syncErrors } from "../lib/metrics.ts";
-import type { PrintEvent } from "../lib/types.ts";
+import type { BlockEvent, PrintEvent } from "../lib/types.ts";
 import { defineIndexer } from "../promise/index.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { checkpointsTable, eventsTable, syncProgressTable } from "../sync-store/schema.ts";
 import { createFakeChain, type FakeChain, type FakeTransaction } from "../test-utils/fake-chain.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
 import { freshDatabase } from "../test/fresh-database.ts";
+import type { BlockSourceSpec } from "./blocks.ts";
 import type { ContractSpec } from "./contracts.ts";
 import { Indexer, type IndexerOptions } from "./index.ts";
 
@@ -65,11 +67,12 @@ const liveFibers = new Set<Fiber.Fiber<void, unknown>>();
 /**
  * Runs `live` on the Effect API with fast polling. Contracts are seeded as
  * synced through `BASE_HEIGHT - 1`, so no first-event discovery is needed.
+ * `options.blocks` adds block sources.
  */
 const runLive = (
   testDb: TestDatabase,
   contracts: TestContract[],
-  options: IndexerOptions = {},
+  options: IndexerOptions & { readonly blocks?: readonly BlockSourceSpec[] } = {},
   registry: Metric.MetricRegistry = new Map(),
 ): Promise<Exit.Exit<void, unknown>> => {
   const fiber = Effect.runFork(
@@ -158,6 +161,84 @@ const getBlockRequests = (chain: FakeChain) =>
 
 const countRequests = (chain: FakeChain, pattern: RegExp) =>
   chain.requests.filter((request) => pattern.test(request)).length;
+
+/** Records prints as `print <height> <txId>`, in handling order. */
+const logPrints = (log: string[]) => (event: PrintEvent<unknown>) =>
+  Effect.sync(() => {
+    log.push(`print ${event.block.height} ${event.txId}`);
+  });
+
+/** A block source recording its runs as `<name> <height> <hash>` into `log`. */
+const loggedBlockSource = (
+  log: string[],
+  source: Pick<BlockSourceSpec, "interval" | "startBlock" | "endBlock"> & {
+    readonly name?: string;
+  },
+): BlockSourceSpec => ({
+  name: "every",
+  ...source,
+  handler: (event) =>
+    Effect.sync(() => {
+      log.push(`${event.name} ${event.block.height} ${event.block.hash}`);
+    }),
+});
+
+const unwatchedTx = (txId: string): FakeTransaction => ({
+  txId,
+  events: [{ contractId: "SP9.unwatched", eventIndex: 0 }],
+});
+
+type WebSocketListener = (event: Socket.WebSocketEvent) => void;
+
+/**
+ * Websocket handed out by the global constructor: open at once, it records
+ * the frames the indexer sends and delivers the frames a test passes to
+ * `receive`.
+ */
+class FakeWebSocket implements Socket.WebSocketLike {
+  static readonly instances: FakeWebSocket[] = [];
+  readyState = 1;
+  readonly url: string;
+  readonly sent: string[] = [];
+  private readonly listeners = new Map<string, Set<WebSocketListener>>();
+
+  constructor(url: string) {
+    this.url = url;
+    FakeWebSocket.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: WebSocketListener): void {
+    const listeners = this.listeners.get(type) ?? new Set();
+
+    listeners.add(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  removeEventListener(type: string, listener: WebSocketListener): void {
+    this.listeners.get(type)?.delete(listener);
+  }
+
+  send(data: string | Uint8Array<ArrayBuffer>): void {
+    this.sent.push(String(data));
+  }
+
+  close(code = 1000): void {
+    if (this.readyState < 2) {
+      this.readyState = 3;
+      this.dispatch("close", { code });
+    }
+  }
+
+  receive(data: string): void {
+    this.dispatch("message", { data });
+  }
+
+  private dispatch(type: string, event: Socket.WebSocketEvent): void {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event);
+    }
+  }
+}
 
 describe("live indexing", () => {
   // oxlint-disable-next-line init-declarations
@@ -578,5 +659,284 @@ describe("live indexing", () => {
 
     await expect(live).resolves.toBeUndefined();
     expect(handled).toStrictEqual(["tx-100"]);
+  });
+
+  test("indexes block sources with each head when fetching per contract", async () => {
+    const log: string[] = [];
+
+    // Each head costs one logs page plus, at a source height, one block request;
+    // Two transactions make the per-block path dearer.
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+      },
+      () => {
+        chain.mine([unwatchedTx("tx-102-a"), unwatchedTx("tx-102-b")]);
+      },
+      () => {
+        chain.mine();
+      },
+      () => {
+        chain.mine([logTx("tx-104"), unwatchedTx("tx-104-b")]);
+      },
+    ]);
+
+    const exit = await runLive(
+      testDb,
+      [{ contractId: CONTRACT_ID, handler: logPrints(log), endBlock: 104 }],
+      { blocks: [loggedBlockSource(log, { interval: 2, startBlock: 100, endBlock: 104 })] },
+    );
+
+    expect(exit).toStrictEqual(Exit.void);
+    // Within a block, prints run before block sources.
+    expect(log).toStrictEqual([
+      "print 100 tx-100",
+      "every 100 0x100",
+      "print 101 tx-101",
+      "every 102 0x102",
+      "print 104 tx-104",
+      "every 104 0x104",
+    ]);
+    expect(countRequests(chain, /^\/extended\/v3\/blocks\//u)).toBe(0);
+    // No print stored block 102: the block source fetched it by height.
+    expect(getBlockRequests(chain)).toContain("/extended/v2/blocks/102");
+  });
+
+  test("indexes block sources with each head when fetching block by block", async () => {
+    const contractIds = [CONTRACT_ID, "SP1.b", "SP1.c", "SP1.d", "SP1.e"];
+
+    for (const contractId of contractIds.slice(1)) {
+      await seedSynced(testDb, contractId);
+    }
+
+    const log: string[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+      },
+      () => {
+        chain.mine();
+      },
+      () => {
+        chain.mine();
+      },
+    ]);
+
+    const exit = await runLive(
+      testDb,
+      contractIds.map((contractId) => ({ contractId, handler: logPrints(log), endBlock: 103 })),
+      { blocks: [loggedBlockSource(log, { interval: 2, startBlock: 100, endBlock: 103 })] },
+    );
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(log).toStrictEqual([
+      "print 100 tx-100",
+      "every 100 0x100",
+      "print 101 tx-101",
+      "every 102 0x102",
+    ]);
+    // Only the historical pass read contract logs.
+    expect(countRequests(chain, /\/logs\?/u)).toBe(contractIds.length);
+    expect(countRequests(chain, /^\/extended\/v3\/blocks\/0x102\/transactions/u)).toBe(1);
+    // The polled head carried block 102's row.
+    expect(getBlockRequests(chain).filter((request) => request.includes("102"))).toStrictEqual([]);
+  });
+
+  test("follows polled heads for block sources alone without transaction or block requests", async () => {
+    const log: string[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+      },
+      () => {
+        chain.mine();
+      },
+      () => {
+        chain.mine([logTx("tx-103")]);
+      },
+    ]);
+
+    const exit = await runLive(testDb, [], {
+      blocks: [loggedBlockSource(log, { interval: 1, startBlock: 100, endBlock: 103 })],
+    });
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(log).toStrictEqual([
+      "every 100 0x100",
+      "every 101 0x101",
+      "every 102 0x102",
+      "every 103 0x103",
+    ]);
+    // Only the historical pass fetched a block; heads carry their rows.
+    expect(getBlockRequests(chain)).toStrictEqual(["/extended/v2/blocks/100"]);
+    expect(countRequests(chain, /^\/extended\/v3\//u)).toBe(0);
+    expect(countRequests(chain, /\/logs\?/u)).toBe(0);
+  });
+
+  test("fetches a websocket head's block by hash when a block source runs at it", async () => {
+    const contractIds = [CONTRACT_ID, "SP1.b", "SP1.c", "SP1.d", "SP1.e"];
+
+    for (const contractId of contractIds.slice(1)) {
+      await seedSynced(testDb, contractId);
+    }
+
+    const blocks: BlockEvent["block"][] = [];
+    const originalWebSocket = globalThis.WebSocket;
+
+    FakeWebSocket.instances.length = 0;
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    // Block 101 is mined while the subscription's catch-up poll is answered,
+    // Which still serves block 100 (a lagging replica): 101 is only announced
+    // Over the websocket, without its block row. The reader buffers the frame
+    // Until the catch-up head is emitted.
+    chain.onHeadPoll = () => {
+      chain.onHeadPoll = undefined;
+      chain.mine();
+      chain.staleHeads.push(BASE_HEIGHT);
+
+      const [head] = chain.blocks.slice(-1);
+
+      FakeWebSocket.instances[0]?.receive(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: "block",
+          params: {
+            height: head.height,
+            hash: head.hash,
+            parent_block_hash: head.parentHash,
+            block_time: head.blockTime,
+            tenure_height: head.height,
+            txs: [],
+          },
+        }),
+      );
+    };
+
+    try {
+      const exit = await runLive(
+        testDb,
+        contractIds.map((contractId) => ({
+          contractId,
+          handler: () => Effect.void,
+          endBlock: 101,
+        })),
+        {
+          live: { transport: "websocket", pollingInterval: 100 },
+          blocks: [
+            {
+              name: "every",
+              interval: 1,
+              startBlock: 100,
+              endBlock: 101,
+              handler: (event) =>
+                Effect.sync(() => {
+                  blocks.push(event.block);
+                }),
+            },
+          ],
+        },
+      );
+
+      expect(exit).toStrictEqual(Exit.void);
+    } finally {
+      vi.stubGlobal("WebSocket", originalWebSocket);
+    }
+
+    expect(FakeWebSocket.instances.map((socket) => socket.sent)).toStrictEqual([
+      [JSON.stringify({ jsonrpc: "2.0", id: 1, method: "subscribe", params: { event: "block" } })],
+    ]);
+    expect(blocks.at(-1)).toStrictEqual({
+      height: 101,
+      time: 1010,
+      hash: "0x101",
+      indexBlockHash: "index-0x101",
+    });
+    expect(getBlockRequests(chain).filter((request) => request.includes("101"))).toStrictEqual([
+      "/extended/v2/blocks/0x101",
+    ]);
+  });
+
+  test("ends once every contract and block source reached its end block", async () => {
+    const log: string[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101")]);
+      },
+      () => {
+        chain.mine([logTx("tx-102")]);
+      },
+      () => {
+        chain.mine();
+      },
+      () => {
+        chain.mine();
+      },
+      () => {
+        chain.mine();
+      },
+    ]);
+
+    // The contract ends first; live follows the block source to 103.
+    const exit = await runLive(
+      testDb,
+      [{ contractId: CONTRACT_ID, handler: logPrints(log), endBlock: 101 }],
+      { blocks: [loggedBlockSource(log, { interval: 1, startBlock: 100, endBlock: 103 })] },
+    );
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(log).toStrictEqual([
+      "print 100 tx-100",
+      "every 100 0x100",
+      "print 101 tx-101",
+      "every 101 0x101",
+      "every 102 0x102",
+      "every 103 0x103",
+    ]);
+    await expect(
+      testDb.run(syncStore.getBlockSyncProgress({ chainId: 1, name: "every" })),
+    ).resolves.toMatchObject({ syncedBlockHeight: 103n, isComplete: true });
+  });
+
+  test("replays block sources over the canonical blocks after a reorg", async () => {
+    const log: string[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([logTx("tx-101-orphaned")]);
+      },
+      () => {
+        chain.orphanFrom(101);
+        chain.mine([logTx("tx-101-canonical")]);
+        chain.mine([logTx("tx-102")]);
+      },
+    ]);
+
+    const exit = await runLive(
+      testDb,
+      [{ contractId: CONTRACT_ID, handler: logPrints(log), endBlock: 102 }],
+      { blocks: [loggedBlockSource(log, { interval: 1, startBlock: 100, endBlock: 102 })] },
+    );
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(log).toStrictEqual([
+      "print 100 tx-100",
+      "every 100 0x100",
+      "print 101 tx-101-orphaned",
+      "every 101 0x101",
+      "print 101 tx-101-canonical",
+      "every 101 0x101-fork1",
+      "print 102 tx-102",
+      "every 102 0x102-fork1",
+    ]);
+
+    const stored = await testDb.run(
+      syncStore.getStoredBlocks({ chainId: 1, fromBlockHeight: 101, toBlockHeight: 102 }),
+    );
+
+    expect(stored.map((block) => block.hash)).toStrictEqual(["0x101-fork1", "0x102-fork1"]);
   });
 });

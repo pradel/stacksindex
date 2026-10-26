@@ -4,9 +4,10 @@ import { Schema } from "effect";
 export class HandlerExecutionError extends Schema.TaggedError<HandlerExecutionError>()(
   "HandlerExecutionError",
   {
-    /** Definition name of the contract. */
+    /** Definition name of the contract or block source (the key in `contracts` or `blocks`). */
     contract: Schema.String,
-    contractId: Schema.String,
+    /** The contract identifier; absent for a block source. */
+    contractId: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
