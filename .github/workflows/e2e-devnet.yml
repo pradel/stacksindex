@@ -50,15 +50,23 @@ jobs:
           timeout 120 sh -c 'until grep -q "Embedded snapshot extracted successfully" /tmp/snapshot.log; do sleep 0.2; done'
           kill -INT "$pid"
           wait "$pid" || true
-          # Clarinet's own teardown may still be removing containers: retry until
-          # none are left, then drop the network they were attached to.
+          # Clarinet's own teardown may still be removing containers, and a
+          # container it was creating when interrupted can appear after a first
+          # empty check: remove containers and their network until neither has
+          # existed for 5 consecutive seconds.
           timeout 120 sh -c '
-            while [ -n "$(docker ps -aq --filter name=.stacksindex-e2e-devnet.devnet)" ]; do
-              docker ps -aq --filter name=.stacksindex-e2e-devnet.devnet | xargs -r docker rm -f > /dev/null 2>&1 || true
-              sleep 1
-            done
-            while docker network inspect stacksindex-e2e-devnet.devnet > /dev/null 2>&1; do
-              docker network rm stacksindex-e2e-devnet.devnet > /dev/null 2>&1 || true
+            quiet=0
+            while [ "$quiet" -lt 5 ]; do
+              ids=$(docker ps -aq --filter name=.stacksindex-e2e-devnet.devnet)
+              if [ -n "$ids" ]; then
+                echo "$ids" | xargs -r docker rm -f > /dev/null 2>&1 || true
+                quiet=0
+              elif docker network inspect stacksindex-e2e-devnet.devnet > /dev/null 2>&1; then
+                docker network rm stacksindex-e2e-devnet.devnet > /dev/null 2>&1 || true
+                quiet=0
+              else
+                quiet=$((quiet + 1))
+              fi
               sleep 1
             done'
           chmod -R a+rwX ~/.clarinet/cache/devnet
