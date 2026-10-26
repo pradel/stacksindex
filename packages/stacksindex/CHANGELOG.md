@@ -1,5 +1,19 @@
 # stacksindex
 
+## 0.2.0
+
+### Minor Changes
+
+- [#87](https://github.com/pradel/stacksindex/pull/87) [`969550b`](https://github.com/pradel/stacksindex/commit/969550bdcc821d2ba1a6f7b779a294e2d0d02188) Thanks [@pradel](https://github.com/pradel)! - `run` and `live` fail with `ConfigurationError` when the contracts changed in a way that would leave events unindexed: adding a contract whose events are in blocks that were already processed, or changing the `startBlock` or `endBlock` of a contract after indexing started. Before, those events were silently skipped. The contracts are recorded in a new `stacksindex.meta` table; an existing database records its current contracts on the first run. Removing or renaming a contract is still accepted.
+
+### Patch Changes
+
+- [#84](https://github.com/pradel/stacksindex/pull/84) [`5e65b41`](https://github.com/pradel/stacksindex/commit/5e65b4163157c4e676ee2bb2ced8a02a93dc22c2) Thanks [@pradel](https://github.com/pradel)! - Use the `event_count` that Stacks API 9.7.0 adds to v3 transaction summaries. Cursor discovery reads it from the principal transactions page and no longer requests `GET /extended/v3/transactions/{tx_id}` for each scanned transaction. Live per-block sync requests events only for contract calls and deployments that have events, skipping token transfers, coinbases, tenure changes and poison microblocks, which never carry contract logs near the chain tip. Requires Stacks API 9.7.0+. Upgrades `@stacks/blockchain-api-client` to 9.7.0.
+
+- [#85](https://github.com/pradel/stacksindex/pull/85) [`4343e3f`](https://github.com/pradel/stacksindex/commit/4343e3f126b07d0c485b38bb57696b74f4171925) Thanks [@pradel](https://github.com/pradel)! - Cursor discovery no longer calls the deprecated `GET /extended/v1/tx/{tx_id}` when a contract's first event is at or after epoch 2.5 (Bitcoin height 840,360 on mainnet, 6 on testnet). Blocks cannot confirm microblocks from then on, so the cursor's `microblock_sequence` is always `2147483647`. Older events and other chains still look it up.
+
+- [#82](https://github.com/pradel/stacksindex/pull/82) [`fbed2a7`](https://github.com/pradel/stacksindex/commit/fbed2a7a2c3bf9c41b45bf001c4648d660ec85a9) Thanks [@pradel](https://github.com/pradel)! - Upgrade dependencies: `effect`, `@effect/sql-pg` and `@effect/sql-pglite` 4.0.5, and `@stacks/blockchain-api-client` 9.6.0.
+
 ## 0.1.0
 
 ### Minor Changes
