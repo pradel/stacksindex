@@ -14,6 +14,8 @@ import {
   blocksTable,
   checkpointsTable,
   eventsTable,
+  metaTable,
+  type RecordedContract,
   syncAnchorsTable,
   syncProgressTable,
   transactionsTable,
@@ -606,6 +608,49 @@ export const syncStore = {
     }).pipe(
       Effect.mapError(
         (cause: unknown) => new SyncStoreError({ operation: "setSyncAnchor", cause }),
+      ),
+    ),
+
+  /** Contracts recorded for the chain by the last `run` or `live`, or `null` before the first. */
+  getRecordedContracts: ({
+    chainId,
+  }: {
+    chainId: number;
+  }): Effect.Effect<readonly RecordedContract[] | null, SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      const [row] = yield* db
+        .select({ contracts: metaTable.contracts })
+        .from(metaTable)
+        .where(eq(metaTable.chainId, BigInt(chainId)))
+        .limit(1);
+
+      return row === undefined ? null : row.contracts;
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "getRecordedContracts", cause }),
+      ),
+    ),
+
+  recordContracts: ({
+    chainId,
+    contracts,
+  }: {
+    chainId: number;
+    contracts: readonly RecordedContract[];
+  }): Effect.Effect<void, SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+      const values = { contracts: [...contracts] };
+
+      yield* db
+        .insert(metaTable)
+        .values({ chainId: BigInt(chainId), ...values })
+        .onConflictDoUpdate({ target: [metaTable.chainId], set: values });
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "recordContracts", cause }),
       ),
     ),
 };

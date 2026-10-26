@@ -31,7 +31,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     async cleanup() {
       await Effect.runPromise(
         db.execute(
-          sql`truncate table "stacksindex"."transactions", "stacksindex"."blocks", "stacksindex"."sync_progress", "stacksindex"."events", "stacksindex"."checkpoints", "stacksindex"."sync_anchors" cascade`,
+          sql`truncate table "stacksindex"."transactions", "stacksindex"."blocks", "stacksindex"."sync_progress", "stacksindex"."events", "stacksindex"."checkpoints", "stacksindex"."sync_anchors", "stacksindex"."meta" cascade`,
         ),
       );
     },

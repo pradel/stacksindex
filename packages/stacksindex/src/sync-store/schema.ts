@@ -1,4 +1,13 @@
-import { bigint, boolean, index, integer, pgSchema, primaryKey, text } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgSchema,
+  primaryKey,
+  text,
+} from "drizzle-orm/pg-core";
 
 /**
  * Postgres schema that holds every table owned by the indexer, so user tables
@@ -124,6 +133,32 @@ export const syncAnchorsTable = stacksindexSchema.table(
   (table) => [
     primaryKey({
       name: "sync_anchors_pkey",
+      columns: [table.chainId],
+    }),
+  ],
+);
+
+/** A contract as recorded in `meta.contracts`: what decides which events are indexed. */
+export interface RecordedContract {
+  readonly id: string;
+  readonly startBlock: number | null;
+  readonly endBlock: number | "latest" | null;
+}
+
+/**
+ * What the indexer using the database was defined with, per chain. Compared
+ * with the definition at the start of every `run` and `live`.
+ */
+export const metaTable = stacksindexSchema.table(
+  "meta",
+  (table) => ({
+    chainId: table.bigint({ mode: "bigint" }).notNull(),
+    /** Defined contracts, ordered by id. */
+    contracts: jsonb("contracts").$type<RecordedContract[]>().notNull(),
+  }),
+  (table) => [
+    primaryKey({
+      name: "meta_pkey",
       columns: [table.chainId],
     }),
   ],

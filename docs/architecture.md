@@ -386,14 +386,42 @@ too, because a canonical block's ancestors are canonical.
 
 On startup, the indexer:
 
-1. Reads the chain tip
-2. Verifies the previous anchor against the canonical chain and discards stored
+1. Compares the defined contracts with the ones recorded in `meta` (see
+   Contract changes)
+2. Reads the chain tip
+3. Verifies the previous anchor against the canonical chain and discards stored
    data that may belong to an orphaned fork (see Reorgs)
-3. Saves the chain tip as the new anchor
-4. Reads `sync_progress` for each contract
-5. Resumes backfilling from the saved cursor, or catches up from the newest
+4. Saves the chain tip as the new anchor
+5. Reads `sync_progress` for each contract
+6. Resumes backfilling from the saved cursor, or catches up from the newest
    events down to `syncedBlockHeight`
-6. Resumes indexing from the checkpoint block
+7. Resumes indexing from the checkpoint block
+
+### Contract changes
+
+Indexing resumes from one checkpoint shared by every contract, and a
+contract's saved `sync_progress` takes precedence over its `startBlock`. A
+definition change can therefore leave events unindexed without any error, so
+`meta` records, per chain, the contracts of the last `run` or `live` (`id`,
+`startBlock`, `endBlock`, with `"latest"` kept unresolved), and
+`checkContractDefinitions` (`runtime/definition.ts`) compares them in one
+transaction before any request:
+
+- **Added** contract: its events at or below the checkpoint would never reach
+  its handler, and a contract re-added after removal resumes its old progress.
+  It fails with `ConfigurationError` unless its `startBlock` is above both the
+  checkpoint and its saved `syncedBlockHeight`.
+- **Changed** `startBlock`/`endBlock`: after indexing started, events indexed
+  under the old range stay and the new range is not backfilled, so it fails.
+  Before, only a lower `startBlock` on a synced contract fails, since its saved
+  progress resumes above the new start.
+- **Removed** or renamed contract (the name is not recorded): accepted. Its
+  stored events have no handler and are skipped.
+
+A failure records nothing. Otherwise the current contracts are recorded. A
+database without a `meta` row (new, or indexed by a version that recorded no
+contracts) records the current ones as is. Handler code and `print` schemas are
+not compared.
 
 ### Reorgs
 
@@ -455,9 +483,9 @@ primary key). Writes for events that disappear in a reorg are not undone.
 
 ## Summary
 
-| Component  | Purpose                          | Storage / Tech                                                                     |
-| ---------- | -------------------------------- | ---------------------------------------------------------------------------------- |
-| Syncer     | Fetch events, txs, blocks        | `stacksindex.events`, `stacksindex.transactions`, `stacksindex.blocks`             |
-| Sync Store | Cache raw Stacks data            | PostgreSQL / PGlite, `stacksindex` schema                                          |
-| Indexer    | Execute handlers, transform data | user tables (`public`)                                                             |
-| Checkpoint | Track progress, enable recovery  | `stacksindex.checkpoints`, `stacksindex.sync_progress`, `stacksindex.sync_anchors` |
+| Component  | Purpose                          | Storage / Tech                                                                                         |
+| ---------- | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Syncer     | Fetch events, txs, blocks        | `stacksindex.events`, `stacksindex.transactions`, `stacksindex.blocks`                                 |
+| Sync Store | Cache raw Stacks data            | PostgreSQL / PGlite, `stacksindex` schema                                                              |
+| Indexer    | Execute handlers, transform data | user tables (`public`)                                                                                 |
+| Checkpoint | Track progress, enable recovery  | `stacksindex.checkpoints`, `stacksindex.sync_progress`, `stacksindex.sync_anchors`, `stacksindex.meta` |

@@ -90,6 +90,7 @@ export interface ResolvedIndexerConfig {
 
 /** Every failure of `run` and `live`. */
 export type IndexerError =
+  | ConfigurationError
   | StacksApiError
   | HandlerExecutionError
   | EventDecodeError

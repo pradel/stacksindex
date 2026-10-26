@@ -381,7 +381,7 @@ export function runLive(
   const { chainId } = config;
 
   return Effect.gen(function* () {
-    const prepared = yield* prepareContracts(specs);
+    const prepared = yield* prepareContracts(specs, chainId);
 
     yield* runPreparedHistorical(prepared, config, sync);
 
