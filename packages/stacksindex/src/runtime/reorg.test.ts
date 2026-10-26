@@ -203,17 +203,30 @@ describe("canonical chain reconciliation", () => {
     });
   });
 
-  test("replays everything above the finalized block without an anchor", async () => {
+  test("verifies the checkpoint block instead of replaying without an anchor", async () => {
     await seed(null);
     const requested: number[] = [];
 
-    await reconcile({}, requested);
+    await reconcile({ 400: "old-400" }, requested);
 
-    expect(requested).toStrictEqual([]);
+    // Nothing indexed is replayed; only the never-indexed data above 400 is dropped.
+    expect(requested).toStrictEqual([400]);
     await expect(storedState()).resolves.toStrictEqual({
-      blocks: [100, 200],
-      checkpoint: 200,
-      synced: 200,
+      blocks: [100, 200, 300, 400],
+      checkpoint: 400,
+      synced: 400,
+    });
+  });
+
+  test("rewinds to the highest canonical block when the checkpoint block was replaced without an anchor", async () => {
+    await seed(null);
+
+    await reconcile({ 200: "old-200", 300: "old-300", 400: "new-400" });
+
+    await expect(storedState()).resolves.toStrictEqual({
+      blocks: [100, 200, 300],
+      checkpoint: 300,
+      synced: 300,
     });
   });
 

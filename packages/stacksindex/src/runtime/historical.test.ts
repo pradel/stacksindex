@@ -2468,56 +2468,30 @@ describe("historical runtime with handlers", () => {
     }
   });
 
-  test("discards unfinalized data on startup", async () => {
+  test("does not replay handlers after a run that could not read the chain tip", async () => {
     const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100, 200, 300]);
 
-    await testDb.db.insert(blocksTable).values([
-      {
-        chainId: 1n,
-        height: 100n,
-        hash: "block-100",
-        indexBlockHash: "index-block-100",
-        blockTime: 1000n,
-        tenureHeight: 100n,
-      },
-      {
-        chainId: 1n,
-        height: 300n,
-        hash: "block-300",
-        indexBlockHash: "index-block-300",
-        blockTime: 3000n,
-        tenureHeight: 300n,
-      },
-    ]);
-    await testDb.db.insert(transactionsTable).values([
-      {
-        chainId: 1n,
-        txId: "tx-100",
-        blockHeight: 100n,
-        blockHash: "block-100",
-        txIndex: 0,
-        txType: "contract_call",
-        senderAddress: "SP sender",
-        feeRate: 1000n,
-        nonce: 0n,
-        txStatus: "success",
-      },
-      {
-        chainId: 1n,
-        txId: "tx-300",
-        blockHeight: 300n,
-        blockHash: "block-300",
-        txIndex: 0,
-        txType: "contract_call",
-        senderAddress: "SP sender",
-        feeRate: 1000n,
-        nonce: 0n,
-        txStatus: "success",
-      },
-    ]);
-    await testDb.db
-      .insert(eventsTable)
-      .values([storedEventRow("tx-100", 100, 0), storedEventRow("tx-300", 300, 0)]);
+    const runtime = makeRuntime({ db: testDb.db, finality: 50 });
+    const handler = vi.fn(noopHandler);
+
+    // The status request is not mocked: the run indexes without a chain tip.
+    await runtime.run([{ contractId, handler, endBlock: 300 }]);
+    expect(handler).toHaveBeenCalledTimes(3);
+
+    const requestedBlocks: number[] = [];
+    mockAnchoredChain({ 300: "block-300" }, requestedBlocks);
+
+    await runtime.run([{ contractId, handler, endBlock: 300 }]);
+
+    // The checkpoint block stands in for the missing anchor; nothing is replayed.
+    expect(requestedBlocks).toStrictEqual([300]);
+    expect(handler).toHaveBeenCalledTimes(3);
+  });
+
+  test("rewinds an unanchored checkpoint whose block was replaced", async () => {
+    const contractId = "SP123.token";
+    await seedCompleteContract(testDb, contractId, [100, 300]);
 
     // Block 300 is indexed but not finalized; block 200 is the finalized floor.
     await testDb.run(
@@ -2529,15 +2503,7 @@ describe("historical runtime with handlers", () => {
         finalizedBlockTime: 2000,
       }),
     );
-    await testDb.run(
-      syncStore.upsertSyncProgress({
-        contractId,
-        chainId: 1,
-        cursor: null,
-        syncedBlockHeight: 100,
-        isComplete: true,
-      }),
-    );
+    mockAnchoredChain({ 300: "new-300" }, []);
 
     const runtime = makeRuntime({ db: testDb.db });
     const result = await runtime.run([{ contractId, handler: noopHandler, endBlock: 100 }]);
@@ -2547,12 +2513,8 @@ describe("historical runtime with handlers", () => {
     const events = await testDb.db.select().from(eventsTable);
     expect(events.map((row) => Number(row.blockHeight))).toStrictEqual([100]);
 
-    const blocks = await testDb.db.select().from(blocksTable);
-    expect(blocks.map((row) => Number(row.height))).toStrictEqual([100]);
-
     const checkpoint = await testDb.db.select().from(checkpointsTable);
     expect(Number(checkpoint[0].blockHeight)).toBe(200);
-    expect(Number(checkpoint[0].blockTime)).toBe(2000);
     expect(Number(checkpoint[0].finalizedBlockHeight)).toBe(200);
   });
 
@@ -4090,10 +4052,11 @@ describe("historical runtime with handlers", () => {
         return { statusCode: 200, body: mockBody({ results }) };
       }
 
+      // Not retried, so the run fails without waiting out the retry schedule.
       if (url.endsWith("/extended")) {
         return {
-          statusCode: 500,
-          body: mockBody({ error: "Internal Server Error" }),
+          statusCode: 404,
+          body: mockBody({ error: "Not Found" }),
         };
       }
 

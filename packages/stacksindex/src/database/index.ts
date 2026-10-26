@@ -14,15 +14,28 @@ import {
   type EffectPgDatabase as PgEffectPgDatabase,
   makeWithDefaults as makePgWithDefaults,
 } from "drizzle-orm/effect-postgres";
-import type { MigrationConfig } from "drizzle-orm/migrator";
+import { type MigrationConfig, readMigrationFiles } from "drizzle-orm/migrator";
 import { Context, Effect, Layer, Redacted, type Scope } from "effect";
 
 import { DatabaseError, MigrationError } from "../lib/errors.ts";
-import { STACKSINDEX_SCHEMA } from "../sync-store/schema.ts";
+import { STACKSINDEX_SCHEMA, versionTable } from "../sync-store/schema.ts";
+
+/**
+ * Format of the data this version stores in the `stacksindex` schema. Raise it
+ * when a release changes what stored data means, so databases written before
+ * fail to open and are re-synced instead of misread.
+ */
+export const DATA_VERSION = 1;
 
 export type IndexerDb<TRelations extends AnyRelations = AnyRelations> =
   | PgliteEffectPgDatabase<TRelations>
   | PgEffectPgDatabase<TRelations>;
+
+/** The SQL client under the database `connect` builds. */
+type DatabaseClient = PgClient.PgClient | PgliteClient.PgliteClient;
+
+/** The database `connect` builds, unlike a transaction handle, exposes its SQL client. */
+type ConnectedDb = IndexerDb & { readonly $client: DatabaseClient };
 
 /** Where the indexer stores its data; build it with `pglite` or `postgres`. */
 export type Database =
@@ -76,12 +89,63 @@ const runMigrations = (
 /**
  * Creates or upgrades the indexer's own tables. Their bookkeeping lives in
  * `stacksindex.__drizzle_migrations`, apart from the user's migrations.
+ *
+ * Fails when the database knows a migration this version does not ship, or
+ * stores another data format: it was written by another stacksindex version.
+ * A database without a recorded format predates it and holds the first one.
  */
-const migrateInternal = (db: IndexerDb): Effect.Effect<void, MigrationError> =>
-  runMigrations(db, {
-    migrationsFolder: internalMigrationsFolder(),
-    migrationsSchema: STACKSINDEX_SCHEMA,
-  });
+const migrateInternal = (db: ConnectedDb): Effect.Effect<void, MigrationError> =>
+  Effect.gen(function* () {
+    const migrationsFolder = internalMigrationsFolder();
+
+    const shipped = new Set(
+      readMigrationFiles({ migrationsFolder }).map((migration) => migration.name),
+    );
+
+    const [{ exists }] = yield* db.$client.unsafe<{ exists: boolean }>(
+      `select to_regclass('"${STACKSINDEX_SCHEMA}"."__drizzle_migrations"') is not null as exists`,
+    );
+
+    const applied = exists
+      ? yield* db.$client.unsafe<{ name: string | null }>(
+          `select name from "${STACKSINDEX_SCHEMA}"."__drizzle_migrations"`,
+        )
+      : [];
+
+    const unknown = applied.find((row) => row.name !== null && !shipped.has(row.name));
+
+    if (unknown !== undefined) {
+      return yield* new MigrationError({
+        cause: new Error(
+          `The indexer database was upgraded by a newer stacksindex (migration ${unknown.name}); upgrade stacksindex to open it.`,
+        ),
+      });
+    }
+
+    yield* runMigrations(db, { migrationsFolder, migrationsSchema: STACKSINDEX_SCHEMA });
+
+    const [stored] = yield* db.select().from(versionTable).limit(1);
+
+    if (stored === undefined) {
+      yield* db.insert(versionTable).values({ dataVersion: DATA_VERSION });
+
+      return;
+    }
+
+    if (stored.dataVersion !== DATA_VERSION) {
+      return yield* new MigrationError({
+        cause: new Error(
+          stored.dataVersion > DATA_VERSION
+            ? `The indexer database holds data format ${stored.dataVersion}, written by a newer stacksindex; upgrade stacksindex to open it.`
+            : `The indexer database holds data format ${stored.dataVersion}, which this stacksindex (format ${DATA_VERSION}) cannot read. Re-sync from an empty database: drop the "${STACKSINDEX_SCHEMA}" schema and reset your tables.`,
+        ),
+      });
+    }
+  }).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof MigrationError ? cause : new MigrationError({ cause }),
+    ),
+  );
 
 export interface DatabaseOptions {
   /**
@@ -99,7 +163,7 @@ export interface DatabaseOptions {
 const connect = (
   config: Database,
   options?: DatabaseOptions,
-): Effect.Effect<IndexerDb, DatabaseError, Scope.Scope> =>
+): Effect.Effect<ConnectedDb, DatabaseError, Scope.Scope> =>
   Effect.gen(function* () {
     const drizzleConfig = { relations: options?.relations };
 
@@ -126,7 +190,11 @@ export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>
     make: Effect.die("IndexerDatabase must be provided via IndexerDatabase.layer"),
   },
 ) {
-  /** Opens the database, then creates or upgrades the indexer's tables and the user's. */
+  /**
+   * Opens the database, then creates or upgrades the indexer's tables and the
+   * user's. Processes opening the same Postgres database at once migrate one
+   * after the other.
+   */
   static readonly layer = (
     config: Database,
     options?: DatabaseOptions,
@@ -134,11 +202,17 @@ export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>
     Layer.effect(
       IndexerDatabase,
       connect(config, options).pipe(
-        Effect.tap(migrateInternal),
         Effect.tap((db) =>
-          options?.migrations === undefined
-            ? Effect.void
-            : runMigrations(db, { migrationsFolder: options.migrations }),
+          Effect.scoped(
+            Effect.gen(function* () {
+              yield* advisoryLock(db.$client, "stacksindex:migrations", { wait: true });
+              yield* migrateInternal(db);
+
+              if (options?.migrations !== undefined) {
+                yield* runMigrations(db, { migrationsFolder: options.migrations });
+              }
+            }),
+          ),
         ),
       ),
     );
@@ -165,4 +239,67 @@ export class IndexerDatabase extends Context.Service<IndexerDatabase, IndexerDb>
           ),
         );
     });
+
+  /**
+   * Takes the lock of `chainId`'s indexer until the scope closes. Resolves
+   * `false`, holding nothing, when another session holds it.
+   */
+  static readonly lock = (
+    chainId: number,
+  ): Effect.Effect<boolean, DatabaseError, IndexerDatabase | Scope.Scope> =>
+    Effect.gen(function* () {
+      // SAFETY: Outside transactions the service holds the database `connect` built.
+      const db = (yield* IndexerDatabase) as ConnectedDb;
+
+      // One 64-bit key per chain, so indexers of different chains share a database.
+      return yield* advisoryLock(db.$client, `stacksindex:${chainId}`, { wait: false });
+    });
+}
+
+/**
+ * Takes the session-level advisory lock on `key` on a connection reserved
+ * until the scope closes, waiting for it with `wait`, else resolving `false`
+ * when another session holds it. Postgres releases it when the connection
+ * drops, so a crashed process does not keep it.
+ *
+ * PGlite runs in this process on a single connection that reserving would
+ * block, and no other process can open it, so it holds nothing there.
+ */
+function advisoryLock(
+  client: DatabaseClient,
+  key: string,
+  options: { readonly wait: boolean },
+): Effect.Effect<boolean, DatabaseError, Scope.Scope> {
+  if ("pglite" in client) {
+    return Effect.succeed(true);
+  }
+
+  return Effect.gen(function* () {
+    const connection = yield* client.reserve;
+    const lock = options.wait ? "pg_advisory_lock" : "pg_try_advisory_lock";
+
+    const [row] = yield* connection.execute(
+      `select ${lock}(hashtextextended($1, 0)) as locked`,
+      [key],
+      undefined,
+    );
+
+    // `pg_advisory_lock` returns once it holds the lock, and no value.
+    if (!options.wait && row?.locked !== true) {
+      return false;
+    }
+
+    // Runs before the connection returns to the pool, so it never leaves holding the lock.
+    yield* Effect.addFinalizer(() =>
+      connection
+        .execute("select pg_advisory_unlock(hashtextextended($1, 0))", [key], undefined)
+        .pipe(Effect.ignore),
+    );
+
+    return true;
+  }).pipe(
+    Effect.catchTag("SqlError", (cause) =>
+      Effect.fail(new DatabaseError({ operation: "lock", cause })),
+    ),
+  );
 }

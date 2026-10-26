@@ -230,6 +230,19 @@ describe("live indexing", () => {
     });
   });
 
+  test("retries a failed historical sync before following new blocks", async () => {
+    const handled: HandledEvent[] = [];
+    // The backfill's catch-up request fails once.
+    chain.failures.set(`/extended/v2/smart-contracts/${CONTRACT_ID}/logs`, 1);
+
+    const exit = await runLive(testDb, [
+      { contractId: CONTRACT_ID, handler: recordingHandler(handled), endBlock: 100 },
+    ]);
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(handled).toStrictEqual([{ height: 100, txId: "tx-100" }]);
+  });
+
   test("replays the canonical fork after a reorg", async () => {
     const handled: HandledEvent[] = [];
 

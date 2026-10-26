@@ -198,6 +198,14 @@ export interface Indexer<TRelations extends AnyRelations = EmptyRelations> {
   live: () => Promise<void>;
   /** Current phase plus the stored checkpoint, anchor and per-contract sync progress. */
   status: () => Promise<IndexerStatus>;
+  /**
+   * Makes the next `run` or `live` replay every stored event through the
+   * handlers, keeping the fetched chain data, e.g. after changing a handler
+   * or a contract. `clearTables` empties the tables the handlers write, in the
+   * same transaction as the reset. Rejects with `LockError` while `run` or
+   * `live` is running.
+   */
+  reindex: (clearTables?: (db: IndexerDb<TRelations>) => Promise<void> | void) => Promise<void>;
   /** Flush pending metrics and release the database and runtime. Safe to call multiple times. */
   close: () => Promise<void>;
   [Symbol.asyncDispose]: () => Promise<void>;
@@ -447,6 +455,30 @@ async function createIndexer<
       ensureOpen();
 
       return runtime.runPromise(service.status);
+    },
+    reindex: async (clearTables) => {
+      ensureOpen();
+
+      return runtime.runPromise(
+        service.reindex(
+          clearTables === undefined
+            ? undefined
+            : Effect.gen(function* () {
+                const services = yield* Effect.context<IndexerDatabase>();
+
+                // SAFETY: The database was opened with `relations`, typed as `TRelations`.
+                const tx = toThenable(
+                  Context.get(services, IndexerDatabase),
+                  Effect.runPromiseWith(services),
+                ) as IndexerDb<TRelations>;
+
+                yield* Effect.tryPromise({
+                  try: () => Promise.resolve(clearTables(tx)),
+                  catch: (err) => err,
+                });
+              }),
+        ),
+      );
     },
     close,
     [Symbol.asyncDispose]: close,

@@ -36,6 +36,11 @@ Responsibilities:
 
 PostgreSQL / PGlite tables that cache raw blockchain data. This avoids re-fetching data on restarts and enables efficient queries during indexing. They live in the `stacksindex` Postgres schema, and their migrations are tracked in `stacksindex.__drizzle_migrations`; opening the database (`create`, or `layer` with the Effect API) applies them.
 
+Opening the database (`IndexerDatabase.layer`) on Postgres takes the session advisory lock `stacksindex:migrations` (waiting for it) on a reserved connection while it migrates, so processes opening a new database at once migrate one after the other instead of racing `CREATE TABLE`. It then refuses, with `MigrationError`:
+
+- a database whose `__drizzle_migrations` holds a migration this version does not ship: a newer stacksindex upgraded it;
+- a database whose `stacksindex.version` row holds another data format than `DATA_VERSION` (`database/index.ts`). A release that changes what stored data means raises `DATA_VERSION`, so older databases are re-synced instead of misread, and older releases refuse newer ones. A database without the row predates it and holds format 1.
+
 ### Indexer
 
 Processes events from the sync store: decodes each print, parses it with the contract's `print` schema, and executes the contract's handler with a database scoped to the batch transaction and a read-only contract client.
@@ -282,7 +287,7 @@ Both store the same rows, and the per-block path raises every syncing contract's
 
 **Reorgs.** A head built on the anchor (or blocks linking it) proves the anchor canonical without a request. Otherwise the anchor check of `reconcileWithCanonicalChain` runs, and a reorged range is rewound and replayed like at the start of a run.
 
-**Errors.** A failed pass is retried with the next head. `live` fails once 10 consecutive passes failed over at least 10 minutes (Ponder's realtime budget), and at once on handler, print decode (`EventDecodeError`), database, cursor or finalized-reorg errors.
+**Errors.** Each API request is retried 6 times (exponential from 500ms, jittered, about 30s) on transport errors, 30s timeouts (of the response, then of its body; measured below the rate limiter, so throttling waits do not count) and 408/5xx responses; 429s wait for `Retry-After`. A failed pass is retried with the next head, and the historical pass that starts `live` after `pollingInterval`, under one failure budget: `live` fails once 10 consecutive passes failed over at least 10 minutes (Ponder's realtime budget), and at once on configuration, handler, print decode (`EventDecodeError`), database, cursor or finalized-reorg errors.
 
 ## Key Data Structures
 
@@ -339,7 +344,7 @@ The core handler contract is Effect-only: `CoreHandler` reads the batch transact
 
 ### Entrypoints
 
-- `stacksindex` — promise-native facade: `defineIndexer({ contracts, relations })` returns `{ contracts, handler, create }`. `create({ database, migrations, chain, api, finality, live, logLevel, telemetry, handlers })` owns the database and runtime lifecycle and returns `{ db, run, live, status, close, [Symbol.asyncDispose] }`. `run` returns a `RunResult`; `live` resolves when every contract reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `close()` flushes the metrics exporter. `database` is `pglite(directory?)` or `postgres(connectionString)`.
+- `stacksindex` — promise-native facade: `defineIndexer({ contracts, relations })` returns `{ contracts, handler, create }`. `create({ database, migrations, chain, api, finality, live, logLevel, telemetry, handlers })` owns the database and runtime lifecycle and returns `{ db, run, live, status, reindex, close, [Symbol.asyncDispose] }`. `run` returns a `RunResult`; `live` resolves when every contract reached its `endBlock` or on `close()`; `status()` returns an `IndexerStatus`; `reindex(clearTables?)` adapts `(db) => Promise<void> | void` to an Effect run in the reset transaction; `close()` flushes the metrics exporter. `database` is `pglite(directory?)` or `postgres(connectionString)`.
 - `stacksindex/effect` — Effect-native facade: `defineIndexer` returns `{ contracts, Db, Client, handler, layer }`; `layer(options)` provides `Indexer | IndexerDatabase` and fails with `ConfigurationError | DatabaseError | MigrationError`. Also exports the `Indexer` service tag.
 - `stacksindex/clarity` — the Clarity codec: `decodeHex`, `cvToJSON`, `decodeClarityValue`, `decodeClarityWithSchema`, `encodeUint`, `ClarityTypeID`.
 
@@ -352,7 +357,7 @@ The core handler contract is Effect-only: `CoreHandler` reads the batch transact
 The runtime is composed from Effect services and layers (internal; the facades build them):
 
 - `IndexerDatabase` — the Drizzle database; `IndexerDatabase.layer(database, { relations, migrations })` opens it, applies the sync store migrations then the user's, and `IndexerDatabase.transaction(f)` re-provides the transaction handle as the service.
-- `Indexer` — `Indexer.layer({ chain, api, finality, live, contracts })` builds the Stacks API client and the in-memory `RunPhase`, and requires `IndexerDatabase`; the service exposes `run`, `live` and `status` effects with no arguments. `run` and `live` set the phase (`backfill`, then `done`, `failed`, or `idle` when interrupted; `runLive` sets `live` once it follows new heads) and add the `chain_id` attribute to every metric recorded inside through `Metric.CurrentMetricAttributes`. `status` combines the phase with the stored checkpoint, sync anchor and per-contract sync progress. `Indexer.layerWithDatabase({ database, migrations, relations, chain, api, finality, live, logLevel, telemetry, contracts })` provides the indexer, database, logger and, with `telemetry.otlp`, the metrics exporter in one layer.
+- `Indexer` — `Indexer.layer({ chain, api, finality, live, contracts })` builds the Stacks API client and the in-memory `RunPhase`, and requires `IndexerDatabase`; the service exposes `run`, `live` and `status` effects with no arguments, and `reindex(clearTables?)`. `run` and `live` set the phase (`backfill`, then `done`, `failed`, or `idle` when interrupted; `runLive` sets `live` once it follows new heads) and add the `chain_id` attribute to every metric recorded inside through `Metric.CurrentMetricAttributes`. Concurrent `run`/`live` calls of one indexer share the database lock: the first to start takes `IndexerDatabase.lock(chainId)` (a session advisory lock on a reserved Postgres connection, failing with `LockError` when another session holds it; PGlite takes none) and the last to end releases it. `reindex` fails with `LockError` while a call runs, else takes the lock for its transaction. `status` combines the phase with the stored checkpoint, sync anchor and per-contract sync progress. `Indexer.layerWithDatabase({ database, migrations, relations, chain, api, finality, live, logLevel, telemetry, contracts })` provides the indexer, database, logger and, with `telemetry.otlp`, the metrics exporter in one layer.
 - `Indexing` — `createIndexing({ contracts, client })` decodes and executes handlers inside `IndexerDatabase.transaction`.
 - `HandlerClient` — the read-only client pinned to the handled event's index block hash, provided per event.
 - `telemetryLayer(telemetry)` — `OtlpMetrics.layer` over the fetch HTTP client with protobuf serialization, posting to `${baseUrl}/v1/metrics`. Metrics are defined once in `lib/metrics.ts` and recorded in Effect's default `MetricRegistry`; per-contract series carry `contract` (definition name) and `contract_id`. Nothing is served over HTTP. Closing the layer flushes the last snapshot.
@@ -386,16 +391,18 @@ too, because a canonical block's ancestors are canonical.
 
 On startup, the indexer:
 
-1. Compares the defined contracts with the ones recorded in `meta` (see
+1. Takes the database lock of its chain, failing with `LockError` when another
+   indexer of the chain holds it
+2. Compares the defined contracts with the ones recorded in `meta` (see
    Contract changes)
-2. Reads the chain tip
-3. Verifies the previous anchor against the canonical chain and discards stored
+3. Reads the chain tip
+4. Verifies the previous anchor against the canonical chain and discards stored
    data that may belong to an orphaned fork (see Reorgs)
-4. Saves the chain tip as the new anchor
-5. Reads `sync_progress` for each contract
-6. Resumes backfilling from the saved cursor, or catches up from the newest
+5. Saves the chain tip as the new anchor
+6. Reads `sync_progress` for each contract
+7. Resumes backfilling from the saved cursor, or catches up from the newest
    events down to `syncedBlockHeight`
-7. Resumes indexing from the checkpoint block
+8. Resumes indexing from the checkpoint block
 
 ### Contract changes
 
@@ -423,6 +430,16 @@ database without a `meta` row (new, or indexed by a version that recorded no
 contracts) records the current ones as is. Handler code and `print` schemas are
 not compared.
 
+### Re-indexing
+
+`reindex(clearTables?)` (`resetIndexing` in `runtime/definition.ts`) runs in
+one transaction: `clearTables` (the user's tables), then it deletes the
+sync progress of contracts added or whose range changed since `meta` recorded
+them (they are fetched again over their new range), deletes the checkpoint and
+records the current contracts. The fetched events, transactions, blocks and the
+other contracts' progress stay, so the next pass replays every stored event
+through the handlers without fetching it again.
+
 ### Reorgs
 
 Reorgs are detected, not assumed. At startup the runtime fetches the block at
@@ -446,15 +463,19 @@ the anchor height (`GET /extended/v2/blocks/{height}`) and compares its hash:
   way.
 
 Without an anchor (first run after upgrading, or the chain tip could not be
-read in the previous run) stored data cannot be verified, so everything above
-`finalizedBlockHeight` is discarded and replayed.
+read in the previous pass, whose indexing was then not capped) the newest
+stored block at or below the checkpoint stands in for it, since nothing above
+the checkpoint was indexed: it is verified like an anchor, so nothing is
+replayed when it is still canonical. Only when no block is stored between the
+finalized block and the checkpoint is that range rewound unverified; it holds
+no stored event, so no handler runs again.
 
 The catch-up refetches from the canonical chain: the logs endpoint only returns
 canonical events, and the catch-up follows cursors returned by the same walk.
 
 Handler writes through `context.db` commit in the same transaction as the
 checkpoint, so a crash or a failed batch never applies an event twice. A rewind
-re-runs handlers for the replayed range without undoing their writes, so writes
+after a reorg re-runs handlers for the replayed range without undoing their writes, so writes
 must be replay-safe for the unfinalized window (upsert or insert-if-absent by
 primary key). Writes for events that disappear in a reorg are not undone.
 
@@ -486,6 +507,6 @@ primary key). Writes for events that disappear in a reorg are not undone.
 | Component  | Purpose                          | Storage / Tech                                                                                         |
 | ---------- | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Syncer     | Fetch events, txs, blocks        | `stacksindex.events`, `stacksindex.transactions`, `stacksindex.blocks`                                 |
-| Sync Store | Cache raw Stacks data            | PostgreSQL / PGlite, `stacksindex` schema                                                              |
+| Sync Store | Cache raw Stacks data            | PostgreSQL / PGlite, `stacksindex` schema, format in `stacksindex.version`                             |
 | Indexer    | Execute handlers, transform data | user tables (`public`)                                                                                 |
 | Checkpoint | Track progress, enable recovery  | `stacksindex.checkpoints`, `stacksindex.sync_progress`, `stacksindex.sync_anchors`, `stacksindex.meta` |
