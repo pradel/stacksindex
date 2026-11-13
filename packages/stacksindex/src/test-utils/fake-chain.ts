@@ -46,8 +46,8 @@ export interface FakeChain {
   readonly failures: Map<string, number>;
   /** Heights served instead of the tip by the next head polls (a lagging replica). */
   readonly staleHeads: number[];
-  /** Called before each head poll (`GET /extended/v2/blocks?limit=1`) is answered. */
-  onHeadPoll: (() => void) | undefined;
+  /** Awaited before each head poll (`GET /extended/v2/blocks?limit=1`) is answered. */
+  onHeadPoll: (() => void | Promise<void>) | undefined;
   /** Appends a block on top of the tip. */
   readonly mine: (transactions?: readonly FakeTransaction[]) => void;
   /** Drops every block at or above `height`; the next `mine` builds a fork from there. */
@@ -278,12 +278,12 @@ export function createFakeChain(options: { readonly baseHeight: number }): FakeC
     });
   };
 
-  const listBlocks = (chain: FakeChain, params: URLSearchParams) => {
+  const listBlocks = async (chain: FakeChain, params: URLSearchParams) => {
     const limit = Number(params.get("limit") ?? 20);
     const offset = Number(params.get("offset") ?? 0);
 
     if (limit === 1 && offset === 0) {
-      chain.onHeadPoll?.();
+      await chain.onHeadPoll?.();
 
       const staleHeight = staleHeads.shift();
 
