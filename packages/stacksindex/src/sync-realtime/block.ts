@@ -122,6 +122,7 @@ function fetchTransactionLogs(
       const page: TransactionEventsResponse = yield* client.getTransactionEvents(txId, {
         limit: TRANSACTION_EVENTS_PAGE_LIMIT,
         cursor,
+        type: ["contract_log"],
       });
 
       for (const event of page.results) {

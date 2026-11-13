@@ -141,7 +141,7 @@
       ]
     }
   },
-  "GET https://api.hiro.so/extended/v3/transactions/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d/events?limit=50": {
+  "GET https://api.hiro.so/extended/v3/transactions/0x09c68a8d69a662e93d10fda7d7bb8c4c61487af23ccf6595fb6e1341466e217d/events?limit=50&type=contract_log": {
     "statusCode": 200,
     "body": {
       "total": 1,

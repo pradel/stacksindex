@@ -139,15 +139,25 @@ const decodeUntil =
   (value) =>
     schemaChanged() ? Effect.fail({ message: "Expected a swap" }) : Effect.succeed(value);
 
-/** Runs one scripted step per head poll, after the first poll. */
-const scriptHeads = (chain: FakeChain, steps: readonly (() => void)[]) => {
+/**
+ * Runs one scripted step per head poll, after the first poll. A step waits
+ * until a pass has anchored at the current tip: live sync keeps only the
+ * newest head, so mining before the previous head was taken would skip it.
+ */
+const scriptHeads = (chain: FakeChain, testDb: TestDatabase, steps: readonly (() => void)[]) => {
   const pending = [...steps];
   let polls = 0;
 
-  chain.onHeadPoll = () => {
+  chain.onHeadPoll = async () => {
     polls += 1;
 
-    if (polls > 1) {
+    if (polls === 1 || pending.length === 0) {
+      return;
+    }
+
+    const anchor = await testDb.run(syncStore.getSyncAnchor({ chainId: 1 }));
+
+    if (anchor?.blockHash === chain.blocks.at(-1)?.hash) {
       pending.shift()?.();
     }
   };
@@ -192,7 +202,7 @@ describe("live indexing", () => {
   test("indexes blocks as they arrive and stops at the end block", async () => {
     const handled: HandledEvent[] = [];
 
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         chain.mine([logTx("tx-101")]);
       },
@@ -233,7 +243,7 @@ describe("live indexing", () => {
   test("replays the canonical fork after a reorg", async () => {
     const handled: HandledEvent[] = [];
 
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         chain.mine([logTx("tx-101-orphaned")]);
       },
@@ -269,7 +279,7 @@ describe("live indexing", () => {
   });
 
   test("fails with ReorgError when a reorg replaces a finalized block", async () => {
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         chain.mine([logTx("tx-101")]);
       },
@@ -290,7 +300,7 @@ describe("live indexing", () => {
   test("retries a head whose sync failed with the next head", async () => {
     const handled: HandledEvent[] = [];
 
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         chain.mine([logTx("tx-101")]);
         // The catch-up request for this head fails once.
@@ -314,7 +324,7 @@ describe("live indexing", () => {
     const registry: Metric.MetricRegistry = new Map();
     const realtimeByTx: Record<string, number | undefined> = {};
 
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         chain.mine([logTx("tx-101")]);
       },
@@ -346,7 +356,7 @@ describe("live indexing", () => {
     const registry: Metric.MetricRegistry = new Map();
     const failuresByTx: Record<string, number | undefined> = {};
 
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         chain.mine([logTx("tx-101")]);
         chain.failures.set(`/extended/v2/smart-contracts/${CONTRACT_ID}/logs`, 1);
@@ -380,7 +390,7 @@ describe("live indexing", () => {
   });
 
   test("fails at once when a handler fails", async () => {
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         chain.mine([logTx("tx-101")]);
       },
@@ -407,7 +417,7 @@ describe("live indexing", () => {
     let mismatch = false;
     const handled: HandledEvent[] = [];
 
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         mismatch = true;
         chain.mine([logTx("tx-101")]);
@@ -435,7 +445,7 @@ describe("live indexing", () => {
   test("ignores a head below the indexed tip instead of replaying", async () => {
     const handled: HandledEvent[] = [];
 
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         chain.mine([logTx("tx-101")]);
       },
@@ -469,7 +479,7 @@ describe("live indexing", () => {
 
     chain.mine([logTx("tx-nested-101", contractId)]);
 
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         chain.mine([logTx("tx-nested-102", contractId)]);
       },
@@ -497,7 +507,7 @@ describe("live indexing", () => {
 
     const handled: HandledEvent[] = [];
 
-    scriptHeads(chain, [
+    scriptHeads(chain, testDb, [
       () => {
         chain.mine([
           {
@@ -514,7 +524,7 @@ describe("live indexing", () => {
         chain.mine();
       },
       () => {
-        // The log sits on the second events page.
+        // 120 asset events precede the log; filtering by type keeps it on the first events page.
         chain.mine([
           { txId: "tx-103", assetEvents: 120, events: [{ contractId: "SP1.e", eventIndex: 120 }] },
         ]);
@@ -541,7 +551,56 @@ describe("live indexing", () => {
     // Only the historical pass read contract logs: one page per contract.
     expect(countRequests(chain, /\/logs\?/u)).toBe(contractIds.length);
     expect(countRequests(chain, /^\/extended\/v3\/blocks\/0x10[1-3]\/transactions/u)).toBe(3);
-    expect(countRequests(chain, /^\/extended\/v3\/transactions\/tx-103\/events/u)).toBe(2);
+    expect(countRequests(chain, /^\/extended\/v3\/transactions\/tx-103\/events/u)).toBe(1);
+  });
+
+  test("pages through more than 100 contract logs of one transaction block by block", async () => {
+    const contractIds = [CONTRACT_ID, "SP1.b", "SP1.c"];
+
+    for (const contractId of contractIds.slice(1)) {
+      await seedSynced(testDb, contractId);
+    }
+
+    // Asset events take indexes 0..29, so log pages start at event indexes, not offsets.
+    const logIndexes = Array.from({ length: 150 }, (_, index) => 30 + index);
+    const handled: string[] = [];
+
+    scriptHeads(chain, testDb, [
+      () => {
+        chain.mine([
+          {
+            txId: "tx-101",
+            assetEvents: 30,
+            events: logIndexes.map((eventIndex) => ({ contractId: CONTRACT_ID, eventIndex })),
+          },
+        ]);
+      },
+    ]);
+
+    const exit = await runLive(
+      testDb,
+      contractIds.map((contractId) => ({
+        contractId,
+        handler: (event: PrintEvent<unknown>) =>
+          Effect.sync(() => {
+            handled.push(`${event.txId}:${event.eventIndex}`);
+          }),
+        endBlock: 101,
+      })),
+    );
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(handled).toStrictEqual([
+      "tx-100:0",
+      ...logIndexes.map((eventIndex) => `tx-101:${eventIndex}`),
+    ]);
+    expect(countRequests(chain, /^\/extended\/v3\/blocks\/0x101\/transactions/u)).toBe(1);
+    expect(
+      chain.requests.filter((request) => request.startsWith("/extended/v3/transactions/tx-101/")),
+    ).toStrictEqual([
+      "/extended/v3/transactions/tx-101/events?limit=100&type=contract_log",
+      "/extended/v3/transactions/tx-101/events?limit=100&cursor=130&type=contract_log",
+    ]);
   });
 
   test("close() ends live indexing on the promise API", async () => {

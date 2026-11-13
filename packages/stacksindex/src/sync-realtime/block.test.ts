@@ -252,7 +252,9 @@ describe("per-block sync", () => {
     );
 
     expect(stored).toBe(1);
-    expect(eventsRequests).toStrictEqual(["/extended/v3/transactions/tx-104-log/events?limit=100"]);
+    expect(eventsRequests).toStrictEqual([
+      "/extended/v3/transactions/tx-104-log/events?limit=100&type=contract_log",
+    ]);
   });
 
   test("estimates one transactions page plus one events page per transaction", () => {

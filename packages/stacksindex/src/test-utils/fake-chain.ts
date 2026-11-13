@@ -46,8 +46,8 @@ export interface FakeChain {
   readonly failures: Map<string, number>;
   /** Heights served instead of the tip by the next head polls (a lagging replica). */
   readonly staleHeads: number[];
-  /** Called before each head poll (`GET /extended/v2/blocks?limit=1`) is answered. */
-  onHeadPoll: (() => void) | undefined;
+  /** Awaited before each head poll (`GET /extended/v2/blocks?limit=1`) is answered. */
+  onHeadPoll: (() => void | Promise<void>) | undefined;
   /** Appends a block on top of the tip. */
   readonly mine: (transactions?: readonly FakeTransaction[]) => void;
   /** Drops every block at or above `height`; the next `mine` builds a fork from there. */
@@ -146,6 +146,36 @@ const contractLogValue = (event: FakeEvent) => ({
   // `(ok true)`: handlers receive the value decoded, so it must be valid Clarity.
   value: { hex: "0x0703", repr: event.repr ?? "(ok true)" },
 });
+
+/**
+ * One `GET /extended/v3/transactions/{tx_id}/events` page. As on the API, `type`
+ * repeats or holds comma-separated values (absent means every type), and a
+ * cursor is the `event_index` a page starts at, so filtered pages skip indexes.
+ */
+const transactionEventsPage = (transaction: FakeTransaction, params: URLSearchParams) => {
+  const types = new Set(params.getAll("type").flatMap((value) => value.split(",")));
+  const limit = Number(params.get("limit") ?? 20);
+  const start = Number(params.get("cursor") ?? 0);
+
+  const events = transactionEvents(transaction)
+    .filter((event) => types.size === 0 || types.has(event.type))
+    .toSorted((a, b) => a.event_index - b.event_index);
+
+  const page = events.filter((event) => event.event_index >= start).slice(0, limit + 1);
+  const [first] = page;
+  const next = page.length > limit ? String(page[limit].event_index) : null;
+
+  return json({
+    total: events.length,
+    limit,
+    cursor: {
+      next,
+      previous: null,
+      current: first === undefined ? null : String(first.event_index),
+    },
+    results: page.slice(0, limit),
+  });
+};
 
 /** Pages `items` through an offset `cursor`, answering with `cursor.next`. */
 const offsetPage = (items: readonly Schema.Json[], params: URLSearchParams) => {
@@ -248,12 +278,12 @@ export function createFakeChain(options: { readonly baseHeight: number }): FakeC
     });
   };
 
-  const listBlocks = (chain: FakeChain, params: URLSearchParams) => {
+  const listBlocks = async (chain: FakeChain, params: URLSearchParams) => {
     const limit = Number(params.get("limit") ?? 20);
     const offset = Number(params.get("offset") ?? 0);
 
     if (limit === 1 && offset === 0) {
-      chain.onHeadPoll?.();
+      await chain.onHeadPoll?.();
 
       const staleHeight = staleHeads.shift();
 
@@ -372,7 +402,7 @@ export function createFakeChain(options: { readonly baseHeight: number }): FakeC
 
       return located === undefined
         ? notFound()
-        : offsetPage(transactionEvents(located.block.transactions[located.txIndex]), params);
+        : transactionEventsPage(located.block.transactions[located.txIndex], params);
     }
 
     return notFound();
