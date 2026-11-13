@@ -88,11 +88,12 @@ function followHeads<A, E, R>(
 /**
  * Errors worth retrying with the next head: API transport, status and rate
  * limit failures, and transaction batches missing ids the API has not caught
- * up on yet. Handler, decode, database, cursor and reorg errors fail `live` at
- * once: retrying replays the same events and fails the same way.
+ * up on yet. Configuration, handler, decode, database, cursor and reorg errors
+ * fail `live` at once: retrying replays the same events and fails the same way.
  */
 function isTransientError(error: IndexerError): boolean {
   return !(
+    Predicate.isTagged(error, "ConfigurationError") ||
     Predicate.isTagged(error, "HandlerExecutionError") ||
     Predicate.isTagged(error, "EventDecodeError") ||
     Predicate.isTagged(error, "ReorgError") ||
@@ -382,8 +383,57 @@ export function runLive(
 
   return Effect.gen(function* () {
     const prepared = yield* prepareContracts(specs, chainId);
+    // Shared by the backfill and every head: `live` fails once passes failed
+    // In a row for long enough, or at once on an error retrying cannot fix.
+    const budget = createFailureBudget();
 
-    yield* runPreparedHistorical(prepared, config, sync);
+    /** Records a failed pass, then fails with `error` unless the budget allows a retry. */
+    const recordFailure = (error: IndexerError, message: string, block: number | null) =>
+      Effect.gen(function* () {
+        const isSpent = budget.recordFailure(yield* Clock.currentTimeMillis);
+
+        yield* Metric.update(liveSyncErrors, 1);
+        yield* Metric.update(liveConsecutiveFailures, budget.consecutiveFailures());
+
+        if (!isTransientError(error) || isSpent) {
+          return yield* Effect.fail(error);
+        }
+
+        yield* Effect.logWarning(message).pipe(
+          Effect.annotateLogs({
+            chainId,
+            phase: "live",
+            block,
+            consecutiveFailures: budget.consecutiveFailures(),
+            error: String(error),
+          }),
+        );
+      });
+
+    const recordSuccess = Effect.suspend(() => {
+      budget.reset();
+
+      return Metric.update(liveConsecutiveFailures, 0);
+    });
+
+    // The backfill before following heads is retried like a head: a short API
+    // Outage must not end `live` before it reaches the chain tip.
+    while (true) {
+      const backfill = yield* Effect.result(runPreparedHistorical(prepared, config, sync));
+
+      if (Result.isSuccess(backfill)) {
+        yield* recordSuccess;
+
+        break;
+      }
+
+      yield* recordFailure(
+        backfill.failure,
+        `Historical sync failed; retrying in ${config.live.pollingInterval}ms`,
+        null,
+      );
+      yield* Effect.sleep(Duration.millis(config.live.pollingInterval));
+    }
 
     const endBlockHeight = getEndBlockHeight(prepared);
 
@@ -412,39 +462,20 @@ export function runLive(
 
     yield* Ref.set(yield* RunPhase, "live");
 
-    const budget = createFailureBudget();
-
     const handleHead = (head: LightBlock) =>
       Effect.gen(function* () {
         const outcome = yield* Effect.result(processHead({ config, sync, prepared, head }));
 
         if (Result.isSuccess(outcome)) {
-          budget.reset();
-          yield* Metric.update(liveConsecutiveFailures, 0);
+          yield* recordSuccess;
 
           return outcome.success.type === "skipped" || !isComplete(outcome.success.blockHeight);
         }
 
-        const error = outcome.failure;
-        const isSpent = budget.recordFailure(yield* Clock.currentTimeMillis);
-
-        yield* Metric.update(liveSyncErrors, 1);
-        yield* Metric.update(liveConsecutiveFailures, budget.consecutiveFailures());
-
-        if (!isTransientError(error) || isSpent) {
-          return yield* Effect.fail(error);
-        }
-
-        yield* Effect.logWarning(
+        yield* recordFailure(
+          outcome.failure,
           `Failed to index block ${head.height}; retrying with the next block`,
-        ).pipe(
-          Effect.annotateLogs({
-            chainId,
-            phase: "live",
-            block: head.height,
-            consecutiveFailures: budget.consecutiveFailures(),
-            error: String(error),
-          }),
+          head.height,
         );
 
         return true;

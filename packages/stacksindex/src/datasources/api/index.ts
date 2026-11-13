@@ -181,7 +181,14 @@ export interface StacksClientService {
   ) => Effect.Effect<CallReadResponse, StacksHttpError>;
 }
 
-const MAX_RETRIES = 3;
+/**
+ * Retries of a transient failure, at 0.5, 1, 2, 4, 8 and 16 s (jittered): a
+ * request rides out about 30 s of API outage before failing.
+ */
+const MAX_RETRIES = 6;
+
+/** Longest wait for a response, and then for its body, before retrying. */
+const REQUEST_TIMEOUT = Duration.seconds(30);
 
 const RETRYABLE_STATUSES = [408, 500, 502, 503, 504];
 
@@ -216,6 +223,24 @@ function isRetryable(
 }
 
 const retrySchedule = Schedule.exponential(Duration.millis(500)).pipe(Schedule.jittered);
+
+/** Fails `effect` with a retryable transport error when it outlasts `REQUEST_TIMEOUT`. */
+const withRequestTimeout = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  request: HttpClientRequest.HttpClientRequest,
+): Effect.Effect<A, E | HttpClientError.HttpClientError, R> =>
+  Effect.timeoutOrElse(effect, {
+    duration: REQUEST_TIMEOUT,
+    orElse: () =>
+      Effect.fail(
+        new HttpClientError.HttpClientError({
+          reason: new HttpClientError.TransportError({
+            request,
+            description: `No response within ${Duration.format(REQUEST_TIMEOUT)}`,
+          }),
+        }),
+      ),
+  });
 
 /** The `StacksClient` method name; URL paths embed tx ids and hashes, so never label by them. */
 type Endpoint = keyof StacksClientService;
@@ -298,8 +323,8 @@ function execute<A>(
 
   return Effect.flatMap(Clock.currentTimeMillis, (startedAt) =>
     client.execute(request).pipe(
+      Effect.flatMap((response) => withRequestTimeout(response.json, request)),
       Effect.retry({ schedule: retrySchedule, times: MAX_RETRIES, while: isRetryable }),
-      Effect.flatMap((response) => response.json),
       Effect.map(
         (json) =>
           // SAFETY: The endpoint's JSON shape is fixed by the API contract that selected A.
@@ -331,19 +356,22 @@ const makeHttpClient = () =>
     const baseClient = yield* HttpClient.HttpClient;
     const limiter = yield* RateLimiter.RateLimiter;
 
-    // Count every attempt here, below the rate limiter and `execute`'s retry,
-    // So retried 429s and transient failures are each counted.
-    const countedClient = HttpClient.transformResponse(baseClient, (effect) =>
-      Effect.flatMap(Effect.service(ApiEndpoint), ({ responses }) =>
-        effect.pipe(
-          Effect.tap((response) => Metric.update(responses[responseStatus(response.status)], 1)),
-          Effect.tapError((error) =>
-            Predicate.isTagged(error.reason, "TransportError")
-              ? Metric.update(responses.network, 1)
-              : Effect.void,
+    // Bound each attempt below the rate limiter, so throttling waits are not
+    // Cut short, and count every attempt here, below the rate limiter and
+    // `execute`'s retry, so retried 429s and transient failures are each counted.
+    const countedClient = HttpClient.transformResponse(
+      HttpClient.transform(baseClient, withRequestTimeout),
+      (effect) =>
+        Effect.flatMap(Effect.service(ApiEndpoint), ({ responses }) =>
+          effect.pipe(
+            Effect.tap((response) => Metric.update(responses[responseStatus(response.status)], 1)),
+            Effect.tapError((error) =>
+              Predicate.isTagged(error.reason, "TransportError")
+                ? Metric.update(responses.network, 1)
+                : Effect.void,
+            ),
           ),
         ),
-      ),
     );
 
     return countedClient.pipe(

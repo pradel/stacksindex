@@ -54,12 +54,13 @@ function wrap<T>(target: T, run: ThenableRunner, wrapProperties: boolean): T {
       const orig = t[prop as keyof typeof t];
 
       if (Predicate.isFunction(orig)) {
-        // oxlint-disable-next-line typescript/no-explicit-any
-        return function get(this: any, ...args: any[]) {
-          const res = orig.apply(this === receiver ? t : this, args);
-
-          return wrap(res, run, false);
-        };
+        // A proxy rather than a wrapper function keeps the function's own
+        // Properties, e.g. the SQL client's `reserve` under `db.$client`.
+        return new Proxy(orig, {
+          apply(fn, thisArg, args) {
+            return wrap(fn.apply(thisArg === receiver ? t : thisArg, args), run, false);
+          },
+        });
       }
 
       if (!wrapProperties && prop !== RELATIONAL_QUERY_PROPERTY) {

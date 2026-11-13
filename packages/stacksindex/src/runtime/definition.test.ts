@@ -1,15 +1,16 @@
-import { Cause, Effect, Exit, References } from "effect";
+import { Cause, Effect, Exit, Fiber, References, Schedule } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase } from "../database/index.ts";
-import { ConfigurationError } from "../lib/errors.ts";
+import { ConfigurationError, LockError } from "../lib/errors.ts";
 import type { PrintEvent } from "../lib/types.ts";
 import { syncStore } from "../sync-store/index.ts";
-import { checkpointsTable, metaTable } from "../sync-store/schema.ts";
+import { checkpointsTable, metaTable, syncProgressTable } from "../sync-store/schema.ts";
 import { createFakeChain, type FakeChain } from "../test-utils/fake-chain.ts";
 import { createTestDatabase, type TestDatabase } from "../test/database.ts";
+import { TEST_POSTGRES_URL } from "../test/fresh-database.ts";
 import type { ContractSpec } from "./contracts.ts";
-import { Indexer } from "./index.ts";
+import { Indexer, type IndexerService } from "./index.ts";
 
 const TOKEN_ID = "SP123.token";
 
@@ -24,15 +25,19 @@ type TestContract = Pick<ContractSpec, "name" | "contractId" | "startBlock" | "e
 const failureOf = (exit: Exit.Exit<unknown, unknown>) =>
   Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
 
-const run = (testDb: TestDatabase, contracts: readonly TestContract[]) =>
+/** Builds an indexer of `contracts` on the test database and runs `use` with it. */
+const withIndexer = <A, E>(
+  testDb: TestDatabase,
+  contracts: readonly TestContract[],
+  use: (indexer: IndexerService) => Effect.Effect<A, E>,
+) =>
   Effect.runPromiseExit(
     Effect.gen(function* () {
-      const indexer = yield* Indexer;
-
-      return yield* indexer.run;
+      return yield* use(yield* Indexer);
     }).pipe(
       Effect.provide(
         Indexer.layer({
+          live: { pollingInterval: 100 },
           contracts: contracts.map(({ handled, ...contract }) => ({
             onInvalid: "fail",
             ...contract,
@@ -47,6 +52,24 @@ const run = (testDb: TestDatabase, contracts: readonly TestContract[]) =>
       Effect.provideService(References.MinimumLogLevel, "None"),
     ),
   );
+
+const run = (testDb: TestDatabase, contracts: readonly TestContract[]) =>
+  withIndexer(testDb, contracts, (indexer) => indexer.run);
+
+/** Forks `live` and waits until it follows new blocks, i.e. holds the database lock. */
+const startLive = (indexer: IndexerService) =>
+  Effect.gen(function* () {
+    const fiber = yield* Effect.forkChild(indexer.live);
+
+    yield* indexer.status.pipe(
+      Effect.repeat({
+        schedule: Schedule.spaced("10 millis"),
+        until: (status) => status.phase === "live",
+      }),
+    );
+
+    return fiber;
+  });
 
 /** Marks the contract synced below `BASE_HEIGHT`, so `run` catches it up without discovery. */
 const seedSynced = (testDb: TestDatabase, contractId: string) =>
@@ -185,5 +208,84 @@ describe("contract definition changes", () => {
     ]);
 
     expect(failureOf(exit)).toBeInstanceOf(ConfigurationError);
+  });
+
+  describe("reindex", () => {
+    const token = { name: "token", contractId: TOKEN_ID };
+
+    test("replays every stored event without fetching it again", async () => {
+      expect(Exit.isSuccess(await run(testDb, [token]))).toBe(true);
+      expect(Exit.isSuccess(await withIndexer(testDb, [token], (i) => i.reindex()))).toBe(true);
+      await expect(checkpointHeight(testDb)).resolves.toBeUndefined();
+
+      const handled: number[] = [];
+      const requestsBefore = chain.requests.length;
+
+      expect(Exit.isSuccess(await run(testDb, [{ ...token, handled }]))).toBe(true);
+      expect(handled).toStrictEqual([100, 101]);
+      // The stored transactions were not fetched again.
+      expect(
+        chain.requests
+          .slice(requestsBefore)
+          .filter((request) => request.startsWith("/extended/v3/transactions")),
+      ).toStrictEqual([]);
+    });
+
+    test("accepts a changed definition and refetches only the changed contracts", async () => {
+      const pool = { name: "pool", contractId: POOL_ID };
+
+      expect(Exit.isSuccess(await run(testDb, [token, pool]))).toBe(true);
+
+      const changed = [token, { ...pool, startBlock: 101 }];
+
+      expect(Exit.isFailure(await run(testDb, changed))).toBe(true);
+      expect(Exit.isSuccess(await withIndexer(testDb, changed, (i) => i.reindex()))).toBe(true);
+
+      const progress = await testDb.db.select().from(syncProgressTable);
+      expect(progress.map((row) => row.contractId)).toStrictEqual([TOKEN_ID]);
+      expect(Exit.isSuccess(await run(testDb, changed))).toBe(true);
+    });
+
+    test("keeps indexing state when clearing the tables fails", async () => {
+      expect(Exit.isSuccess(await run(testDb, [token]))).toBe(true);
+
+      const exit = await withIndexer(testDb, [token], (i) => i.reindex(Effect.fail("boom")));
+
+      expect(exit).toStrictEqual(Exit.fail("boom"));
+      await expect(checkpointHeight(testDb)).resolves.toBe(101);
+    });
+
+    test("fails with LockError while live runs", async () => {
+      const exit = await withIndexer(testDb, [token], (indexer) =>
+        Effect.gen(function* () {
+          const live = yield* startLive(indexer);
+
+          yield* indexer.reindex().pipe(Effect.ensuring(Fiber.interrupt(live)));
+        }),
+      );
+
+      expect(failureOf(exit)).toBeInstanceOf(LockError);
+    });
+  });
+
+  // PGlite runs in one process on one connection, so it takes no lock.
+  describe.skipIf(TEST_POSTGRES_URL === undefined)("database lock", () => {
+    test("fails a second indexer of the chain until the first one stops", async () => {
+      const contracts = [{ name: "token", contractId: TOKEN_ID }];
+
+      const exit = await withIndexer(testDb, contracts, (indexer) =>
+        Effect.gen(function* () {
+          const live = yield* startLive(indexer);
+
+          yield* Effect.promise(() => run(testDb, contracts)).pipe(
+            Effect.flatten,
+            Effect.ensuring(Fiber.interrupt(live)),
+          );
+        }),
+      );
+
+      expect(failureOf(exit)).toBeInstanceOf(LockError);
+      expect(Exit.isSuccess(await run(testDb, contracts))).toBe(true);
+    });
   });
 });

@@ -227,7 +227,7 @@ describe("aPI DataSource", () => {
         path: "/extended/v3/smart-contracts/network-error",
         causeMessage: "Network error",
       });
-      expect(mockHandler).toHaveBeenCalledTimes(4);
+      expect(mockHandler).toHaveBeenCalledTimes(7);
 
       vi.useRealTimers();
     });
@@ -269,7 +269,7 @@ describe("aPI DataSource", () => {
       });
 
       expect(response.headers["retry-after"]).toBe("1");
-      expect(mockHandler).toHaveBeenCalledTimes(4);
+      expect(mockHandler).toHaveBeenCalledTimes(7);
 
       vi.useRealTimers();
     });
@@ -375,11 +375,7 @@ describe("aPI DataSource", () => {
 
     test("returns the response status error after exhausting retries on 5xx", async () => {
       vi.useFakeTimers();
-      mockHandler
-        .mockResolvedValueOnce(jsonResponse({ error: "Down" }, 503))
-        .mockResolvedValueOnce(jsonResponse({ error: "Down" }, 503))
-        .mockResolvedValueOnce(jsonResponse({ error: "Down" }, 503))
-        .mockResolvedValueOnce(jsonResponse({ error: "Down" }, 503));
+      mockHandler.mockResolvedValue(jsonResponse({ error: "Down" }, 503));
 
       const promise = runRequestExit((client) => client.getContract("0xabc123"));
 
@@ -392,7 +388,7 @@ describe("aPI DataSource", () => {
         path: "/extended/v3/smart-contracts/0xabc123",
         body: { error: "Down" },
       });
-      expect(mockHandler).toHaveBeenCalledTimes(4);
+      expect(mockHandler).toHaveBeenCalledTimes(7);
 
       vi.useRealTimers();
     });
@@ -461,7 +457,27 @@ describe("aPI DataSource", () => {
         path: "/extended/v3/smart-contracts/0xabc123",
         causeMessage: "The operation was aborted",
       });
-      expect(mockHandler).toHaveBeenCalledTimes(4);
+      expect(mockHandler).toHaveBeenCalledTimes(7);
+
+      vi.useRealTimers();
+    });
+
+    test("times out a request that never responds and retries it", async () => {
+      vi.useFakeTimers();
+      mockHandler
+        .mockReturnValueOnce(
+          new Promise(() => {
+            // Never settles: the request hangs until it times out.
+          }),
+        )
+        .mockResolvedValueOnce(jsonResponse({ hash: "0xabc123", block_height: 123_456 }));
+
+      const promise = runRequest((client) => client.getContract("0xabc123"));
+
+      await vi.runAllTimersAsync();
+
+      await expect(promise).resolves.toStrictEqual({ hash: "0xabc123", block_height: 123_456 });
+      expect(mockHandler).toHaveBeenCalledTimes(2);
 
       vi.useRealTimers();
     });

@@ -2,14 +2,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { integer, pgSchema, text } from "drizzle-orm/pg-core";
 import { afterAll, describe, expect, test } from "vite-plus/test";
 
+import { MigrationError } from "../lib/errors.ts";
 import { defineIndexer, type Indexer } from "../promise/index.ts";
-import { blocksTable } from "../sync-store/schema.ts";
-import { freshDatabase, persistentDatabase } from "../test/fresh-database.ts";
-import type { Database } from "./index.ts";
+import { blocksTable, versionTable } from "../sync-store/schema.ts";
+import { freshDatabase, persistentDatabase, TEST_POSTGRES_URL } from "../test/fresh-database.ts";
+import { DATA_VERSION, type Database } from "./index.ts";
 
 const definition = defineIndexer({ contracts: { token: { id: "SP123.token" } } });
 
@@ -78,6 +79,7 @@ describe("database", () => {
       "sync_anchors",
       "sync_progress",
       "transactions",
+      "version",
     ]);
     await expect(tablesIn(indexer, "public")).resolves.toStrictEqual([]);
     await expect(indexer.db.select().from(blocksTable)).resolves.toStrictEqual([]);
@@ -137,6 +139,65 @@ describe("database", () => {
       "20260101000000_user_events",
     ]);
   });
+
+  test("refuses a database a newer stacksindex migrated", async () => {
+    const database = await persistentDatabase(makeTempDir());
+    const first = await open(database);
+    await first.db.execute(
+      sql`insert into stacksindex.__drizzle_migrations (hash, created_at, name) values ('future', 0, '29990101000000_future')`,
+    );
+    await first.close();
+
+    const opening = open(database);
+
+    await expect(opening).rejects.toBeInstanceOf(MigrationError);
+    await expect(opening).rejects.toHaveProperty(
+      "cause.message",
+      expect.stringContaining("newer stacksindex"),
+    );
+  });
+
+  test.each([
+    { dataVersion: DATA_VERSION + 1, reason: "written by a newer stacksindex" },
+    { dataVersion: DATA_VERSION - 1, reason: "Re-sync from an empty database" },
+  ])("refuses a database holding data format $dataVersion", async ({ dataVersion, reason }) => {
+    const database = await persistentDatabase(makeTempDir());
+    const first = await open(database);
+    await first.db.update(versionTable).set({ dataVersion });
+    await first.close();
+
+    const opening = open(database);
+
+    await expect(opening).rejects.toBeInstanceOf(MigrationError);
+    await expect(opening).rejects.toHaveProperty("cause.message", expect.stringContaining(reason));
+  });
+
+  test("records the current data format in a database that predates it", async () => {
+    const database = await persistentDatabase(makeTempDir());
+    const first = await open(database);
+    await first.db.delete(versionTable);
+    await first.close();
+
+    await using reopened = await open(database);
+
+    await expect(reopened.db.select().from(versionTable)).resolves.toStrictEqual([
+      { dataVersion: DATA_VERSION },
+    ]);
+  });
+
+  // PGlite cannot be opened by two processes, so only Postgres can race.
+  test.skipIf(TEST_POSTGRES_URL === undefined)(
+    "migrates a new database opened by two indexers at once",
+    async () => {
+      const database = await freshDatabase();
+      const [first, second] = await Promise.all([open(database), open(database)]);
+
+      await expect(migrationNames(first, "stacksindex")).resolves.toStrictEqual(
+        await migrationNames(second, "stacksindex"),
+      );
+      await Promise.all([first.close(), second.close()]);
+    },
+  );
 
   test("close is idempotent and further calls reject after closing", async () => {
     const indexer = await open(await freshDatabase());

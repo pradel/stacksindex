@@ -46,6 +46,7 @@ export {
   DatabaseError,
   EventDecodeError,
   HandlerExecutionError,
+  LockError,
   MigrationError,
   ReorgError,
 } from "./lib/errors.ts";

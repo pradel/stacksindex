@@ -431,6 +431,51 @@ export const syncStore = {
         );
     }),
 
+  /** Deletes the checkpoint, so indexing starts over from the first stored event. */
+  deleteCheckpoint: ({
+    chainId,
+  }: {
+    chainId: number;
+  }): Effect.Effect<void, SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      const db = yield* IndexerDatabase;
+
+      yield* db.delete(checkpointsTable).where(eq(checkpointsTable.chainId, BigInt(chainId)));
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "deleteCheckpoint", cause }),
+      ),
+    ),
+
+  /** Deletes the contracts' sync progress, so the next sync fetches them from their start. */
+  deleteSyncProgress: ({
+    chainId,
+    contractIds,
+  }: {
+    chainId: number;
+    contractIds: readonly string[];
+  }): Effect.Effect<void, SyncStoreError, IndexerDatabase> =>
+    Effect.gen(function* () {
+      if (contractIds.length === 0) {
+        return;
+      }
+
+      const db = yield* IndexerDatabase;
+
+      yield* db
+        .delete(syncProgressTable)
+        .where(
+          and(
+            eq(syncProgressTable.chainId, BigInt(chainId)),
+            inArray(syncProgressTable.contractId, [...contractIds]),
+          ),
+        );
+    }).pipe(
+      Effect.mapError(
+        (cause: unknown) => new SyncStoreError({ operation: "deleteSyncProgress", cause }),
+      ),
+    ),
+
   /**
    * Discards all sync data above `blockHeight` and lowers the affected
    * `sync_progress` rows to it, so the next sync refetches that range from the

@@ -143,8 +143,9 @@ export interface ChainTip {
 /**
  * Reads the chain tip once per run. Falls back to `undefined` (and logs a
  * warning) when the status request or its payload is unavailable: finality
- * lags, indexing is not capped, and the next run cannot verify the stored
- * chain, rather than failing this run.
+ * lags, indexing is not capped, and the next run verifies the newest stored
+ * block at or below the checkpoint in place of the anchor, rather than failing
+ * this run.
  */
 export function readChainTip(
   chainId: number,

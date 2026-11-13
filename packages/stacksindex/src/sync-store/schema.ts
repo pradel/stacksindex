@@ -163,3 +163,12 @@ export const metaTable = stacksindexSchema.table(
     }),
   ],
 );
+
+/**
+ * One row: the format of the data in this schema. A release that changes what
+ * stored data means raises it, so a database written by another format fails
+ * to open instead of being misread.
+ */
+export const versionTable = stacksindexSchema.table("version", (table) => ({
+  dataVersion: table.integer().primaryKey(),
+}));
