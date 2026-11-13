@@ -138,7 +138,7 @@ export async function contractDeployHeight(contractId: string): Promise<number> 
 }
 
 export async function blockHash(height: number): Promise<string> {
-  const block = await getJson<{ hash: string }>(`/extended/v2/blocks/${height}`);
+  const block = await getJson<{ hash: string }>(`/extended/v3/blocks/${height}`);
 
   return block.hash;
 }
