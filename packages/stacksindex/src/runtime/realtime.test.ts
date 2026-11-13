@@ -544,6 +544,55 @@ describe("live indexing", () => {
     expect(countRequests(chain, /^\/extended\/v3\/transactions\/tx-103\/events/u)).toBe(1);
   });
 
+  test("pages through more than 100 contract logs of one transaction block by block", async () => {
+    const contractIds = [CONTRACT_ID, "SP1.b", "SP1.c"];
+
+    for (const contractId of contractIds.slice(1)) {
+      await seedSynced(testDb, contractId);
+    }
+
+    // Asset events take indexes 0..29, so log pages start at event indexes, not offsets.
+    const logIndexes = Array.from({ length: 150 }, (_, index) => 30 + index);
+    const handled: string[] = [];
+
+    scriptHeads(chain, [
+      () => {
+        chain.mine([
+          {
+            txId: "tx-101",
+            assetEvents: 30,
+            events: logIndexes.map((eventIndex) => ({ contractId: CONTRACT_ID, eventIndex })),
+          },
+        ]);
+      },
+    ]);
+
+    const exit = await runLive(
+      testDb,
+      contractIds.map((contractId) => ({
+        contractId,
+        handler: (event: PrintEvent<unknown>) =>
+          Effect.sync(() => {
+            handled.push(`${event.txId}:${event.eventIndex}`);
+          }),
+        endBlock: 101,
+      })),
+    );
+
+    expect(exit).toStrictEqual(Exit.void);
+    expect(handled).toStrictEqual([
+      "tx-100:0",
+      ...logIndexes.map((eventIndex) => `tx-101:${eventIndex}`),
+    ]);
+    expect(countRequests(chain, /^\/extended\/v3\/blocks\/0x101\/transactions/u)).toBe(1);
+    expect(
+      chain.requests.filter((request) => request.startsWith("/extended/v3/transactions/tx-101/")),
+    ).toStrictEqual([
+      "/extended/v3/transactions/tx-101/events?limit=100&type=contract_log",
+      "/extended/v3/transactions/tx-101/events?limit=100&cursor=130&type=contract_log",
+    ]);
+  });
+
   test("close() ends live indexing on the promise API", async () => {
     const handled: string[] = [];
     let resolveFirstEvent: () => void = () => undefined;

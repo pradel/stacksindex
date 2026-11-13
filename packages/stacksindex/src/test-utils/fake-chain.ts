@@ -147,13 +147,34 @@ const contractLogValue = (event: FakeEvent) => ({
   value: { hex: "0x0703", repr: event.repr ?? "(ok true)" },
 });
 
-/** The events of `transaction` whose type `params` selects, as `GET /extended/v3/transactions/{tx_id}/events` filters them. */
-const filteredTransactionEvents = (transaction: FakeTransaction, params: URLSearchParams) => {
-  // `type` repeats or holds comma-separated values; absent means every type.
+/**
+ * One `GET /extended/v3/transactions/{tx_id}/events` page. As on the API, `type`
+ * repeats or holds comma-separated values (absent means every type), and a
+ * cursor is the `event_index` a page starts at, so filtered pages skip indexes.
+ */
+const transactionEventsPage = (transaction: FakeTransaction, params: URLSearchParams) => {
   const types = new Set(params.getAll("type").flatMap((value) => value.split(",")));
-  const events = transactionEvents(transaction);
+  const limit = Number(params.get("limit") ?? 20);
+  const start = Number(params.get("cursor") ?? 0);
 
-  return types.size === 0 ? events : events.filter((event) => types.has(event.type));
+  const events = transactionEvents(transaction)
+    .filter((event) => types.size === 0 || types.has(event.type))
+    .toSorted((a, b) => a.event_index - b.event_index);
+
+  const page = events.filter((event) => event.event_index >= start).slice(0, limit + 1);
+  const [first] = page;
+  const next = page.length > limit ? String(page[limit].event_index) : null;
+
+  return json({
+    total: events.length,
+    limit,
+    cursor: {
+      next,
+      previous: null,
+      current: first === undefined ? null : String(first.event_index),
+    },
+    results: page.slice(0, limit),
+  });
 };
 
 /** Pages `items` through an offset `cursor`, answering with `cursor.next`. */
@@ -381,10 +402,7 @@ export function createFakeChain(options: { readonly baseHeight: number }): FakeC
 
       return located === undefined
         ? notFound()
-        : offsetPage(
-            filteredTransactionEvents(located.block.transactions[located.txIndex], params),
-            params,
-          );
+        : transactionEventsPage(located.block.transactions[located.txIndex], params);
     }
 
     return notFound();
