@@ -137,6 +137,7 @@ Key differences from EVM:
    │ 2. GET /extended/v3/principals/{principal}/transactions  │
    │    ?cursor={startBlock}:0:0                              │
    │ 3. GET /extended/v3/transactions/{tx_id}/events          │
+   │    ?type=contract_log                                    │
    │    (skipped when the summary's event_count is 0)         │
    │    -> Find first matching smart_contract_log             │
    │ 4. Construct 4-part cursor                               │
@@ -218,7 +219,7 @@ To resolve the initial cursor:
 
 1. Fetch contract metadata via `GET /extended/v3/smart-contracts/{contract_id}` to obtain its deployment `block.height`.
 2. Jump straight to the deployment or requested `startBlock` using `GET /extended/v3/principals/{principal}/transactions?cursor=${startBlock}:0:0`.
-3. Scan transactions in chronological order and query `GET /extended/v3/transactions/{tx_id}/events` to locate the first `smart_contract_log` for that contract. Transactions whose summary reports `event_count: 0` are skipped without a request.
+3. Scan transactions in chronological order and query `GET /extended/v3/transactions/{tx_id}/events?type=contract_log` to locate the first `smart_contract_log` for that contract. Transactions whose summary reports `event_count: 0` are skipped without a request.
 4. Construct the exact 4-part cursor (`block_height:microblock_sequence:tx_index:event_index`) to begin forward pagination with `/logs`. V3 summaries lack `microblock_sequence`. From epoch 2.5 on, blocks cannot confirm microblocks, so it is `2147483647` (anchor block) when the transaction's Bitcoin block is at or after the epoch 2.5 start: 840,360 on mainnet, 6 on testnet (devnets share the testnet chain ID). Older transactions, and every transaction on other chains, take it from `GET /extended/v1/tx/{tx_id}`.
 
 Discovery runs only for a contract's first sync, and as a fallback when a catch-up backlog exceeds 10 pages.
@@ -275,7 +276,7 @@ flowchart TD
 
 **Fetch path.** Ponder fetches every block with one `eth_getLogs` filtered by address. The Stacks API has no per-block filtered events endpoint: block transaction summaries carry no events, and a contract's print events may come from transactions calling other contracts. So each head picks the cheaper of:
 
-- **Per block** (`sync-realtime/block.ts`): for every block between the anchor and the head, `GET /extended/v3/blocks/{hash}/transactions` (50 per page), then `GET /extended/v3/transactions/{tx_id}/events` (100 per page) for each successful `contract_call` or `smart_contract` transaction with events, keeping the watched contracts' logs. Other types run no Clarity code and the node attaches no prints to them near the chain tip, so they cost no request (pre-epoch-2.5 coinbases carried pox-2/pox-3 `handle-unlock` prints, but this path only covers recent blocks). Cost ≈ `Σ (1 + contract calls and deployments with events)`, estimated as `Σ (1 + tx_count)`. Requires the blocks to link the head to the anchor (`GET /extended/v2/blocks`, at most 30) and every syncing contract synced through the anchor.
+- **Per block** (`sync-realtime/block.ts`): for every block between the anchor and the head, `GET /extended/v3/blocks/{hash}/transactions` (50 per page), then `GET /extended/v3/transactions/{tx_id}/events?type=contract_log` (100 per page) for each successful `contract_call` or `smart_contract` transaction with events, keeping the watched contracts' logs. The `type` filter drops token, STX and lock events on the server, so they never fill a page. Other types run no Clarity code and the node attaches no prints to them near the chain tip, so they cost no request (pre-epoch-2.5 coinbases carried pox-2/pox-3 `handle-unlock` prints, but this path only covers recent blocks). Cost ≈ `Σ (1 + contract calls and deployments with events)`, estimated as `Σ (1 + tx_count)`. Requires the blocks to link the head to the anchor (`GET /extended/v2/blocks`, at most 30) and every syncing contract synced through the anchor.
 - **Per contract**: the historical catch-up, one newest logs page per syncing contract.
 
 Both store the same rows, and the per-block path raises every syncing contract's `syncedBlockHeight` with each block.

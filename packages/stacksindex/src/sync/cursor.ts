@@ -133,6 +133,7 @@ function findFirstMatchingContractEvent(
       const eventsResponse: TransactionEventsResponse = yield* client.getTransactionEvents(txId, {
         limit: 50,
         cursor: eventCursor === "initial" ? undefined : eventCursor,
+        type: ["contract_log"],
       });
 
       const { results, cursor } = eventsResponse;
@@ -240,8 +241,8 @@ function checkTransactionForMatchingEvent(
  * 2. Jump straight to the deployment block by querying `getPrincipalTransactions` with `cursor: "${deploymentBlock}:0:0"`.
  * 3. Iterate the page's transaction summaries from oldest to newest:
  *    - If `event_count === 0`, skip immediately (0 extra requests).
- *    - Otherwise, fetch `GET /extended/v3/transactions/{tx_id}/events` to locate the first `contract_log`
- *      matching `contract_id`.
+ *    - Otherwise, fetch `GET /extended/v3/transactions/{tx_id}/events?type=contract_log` to locate the first
+ *      `contract_log` matching `contract_id`.
  *    - When found, take `2147483647` as its `microblock_sequence` if its Bitcoin block is at or after epoch 2.5,
  *      else fetch `GET /extended/v1/tx/{tx_id}` (e.g. `2147483647` for anchor blocks, `0..N` for microblocks),
  *      and construct the exact 4-part cursor (`block.height:microblock_sequence:block.tx_index:event_index`)

@@ -514,7 +514,7 @@ describe("live indexing", () => {
         chain.mine();
       },
       () => {
-        // The log sits on the second events page.
+        // 120 asset events precede the log; filtering by type keeps it on the first events page.
         chain.mine([
           { txId: "tx-103", assetEvents: 120, events: [{ contractId: "SP1.e", eventIndex: 120 }] },
         ]);
@@ -541,7 +541,7 @@ describe("live indexing", () => {
     // Only the historical pass read contract logs: one page per contract.
     expect(countRequests(chain, /\/logs\?/u)).toBe(contractIds.length);
     expect(countRequests(chain, /^\/extended\/v3\/blocks\/0x10[1-3]\/transactions/u)).toBe(3);
-    expect(countRequests(chain, /^\/extended\/v3\/transactions\/tx-103\/events/u)).toBe(2);
+    expect(countRequests(chain, /^\/extended\/v3\/transactions\/tx-103\/events/u)).toBe(1);
   });
 
   test("close() ends live indexing on the promise API", async () => {

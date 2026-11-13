@@ -147,6 +147,15 @@ const contractLogValue = (event: FakeEvent) => ({
   value: { hex: "0x0703", repr: event.repr ?? "(ok true)" },
 });
 
+/** The events of `transaction` whose type `params` selects, as `GET /extended/v3/transactions/{tx_id}/events` filters them. */
+const filteredTransactionEvents = (transaction: FakeTransaction, params: URLSearchParams) => {
+  // `type` repeats or holds comma-separated values; absent means every type.
+  const types = new Set(params.getAll("type").flatMap((value) => value.split(",")));
+  const events = transactionEvents(transaction);
+
+  return types.size === 0 ? events : events.filter((event) => types.has(event.type));
+};
+
 /** Pages `items` through an offset `cursor`, answering with `cursor.next`. */
 const offsetPage = (items: readonly Schema.Json[], params: URLSearchParams) => {
   const limit = Number(params.get("limit") ?? 20);
@@ -372,7 +381,10 @@ export function createFakeChain(options: { readonly baseHeight: number }): FakeC
 
       return located === undefined
         ? notFound()
-        : offsetPage(transactionEvents(located.block.transactions[located.txIndex]), params);
+        : offsetPage(
+            filteredTransactionEvents(located.block.transactions[located.txIndex], params),
+            params,
+          );
     }
 
     return notFound();

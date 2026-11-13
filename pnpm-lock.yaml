@@ -340,8 +340,8 @@ importers:
         specifier: 4.0.5
         version: 4.0.5(effect@4.0.5)
       '@stacks/blockchain-api-client':
-        specifier: 9.7.0
-        version: 9.7.0(supports-color@7.2.0)
+        specifier: 9.10.0
+        version: 9.10.0(supports-color@7.2.0)
       '@stacks/codec':
         specifier: 2.1.0
         version: 2.1.0
@@ -1226,8 +1226,8 @@ packages:
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
 
-  '@stacks/blockchain-api-client@9.7.0':
-    resolution: {integrity: sha512-fdDGuMj7L79HiwU8zoB1QZaunKz28n241Pm2yG7DiTuOzAfkT1uQ8HUnO/w+w1m+w7iAI2Fqpprl8dDAFX6YwQ==}
+  '@stacks/blockchain-api-client@9.10.0':
+    resolution: {integrity: sha512-6JK6Zn7nIqcDqIHsWuQUwSIlvgGZ01SvTk8bDv9v0TM6LDg+dPdKkkXiz7gs06Gam3xBFUzpqVX8qc8KKiyHoQ==}
 
   '@stacks/codec@2.1.0':
     resolution: {integrity: sha512-RzI3UQ5oNXjcO1we2e6qq5/27+SosrmX2gZZxSi6VPTB26bTUxBY1/z1wxnJ820xu7xTg6Bhf8ssNkkZlcsz0A==}
@@ -2990,7 +2990,7 @@ snapshots:
 
   '@socket.io/component-emitter@3.1.2': {}
 
-  '@stacks/blockchain-api-client@9.7.0(supports-color@7.2.0)':
+  '@stacks/blockchain-api-client@9.10.0(supports-color@7.2.0)':
     dependencies:
       eventemitter3: 5.0.4
       jsonrpc-lite: 2.2.0
