@@ -89,9 +89,12 @@ disable_bitcoin_explorer = true
 disable_stacks_api = false
 # Every image is pinned: the stacks-blockchain-api version decides which
 # endpoints (v2 contract logs, v3 transactions) the indexer can use.
-bitcoin_node_image_url = "lncm/bitcoind:v27.2"
-stacks_node_image_url = "ghcr.io/stacks-network/stacks-core:4.0.1-alpine"
-stacks_signer_image_url = "ghcr.io/stacks-network/stacks-signer:4.0.1-alpine"
+# The bitcoind, stacks-node and signer images are Clarinet 4.0.0's defaults:
+# its embedded devnet snapshot only boots with them. Other images start from
+# genesis, where Clarinet's stacking orders race the seed deployment.
+bitcoin_node_image_url = "bitcoin/bitcoin:31.1@sha256:da25cedc66b1daefff9f412ee196c901a899c3fa68a33b20849c3e08b5c40d63"
+stacks_node_image_url = "ghcr.io/stacks-network/stacks-core:4.0.5-alpine"
+stacks_signer_image_url = "ghcr.io/stacks-network/stacks-signer:4.0.5-alpine"
 stacks_api_image_url = "hirosystems/stacks-blockchain-api:9.10.0"
 postgres_image_url = "postgres:18-alpine"
 

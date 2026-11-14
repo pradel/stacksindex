@@ -8,13 +8,13 @@
     "check": "vp check"
   },
   "dependencies": {
-    "@stacks/transactions": "7.6.0",
-    "drizzle-orm": "1.0.0-rc.5-5935859",
+    "@stacks/transactions": "7.7.0",
+    "drizzle-orm": "1.0.0-rc.5",
     "indexer-e2e": "workspace:*",
     "stacksindex": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "typescript": "7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:",

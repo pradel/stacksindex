@@ -7,7 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { DEVNET_API_URL, LOCAL_DEVNET_API_URL, readChainTip, waitUntil } from "./chain.ts";
 import { readSeedHistory } from "./seed.ts";
 
-const CLARINET_VERSION = "3.25.0";
+const CLARINET_VERSION = "4.0.0";
 
 const PROJECT_DIR = path.resolve(import.meta.dirname, "../clarinet");
 
@@ -86,12 +86,9 @@ export default async function setup(): Promise<(() => Promise<void>) | undefined
 
   const logFd = openSync(LOG_FILE, "w");
 
-  // Clarinet bind-mounts per-run data directories into its containers.
-  // The bitcoind image runs as uid 1000: on Linux they must be world-writable.
-  // `exec` keeps clarinet as the process that receives SIGINT.
   const devnet = spawn(
-    "sh",
-    ["-c", "umask 0000 && exec clarinet devnet start --no-dashboard --use-on-disk-deployment-plan"],
+    "clarinet",
+    ["devnet", "start", "--no-dashboard", "--use-on-disk-deployment-plan"],
     { cwd: PROJECT_DIR, stdio: ["ignore", logFd, logFd] },
   );
 

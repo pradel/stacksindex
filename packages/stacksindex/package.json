@@ -37,23 +37,23 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "@effect/sql-pg": "4.0.5",
-    "@effect/sql-pglite": "4.0.5",
+    "@effect/sql-pg": "4.1.4",
+    "@effect/sql-pglite": "4.1.4",
     "@stacks/blockchain-api-client": "9.10.0",
     "@stacks/codec": "2.2.0",
-    "@stacks/transactions": "7.6.0",
+    "@stacks/transactions": "7.7.0",
     "clarity-abitype": "0.8.0",
-    "drizzle-orm": "1.0.0-rc.5-5935859",
-    "effect": "4.0.5"
+    "drizzle-orm": "1.0.0-rc.5",
+    "effect": "4.1.4"
   },
   "devDependencies": {
     "@arethetypeswrong/core": "0.18.5",
-    "@effect/vitest": "4.0.5",
-    "@electric-sql/pglite": "0.5.10",
-    "@types/node": "26.6.5",
+    "@effect/vitest": "4.1.4",
+    "@electric-sql/pglite": "0.5.16",
+    "@types/node": "26.6.6",
     "@types/pg": "8.23.1",
     "@vitest/coverage-v8": "catalog:",
-    "drizzle-kit": "1.0.0-rc.5-5935859",
+    "drizzle-kit": "1.0.0-rc.5",
     "pg": "8.23.1",
     "publint": "0.3.25",
     "typescript": "7.0.2",
@@ -63,7 +63,7 @@
   },
   "peerDependencies": {
     "@electric-sql/pglite": "^0.5.0",
-    "drizzle-orm": "^1.0.0-rc.5-5935859",
+    "drizzle-orm": "^1.0.0-rc.5",
     "pg": "^8.0.0"
   },
   "peerDependenciesMeta": {
