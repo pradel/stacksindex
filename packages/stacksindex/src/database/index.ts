@@ -11,18 +11,26 @@ import {
 } from "drizzle-orm/effect-pglite";
 import { migrate as migratePglite } from "drizzle-orm/effect-pglite/migrator";
 import {
-  type EffectPgDatabase as PgEffectPgDatabase,
+  type EffectPgQueryEffectHKT,
   makeWithDefaults as makePgWithDefaults,
 } from "drizzle-orm/effect-postgres";
 import type { MigrationConfig } from "drizzle-orm/migrator";
+import type { PgQueryResultHKT } from "drizzle-orm/pg-core";
+import type { PgEffectDatabase } from "drizzle-orm/pg-core/effect";
 import { Context, Effect, Layer, Redacted, type Scope } from "effect";
 
 import { DatabaseError, MigrationError } from "../lib/errors.ts";
 import { STACKSINDEX_SCHEMA } from "../sync-store/schema.ts";
 
-export type IndexerDb<TRelations extends AnyRelations = AnyRelations> =
-  | PgliteEffectPgDatabase<TRelations>
-  | PgEffectPgDatabase<TRelations>;
+/**
+ * The PGlite or Postgres database. Both drivers share this query surface; only
+ * the shape of raw `execute` results differs between them, so it stays untyped.
+ */
+export type IndexerDb<TRelations extends AnyRelations = AnyRelations> = PgEffectDatabase<
+  EffectPgQueryEffectHKT,
+  PgQueryResultHKT,
+  TRelations
+>;
 
 /** Where the indexer stores its data; build it with `pglite` or `postgres`. */
 export type Database =

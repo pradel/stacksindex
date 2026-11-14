@@ -9,14 +9,14 @@
     "studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "drizzle-orm": "1.0.0-rc.5-5935859",
+    "drizzle-orm": "1.0.0-rc.5",
     "stacksindex": "workspace:*",
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.10",
-    "@types/node": "26.6.5",
-    "drizzle-kit": "1.0.0-rc.5-5935859",
+    "@electric-sql/pglite": "0.5.16",
+    "@types/node": "26.6.6",
+    "drizzle-kit": "1.0.0-rc.5",
     "typescript": "7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"

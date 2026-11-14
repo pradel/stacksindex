@@ -9,13 +9,13 @@
     "studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "drizzle-orm": "1.0.0-rc.5-5935859",
-    "effect": "4.0.5",
+    "drizzle-orm": "1.0.0-rc.5",
+    "effect": "4.1.4",
     "stacksindex": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "26.6.5",
-    "drizzle-kit": "1.0.0-rc.5-5935859",
+    "@types/node": "26.6.6",
+    "drizzle-kit": "1.0.0-rc.5",
     "typescript": "7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"

@@ -57,6 +57,8 @@ export default defineConfig({
     rules: {
       ...deferredEffectRules,
       ...(correctness.rules ?? {}),
+      // Deprecated alias of the deferred `global-json` rules, yet on by default.
+      "effecttsgo/prefer-schema-over-json": "off",
 
       "sort-imports": "off",
       "max-lines": "off",
