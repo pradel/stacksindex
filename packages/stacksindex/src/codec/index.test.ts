@@ -1,7 +1,14 @@
 import { ClarityTypeID, type ClarityValue } from "@stacks/codec";
+import { Effect, Schema } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
-import { cvToJSON, decodeHex, encodeUint } from "./index.ts";
+import {
+  ClarityDecodeError,
+  cvToJSON,
+  decodeClarityWithSchema,
+  decodeHex,
+  encodeUint,
+} from "./index.ts";
 
 describe("codec", () => {
   describe("cvToJSON()", () => {
@@ -207,6 +214,30 @@ describe("codec", () => {
       // (ok u8) -> 0x07 (ok) + encodeUint(8n)
       const hex = `0x07${encodeUint(8n).slice(2)}`;
       expect(decodeHex(hex)).toStrictEqual({ ok: 8n });
+    });
+  });
+
+  describe("decodeClarityWithSchema()", () => {
+    const OkUint = Schema.Struct({ ok: Schema.BigInt });
+    const okHex = `0x07${encodeUint(8n).slice(2)}`;
+
+    test("decodes and parses with the schema", () => {
+      expect(Effect.runSync(decodeClarityWithSchema(OkUint)(okHex))).toStrictEqual({ ok: 8n });
+    });
+
+    test("fails with ClarityDecodeError on malformed hex", () => {
+      const error = Effect.runSync(Effect.flip(decodeClarityWithSchema(OkUint)("0xzz")));
+
+      expect(error).toBeInstanceOf(ClarityDecodeError);
+      expect(error).toMatchObject({ hex: "0xzz" });
+    });
+
+    test("fails with SchemaError when the value does not match the schema", () => {
+      const error = Effect.runSync(
+        Effect.flip(decodeClarityWithSchema(Schema.Struct({ ok: Schema.String }))(okHex)),
+      );
+
+      expect(error._tag).toBe("SchemaError");
     });
   });
 

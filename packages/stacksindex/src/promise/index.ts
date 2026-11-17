@@ -296,6 +296,7 @@ const toCoreHandler =
         runSync(effect);
       });
 
+      // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context -- A user handler can reject with anything; executeEvent wraps it in HandlerExecutionError.
       yield* Effect.tryPromise({
         try: () => Promise.resolve(handler(typedEvent, { db, client, logger })),
         catch: (err) => err,

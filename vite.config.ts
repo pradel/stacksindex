@@ -59,6 +59,10 @@ export default defineConfig({
       ...(correctness.rules ?? {}),
       // Deprecated alias of the deferred `global-json` rules, yet on by default.
       "effecttsgo/prefer-schema-over-json": "off",
+      // Unstable Effect APIs (effect/http, RateLimiter, OTLP) are used on purpose.
+      "effecttsgo/unstable-api-usage": "off",
+      // Every Schema class is a TaggedError, whose `_tag` already tells them apart.
+      "effecttsgo/schema-class-missing-brand": "off",
 
       "sort-imports": "off",
       "max-lines": "off",

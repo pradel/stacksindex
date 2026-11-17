@@ -120,12 +120,14 @@ export const createIndexing = ({
         })) as IndexingClient["callReadOnly"],
     };
 
+    // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context -- A user handler can fail with anything; it is wrapped in HandlerExecutionError below.
     const call = Effect.suspend(() => spec.handler(event)).pipe(
       Effect.provideService(HandlerClient, client),
     );
 
     return Effect.gen(function* () {
       // Failed calls are timed too: a slow handler that then throws is still slow.
+      // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context -- Same user handler failure as `call`.
       const [duration, exit] = yield* Effect.timed(Effect.exit(call));
       yield* Metric.update(runtime.duration, Duration.toMillis(duration));
       yield* exit;

@@ -133,6 +133,7 @@ const toContractSpecs = <TContracts extends ContractDefinitions>(
 
     // Services captured from the layer's context; the runtime's own (the
     // Transaction, the pinned client) take precedence over them.
+    // oxlint-disable effecttsgo/any-unknown-in-error-context -- A user handler can fail with anything; executeEvent wraps it in HandlerExecutionError.
     const core: CoreHandler = (event) =>
       // SAFETY: The runtime parsed `data` with this contract's `print` schema, which `EventHandler` types it with.
       (
@@ -146,6 +147,7 @@ const toContractSpecs = <TContracts extends ContractDefinitions>(
           Context.merge(services, current),
         ),
       );
+    // oxlint-enable effecttsgo/any-unknown-in-error-context
 
     return {
       name,
