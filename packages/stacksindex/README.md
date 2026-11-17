@@ -282,7 +282,7 @@ Set `finality` to the deepest reorg you want handled automatically (default `6`)
 
 Handler writes through `context.db` commit in the same transaction as the checkpoint, so a crash or a failed batch never applies an event twice. A rewind (a chain reorg, or a start without a sync anchor) re-runs handlers for the unfinalized blocks it replays without undoing their writes: keep writes replay-safe (upsert or insert-if-absent by primary key) for that window. Writes to other systems (another database, an HTTP call) are at-least-once.
 
-Run one indexer process per database: separate processes indexing the same database are not coordinated and can apply events twice.
+Run one indexer per database: separate indexers on the same database (each `create` or `layer` call) are not coordinated and can apply events twice, whether they run in one process or in several.
 
 ### Changing contracts
 
