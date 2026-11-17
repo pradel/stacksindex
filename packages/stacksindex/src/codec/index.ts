@@ -107,18 +107,27 @@ export function encodeUint(value: bigint): string {
   return `0x01${hex}`;
 }
 
+/** Raised when a hex string is not a valid Clarity value; `cause` is the codec's error. */
+export class ClarityDecodeError extends Schema.TaggedError<ClarityDecodeError>()(
+  "ClarityDecodeError",
+  {
+    hex: Schema.String,
+    cause: Schema.Unknown,
+  },
+) {}
+
 /**
  * Decodes a Clarity hex string into a typed object validated by an Effect Schema.
  *
- * Malformed hex is reported through the Effect error channel instead of
- * escaping as a synchronous throw.
+ * Malformed hex fails with a `ClarityDecodeError` instead of escaping as a
+ * synchronous throw, and a value the schema rejects fails with a `SchemaError`.
  */
 export const decodeClarityWithSchema =
-  <A>(schema: Schema.Schema<A>) =>
+  <A, RD = never>(schema: Schema.Decoder<A, RD>) =>
   (hex: string) =>
-    Effect.flatMap(
-      Effect.sync(() => decodeHex(hex)).pipe(Effect.catchDefect((defect) => Effect.fail(defect))),
-      (decoded) => Schema.decodeUnknownEffect(schema)(decoded),
-    );
+    Effect.try({
+      try: () => decodeHex(hex),
+      catch: (cause) => new ClarityDecodeError({ hex, cause }),
+    }).pipe(Effect.flatMap(Schema.decodeUnknownEffect(schema)));
 
 export { ClarityTypeID, type ClarityValue, decodeClarityValue };

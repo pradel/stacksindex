@@ -44,9 +44,11 @@ function wrap<T>(target: T, run: ThenableRunner, wrapProperties: boolean): T {
     get(t, prop, receiver) {
       if (prop === "then" && Effect.isEffect(t)) {
         // SAFETY: Effects reachable through toThenable are self-contained or need only the services `run` provides.
+        // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context, effecttsgo/unsafe-effect-type-assertion -- The awaited Effect's types are not known here; its failure rejects the promise.
         const runnable = t as Effect.Effect<unknown, unknown>;
 
         return (resolve: PromiseThenParameters[0], reject: PromiseThenParameters[1]) =>
+          // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context -- See `runnable`.
           run(runnable).then(resolve, reject);
       }
 

@@ -1,6 +1,7 @@
 // Clarity codec entrypoint (`stacksindex/clarity`).
 
 export {
+  ClarityDecodeError,
   ClarityTypeID,
   cvToJSON,
   decodeClarityValue,

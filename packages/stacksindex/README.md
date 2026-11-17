@@ -504,7 +504,7 @@ Both entrypoints export the error classes, each with a `_tag` of the same name:
 
 ### `stacksindex/clarity`
 
-The Clarity codec the indexer uses, for values outside handlers: `decodeHex(hex)` decodes a hex-encoded value to a plain `ClarityJsonValue`; `decodeClarityValue(hex)` decodes it to a `ClarityValue` AST (typed by `ClarityTypeID`) that `cvToJSON(value)` converts; `decodeClarityWithSchema(schema)(hex)` decodes and parses with an Effect `Schema`; `encodeUint(n)` encodes a `bigint` as a uint argument.
+The Clarity codec the indexer uses, for values outside handlers: `decodeHex(hex)` decodes a hex-encoded value to a plain `ClarityJsonValue`; `decodeClarityValue(hex)` decodes it to a `ClarityValue` AST (typed by `ClarityTypeID`) that `cvToJSON(value)` converts; `decodeClarityWithSchema(schema)(hex)` decodes and parses with an Effect `Schema`, failing with a `ClarityDecodeError` on malformed hex or a `SchemaError` when the schema rejects the value; `encodeUint(n)` encodes a `bigint` as a uint argument.
 
 ```ts
 import { decodeHex, encodeUint } from "stacksindex/clarity";
