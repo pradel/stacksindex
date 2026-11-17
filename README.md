@@ -282,6 +282,8 @@ Set `finality` to the deepest reorg you want handled automatically (default `6`)
 
 Handler writes through `context.db` commit in the same transaction as the checkpoint, so a crash or a failed batch never applies an event twice. A rewind (a chain reorg, or a start without a sync anchor) re-runs handlers for the unfinalized blocks it replays without undoing their writes: keep writes replay-safe (upsert or insert-if-absent by primary key) for that window. Writes to other systems (another database, an HTTP call) are at-least-once.
 
+Run one indexer process per database: separate processes indexing the same database are not coordinated and can apply events twice.
+
 ### Changing contracts
 
 Every contract resumes from one shared checkpoint, so the indexer records the contracts it was run with (`id`, `startBlock`, `endBlock`) in the database, and `run` and `live` compare them with the definition before sending any request:
@@ -457,14 +459,14 @@ The definition exposes `handler(name, fn)` and `create(options)` (promise) or `D
 
 ### `Indexer` (Promise)
 
-| Member                  | Description                                                                                                                                      |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `run()`                 | Syncs and indexes every contract up to the current chain tip; resolves with a `RunResult`.                                                       |
-| `live()`                | Runs `run`, then follows new blocks. Resolves when every contract reached its `endBlock` or on `close()`; rejects on a fatal error.              |
-| `db`                    | Database handle outside any batch, to query your tables (e.g. from an API) and the indexer's. On PGlite, queries wait for the batch in progress. |
-| `status()`              | Resolves with the current [`IndexerStatus`](#indexerstatus).                                                                                     |
-| `close()`               | Stops live sync, flushes pending metrics and releases database and runtime resources. Safe to call multiple times.                               |
-| `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                                       |
+| Member                  | Description                                                                                                                                                           |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run()`                 | Syncs and indexes every contract up to the current chain tip; resolves with a `RunResult`. Rejects with `IndexerBusyError` while another `run`/`live` is in progress. |
+| `live()`                | Runs `run`, then follows new blocks. Resolves when every contract reached its `endBlock` or on `close()`; rejects on a fatal error.                                   |
+| `db`                    | Database handle outside any batch, to query your tables (e.g. from an API) and the indexer's. On PGlite, queries wait for the batch in progress.                      |
+| `status()`              | Resolves with the current [`IndexerStatus`](#indexerstatus).                                                                                                          |
+| `close()`               | Stops live sync, flushes pending metrics and releases database and runtime resources. Safe to call multiple times.                                                    |
+| `[Symbol.asyncDispose]` | Same as `close()`, enabling `await using`.                                                                                                                            |
 
 ### RunResult
 
@@ -495,6 +497,7 @@ Both entrypoints export the error classes, each with a `_tag` of the same name:
 | Error                   | Raised when                                                                                                                                                                                                 |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ConfigurationError`    | `defineIndexer`, `create` or `layer` receives an invalid definition or option, or `run`/`live` gets contracts the database cannot index without missing events ([Changing contracts](#changing-contracts)). |
+| `IndexerBusyError`      | `run` or `live` is called while another `run` or `live` of the same indexer is in progress.                                                                                                                 |
 | `DatabaseError`         | The database cannot be opened or a query fails.                                                                                                                                                             |
 | `MigrationError`        | The indexer's or your migrations fail to apply.                                                                                                                                                             |
 | `EventDecodeError`      | A print does not match its contract's `print` schema (with `onInvalid: "fail"`).                                                                                                                            |
