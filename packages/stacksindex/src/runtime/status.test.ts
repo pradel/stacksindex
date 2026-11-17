@@ -1,8 +1,8 @@
-import { Effect, Fiber, Metric, References, Schedule } from "effect";
+import { Effect, Fiber, Metric, References, Result, Schedule } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { IndexerDatabase } from "../database/index.ts";
-import { HandlerExecutionError } from "../lib/errors.ts";
+import { HandlerExecutionError, IndexerBusyError } from "../lib/errors.ts";
 import type { CoreHandler } from "../lib/types.ts";
 import { syncStore } from "../sync-store/index.ts";
 import { createFakeChain, type FakeChain } from "../test-utils/fake-chain.ts";
@@ -129,8 +129,8 @@ describe("indexer status", () => {
     expect(status).toMatchObject({ phase: "failed", ready: false });
   });
 
-  test("a run overlapping live does not end the shared phase", async () => {
-    const phases = await withIndexer(
+  test("rejects a run while live is in progress and keeps the live phase", async () => {
+    const [error, duringLive, afterLive] = await withIndexer(
       testDb,
       [tokenContract(() => Effect.void, BASE_HEIGHT + 1)],
       (indexer) =>
@@ -143,17 +143,30 @@ describe("indexer status", () => {
               schedule: Schedule.spaced("10 millis"),
             }),
           );
-          yield* indexer.run;
 
-          const afterRun = (yield* indexer.status).phase;
+          const rejected = yield* Effect.flip(indexer.run);
+          const { phase } = yield* indexer.status;
 
           chain.mine();
           yield* Fiber.join(live);
 
-          return [afterRun, (yield* indexer.status).phase];
+          return [rejected, phase, (yield* indexer.status).phase] as const;
         }),
     );
 
-    expect(phases).toStrictEqual(["live", "done"]);
+    expect(error).toBeInstanceOf(IndexerBusyError);
+    expect(duringLive).toBe("live");
+    expect(afterLive).toBe("done");
+  });
+
+  test("rejects the second of two concurrent runs", async () => {
+    const results = await withIndexer(testDb, [tokenContract(() => Effect.void)], (indexer) =>
+      Effect.all([Effect.result(indexer.run), Effect.result(indexer.run)], { concurrency: 2 }),
+    );
+
+    const failures = results.filter(Result.isFailure);
+
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({ failure: expect.any(IndexerBusyError) });
   });
 });
