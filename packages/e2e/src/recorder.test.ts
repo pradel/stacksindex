@@ -168,28 +168,47 @@ describe("scenario recorder", () => {
     });
   });
 
-  test("falls through to live fetch when a request is missing from fixtures", async () => {
+  test("rejects a request missing from the fixture without calling the live API", async () => {
     const fixturePath = createFixturePath();
     fs.writeFileSync(fixturePath, JSON.stringify({}));
-    process.env.RECORD = "false";
-    const liveBody = { results: [] };
-
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new globalThis.Response(JSON.stringify(liveBody), { status: 200 }));
-
+    delete process.env.RECORD;
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     const recorder = createScenarioRecorder(fixturePath);
 
-    const response = await recorder.handleRequest(
-      "https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xunknown",
-    );
+    await expect(
+      recorder.handleRequest("https://api.hiro.so/extended/v3/transactions/batch?tx_id=0xunknown"),
+    ).rejects.toThrow(/Missing fixture/u);
+    expect(fetchMock).not.toHaveBeenCalled();
 
-    expect(response.statusCode).toBe(200);
-    await expect(response.body.json()).resolves.toStrictEqual(liveBody);
-    // oxlint-disable-next-line vitest/prefer-called-once
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await recorder.save();
+    expect(JSON.parse(fs.readFileSync(fixturePath, "utf8"))).toStrictEqual({});
+  });
+
+  test("replays nothing from a missing fixture file unless recording", async () => {
+    const fixturePath = createFixturePath();
+    delete process.env.RECORD;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const recorder = createScenarioRecorder(fixturePath);
+
+    expect(recorder.isRecording).toBe(false);
+    await expect(recorder.handleRequest("https://api.hiro.so/extended")).rejects.toThrow(
+      /Missing fixture/u,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    await recorder.save();
+    expect(fs.existsSync(fixturePath)).toBe(false);
+  });
+
+  test("fails on a fixture file that is not valid JSON", () => {
+    const fixturePath = createFixturePath();
+    fs.writeFileSync(fixturePath, "{ not json");
+    delete process.env.RECORD;
+
+    expect(() => createScenarioRecorder(fixturePath)).toThrow(/fixture/u);
   });
 
   test("tracks calls in benchmark summary", async () => {

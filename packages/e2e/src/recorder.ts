@@ -338,37 +338,39 @@ const loadArchive = (fixturePath: string): FixtureArchive => {
     return {};
   }
 
+  const invalidFixtureMessage = `Fixture ${fixturePath} is not a JSON object of recorded responses; fix it, or delete it and re-record with RECORD=true.`;
+  let parsed: unknown;
+
   try {
-    const content = fs.readFileSync(fixturePath, "utf8");
-    const parsed: unknown = JSON.parse(content);
+    parsed = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+  } catch (cause) {
+    throw new Error(invalidFixtureMessage, { cause });
+  }
 
-    if (!isJsonValue(parsed) || !isJsonObject(parsed)) {
-      return {};
-    }
+  if (!isJsonValue(parsed) || !isJsonObject(parsed)) {
+    throw new Error(invalidFixtureMessage);
+  }
 
-    const archive: FixtureArchive = {};
+  const archive: FixtureArchive = {};
 
-    for (const [rawKey, entry] of Object.entries(parsed)) {
-      if (isFixtureEntry(entry)) {
-        const spaceIndex = rawKey.indexOf(" ");
+  for (const [rawKey, entry] of Object.entries(parsed)) {
+    if (isFixtureEntry(entry)) {
+      const spaceIndex = rawKey.indexOf(" ");
 
-        if (spaceIndex === -1) {
-          archive[rawKey] = entry;
-        } else {
-          const method = rawKey.slice(0, spaceIndex);
-          const url = rawKey.slice(spaceIndex + 1);
-          archive[normalizeKey(method, url)] = {
-            ...entry,
-            body: sanitizePayload(url, entry.body),
-          };
-        }
+      if (spaceIndex === -1) {
+        archive[rawKey] = entry;
+      } else {
+        const method = rawKey.slice(0, spaceIndex);
+        const url = rawKey.slice(spaceIndex + 1);
+        archive[normalizeKey(method, url)] = {
+          ...entry,
+          body: sanitizePayload(url, entry.body),
+        };
       }
     }
-
-    return archive;
-  } catch {
-    return {};
   }
+
+  return archive;
 };
 
 const recordLiveResponse = async (
@@ -449,8 +451,7 @@ export function createScenarioRecorder(
     ? fixtureFileName
     : path.join(FIXTURES_DIR, fixtureFileName);
 
-  const shouldRecord =
-    process.env.RECORD === "true" || process.env.RECORD === "1" || !fs.existsSync(fixturePath);
+  const shouldRecord = process.env.RECORD === "true" || process.env.RECORD === "1";
 
   const archive: FixtureArchive = loadArchive(fixturePath);
   let modified = false;
@@ -469,14 +470,19 @@ export function createScenarioRecorder(
       tracker.recordCall(method, rawUrl);
       const key = normalizeKey(method, rawUrl);
 
-      // Replay mode when recording is not required and the fixture key exists.
-      if (!shouldRecord && key in archive) {
+      if (key in archive && !shouldRecord) {
         const entry = archive[key];
 
         return jsonResponse(entry.statusCode, entry.body, entry.headers);
       }
 
-      // Record mode: fetch from live API using native fetch
+      if (!shouldRecord) {
+        throw new Error(
+          `Missing fixture for ${key} in ${fixturePath}. The indexer's requests changed: re-record with \`RECORD=true vp test\` in packages/e2e (set HIRO_API_KEY to avoid rate limits).`,
+        );
+      }
+
+      // Record mode: fetch from the live API with the native fetch.
       const entry = await recordLiveResponse(liveFetch, rawUrl, method, init);
       archive[key] = entry;
       modified = true;
