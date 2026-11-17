@@ -1,0 +1,63 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "7758afd7-fc9e-4564-8a1a-d1342cf7ee14",
+  "prevIds": ["09af6efb-841f-40f1-a5e1-f9fd0f458bb6"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "stacksindex",
+        "transactions",
+        "transactions_chain_id_block_height_idx"
+      ],
+      "writes": [
+        "s|idx|stacksindex.transactions_chain_id_block_height_idx",
+        "n|idx|stacksindex.transactions_chain_id_block_height_idx",
+        "e|idx|stacksindex.transactions_chain_id_block_height_idx",
+        "n|rel|stacksindex.transactions_chain_id_block_height_idx"
+      ],
+      "reads": [
+        "n|tbl|stacksindex.transactions",
+        "n|sch|stacksindex",
+        "n|col|stacksindex.transactions.chainId",
+        "n|col|stacksindex.transactions.blockHeight"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "stacksindex",
+        "table": "transactions",
+        "name": "transactions_chain_id_block_height_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "chainId",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "blockHeight",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    }
+  ]
+}
