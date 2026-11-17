@@ -9,6 +9,7 @@ import {
   type EventDecodeError,
   type FilterValidationError,
   type HandlerExecutionError,
+  type IndexerBusyError,
   type InvalidCursorError,
   type ReorgError,
   type SyncStoreError,
@@ -91,6 +92,7 @@ export interface ResolvedIndexerConfig {
 /** Every failure of `run` and `live`. */
 export type IndexerError =
   | ConfigurationError
+  | IndexerBusyError
   | StacksApiError
   | HandlerExecutionError
   | EventDecodeError

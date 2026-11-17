@@ -64,6 +64,15 @@ export class ConfigurationError extends Schema.TaggedError<ConfigurationError>()
 ) {}
 
 /**
+ * Raised when `run` or `live` is called while another `run` or `live` of the
+ * same indexer is in progress: overlapping passes would apply the same events
+ * twice.
+ */
+export class IndexerBusyError extends Schema.TaggedError<IndexerBusyError>()("IndexerBusyError", {
+  message: Schema.String,
+}) {}
+
+/**
  * Raised when a persisted or API supplied pagination cursor cannot be decoded.
  */
 export class InvalidCursorError extends Schema.TaggedError<InvalidCursorError>()(

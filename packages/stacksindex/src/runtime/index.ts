@@ -1,14 +1,15 @@
 import type { AnyRelations } from "drizzle-orm";
-import { Cause, Context, Effect, Exit, Layer, Metric, Ref } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Metric, Option, Ref, Semaphore } from "effect";
 import { Socket } from "effect/socket";
 
 import { IndexerDatabase } from "../database/index.ts";
 import { StacksClient } from "../datasources/api/index.ts";
-import type {
-  ConfigurationError,
-  DatabaseError,
-  MigrationError,
-  SyncStoreError,
+import {
+  type ConfigurationError,
+  type DatabaseError,
+  IndexerBusyError,
+  type MigrationError,
+  type SyncStoreError,
 } from "../lib/errors.ts";
 import { loggerLayer } from "../logger/index.ts";
 import { Sync } from "../sync/index.ts";
@@ -72,37 +73,39 @@ export class Indexer extends Context.Service<Indexer, IndexerService>()(
               const webSocketConstructor = yield* Socket.WebSocketConstructor;
               const phase = yield* RunPhase;
 
-              // Concurrent calls share the phase: only a call starting while none
-              // Is active moves it to "backfill", and only the last call to end
-              // Sets the outcome. `runLive` moves it to "live" once it follows new heads.
-              const activeCalls = yield* Ref.make(0);
+              // One pass at a time: overlapping passes would read the same
+              // Checkpoint and run handlers for the same events twice.
+              const permit = yield* Semaphore.make(1);
 
               const trackRun = <A>(
                 effect: Effect.Effect<A, IndexerError, RunPhase>,
               ): Effect.Effect<A, IndexerError> =>
                 Effect.acquireUseRelease(
-                  Ref.getAndUpdate(activeCalls, (count) => count + 1).pipe(
-                    Effect.flatMap((active) =>
-                      active === 0 ? Ref.set(phase, "backfill") : Effect.void,
-                    ),
-                  ),
+                  Ref.set(phase, "backfill"),
                   () => effect,
                   (_, exit) =>
-                    Ref.updateAndGet(activeCalls, (count) => count - 1).pipe(
-                      Effect.flatMap((active) =>
-                        active === 0
-                          ? Ref.set(
-                              phase,
-                              Exit.isSuccess(exit)
-                                ? "done"
-                                : Cause.hasInterruptsOnly(exit.cause)
-                                  ? "idle"
-                                  : "failed",
-                            )
-                          : Effect.void,
-                      ),
+                    Ref.set(
+                      phase,
+                      Exit.isSuccess(exit)
+                        ? "done"
+                        : Cause.hasInterruptsOnly(exit.cause)
+                          ? "idle"
+                          : "failed",
                     ),
                 ).pipe(
+                  permit.withPermitsIfAvailable(1),
+                  Effect.flatMap(
+                    Option.match({
+                      onNone: () =>
+                        Effect.fail(
+                          new IndexerBusyError({
+                            message:
+                              "run or live is already in progress on this indexer; wait for it to finish (or close the indexer) before starting another.",
+                          }),
+                        ),
+                      onSome: Effect.succeed,
+                    }),
+                  ),
                   Effect.provideService(RunPhase, phase),
                   // Every metric recorded during the call carries the chain.
                   Effect.updateService(Metric.CurrentMetricAttributes, (attributes) => ({
