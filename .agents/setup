@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Prepares an Amp orb: the Vite+ CLI, the pinned Node.js and pnpm, workspace
+# dependencies, the stacksindex build, and the vendored reference repositories.
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+step() {
+  local name="$1"
+  shift
+  echo "==> $name"
+  local start=$SECONDS
+  "$@"
+  echo "<== $name ($((SECONDS - start))s)"
+}
+
+# Keep the global CLI on the version the workspace catalog pins.
+vp_version="$(sed -n 's/^  vite-plus: *//p' pnpm-workspace.yaml)"
+vp_env="$HOME/.config/vite-plus/env"
+vp_bin="$HOME/.local/share/vite-plus/bin/vp"
+
+install_vp() {
+  if [ -x "$vp_bin" ] && "$vp_bin" --version 2>/dev/null | grep -Fqx "vp v$vp_version"; then
+    echo "vp v$vp_version already installed"
+    return
+  fi
+  # The installer also adds the Vite+ env file to ~/.bash_profile, which Amp's
+  # login shells read.
+  curl -fsSL https://vite.plus | CI=1 VP_VERSION="$vp_version" VP_NODE_MANAGER=yes bash
+}
+
+step "Install Vite+ CLI v$vp_version" install_vp
+# The installer cannot update this running script's environment.
+# shellcheck disable=SC1090
+. "$vp_env"
+
+step "Install dependencies" vp install --frozen-lockfile
+step "Build packages" vp run build
+# Run the script directly: `vp run repos:sync` is a cached task and would
+# replay its output instead of updating the clones.
+step "Sync vendored repositories" ./scripts/sync-repos.sh
+
+echo "Setup finished in ${SECONDS}s"
