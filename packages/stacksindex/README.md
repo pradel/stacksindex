@@ -32,7 +32,7 @@ Three entrypoints ship with the package:
 ## Installation
 
 ```bash
-pnpm add stacksindex @electric-sql/pglite drizzle-orm
+pnpm add stacksindex @electric-sql/pglite drizzle-orm@rc
 ```
 
 _(or via `npm install` / `yarn add` / `bun add`)_
