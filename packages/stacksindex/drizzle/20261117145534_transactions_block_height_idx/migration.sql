@@ -1,0 +1,1 @@
+CREATE INDEX "transactions_chain_id_block_height_idx" ON "stacksindex"."transactions" ("chainId","blockHeight");

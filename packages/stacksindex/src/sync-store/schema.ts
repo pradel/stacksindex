@@ -58,6 +58,8 @@ export const transactionsTable = stacksindexSchema.table(
       name: "transactions_pkey",
       columns: [table.chainId, table.txId],
     }),
+    // Rewinds delete transactions above a height on every pass.
+    index("transactions_chain_id_block_height_idx").on(table.chainId, table.blockHeight),
   ],
 );
 
