@@ -338,7 +338,7 @@ const loadArchive = (fixturePath: string): FixtureArchive => {
     return {};
   }
 
-  const invalidFixtureMessage = `Fixture ${fixturePath} is not a JSON object of recorded responses; fix it or re-record with RECORD=true.`;
+  const invalidFixtureMessage = `Fixture ${fixturePath} is not a JSON object of recorded responses; fix it, or delete it and re-record with RECORD=true.`;
   let parsed: unknown;
 
   try {
